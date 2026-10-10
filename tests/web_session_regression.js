@@ -86,5 +86,24 @@ function harness(status, formValues=[['title','fixture']]) {
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(form.resetCount, 0, 'An old task response must preserve the new session draft');
   assert.equal(h.run('token'), 'new-session');
+  // Board lanes derive from ownership and agent reports, never from a visual move.
+  const board=harness(200);
+  for(const [state,expected] of [['working','working'],['blocked','blocked'],['local_done','review'],['pushed','review'],['pr_open','review'],['merged','merged']]) {
+    assert.equal(board.run(`taskColumn({owner_member_id:1},{state:'${state}'})`),expected);
+  }
+  assert.equal(board.run('taskColumn({owner_member_id:null},{state:"merged"})'),'open');
+  assert.equal(board.run('taskColumn({owner_member_id:1},null)'),'working');
+  board.run(`const fixtureTasks=[{id:1,title:'Login',scope:'src/auth',intent_key:'login',owner_member_id:1},{id:2,title:'UI',scope:'src/web',intent_key:'ui',owner_member_id:2},{id:3,title:'Pending',scope:'src/new',intent_key:'new',owner_member_id:null}];
+    const fixtureProgress=[{task_id:1,summary:'Waiting for token'}];`);
+  assert.equal(board.run('matchingTasks(fixtureTasks,fixtureProgress,"TOKEN","1").length'),1);
+  assert.equal(board.run('matchingTasks(fixtureTasks,fixtureProgress,"TOKEN","2").length'),0);
+  assert.equal(board.run('matchingTasks(fixtureTasks,fixtureProgress,"","unassigned")[0].id'),3);
+  assert.equal(board.run('matchingTasks(fixtureTasks,fixtureProgress,"SRC/WEB","")[0].id'),2);
+  const card=board.element('focused-card');
+  card.id='focused-card';card.tagName='BUTTON';card.textContent='task';card.tabIndex=0;
+  card.focus=()=>{card.wasFocused=true;};card.querySelectorAll=()=>[];
+  board.run('restoreRecordFocus({record:"focused-card",tag:"BUTTON",label:"task"})');
+  assert.equal(card.wasFocused,true);
+  assert.equal(card.tabIndex,0,'Refreshing a focused native card must retain its Tab stop');
   process.stdout.write('Delayed-body session regressions passed\n');
 })().catch(error => { process.stderr.write(error.stack+'\n'); process.exitCode=1; });

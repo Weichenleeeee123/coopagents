@@ -19,7 +19,8 @@ class WebTests(unittest.TestCase):
     def test_public_page_and_assets_have_security_headers(self):
         for path, mime, resource in [('/', 'text/html', 'index.html'),
                                     ('/static/styles.css', 'text/css', 'styles.css'),
-                                    ('/static/app.js', 'text/javascript', 'app.js')]:
+                                    ('/static/app.js', 'text/javascript', 'app.js'),
+                                    ('/static/icon.png', 'image/png', 'icon.png')]:
             with urlopen(self.live.url + path) as response:
                 self.assertEqual(response.status, 200)
                 self.assertEqual(response.headers.get_content_type(), mime)

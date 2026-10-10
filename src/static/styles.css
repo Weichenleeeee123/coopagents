@@ -627,3 +627,85 @@ dialog {
   color: var(--muted);
   font-size: 13px;
 }
+
+/* Team operations: graphite navigation, mint signals, focused task lanes. */
+:root { --paper:#f5f6f7; --ink:#252a30; --muted:#737b86; --line:#e2e6e9; --forest:#151c21; --accent:#86f4c6; }
+h1,h2,h3 { font-family:"Segoe UI","Microsoft YaHei",sans-serif; font-weight:600; }
+.brand { display:flex; align-items:center; gap:9px; font-family:Georgia,serif; font-size:25px; }
+.brand img { border-radius:10px; flex-shrink:0; }
+.brand span { margin-left:2px; font-size:12px; white-space:nowrap; }
+.workspace { grid-template-columns:224px minmax(0,1fr); }
+.sidebar { padding:28px 22px; background:#151c21; }
+.sidebar nav button { border-radius:7px; }
+.sidebar nav button[aria-current="page"] { background:#273b33; color:#a6fbd5; }
+.sidebar .room-label h2 { font-size:19px; }
+.workspace main { padding:0 28px; }
+.page-heading { margin:32px 0 22px; align-items:end; }
+.page-heading h1 { font-size:34px; letter-spacing:-1.2px; }
+.page-heading>p { max-width:none; font-size:13px; }
+.topline { padding:18px 0; }
+button,input,select,textarea { border-radius:6px; }
+button.primary { background:#80ebbc; color:#14251d; border-color:#80ebbc; font-weight:600; }
+button.primary:hover { background:#a5f9d3; }
+.entry-story { background:#151c21; }
+.entry-story h1 { font-family:Georgia,"SimSun",serif; }
+.board-toolbar,.board-tools,.board-actions { display:flex; align-items:center; gap:16px; }
+.board-toolbar { justify-content:space-between; flex-wrap:wrap; margin-bottom:18px; }
+.board-tools { flex:1; }
+.board-toolbar label { margin:0; color:var(--muted); font-size:11px; font-weight:500; }
+.search-label { width:270px; }
+.board-toolbar input,.board-toolbar select { margin-top:4px; padding:8px 12px; background:white; font-size:13px; }
+.board-toolbar select { min-width:140px; }
+.board-actions span { color:var(--muted); font-size:12px; }
+.task-create { margin-bottom:16px; background:white; border:1px solid var(--line); border-radius:8px; }
+.task-create>summary { padding:11px 16px; cursor:pointer; color:var(--muted); font-size:12px; }
+.task-create .task-form { margin:0; border:0; }
+.board-note { margin-bottom:16px; font-size:11px; color:var(--muted); }
+.kanban-board { display:grid; grid-template-columns:repeat(5,minmax(220px,1fr)); gap:14px; overflow-x:auto; align-items:start; padding-bottom:18px; scrollbar-color:#c3ced0 transparent; }
+.kanban-column { background:#eceff1; border:1px solid #e6e9ec; border-radius:10px; min-height:420px; padding:12px 9px; }
+.column-heading { padding:3px 4px 15px; }
+.column-heading>div { display:flex; gap:8px; align-items:center; }
+.column-heading h2 { font-size:13px; font-weight:600; }
+.column-heading p { margin:6px 0 0 17px; font-size:10px; color:var(--muted); }
+.status-dot { width:8px; height:8px; border-radius:50%; border:2px solid #a5adb6; }
+.column-working .status-dot { border-color:#518ec6; background:#518ec6; }
+.column-blocked .status-dot { border-color:#dd7769; background:#dd7769; }
+.column-review .status-dot { border-color:#d3a43f; background:#d3a43f; }
+.column-merged .status-dot { border-color:#51a782; background:#51a782; }
+.column-count { margin-left:auto; color:var(--muted); font-size:11px; background:#dfe4e7; border-radius:5px; padding:0 6px; }
+.column-cards { display:grid; gap:9px; }
+.column-cards .empty { padding:28px 8px; font-size:11px; text-align:center; color:#919aa4; }
+.task-card { display:block; width:100%; text-align:left; background:white; border:1px solid #e0e5e9; border-radius:8px; padding:13px; box-shadow:0 2px 3px #11182004; transition:transform .15s,border-color .15s,box-shadow .15s; }
+.task-card:hover { background:white; border-color:#98b5a5; transform:translateY(-2px); box-shadow:0 5px 14px #1118200d; }
+.card-top,.card-bottom { display:flex; align-items:center; justify-content:space-between; gap:5px; }
+.task-number { font-family:Consolas,monospace; font-size:10px; color:#8c969f; letter-spacing:.4px; }
+.card-arrow { color:#a2aab1; font-size:13px; }
+.task-card h3 { margin:8px 0; font-size:14px; line-height:1.55; overflow-wrap:anywhere; }
+.card-summary { color:#697580; font-size:11px; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; line-height:1.65; }
+.card-scope { display:inline-block; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-family:Consolas,monospace; color:#627166; background:#f1f6f2; padding:1px 5px; border-radius:3px; font-size:10px; margin:12px 0 10px; }
+.card-person { display:flex; align-items:center; gap:5px; font-size:10px; min-width:0; overflow-wrap:anywhere; }
+.avatar { display:inline-flex; align-items:center; justify-content:center; border-radius:50%; width:20px; height:20px; background:#e4ede8; color:#3d6650; font-size:10px; flex-shrink:0; }
+.card-meta { color:#8d969f; font-size:10px; white-space:nowrap; }
+.card-time { color:#9aa2ab; font-size:9px; margin-top:10px; }
+.task-dialog { width:min(640px,92vw); }
+.task-dialog h2 { font-size:24px; margin:10px 0 18px; overflow-wrap:anywhere; }
+.detail-status { display:flex; align-items:center; gap:12px; margin-bottom:18px; }
+.detail-label { color:var(--muted); font-size:11px; margin:20px 0 7px; }
+.detail-value { font-size:14px; white-space:pre-wrap; overflow-wrap:anywhere; }
+.detail-link { display:block; width:100%; text-align:left; margin:7px 0; overflow-wrap:anywhere; background:#f4f7f5; font-size:12px; }
+.task-dialog .empty { font-size:12px; color:var(--muted); }
+@media(min-width:1600px) { .workspace main { padding:0 38px; } .kanban-board { gap:18px; } }
+@media(max-width:760px) {
+  .workspace { display:block; }
+  .workspace main { padding:0 18px; }
+  .sidebar { padding:18px; }
+  .page-heading h1 { font-size:30px; }
+  .page-heading>p { margin-top:7px; }
+  .board-tools { width:100%; gap:10px; }
+  .search-label { flex:1; min-width:0; }
+  .board-toolbar select { min-width:110px; max-width:125px; }
+  .board-actions { width:100%; justify-content:space-between; }
+  .kanban-board { grid-template-columns:repeat(5, minmax(265px,80vw)); scroll-snap-type:x proximity; }
+  .kanban-column { scroll-snap-align:start; min-height:300px; }
+  .board-note { line-height:1.8; }
+}

@@ -19,4 +19,4 @@ packages = ["crewmesh"]
 package-dir = { crewmesh = "src" }
 
 [tool.setuptools.package-data]
-crewmesh = ["static/*.html", "static/*.css", "static/*.js"]
+crewmesh = ["static/*.html", "static/*.css", "static/*.js", "static/*.png"]
