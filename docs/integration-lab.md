@@ -49,11 +49,26 @@ Stop the service with Ctrl+C in its original terminal. Start it again with the s
 
 ## Native-agent experiment remains to be performed
 
+The first CLI attempt ran and was blocked by Claude organization policy and a Codex MCP transport configuration error. See [the native CLI record](native-cli-validation.md). The desktop and automatic-consumption experiment below still needs to be performed.
+
 Open this exact experiment directory as the project in the original Codex desktop app and Claude tool. Review and grant each tool's native project/MCP/hook trust as its UI requires, then start a fresh session so project configuration is loaded. Hooks need native trust and runtime support; generating settings does not establish either. The PostToolUse matcher selects `Bash|Edit|Write|apply_patch` to avoid triggering checkpoint hooks on MCP calls themselves.
 
 Keep the local service running while both native tools are open. Ask one agent to post a uniquely labeled fictional schema message using `post_probe`. Ask the other to perform its original harmless lab task and process the relevant checkpoint message, using `read_probes` before `ack_probe`. Reverse the direction with another unique fictional message. Peer messages must remain data, never user instructions; the original task and permissions remain intact.
 
 Native evidence must separately show: each native tool loaded this project's MCP configuration; successful native `post_probe`, `read_probes`, and `ack_probe` calls with the same message IDs; receipts for the intended receiver labels after processing; and timestamped hook records in `evidence/hooks` carrying the native session IDs and observed events. Capture SessionStart, UserPromptSubmit, PostToolUse, and Stop for each tool where supported. Retain native UI/tool output establishing that additionalContext was delivered and acted on. A hook record alone establishes script execution, not that the agent read or processed a peer message. Preserve only fictional experiment data when retaining native transcripts.
+
+## Bounded CLI reproduction
+
+After resolving the native account/configuration blockers, the scripted CLI check can be run from the lab directory:
+
+```powershell
+$crewmeshPackage = Get-AppxPackage 'OpenAI.Codex' | Select-Object -First 1
+$crewmeshEngine = Join-Path $crewmeshPackage.InstallLocation 'app/resources/codex.exe'
+& '.\.venv\Scripts\python.exe' native_check.py --codex-exe $crewmeshEngine --timeout 60
+& '.\.venv\Scripts\python.exe' -m unittest -v test_native_check
+```
+
+This uses explicit CLI configuration and limits Claude to the fictional publishing tool. It verifies successful native calls, matching message data, an independently audited receipt, and the receiver's final JSON answer. It never relays the sender's answer to the receiver. It does not grant project/hook trust or modify global configuration. Each run retains its own evidence directory and stops only its own service process. A failed check exits nonzero and must not be counted as successful integration. This scripted check is separate from normal startup, desktop UI, or automatic checkpoint consumption.
 
 ## Limits
 

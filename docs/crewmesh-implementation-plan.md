@@ -12,6 +12,8 @@
 
 日期：2026-10-10。执行方式：优先在当前会话按阶段推进；无需为普通实施选择再次申请许可。任务 0–3 及任务 4 的配置生成与校验已实施并验证：本机预检、10 项消息服务测试和真实 HTTP MCP 往返已通过。实际实现位于 work/crewmesh-integration-lab；下方代码保留为原始计划示例，验收状态以接入验证报告为准。
 
+本轮 Task 5 的 CLI 消息实验已实际尝试，因 Claude 组织策略和 Codex 本机 MCP transport 配置失败；Claude 两个原生启动 hook 已取得执行证据。详情见 [原生 CLI 实验](native-cli-validation.md)。消息往返、桌面入口和自动消费仍未通过，P1 不记为完成。
+
 ## A. 产品范围与分阶段路线
 
 **已确认名称：Crewmesh · 同频。** Your agents. One team. / 各自开工，始终同频。
