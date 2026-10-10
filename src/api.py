@@ -3,11 +3,12 @@ from contextlib import asynccontextmanager
 from dataclasses import asdict
 from datetime import datetime, timezone
 import json
+from importlib.resources import files
 from pathlib import Path
 from urllib.parse import urlsplit
 
 from starlette.applications import Starlette
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, Response
 from starlette.routing import Route, Mount
 
 from .identity import IdentityStore
@@ -18,6 +19,7 @@ from .contracts import ContractStore
 from .errors import AccessDenied, Conflict, NotFound, ValidationError
 
 BODY_LIMIT = 65536
+WEB_CSP = "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'"
 ERROR_STATUS = {ValidationError: 400, AccessDenied: 401, NotFound: 404, Conflict: 409}
 
 
@@ -257,7 +259,18 @@ def create_app(database_path='.local/crewmesh.sqlite3', *, base_url=None):
             return await endpoint(request)
         return Route(path, handle, methods=methods)
 
-    routes = [route('/health', ['GET']), route('/api/rooms', ['POST'], operation='create_room'), route('/api/join', ['POST'], operation='join'),
+    async def web_asset(request):
+        assets = {'/': ('index.html', 'text/html'),
+                  '/static/styles.css': ('styles.css', 'text/css'),
+                  '/static/app.js': ('app.js', 'text/javascript')}
+        headers = {'Content-Security-Policy': WEB_CSP, 'X-Content-Type-Options': 'nosniff'}
+        if request.url.path == '/favicon.ico':
+            return Response(status_code=204, headers=headers)
+        resource, mime = assets[request.url.path]
+        return Response(files('crewmesh').joinpath('static', resource).read_bytes(), media_type=mime, headers=headers)
+
+    routes = [Route(path, web_asset, methods=['GET']) for path in ('/', '/static/styles.css', '/static/app.js', '/favicon.ico')]
+    routes += [route('/health', ['GET']), route('/api/rooms', ['POST'], operation='create_room'), route('/api/join', ['POST'], operation='join'),
               route('/api/me', ['GET'], read_name='me'), route('/api/snapshot', ['GET'], read_name='snapshot'),
               route('/api/invites', ['POST'], operation='invite'), route('/api/agent-token', ['POST'], operation='rotate_agent'),
               route('/api/inbox', ['GET'], read_name='inbox')]
