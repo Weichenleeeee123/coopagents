@@ -16,7 +16,7 @@ function harness(status, formValues=[['title','fixture']]) {
     });
     return elements.get(id);
   }
-  let releaseBody, bodyStarted;
+  let releaseBody, bodyStarted, request;
   const started = new Promise(resolve => { bodyStarted = resolve; });
   const body = new Promise(resolve => { releaseBody = resolve; });
   const storage = new Map();
@@ -26,15 +26,25 @@ function harness(status, formValues=[['title','fixture']]) {
     setTimeout: () => 1, clearTimeout() {}, AbortController, Date, JSON,
     location: {origin:'http://127.0.0.1:1'},
     FormData: class { *[Symbol.iterator]() { yield* formValues; } },
-    fetch: async () => ({status, ok:status===200, json: () => {bodyStarted();return body;}}),
+    fetch: async (url, options) => { request={url, ...options}; return {status, ok:status===200, json: () => {bodyStarted();return body;}}; },
   });
   vm.runInContext(source, context);
   const run = code => vm.runInContext(code, context);
   const switchSession = () => run("generation++; token='new-session'; sessionStorage.setItem('crewmesh_web_token',token)");
-  return {element, run, switchSession, started, releaseBody, storage};
+  return {element, run, switchSession, started, releaseBody, storage, request:()=>request};
 }
 
 (async () => {
+  for (const name of ['create','join']) {
+    const h=harness(200, [['name','Team'], ['bootstrap_secret','private-bootstrap']]);
+    const form=h.element('form-'+name);
+    const completion=form.listeners.submit({preventDefault(){},currentTarget:form});
+    await h.started;
+    assert.equal(h.request().headers['X-Crewmesh-Bootstrap'], name==='create'?'private-bootstrap':undefined);
+    assert.equal(JSON.parse(h.request().body).bootstrap_secret, undefined);
+    h.switchSession(); h.releaseBody({web_token:'old-token'}); await completion;
+    assert.equal(h.storage.has('bootstrap_secret'),false);
+  }
   // A response can deliver headers before logout and its JSON body afterwards.
   // Neither a stale 401 nor a stale success may affect the replacement session.
   for (const status of [401,200]) {

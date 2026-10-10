@@ -1,8 +1,10 @@
 """Official SDK MCP transport with personal agent bearer authentication."""
 import inspect
 import json
+from urllib.parse import urlsplit
 
 from mcp.server import MCPServer
+from mcp.server.transport_security import TransportSecuritySettings
 from mcp.server.auth.middleware.bearer_auth import BearerAuthBackend, RequireAuthMiddleware
 from mcp.server.auth.middleware.auth_context import AuthContextMiddleware, get_access_token
 from mcp.server.auth.provider import AccessToken
@@ -18,7 +20,7 @@ def tool_error(error):
     return CallToolResult(is_error=True, content=[TextContent(type='text', text=json.dumps(payload))])
 
 
-def create_mcp_app(service):
+def create_mcp_app(service, *, origin=None):
     """Return (SDK lifespan application, authenticated ASGI application)."""
     names = ('claim_task', 'register_session', 'report_progress', 'send_request', 'read_inbox',
              'acknowledge', 'reply', 'resolve_request', 'propose_contract')
@@ -81,8 +83,12 @@ def create_mcp_app(service):
             except AccessDenied:
                 return None
 
+    security = TransportSecuritySettings(enable_dns_rebinding_protection=True,
+        allowed_hosts=[urlsplit(origin).netloc] if origin else ['127.0.0.1:*', 'localhost:*'],
+        allowed_origins=[origin] if origin else ['http://127.0.0.1:*', 'http://localhost:*', 'https://127.0.0.1:*', 'https://localhost:*'])
     app = server.streamable_http_app(streamable_http_path='/mcp', json_response=True,
-                                     stateless_http=True, max_request_body_size=65536)
+                                     stateless_http=True, max_request_body_size=65536,
+                                     transport_security=security)
     protected = RequireAuthMiddleware(app, required_scopes=['agent'], resource_metadata_url=None)
     authenticated = AuthenticationMiddleware(AuthContextMiddleware(protected), backend=BearerAuthBackend(PersonalTokenVerifier()))
     return app, authenticated

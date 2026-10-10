@@ -3,6 +3,8 @@ from contextlib import asynccontextmanager
 from dataclasses import asdict
 from datetime import datetime, timezone
 import json
+import hmac
+import hashlib
 from importlib.resources import files
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -17,6 +19,7 @@ from .activity import ActivityStore
 from .messages import MessageStore
 from .contracts import ContractStore
 from .errors import AccessDenied, Conflict, NotFound, ValidationError
+from .config import public_origin, validate_bootstrap_secret
 
 BODY_LIMIT = 65536
 WEB_CSP = "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'"
@@ -113,13 +116,16 @@ class Service:
 
 class LocalBoundary:
     """Validate host/origin and actual body bytes before HTTP or MCP handling."""
-    def __init__(self, app, base_url=None):
+    def __init__(self, app, base_url=None, public_url=None):
         self.app = app
         self.state = getattr(app, "state", None)
         parsed = urlsplit(base_url) if base_url else None
         if parsed and (parsed.hostname not in ('127.0.0.1', 'localhost') or parsed.scheme not in ('http', 'https') or parsed.username or parsed.password):
             raise ValueError('Base URL must be a local HTTP origin')
         self.host = parsed.netloc.lower() if parsed else None
+        self.origin = public_origin(public_url) if public_url else None
+        if self.origin:
+            self.host = urlsplit(self.origin).netloc
 
     async def __call__(self, scope, receive, send):
         if scope['type'] != 'http':
@@ -144,11 +150,13 @@ class LocalBoundary:
         if scope['method'] not in ('GET', 'HEAD', 'OPTIONS'):
             if any(k == b'sec-fetch-site' and v == b'cross-site' for k, v in headers):
                 rejection = ('Origin not accepted', 403)
-            origins = [v.decode('latin-1') for k, v in headers if k == b'origin']
-            if origins and (len(origins) != 1 or origins[0] != scope['scheme'] + '://' + host):
-                rejection = ('Origin not accepted', 403)
+        origins = [v.decode('latin-1') for k, v in headers if k == b'origin']
+        if origins and (len(origins) != 1 or origins[0] != (self.origin or scope['scheme'] + '://' + host)):
+            rejection = ('Origin not accepted', 403)
         if scope.get('query_string') and scope['path'] != '/api/inbox':
             rejection = ('Query parameters not accepted', 400)
+        if rejection:
+            return await reject(*rejection)
         body = bytearray()
         while True:
             message = await receive()
@@ -159,8 +167,6 @@ class LocalBoundary:
                 return await reject('Request body too large', 413)
             if not message.get('more_body', False):
                 break
-        if rejection:
-            return await reject(*rejection)
         if body and scope['method'] not in ('GET', 'HEAD', 'OPTIONS'):
             try:
                 decoded = bytes(body).decode('utf-8')
@@ -196,10 +202,14 @@ def bearer(request):
     return values[0][7:]
 
 
-def create_app(database_path='.local/crewmesh.sqlite3', *, base_url=None):
+def create_app(database_path='.local/crewmesh.sqlite3', *, base_url=None, public_url=None, bootstrap_secret=None):
+    if base_url and public_url:
+        raise ValueError('Set only one service origin')
+    origin = public_origin(public_url) if public_url is not None else None
+    bootstrap_hash = hashlib.sha256(validate_bootstrap_secret(bootstrap_secret).encode('ascii')).digest() if origin else None
     service = Service(database_path)
     from .mcp_service import create_mcp_app
-    mcp_app, authenticated_mcp = create_mcp_app(service)
+    mcp_app, authenticated_mcp = create_mcp_app(service, origin=origin or base_url)
 
     @asynccontextmanager
     async def lifespan(app):
@@ -211,7 +221,19 @@ def create_app(database_path='.local/crewmesh.sqlite3', *, base_url=None):
             path = request.url.path
             if path == '/health' and request.method == 'GET':
                 return JSONResponse({'status': 'ok'})
+            if path == '/ready' and request.method == 'GET':
+                try:
+                    with service.identity.db.connect() as connection:
+                        connection.execute('SELECT id FROM rooms LIMIT 1').fetchone()
+                    return JSONResponse({'status': 'ready'})
+                except Exception:
+                    return JSONResponse({'status': 'unavailable'}, status_code=503)
             operation = request.scope.get('operation')
+            if operation == 'create_room' and bootstrap_hash is not None:
+                credentials = request.headers.getlist('x-crewmesh-bootstrap')
+                candidate = credentials[0] if len(credentials) == 1 else ''
+                if not hmac.compare_digest(hashlib.sha256(candidate.encode('utf-8')).digest(), bootstrap_hash):
+                    raise AccessDenied('Bootstrap credential not accepted')
             public = operation in ('create_room', 'join')
             token = None if public else bearer(request)
             if token:
@@ -271,7 +293,7 @@ def create_app(database_path='.local/crewmesh.sqlite3', *, base_url=None):
         return Response(files('crewmesh').joinpath('static', resource).read_bytes(), media_type=mime, headers=headers)
 
     routes = [Route(path, web_asset, methods=['GET']) for path in ('/', '/static/styles.css', '/static/app.js', '/static/icon.png', '/favicon.ico')]
-    routes += [route('/health', ['GET']), route('/api/rooms', ['POST'], operation='create_room'), route('/api/join', ['POST'], operation='join'),
+    routes += [route('/health', ['GET']), route('/ready', ['GET']), route('/api/rooms', ['POST'], operation='create_room'), route('/api/join', ['POST'], operation='join'),
               route('/api/me', ['GET'], read_name='me'), route('/api/snapshot', ['GET'], read_name='snapshot'),
               route('/api/invites', ['POST'], operation='invite'), route('/api/agent-token', ['POST'], operation='rotate_agent'),
               route('/api/inbox', ['GET'], read_name='inbox')]
@@ -287,4 +309,4 @@ def create_app(database_path='.local/crewmesh.sqlite3', *, base_url=None):
     routes.append(Mount('/', app=authenticated_mcp))
     app = Starlette(routes=routes, lifespan=lifespan)
     app.state.service = service
-    return LocalBoundary(app, base_url)
+    return LocalBoundary(app, base_url, origin)

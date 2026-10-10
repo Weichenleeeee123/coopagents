@@ -22,11 +22,11 @@ document.querySelectorAll('[data-view]').forEach(b => b.addEventListener('click'
 const tabs = Array.from(document.querySelectorAll('[data-entry]'));
 function entryTab(b) { tabs.forEach(t => { const active=t===b; t.setAttribute('aria-selected',String(active)); t.tabIndex=active?0:-1; $('form-'+t.dataset.entry).hidden=!active; }); }
 tabs.forEach((b,i) => { b.tabIndex=i? -1:0; b.addEventListener('click',() => entryTab(b)); b.addEventListener('keydown',e => { if(['ArrowLeft','ArrowRight','Home','End'].includes(e.key)){ e.preventDefault(); const next = e.key==='Home'?0:e.key==='End'?2:(i+(e.key==='ArrowRight'?1:2))%3; entryTab(tabs[next]); tabs[next].focus(); } }); });
-async function api(path, data, authenticated = true) {
+async function api(path, data, authenticated = true, extraHeaders = {}) {
   const epoch=generation, credential=token, controller=new AbortController();
   const timeout=setTimeout(() => controller.abort(),10000);
   try {
-    const headers={}; if(authenticated) headers.Authorization='Bearer '+credential;
+    const headers={...extraHeaders}; if(authenticated) headers.Authorization='Bearer '+credential;
     if(data!==undefined) headers['Content-Type']='application/json';
     const response=await fetch(path,{method:data===undefined?'GET':'POST',headers,body:data===undefined?undefined:JSON.stringify(data),signal:controller.signal,cache:'no-store'});
     if(epoch!==generation) throw new Error('访问已切换');
@@ -49,8 +49,9 @@ for(const name of ['create','join','restore']) $('form-'+name).addEventListener(
   e.preventDefault(); const form=e.currentTarget, b=form.querySelector('button[type=submit]'); b.disabled=true; $('login-error').textContent='';
   const epoch=generation;
   try { const data=Object.fromEntries(new FormData(form));
+    const bootstrap=data.bootstrap_secret; delete data.bootstrap_secret;
     if(name==='restore'){ const credential=data.web_token.trim(); generation++; const restoreEpoch=generation; token=credential; await api('/api/snapshot'); if(restoreEpoch!==generation)return; enter(credential); }
-    else { const result=await api(name==='create'?'/api/rooms':'/api/join',data,false); if(epoch!==generation)return; enter(result.web_token); showPrivate('保存个人接入凭据',result); }
+    else { const result=await api(name==='create'?'/api/rooms':'/api/join',data,false,name==='create'&&bootstrap?{'X-Crewmesh-Bootstrap':bootstrap}:{}); if(epoch!==generation)return; enter(result.web_token); showPrivate('保存个人接入凭据',result); }
     form.reset();
   } catch(error) { if(!$('login').hidden) $('login-error').textContent=error.message; } finally { b.disabled=false; }
 });

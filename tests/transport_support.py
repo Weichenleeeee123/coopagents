@@ -13,8 +13,8 @@ from crewmesh.api import create_app
 
 
 class LiveService:
-    def __init__(self):
-        self.database = Path('.local/test-evidence') / (str(uuid4()) + '.sqlite3')
+    def __init__(self, database=None):
+        self.database = Path(database) if database is not None else Path('.local/test-evidence') / (str(uuid4()) + '.sqlite3')
         self.socket = socket.socket()
         self.socket.bind(('127.0.0.1', 0))
         self.port = self.socket.getsockname()[1]

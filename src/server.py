@@ -1,17 +1,35 @@
 """Start the local coordination service."""
 import argparse
+import os
+import ipaddress
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Local Crewmesh HTTP and MCP service')
-    parser.add_argument('--port', type=int, default=8787)
-    parser.add_argument('--database', default='.local/crewmesh.sqlite3')
+    parser = argparse.ArgumentParser(description='Crewmesh HTTP and MCP service')
+    parser.add_argument('--host', default=os.environ.get('CREWMESH_HOST', '127.0.0.1'))
+    parser.add_argument('--port', type=int, default=os.environ.get('CREWMESH_PORT', '8787'))
+    parser.add_argument('--database', default=os.environ.get('CREWMESH_DATABASE', '.local/crewmesh.sqlite3'))
+    parser.add_argument('--public-url', default=os.environ.get('CREWMESH_PUBLIC_URL'))
+    parser.add_argument('--trusted-proxies', default=os.environ.get('CREWMESH_TRUSTED_PROXIES', ''))
     args = parser.parse_args()
     if not 1 <= args.port <= 65535:
         parser.error('port must be between 1 and 65535')
     import uvicorn
     from .api import create_app
-    uvicorn.run(create_app(args.database), host='127.0.0.1', port=args.port, access_log=False)
+    from .config import bootstrap_from_env, trusted_proxies
+    try:
+        try:
+            local_bind = ipaddress.ip_address(args.host).is_loopback
+        except ValueError:
+            local_bind = args.host.lower() == 'localhost'
+        if not local_bind and not args.public_url:
+            raise ValueError('Non-loopback binding requires an explicit HTTPS public URL and bootstrap secret')
+        proxies = trusted_proxies(args.trusted_proxies)
+        app = create_app(args.database, public_url=args.public_url, bootstrap_secret=bootstrap_from_env())
+    except ValueError as error:
+        parser.error(str(error))
+    uvicorn.run(app, host=args.host, port=args.port, access_log=False,
+                proxy_headers=bool(proxies), forwarded_allow_ips=proxies)
 
 
 if __name__ == '__main__':
