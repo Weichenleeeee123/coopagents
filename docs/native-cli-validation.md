@@ -34,7 +34,7 @@ Codex 的 feature 预检成功，但创建会话时仍会校验 MCP transport。
 
 ## 保留的证据
 
-原始证据位于 `work/crewmesh-integration-lab/evidence/native-8545990f-c5f0-46ad-bd96-a083b0053f86/`，包含版本预检、CLI 标准输出与错误、实验服务日志及 `report.json`。命令覆盖检查的脱敏结果位于 `evidence/codex-map-override-c8b1bbff-40b5-49ae-842a-a435e3e56d9f.json`。
+原始证据位于 `.local/agent-integration/evidence/native-8545990f-c5f0-46ad-bd96-a083b0053f86/`，包含版本预检、CLI 标准输出与错误、实验服务日志及 `report.json`。命令覆盖检查的脱敏结果位于 `.local/agent-integration/evidence/codex-map-override-c8b1bbff-40b5-49ae-842a-a435e3e56d9f.json`。
 
 实验自行启动的服务进程已停止。所有文件和数据库继续保留；原始日志、用户全局配置及登录凭据不加入 Git。本文件记录经过检查的结论。
 
@@ -86,6 +86,6 @@ Claude 正常入口再次发布消息 `3`，request_key 为 `claude-login-v2-tic
 
 因此，结论是“已有会话的普通任务中自行读取了新协作信息”，有条件通过任务检查点发现。新事实无法仅由上一轮会话记忆得出，但会话保留了此前显式工具调用的上下文；尚不能推广为全新会话无需引导的稳定行为。
 
-该轮没有 `ack_probe` 调用，数据库中消息 `3` 的接收者记录为空；不得显示为已确认处理。实验 `evidence/hooks` 中没有 Codex 事件记录，当前无法证明这次读取由原生 hook 触发。读取发生在新的用户任务中，仍未证明运行中推送或闲置唤醒。
+该轮没有 `ack_probe` 调用，数据库中消息 `3` 的接收者记录为空；不得显示为已确认处理。实验 `.local/agent-integration/evidence/hooks` 中没有 Codex 事件记录，当前无法证明这次读取由原生 hook 触发。读取发生在新的用户任务中，仍未证明运行中推送或闲置唤醒。
 
 这份证据可以支撑后续产品采用“任务检查点拉取协作信息”的设计方向。共享服务须继续区分消息存储、实际读取证据和显式处理确认，并展示来源与时间；原生 hook、全新会话和运行中消费保留独立验收项。

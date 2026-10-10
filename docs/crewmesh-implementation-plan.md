@@ -12,7 +12,7 @@
 
 ---
 
-日期：2026-10-10。执行方式：优先在当前会话按阶段推进；无需为普通实施选择再次申请许可。任务 0–3 及任务 4 的配置生成与校验已实施并验证：本机预检、10 项消息服务测试和真实 HTTP MCP 往返已通过。实际实现位于 work/crewmesh-integration-lab；下方代码保留为原始计划示例，验收状态以接入验证报告为准。
+日期：2026-10-10。执行方式：优先在当前会话按阶段推进；无需为普通实施选择再次申请许可。任务 0–3 及任务 4 的配置生成与校验已实施并验证：本机预检、10 项消息服务测试和真实 HTTP MCP 往返已通过。实际实现位于 experiments/agent-integration；下方代码保留为原始计划示例，验收状态以接入验证报告为准。
 
 本轮 Task 5 的 CLI 消息实验已实际尝试，因 Claude 组织策略和 Codex 本机 MCP transport 配置失败；Claude 两个原生启动 hook 已取得执行证据。详情见 [原生 CLI 实验](native-cli-validation.md)。消息往返、桌面入口和自动消费仍未通过，P1 不记为完成。
 
@@ -61,7 +61,7 @@ P3 开始时再制作页面方案与对应实施计划。当前阶段不锁定�
 
 当前根目录：`C:/Users/Weichen Li/Documents/Codex/2026-10-10/wo-zhe`。
 
-实验根目录：`C:/Users/Weichen Li/Documents/Codex/2026-10-10/wo-zhe/work/crewmesh-integration-lab`。
+实验根目录：`C:/Users/Weichen Li/Documents/Codex/2026-10-10/wo-zhe/experiments/agent-integration`。
 
 以下树中的路径均相对于实验根目录；源码、依赖和项目配置已创建。原生入口验收状态见本目录的接入验证报告。持续维护的文档统一存放在仓库 `docs/`。
 
@@ -579,7 +579,7 @@ CLI 备选：可使用桌面附带的引擎从实验目录启动，单独记录�
 
 ## Task 5：真实入口消息实验
 
-**Files:** 更新 `docs/crewmesh-integration-report.md` 作为用户可读报告；原始证据保留在实验目录的 evidence 中。
+**Files:** 更新 `docs/crewmesh-integration-report.md` 作为用户可读报告；原始证据保留在 `.local/agent-integration/evidence/` 中。
 
 - [x] **Step 1：发送一次虚构接口事实，验证工具调用。**
 

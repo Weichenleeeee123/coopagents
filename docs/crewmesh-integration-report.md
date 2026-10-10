@@ -60,15 +60,15 @@
 
 ## 实际协议证据
 
-本次 HTTP 检查 run_id：`702b7f19-f11d-4d71-84d6-2048fe6a7f89`，消息 id：`1`，协商协议版本：`2026-07-28`，结果：`passed=true`。原始 JSON 保存在实验目录的 `evidence/702b7f19-f11d-4d71-84d6-2048fe6a7f89-protocol.json`。
+本次 HTTP 检查 run_id：`702b7f19-f11d-4d71-84d6-2048fe6a7f89`，消息 id：`1`，协商协议版本：`2026-07-28`，结果：`passed=true`。原始 JSON 保存在`.local/agent-integration/evidence/702b7f19-f11d-4d71-84d6-2048fe6a7f89-protocol.json`。
 
 检查覆盖工具发现、幂等发送、消息读取、读取后仍无确认、两次显式确认后只有一个接收者记录。该次实验启动的服务已停止，本机数据库继续保留。这份证据标记为 `sdk-http-only`。用户随后自行启动服务并完成桌面读取，详见 [补充原生证据](native-cli-validation.md)。
 
 ## 下一步：原生入口实测
 
-实验目录：`C:/Users/Weichen Li/Documents/Codex/2026-10-10/wo-zhe/work/crewmesh-integration-lab`。在该目录运行 `.venv/Scripts/python.exe probe_server.py`，再通过原有 Claude Code 与 Codex 桌面入口打开此项目，完成工具自身的项目/MCP/hook 信任检查。项目级配置已准备；本机全局配置未改变。
+实验目录：`C:/Users/Weichen Li/Documents/Codex/2026-10-10/wo-zhe/experiments/agent-integration`。在仓库根目录运行 `.venv/Scripts/python.exe experiments/agent-integration/probe_server.py`，再通过原有 Claude Code 与 Codex 桌面入口打开此项目，完成工具自身的项目/MCP/hook 信任检查。项目级配置已准备；本机全局配置未改变。
 
-最新复现步骤见 [实验运行说明](integration-lab.md)。`../outputs/crewmesh-integration-lab-source.zip` 是首次接入实验的历史快照；最新源码以仓库为准。新目录需按运行说明创建环境并生成本机配置。原生验收需要两边实际调用同一消息源的工具、处理后留下确认记录，以及对应会话的 hook 事件和上下文消费证据。仅生成配置或 shell 模拟 hook 不计为完成。原生接入验证完成后，再实施经过身份验证的共享服务与用户网页。
+最新复现步骤见 [实验运行说明](integration-lab.md)。`../experiments/agent-integration/archive/crewmesh-integration-lab-source.zip` 是首次接入实验的历史快照；最新源码以仓库为准。新目录需按运行说明创建环境并生成本机配置。原生验收需要两边实际调用同一消息源的工具、处理后留下确认记录，以及对应会话的 hook 事件和上下文消费证据。仅生成配置或 shell 模拟 hook 不计为完成。原生接入验证完成后，再实施经过身份验证的共享服务与用户网页。
 
 当前普通入口已完成消息 2 的发布、读取与处理确认。下一步聚焦全新消息和新接收会话的普通任务检查点，用户提示不再要求调用收件箱；必须与本轮显式工具任务分开验收。详细证据见 [原生消息链记录](native-cli-validation.md)。
 
@@ -80,3 +80,7 @@
 - [Codex MCP](https://learn.chatgpt.com/docs/extend/mcp?surface=cli)：工具接入和客户端边界。
 - [Claude Code hooks](https://code.claude.com/docs/en/hooks)：工作事件与上下文机制。
 - [官方 MCP Python SDK](https://github.com/modelcontextprotocol/python-sdk)：实验服务与协议客户端。
+
+## 仓库结构迁移
+
+源码、数据库和配置已迁移，旧路径不再作为启动入口。当前命令见 [实验说明](integration-lab.md)，迁移与服务恢复证据见 [结构记录](repository-layout.md)。原生会话应从新实验目录重新启动，不将迁移后的 SDK 检查视为原生入口重新验收。

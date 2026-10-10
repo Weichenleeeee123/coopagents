@@ -4,6 +4,7 @@
 
 | 文档 | 内容 |
 | --- | --- |
+| [仓库结构](repository-layout.md) | 目录职责、迁移记录与服务恢复验证 |
 | [后续路线](roadmap.md) | P2 共享服务、P3 网页、P4 双机的任务和验收状态 |
 | [共享服务计划](shared-service-plan.md) | 当前身份基础与任务认领的具体实施步骤 |
 | [共享服务报告](shared-service-report.md) | P2 已实现能力和验证结果 |
@@ -13,4 +14,4 @@
 | [实验运行说明](integration-lab.md) | 环境准备、配置生成、服务运行和原生入口验证 |
 | [原生 CLI 实验](native-cli-validation.md) | 真实启动、hook 事件、组织策略和配置兼容性阻塞 |
 
-`outputs/` 中的源代码包是历史交付快照。最新事实和运行方式以本目录及仓库源码为准。接入原始证据保留在实验目录 `evidence/`，共享服务测试数据库保留在 `work/crewmesh-shared-evidence/`；文档只纳入经过检查的结论，避免把机器路径配置、凭据或用户真实对话加入 Git。
+`experiments/agent-integration/archive/` 中的源代码包是历史交付快照。最新事实和运行方式以本目录及仓库源码为准。接入原始证据保留在 `.local/agent-integration/evidence/`，共享服务测试数据库保留在 `.local/test-evidence/`；文档只纳入经过检查的结论，避免把机器路径配置、凭据或用户真实对话加入 Git。

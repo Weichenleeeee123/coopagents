@@ -11,7 +11,7 @@
 | HTTP/MCP 入口 | 待实施 |
 | 网页与双机 | 待实施 |
 
-所有原始测试数据库保留在 `work/crewmesh-shared-evidence/`，不提交 Git。此报告记录实际结果，不以领域测试代替真实传输、部署或两台电脑验收。
+所有原始测试数据库保留在 `.local/test-evidence/`，不提交 Git。此报告记录实际结果，不以领域测试代替真实传输、部署或两台电脑验收。
 
 ## 身份阶段
 
@@ -40,8 +40,7 @@ Git 阶段提交：任务认领实现 `ce4294f`。
 在仓库根目录执行：
 
 ```powershell
-$env:PYTHONPATH = (Join-Path (Get-Location) 'src')
-C:\Python313\python.exe -m unittest discover -s tests -v
+& .\.venv\Scripts\python.exe -m unittest discover -s tests -v
 ```
 
-测试只使用 Python 标准库与本地 SQLite，不调用模型或用户现有实验服务。现有服务进程和本机 agent 配置未修改。测试文件与数据库留在本地，不进行自动清理。
+测试只使用 Python 标准库与本地 SQLite，不调用模型或用户现有实验服务。领域实现阶段未修改实验服务和 agent 配置；随后仓库结构迁移已恢复服务并生成新路径配置，见 [结构记录](repository-layout.md)。测试文件与数据库留在本地，不进行自动清理。

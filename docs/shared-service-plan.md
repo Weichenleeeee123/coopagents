@@ -11,24 +11,23 @@
 ## 目录与职责
 
 ```text
-src/crewmesh/__init__.py          # 包入口
-src/crewmesh/database.py          # 短连接、事务、共享 schema
-src/crewmesh/errors.py            # ValidationError / AccessDenied / NotFound / Conflict
-src/crewmesh/identity.py          # 房间、成员、散列凭据及撤销
-src/crewmesh/tasks.py             # 创建、查看、原子认领任务
+src/__init__.py          # 包入口
+src/database.py          # 短连接、事务、共享 schema
+src/errors.py            # ValidationError / AccessDenied / NotFound / Conflict
+src/identity.py          # 房间、成员、散列凭据及撤销
+src/tasks.py             # 创建、查看、原子认领任务
 tests/test_identity.py            # 隔离、权限、凭据、持久化测试
 tests/test_tasks.py               # 并发认领、幂等、冲突及权限测试
 docs/shared-service-report.md     # 已实现能力、测试和边界
 ```
 
-测试使用 `work/crewmesh-shared-evidence/identity-<uuid>.sqlite3` 和 `tasks-<uuid>.sqlite3`，始终保留，不使用自动清理临时目录。领域包暂不依赖实验虚拟环境，运行命令在仓库根目录执行：
+测试使用 `.local/test-evidence/identity-<uuid>.sqlite3` 和 `tasks-<uuid>.sqlite3`，始终保留，不使用自动清理临时目录。领域包暂不依赖实验虚拟环境，运行命令在仓库根目录执行：
 
 ```powershell
-$env:PYTHONPATH = (Join-Path (Get-Location) 'src')
-C:\Python313\python.exe -m unittest discover -s tests -v
+& .\.venv\Scripts\python.exe -m unittest discover -s tests -v
 ```
 
-仅调整此终端的 Python 模块搜索路径；不修改用户全局设置。`runtime/` 数据默认不提交 Git。
+先按 CONTRIBUTING.md 安装项目环境；无需设置 PYTHONPATH，不修改用户全局设置。`.local/` 数据不提交 Git。
 
 ## Task 1：房间、成员和分离的凭据
 
@@ -76,7 +75,7 @@ def test_agent_cannot_add_member(self):
 - [x] **Step 2：执行 identity 测试确认缺少实现导致失败。**
 
 ```powershell
-C:\Python313\python.exe -m unittest discover -s tests -p test_identity.py -v
+& .\.venv\Scripts\python.exe -m unittest discover -s tests -p test_identity.py -v
 ```
 
 - [x] **Step 3：实现上述接口与事务。** 名称去掉首尾空白，要求 1–120 字符；无效输入使用 ValidationError，不回显凭据。不存在或撤销的凭据用 AccessDenied；跨房间目标成员用 NotFound，不泄露目标房间。示例中的 helper 实际实现须符合以下散列约定：
@@ -115,7 +114,7 @@ tasks 以整数 ID 为主键，room_id 外键关联房间，owner_member_id 关�
 - [x] **Step 2：运行测试确认缺少任务实现而失败。**
 
 ```powershell
-C:\Python313\python.exe -m unittest discover -s tests -p test_tasks.py -v
+& .\.venv\Scripts\python.exe -m unittest discover -s tests -p test_tasks.py -v
 ```
 
 - [x] **Step 3：实现任务接口。** 找不到本房间任务时统一 NotFound。已由另一个成员认领时 Conflict，异常的结构化 owner_member_id 只针对已核实属于调用方房间的任务返回。不自动抢占、更换负责人或释放任务。原子更新必须包含 room_id 和未认领条件：

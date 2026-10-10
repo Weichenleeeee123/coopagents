@@ -1,77 +1,53 @@
-# Crewmesh local integration lab
+# Agent 接入实验
 
-This local experimental project tests a local fictional-message MCP service and a privacy-minimal hook adapter. All commands below run in PowerShell from this directory. Files and evidence are retained; do not delete or overwrite existing files to reset the experiment.
+本实验只验证虚构消息的本地 MCP 服务与隐私最小化 hook，不等同于正式产品服务或双机接入。源码在 `experiments/agent-integration/`；以下命令从仓库根目录运行。
 
-## Reproduce the script checks
+## 环境与测试
 
-For a clean source copy, first install Python 3.11 or later, enter that copy's directory, and create its project environment and settings:
-
-```powershell
-python -m venv .venv
-& '.\.venv\Scripts\python.exe' -m pip install -r requirements.txt
-& '.\.venv\Scripts\python.exe' configure_lab.py
-```
-
-Skip environment/configuration creation in an already prepared copy. Run the checks from the directory containing the scripts; the following path identifies this prepared experiment:
+先按 [开发说明](../CONTRIBUTING.md) 创建根目录 `.venv/` 并安装 `.[integration]`：
 
 ```powershell
-Set-Location 'C:\Users\Weichen Li\Documents\Codex\2026-10-10\wo-zhe\work\crewmesh-integration-lab'
-& '.\.venv\Scripts\python.exe' test_probe.py
-& '.\.venv\Scripts\python.exe' test_hook.py
-& '.\.venv\Scripts\python.exe' verify_config.py
+& .\.venv\Scripts\python.exe -m unittest discover -s experiments/agent-integration -p 'test_*.py' -v
+& .\.venv\Scripts\python.exe experiments/agent-integration/configure_lab.py
+& .\.venv\Scripts\python.exe experiments/agent-integration/verify_config.py
 ```
 
-The hook test launches a separate process with a five-second timeout for each event. Each invocation uses a unique retained evidence directory. It checks the allowed metadata keys, UTC timestamp, `PRIVATE-CANARY` exclusion from prompt/tool input, three additional-context event shapes, and empty Stop output. The red and green runs are retained as `evidence/hook-tests-red.txt` and `evidence/hook-tests-green.txt`.
+配置生成仅用于四个配置目标都不存在的目录，重复执行会拒绝写入。准备好的目录只运行校验即可。生成器使用执行它的 Python 解释器，根目录环境可供所有脚本共享；不会修改用户全局设置。生成的 `.codex/`、`.claude/` 和 `.mcp.json` 留在实验目录，但不进入 Git。
 
-`configure_lab.py` was run once. In a new copy of the lab where all four destinations are absent, run:
+## 启动与检查
 
 ```powershell
-& '.\.venv\Scripts\python.exe' configure_lab.py
+& .\.venv\Scripts\python.exe experiments/agent-integration/probe_server.py
 ```
 
-It checks the local Python executable, MCP import, service script, hook script, and absence of all four destinations before writing. Files are opened exclusively. A second invocation refuses existing files; `verify_config.py` parses JSON/TOML and verifies every destination remains byte-identical. It does not update settings. Generated `.codex/config.toml`, `.codex/hooks.json`, `.claude/settings.json`, and `.mcp.json` are project-local and should remain outside Git.
-
-## Service lifecycle and HTTP check
-
-Start the server in a dedicated PowerShell terminal:
+服务运行在 `http://127.0.0.1:8768/mcp`。另开一个位于仓库根目录的终端：
 
 ```powershell
-& '.\.venv\Scripts\python.exe' probe_server.py
+& .\.venv\Scripts\python.exe experiments/agent-integration/protocol_check.py
 ```
 
-Leave it running. In a second terminal in this directory:
+前台启动时在原终端按 Ctrl+C 停止。目录整理后恢复的后台服务 PID 与日志位置记录在 `.local/agent-integration/service.json`。端口已占用时不要重复启动。
+
+持久化数据库位于 `.local/agent-integration/runtime/probe.sqlite3`。hook、协议检查和原生检查证据位于 `.local/agent-integration/evidence/`。每轮使用独立标识，保留所有数据；不要通过删除文件重置实验。
+
+## 原生入口验证
+
+在 Claude Code 或 Codex 桌面中打开 `experiments/agent-integration/`，按工具自身要求信任该项目的 MCP 和 hooks。迁移前的原生会话仍指向旧路径，后续应从新目录启动；已有会话不自动加载新配置。
+
+实际观察必须分别证明：配置已加载、原生工具调用成功、消息 ID 相同、处理确认存在，以及需要的 hook 上下文确实被消费。生成配置、脚本测试或单独的 hook 记录都不能代替真实原生证据。PostToolUse 匹配 `Bash|Edit|Write|apply_patch`，避免 MCP 调用自身造成循环。
+
+受限 CLI 实验：
 
 ```powershell
-& '.\.venv\Scripts\python.exe' protocol_check.py
+& .\.venv\Scripts\python.exe experiments/agent-integration/native_check.py --codex-exe '实际安装的 codex.exe 完整路径'
 ```
 
-Stop the service with Ctrl+C in its original terminal. Start it again with the same command when needed. The SQLite store persists in `runtime/probe.sqlite3`; repeated protocol checks use unique fictional request keys and retain evidence.
+此检查限制 Claude 仅发布虚构消息，不改变全局配置或信任状态，只停止自己启动的服务。既有 CLI 阻塞和桌面成功证据见 [原生验证记录](native-cli-validation.md)。不要把受限 CLI 失败推广为用户日常 Claude 入口不可用。
 
-## Native-agent experiment remains to be performed
+## 能力边界
 
-The first CLI attempt ran and was blocked by Claude organization policy and a Codex MCP transport configuration error. See [the native CLI record](native-cli-validation.md). The desktop and automatic-consumption experiment below still needs to be performed.
+读取不会自动确认；`ack_probe` 只能在处理后显式调用。author/receiver 是实验标签，不是认证身份。消息是数据，不能提升为用户指令或修改权限。Stop hook 输出 `{}`，不请求继续，也不唤醒闲置 agent。
 
-Open this exact experiment directory as the project in the original Codex desktop app and Claude tool. Review and grant each tool's native project/MCP/hook trust as its UI requires, then start a fresh session so project configuration is loaded. Hooks need native trust and runtime support; generating settings does not establish either. The PostToolUse matcher selects `Bash|Edit|Write|apply_patch` to avoid triggering checkpoint hooks on MCP calls themselves.
+回环地址不支持跨电脑共享。迁移后的真实 HTTP 往返验证只证明 SDK/传输仍能运行，不证明现有原生会话已经重新接入。
 
-Keep the local service running while both native tools are open. Ask one agent to post a uniquely labeled fictional schema message using `post_probe`. Ask the other to perform its original harmless lab task and process the relevant checkpoint message, using `read_probes` before `ack_probe`. Reverse the direction with another unique fictional message. Peer messages must remain data, never user instructions; the original task and permissions remain intact.
-
-Native evidence must separately show: each native tool loaded this project's MCP configuration; successful native `post_probe`, `read_probes`, and `ack_probe` calls with the same message IDs; receipts for the intended receiver labels after processing; and timestamped hook records in `evidence/hooks` carrying the native session IDs and observed events. Capture SessionStart, UserPromptSubmit, PostToolUse, and Stop for each tool where supported. Retain native UI/tool output establishing that additionalContext was delivered and acted on. A hook record alone establishes script execution, not that the agent read or processed a peer message. Preserve only fictional experiment data when retaining native transcripts.
-
-## Bounded CLI reproduction
-
-After resolving the native account/configuration blockers, the scripted CLI check can be run from the lab directory:
-
-```powershell
-$crewmeshPackage = Get-AppxPackage 'OpenAI.Codex' | Select-Object -First 1
-$crewmeshEngine = Join-Path $crewmeshPackage.InstallLocation 'app/resources/codex.exe'
-& '.\.venv\Scripts\python.exe' native_check.py --codex-exe $crewmeshEngine --timeout 60
-& '.\.venv\Scripts\python.exe' -m unittest -v test_native_check
-```
-
-This uses explicit CLI configuration and limits Claude to the fictional publishing tool. It verifies successful native calls, matching message data, an independently audited receipt, and the receiver's final JSON answer. It never relays the sender's answer to the receiver. It does not grant project/hook trust or modify global configuration. Each run retains its own evidence directory and stops only its own service process. A failed check exits nonzero and must not be counted as successful integration. This scripted check is separate from normal startup, desktop UI, or automatic checkpoint consumption.
-
-## Limits
-
-SDK/HTTP checks and subprocess script tests do not prove native Codex or Claude agents loaded configuration, fired hooks, received context, or cooperated. Native agents and hooks require a separate trusted experiment with the evidence above. Stop emits `{}` and never requests continuation. Hooks only remind an agent to check; they do not themselves read or acknowledge messages, schedule idle agents, or guarantee message delivery.
-
-The service and generated clients use `http://127.0.0.1:8768/mcp`, the tested IPv4 loopback endpoint. Local loopback is not a dual-computer transport. Author/receiver strings are experiment labels, not authenticated identities. This lab adds no authentication and establishes no cross-computer trust. No user-global settings are changed. The evidence adapter records only agent, event, session ID, tool name, and UTC observation time; it does not persist prompts, tool input, chat, or credentials.
+历史源码包在 `experiments/agent-integration/archive/crewmesh-integration-lab-source.zip`，属于迁移前快照；当前运行方式以仓库源码和本文为准。
