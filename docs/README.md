@@ -8,6 +8,7 @@
 | [P2/P3 实施计划](p2-p3-plan.md) | 状态、消息、约定、认证服务和网页的实施与验收 |
 | [P2/P3 验证报告](p2-p3-report.md) | 正式共享服务与网页的实际完成情况 |
 | [Agent 接入](agent-connection.md) | 个人令牌、Codex / Claude Code 配置与协作检查点 |
+| [本机运行](app-running.md) | 正式服务启动、数据位置、停止与备份 |
 | [后续路线](roadmap.md) | P2 共享服务、P3 网页、P4 双机的任务和验收状态 |
 | [共享服务计划](shared-service-plan.md) | 当前身份基础与任务认领的具体实施步骤 |
 | [共享服务报告](shared-service-report.md) | P2 已实现能力和验证结果 |
