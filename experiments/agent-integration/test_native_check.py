@@ -90,12 +90,13 @@ class NativeCheckTests(unittest.TestCase):
             self.assertEqual(parsed["answer"], {"message_id": 42, "lantern_count": 3})
 
     def test_fresh_root_startup_timeout_retains_failure_report(self):
-        root = native_check.ROOT / "evidence" / "tests" / str(uuid4())
+        root = native_check.EVIDENCE_ROOT / "tests" / str(uuid4())
         root.mkdir(parents=True)
         exe = root / "fixture.exe"
         exe.touch()
         self.assertFalse((root / "evidence").exists())
         with patch.object(native_check, "ROOT", root), \
+             patch.object(native_check, "EVIDENCE_ROOT", root / "evidence"), \
              patch.object(native_check.sys, "argv", ["native_check.py", "--codex-exe", str(exe),
                           "--claude-exe", str(exe)]), \
              patch.object(native_check.subprocess, "run", side_effect=subprocess.TimeoutExpired("fixture", 15)), \

@@ -3,6 +3,7 @@ import argparse
 from datetime import datetime, timezone
 import json
 from pathlib import Path
+from lab_paths import EVIDENCE_ROOT
 import sys
 from uuid import uuid4
 
@@ -19,7 +20,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--agent", required=True)
     parser.add_argument("--evidence-dir", type=Path,
-                        default=Path(__file__).resolve().parent / "evidence" / "hooks")
+                        default=EVIDENCE_ROOT / "hooks")
     args = parser.parse_args()
     try:
         payload = json.load(sys.stdin)

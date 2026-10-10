@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "crewmesh"
+version = "0.1.0"
+description = "Shared coordination for teammates using their own coding agents"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.optional-dependencies]
+integration = ["mcp==2.3.0"]
+
+[tool.setuptools]
+packages = ["crewmesh"]
+package-dir = { crewmesh = "src" }

@@ -9,6 +9,7 @@ import asyncio
 import json
 import os
 from pathlib import Path
+from lab_paths import EVIDENCE_ROOT
 import socket
 import subprocess
 import sys
@@ -235,13 +236,13 @@ def main():
         if not executable.is_file() or executable.suffix.lower() != ".exe":
             parser.error("each executable must be an existing native .exe")
     run_id = str(uuid4())
-    directory = ROOT / "evidence" / ("native-" + run_id)
+    directory = EVIDENCE_ROOT / ("native-" + run_id)
     directory.mkdir(parents=True)
     report = {"run_id": run_id, "kind": "native-cli-only", "desktop_proven": False,
               "idle_wakeup_proven": False, "owned_server_pid": None, "service_stopped": None,
               "codex_executable": str(args.codex_exe), "claude_executable": str(args.claude_exe),
               "native_pair_passed": False}
-    hook_dir = ROOT / "evidence" / "hooks"
+    hook_dir = EVIDENCE_ROOT / "hooks"
     previous_hooks = set(hook_dir.glob("*.json")) if hook_dir.exists() else set()
     server = None
     server_log = None

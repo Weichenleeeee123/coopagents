@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from mcp.server import MCPServer
+from lab_paths import RUNTIME_ROOT
 
 
 class Store:
@@ -151,5 +152,5 @@ def build_server(store: Store) -> MCPServer:
 
 
 if __name__ == "__main__":
-    store = open_store(Path(__file__).parent / "runtime" / "probe.sqlite3")
+    store = open_store(RUNTIME_ROOT / "probe.sqlite3")
     build_server(store).run(transport="streamable-http", host="127.0.0.1", port=8768)

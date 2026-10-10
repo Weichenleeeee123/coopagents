@@ -1,6 +1,7 @@
 """Subprocess checks for the privacy-minimal hook adapter; evidence is retained."""
 import json
 from pathlib import Path
+from lab_paths import EVIDENCE_ROOT
 import subprocess
 import sys
 import unittest
@@ -12,7 +13,7 @@ ROOT = Path(__file__).resolve().parent
 
 class HookTests(unittest.TestCase):
     def invoke(self, event):
-        evidence = ROOT / "evidence" / "hook-tests" / str(uuid4())
+        evidence = EVIDENCE_ROOT / "hook-tests" / str(uuid4())
         payload = {"hook_event_name": event, "session_id": "fictional-session",
                    "tool_name": "Bash", "prompt": "PRIVATE-CANARY",
                    "tool_input": {"command": "PRIVATE-CANARY"}}
@@ -56,7 +57,7 @@ class HookTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
 
     def test_malformed_input_does_not_echo_private_data(self):
-        evidence = ROOT / "evidence" / "hook-tests" / str(uuid4())
+        evidence = EVIDENCE_ROOT / "hook-tests" / str(uuid4())
         result = subprocess.run(
             [sys.executable, str(ROOT / "hook_probe.py"), "--agent", "claude",
              "--evidence-dir", str(evidence)], input='{ "prompt": "PRIVATE-CANARY"',

@@ -18,7 +18,7 @@ except ModuleNotFoundError:
 class TaskTests(unittest.TestCase):
     def setUp(self):
         self.assertIsNotNone(TaskStore, "Task store is not implemented")
-        root = Path("work/crewmesh-shared-evidence")
+        root = Path(__file__).resolve().parents[1] / ".local" / "test-evidence"
         root.mkdir(parents=True, exist_ok=True)
         self.path = root / f"tasks-{uuid4()}.sqlite3"
         self.identity = IdentityStore(self.path)

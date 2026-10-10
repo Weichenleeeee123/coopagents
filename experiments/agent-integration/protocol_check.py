@@ -2,6 +2,7 @@
 import asyncio
 import json
 from pathlib import Path
+from lab_paths import EVIDENCE_ROOT
 from uuid import uuid4
 
 from mcp import Client
@@ -41,7 +42,7 @@ async def check():
             raise RuntimeError("receipt is missing or duplicated")
         report = {"run_id": run_id, "kind": "sdk-http-only", "message_id": row["id"],
                   "protocol_version": client.protocol_version, "passed": True}
-    output = Path(__file__).parent / "evidence" / (run_id + "-protocol.json")
+    output = EVIDENCE_ROOT / (run_id + "-protocol.json")
     output.parent.mkdir(parents=True, exist_ok=True)
     with output.open("x", encoding="utf-8") as file:
         json.dump(report, file, ensure_ascii=False, indent=2)

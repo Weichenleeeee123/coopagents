@@ -9,7 +9,7 @@ DESTINATIONS = (".codex/config.toml", ".codex/hooks.json", ".claude/settings.jso
 
 
 def main():
-    python = ROOT / ".venv" / "Scripts" / "python.exe"
+    python = Path(sys.executable).resolve()
     hook = ROOT / "hook_probe.py"
     # Complete preflight before creating any directory or destination file.
     missing = [str(path) for path in (python, hook, ROOT / "probe_server.py") if not path.is_file()]

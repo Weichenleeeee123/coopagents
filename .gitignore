@@ -1,12 +1,16 @@
-# Experiment artifacts are retained locally, not deleted.
-work/*
-!work/crewmesh-integration-lab/
-work/crewmesh-integration-lab/*
-!work/crewmesh-integration-lab/*.py
-!work/crewmesh-integration-lab/requirements.txt
-!work/crewmesh-integration-lab/README.md
+# Local environments, retained data and migration archives.
+.local/
+# Empty legacy directory may remain locked by the desktop host until released.
+/work/
 __pycache__/
 *.pyc
 .venv/
-# Shared-service runtime databases and credentials remain local.
+*.egg-info/
+build/
+dist/
 runtime/
+
+# Agent settings are generated per machine and never committed.
+experiments/agent-integration/.codex/
+experiments/agent-integration/.claude/
+experiments/agent-integration/.mcp.json

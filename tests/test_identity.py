@@ -15,7 +15,7 @@ except ModuleNotFoundError:
 class IdentityTests(unittest.TestCase):
     def setUp(self):
         self.assertIsNotNone(IdentityStore, "Identity foundation is not implemented")
-        root = Path("work/crewmesh-shared-evidence")
+        root = Path(__file__).resolve().parents[1] / ".local" / "test-evidence"
         root.mkdir(parents=True, exist_ok=True)
         self.path = root / f"identity-{uuid4()}.sqlite3"
         self.store = IdentityStore(self.path)

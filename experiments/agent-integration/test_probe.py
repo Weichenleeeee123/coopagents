@@ -10,12 +10,13 @@ from pathlib import Path
 from uuid import uuid4
 
 import probe_server
+from lab_paths import EVIDENCE_ROOT
 
 
 class StoreFixture:
     def setUp(self):
         self.probe = probe_server
-        self.database = Path(__file__).parent / "evidence" / uuid4().hex / "test.sqlite3"
+        self.database = EVIDENCE_ROOT / uuid4().hex / "test.sqlite3"
         self.store = self.probe.open_store(self.database)
 
 
