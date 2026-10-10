@@ -53,7 +53,7 @@ P3 开始时再制作页面方案与对应实施计划。当前阶段不锁定�
 
 实验根目录：`C:/Users/Weichen Li/Documents/Codex/2026-10-10/wo-zhe/work/crewmesh-integration-lab`。
 
-以下树中的路径均相对于实验根目录；它们都是未来创建的文件，目前不存在。
+以下树中的路径均相对于实验根目录；源码、依赖和项目配置已创建。原生入口验收状态见本目录的接入验证报告。持续维护的文档统一存放在仓库 `docs/`。
 
 ```text
 crewmesh-integration-lab/
@@ -569,7 +569,7 @@ CLI 备选：可使用桌面附带的引擎从实验目录启动，单独记录�
 
 ## Task 5：真实入口消息实验
 
-**Files:** 后续创建 `outputs/crewmesh-integration-report.md` 作为用户可读报告；原始证据保留在实验目录的 evidence 中。
+**Files:** 更新 `docs/crewmesh-integration-report.md` 作为用户可读报告；原始证据保留在实验目录的 evidence 中。
 
 - [ ] **Step 1：发送一次虚构接口事实，验证工具调用。**
 

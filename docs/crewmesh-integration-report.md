@@ -56,7 +56,7 @@
 
 实验目录：`C:/Users/Weichen Li/Documents/Codex/2026-10-10/wo-zhe/work/crewmesh-integration-lab`。在该目录运行 `.venv/Scripts/python.exe probe_server.py`，再通过原有 Claude Code 与 Codex 桌面入口打开此项目，完成工具自身的项目/MCP/hook 信任检查。项目级配置已准备；本机全局配置未改变。
 
-具体复现步骤见 `crewmesh-integration-lab-source.zip` 中的 README。源代码包含 9 个源文件，不含虚拟环境、机器路径配置、数据库和原始实验记录；在新目录需按 README 创建环境并生成本机配置。原生验收需要两边实际调用同一消息源的工具、处理后留下确认记录，以及对应会话的 hook 事件和上下文消费证据。仅生成配置或 shell 模拟 hook 不计为完成。原生接入验证完成后，再实施经过身份验证的共享服务与用户网页。
+最新复现步骤见 [实验运行说明](integration-lab.md)。`../outputs/crewmesh-integration-lab-source.zip` 是首次接入实验的历史快照；最新源码以仓库为准。新目录需按运行说明创建环境并生成本机配置。原生验收需要两边实际调用同一消息源的工具、处理后留下确认记录，以及对应会话的 hook 事件和上下文消费证据。仅生成配置或 shell 模拟 hook 不计为完成。原生接入验证完成后，再实施经过身份验证的共享服务与用户网页。
 
 ## 官方资料
 
