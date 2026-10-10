@@ -73,6 +73,71 @@ class Database:
                 FOREIGN KEY (task_id, room_id, member_id)
                     REFERENCES tasks(id, room_id, owner_member_id)
             )""")
+            connection.execute("CREATE UNIQUE INDEX IF NOT EXISTS task_room ON tasks(id, room_id)")
+            connection.execute("""CREATE TABLE IF NOT EXISTS message_requests (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                room_id TEXT NOT NULL REFERENCES rooms(id),
+                sender_member_id TEXT NOT NULL,
+                receiver_member_id TEXT,
+                initial_receiver_member_id TEXT,
+                assigned_by_member_id TEXT,
+                assigned_at TEXT,
+                task_id INTEGER,
+                context_version INTEGER NOT NULL CHECK(context_version > 0),
+                body TEXT NOT NULL,
+                request_key TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                resolved_at TEXT,
+                UNIQUE(room_id, sender_member_id, request_key),
+                UNIQUE(id, room_id, receiver_member_id),
+                FOREIGN KEY(sender_member_id, room_id) REFERENCES members(id, room_id),
+                FOREIGN KEY(receiver_member_id, room_id) REFERENCES members(id, room_id),
+                FOREIGN KEY(initial_receiver_member_id, room_id) REFERENCES members(id, room_id),
+                FOREIGN KEY(assigned_by_member_id, room_id) REFERENCES members(id, room_id),
+                CHECK ((assigned_by_member_id IS NULL AND assigned_at IS NULL)
+                    OR (assigned_by_member_id IS NOT NULL AND assigned_at IS NOT NULL
+                        AND receiver_member_id IS NOT NULL)),
+                FOREIGN KEY(task_id, room_id) REFERENCES tasks(id, room_id)
+            )""")
+            connection.execute("""CREATE TABLE IF NOT EXISTS message_receipts (
+                request_id INTEGER PRIMARY KEY,
+                room_id TEXT NOT NULL,
+                member_id TEXT NOT NULL,
+                read_at TEXT NOT NULL,
+                processed_at TEXT,
+                FOREIGN KEY(request_id, room_id, member_id)
+                    REFERENCES message_requests(id, room_id, receiver_member_id)
+            )""")
+            connection.execute("""CREATE TABLE IF NOT EXISTS message_deliveries (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                request_id INTEGER NOT NULL UNIQUE,
+                room_id TEXT NOT NULL,
+                receiver_member_id TEXT NOT NULL,
+                FOREIGN KEY(request_id, room_id, receiver_member_id)
+                    REFERENCES message_requests(id, room_id, receiver_member_id)
+            )""")
+            # Preserve addressed requests when opening a database predating delivery cursors.
+            connection.execute("""INSERT INTO message_deliveries
+                (request_id, room_id, receiver_member_id)
+                SELECT r.id, r.room_id, r.receiver_member_id FROM message_requests r
+                WHERE r.receiver_member_id IS NOT NULL
+                    AND NOT EXISTS (SELECT 1 FROM message_deliveries d WHERE d.request_id = r.id)
+                ORDER BY r.id
+                ON CONFLICT(request_id) DO NOTHING""")
+            connection.execute("""CREATE TABLE IF NOT EXISTS message_replies (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                request_id INTEGER NOT NULL,
+                room_id TEXT NOT NULL,
+                author_member_id TEXT NOT NULL,
+                request_key TEXT NOT NULL,
+                context_version INTEGER NOT NULL CHECK(context_version > 0),
+                body TEXT NOT NULL,
+                evidence TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                UNIQUE(room_id, author_member_id, request_key),
+                FOREIGN KEY(request_id, room_id, author_member_id)
+                    REFERENCES message_requests(id, room_id, receiver_member_id)
+            )""")
 
     @contextmanager
     def connect(self, write=False):
