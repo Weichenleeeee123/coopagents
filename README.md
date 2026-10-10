@@ -61,6 +61,16 @@ python3 -m venv .venv
 
 打开 **http://127.0.0.1:8787/**，创建团队并保存个人凭据。MCP 地址为 `http://127.0.0.1:8787/mcp`，数据存放于 `.local/crewmesh.sqlite3`。
 
+## 部署给团队
+
+发行版提供 `Dockerfile`、`compose.yaml` 和 Caddy HTTPS 配置。准备域名，按 [部署与运维](docs/deployment.md) 生成本机密钥并启动：
+
+```bash
+docker compose --env-file .env up -d --build
+```
+
+应用以非 root 用户运行，后端端口不直接公开。SQLite、证书和代理配置使用持久卷；在线备份和恢复均拒绝覆盖既有文件。实际公网目标由部署者提供。
+
 ## 保留你习惯的工具
 
 1. 在网页建立团队、声明任务，创建者签发单次邀请。
@@ -72,9 +82,9 @@ python3 -m venv .venv
 
 ## 当前能做到哪里
 
-**本机 P2/P3 已完成**：认证 HTTP/MCP、持久化领域服务、真实数据网页与任务看板。领域、传输和网页回归测试已通过。
+**0.2.0 可部署预发行版**：认证 HTTP/MCP、持久化领域服务、真实数据看板，以及 Docker / Caddy HTTPS、受控建房和备份恢复。完整本机回归、真实 TLS 容器与打包安装检查通过。
 
-目前只监听本机回环地址。公网 HTTPS、第二台电脑以及全新原生会话的自动检查点稳定性是 [P4](docs/roadmap.md) 的验收内容。网页五秒拉取数据，agent 在任务检查点读取消息；闲置会话不会自动唤醒。任务进展与已合并状态来自 agent 自述，未经 Git 验证。待验收列表示交付阶段，公共约定的批准是另一套明确的人工决定。
+默认只监听本机；公网部署按 [部署说明](docs/deployment.md) 配置域名、管理员密钥和持久卷后启动。Claude 原生正式接入已验证，Codex CLI 的 MCP 调用取消尚未解决，原生双向闭环与真实双机 / 公网验收仍待完成，详见 [P4 报告](docs/p4-release-report.md)。网页五秒拉取数据，agent 在任务检查点读取消息；闲置会话不会自动唤醒。任务进展与已合并状态来自 agent 自述，未经 Git 验证。待验收列表示交付阶段，公共约定的批准是另一套明确的人工决定。
 
 ## 小而清晰的技术栈
 
@@ -84,6 +94,8 @@ python3 -m venv .venv
 src/          服务、领域逻辑与 static/ 网页
 tests/        权限、并发、HTTP/MCP 与网页回归
 docs/         设计、运行说明、计划与验收记录
+deploy/       HTTPS 代理与发行依赖
+scripts/      可复现容器验收
 experiments/  原生 agent 接入研究
 .local/       本机数据与原始证据（不提交）
 ```

@@ -22,3 +22,11 @@ python -m venv .venv
 `.local/` 保存本机测试数据库、实验数据和迁移归档；`.venv/` 保存当前环境。两者均不提交 Git。实验生成的 agent 配置同样不提交。
 
 按功能阶段提交源码、测试和文档，不提交令牌、机器配置或真实会话记录。**永远不要删除任何文件**；若确需删除，停止并由用户执行。测试产生的数据库和证据始终保留，禁止使用自动清理的临时目录。
+
+## 发行验证
+
+发行依赖固定在 `deploy/constraints.txt`，完整安装可使用 `pip install -c deploy/constraints.txt -e '.[service]'`。GitHub CI 覆盖 Python 3.11 / 3.13、网页脚本、发行包、镜像与 TLS smoke。
+
+本地容器验收：`docker build -t crewmesh:0.2.0 .`，然后 `python scripts/deployment_smoke.py --image crewmesh:0.2.0`。需要运行的 Docker 引擎；测试只停止自己的容器并保留证据。原生 CLI 验收入口为 `experiments/agent-integration/p4_native_check.py`，需要已认证的实际工具，失败不能用模拟数据代替。
+
+部署、密钥及备份恢复见 [部署与运维](docs/deployment.md)，实际验收边界见 [P4 报告](docs/p4-release-report.md)。

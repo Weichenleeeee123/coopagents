@@ -1,0 +1,165 @@
+"""Real Docker/Caddy TLS acceptance. Retains containers, volumes and evidence.
+
+Run from repository root: python scripts/deployment_smoke.py --image crewmesh:0.2.0
+Requires Docker Engine and the pinned Caddy image. No external DNS or CA needed.
+"""
+import argparse
+import http.client
+import json
+from pathlib import Path
+import secrets
+import shutil
+import socket
+import ssl
+import subprocess
+import time
+from uuid import uuid4
+
+CADDY = 'caddy:2.11.2-alpine@sha256:834468128c7696cec0ceea6172f7d692daf645ae51983ca76e39da54a97c570d'
+
+
+class LoopbackTLS(http.client.HTTPSConnection):
+    def connect(self):
+        connection = socket.create_connection(('127.0.0.1', self.port), self.timeout)
+        self.sock = self._context.wrap_socket(connection, server_hostname='crewmesh.localhost')
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--image', default='crewmesh:0.2.0')
+    parser.add_argument('--docker', default=shutil.which('docker'))
+    args = parser.parse_args()
+    if not args.docker:
+        parser.error('Docker executable is required')
+    identifier = 'crewmesh-p4-' + uuid4().hex[:12]
+    evidence = Path('.local/deployment-smoke') / identifier
+    evidence.mkdir(parents=True)
+    evidence = evidence.resolve()
+    app, proxy = identifier + '-app', identifier + '-proxy'
+    started = []
+    result = {'checks': [], 'image': args.image, 'evidence_id': identifier}
+
+    def docker(*arguments):
+        completed = subprocess.run([args.docker, *arguments], capture_output=True, text=True, timeout=180)
+        if completed.returncode:
+            raise RuntimeError('Docker operation failed: ' + completed.stderr[:1000])
+        return completed.stdout.strip()
+
+    def check(name, condition):
+        if not condition:
+            raise AssertionError(name)
+        result['checks'].append(name)
+
+    try:
+        docker('network', 'create', identifier)
+        docker('volume', 'create', identifier + '-data')
+        # Private CA used only by this test. Production uses deploy/Caddyfile ACME.
+        config = evidence / 'Caddyfile'
+        config.write_text('{\n servers {\n strict_sni_host on\n }\n}\ncrewmesh.localhost {\n tls internal\n reverse_proxy app:8787\n}\n', encoding='utf-8')
+        docker('run', '-d', '--name', proxy, '--network', identifier,
+               '-p', '127.0.0.1::443', '--mount', f'type=bind,source={config},target=/etc/caddy/Caddyfile,readonly', CADDY)
+        started.append(proxy)
+        details = json.loads(docker('inspect', proxy))[0]
+        port = int(details['NetworkSettings']['Ports']['443/tcp'][0]['HostPort'])
+        proxy_ip = details['NetworkSettings']['Networks'][identifier]['IPAddress']
+        origin = f'https://crewmesh.localhost:{port}'
+        bootstrap = secrets.token_urlsafe(32)
+        environment = evidence / 'app.env'
+        environment.write_text('\n'.join((
+            'CREWMESH_HOST=0.0.0.0', 'CREWMESH_PUBLIC_URL=' + origin,
+            'CREWMESH_TRUSTED_PROXIES=' + proxy_ip, 'CREWMESH_BOOTSTRAP_SECRET=' + bootstrap)) + '\n', encoding='utf-8')
+        docker('run', '-d', '--name', app, '--network', identifier, '--network-alias', 'app',
+               '--read-only', '--tmpfs', '/tmp', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges:true',
+               '--mount', f'type=volume,source={identifier}-data,target=/data', '--env-file', str(environment), args.image)
+        started.append(app)
+        ca = evidence / 'root.crt'
+        deadline = time.monotonic() + 45
+        while True:
+            try:
+                docker('cp', proxy + ':/data/caddy/pki/authorities/local/root.crt', str(ca))
+                break
+            except RuntimeError:
+                if time.monotonic() > deadline:
+                    raise
+                time.sleep(1)
+        context = ssl.create_default_context(cafile=str(ca))
+
+        def request(path, data=None, token=None, headers=None):
+            connection = LoopbackTLS('crewmesh.localhost', port, timeout=10, context=context)
+            merged = {'Host': f'crewmesh.localhost:{port}', **(headers or {})}
+            if token:
+                merged['Authorization'] = 'Bearer ' + token
+            body = json.dumps(data).encode() if data is not None else None
+            if body is not None:
+                merged['Content-Type'] = 'application/json'
+            try:
+                connection.request('POST' if body is not None else 'GET', path, body, merged)
+                response = connection.getresponse()
+                raw = response.read()
+                try:
+                    data = json.loads(raw) if raw else None
+                except ValueError:
+                    data = raw.decode('utf-8', errors='replace')
+                return response.status, data
+            finally:
+                connection.close()
+
+        while True:
+            try:
+                if request('/ready')[0] == 200:
+                    break
+            except (OSError, ValueError, http.client.HTTPException):
+                pass
+            if time.monotonic() > deadline:
+                raise RuntimeError('TLS service not ready')
+            time.sleep(1)
+        check('verified TLS certificate and DB readiness through Caddy', request('/ready') == (200, {'status': 'ready'}))
+        check('container runs as UID 10001', docker('exec', app, 'id', '-u') == '10001')
+        check('backend has no published port', not json.loads(docker('inspect', app))[0]['NetworkSettings']['Ports'].get('8787/tcp'))
+        check('wrong Host rejected', request('/health', headers={'Host': 'evil.example'})[0] != 200)
+        check('cross-site Origin rejected', request('/health', headers={'Origin': 'https://evil.example'})[0] == 403)
+        room = {'name': 'P4 deployment test', 'owner_name': 'Owner'}
+        check('public anonymous room creation rejected', request('/api/rooms', room)[0] == 401)
+        status, owner = request('/api/rooms', room, headers={'X-Crewmesh-Bootstrap': bootstrap, 'Origin': origin})
+        check('HTTPS bootstrap room creation', status == 200)
+        status, task = request('/api/tasks', {'intent_key': 'container-persist', 'title': 'Persistence', 'scope': 'src'}, owner['web_token'], {'Origin': origin})
+        check('HTTPS authenticated task creation', status == 200)
+        rpc = {'jsonrpc': '2.0', 'id': 1, 'method': 'initialize', 'params': {
+            'protocolVersion': '2025-11-25', 'capabilities': {}, 'clientInfo': {'name': 'P4 TLS smoke', 'version': '1'}}}
+        status, initialized = request('/mcp', rpc, owner['agent_token'], {'Origin': origin, 'Accept': 'application/json, text/event-stream'})
+        check('authenticated MCP initialization over verified TLS', status == 200 and initialized['result']['serverInfo']['name'] == 'Crewmesh')
+        check('web credential refused by MCP', request('/mcp', rpc, owner['web_token'], {'Accept': 'application/json, text/event-stream'})[0] == 401)
+        docker('exec', app, 'python', '-m', 'crewmesh.backup', 'backup', '/data/crewmesh.sqlite3', '/data/backup.sqlite3')
+        docker('exec', app, 'python', '-m', 'crewmesh.backup', 'restore', '/data/backup.sqlite3', '/data/restored.sqlite3')
+        check('container online backup and restore', True)
+        docker('restart', app)
+        deadline = time.monotonic() + 30
+        while True:
+            try:
+                status, snapshot = request('/api/snapshot', token=owner['web_token'])
+                if status == 200:
+                    break
+            except (OSError, ValueError, http.client.HTTPException):
+                pass
+            if time.monotonic() > deadline:
+                raise RuntimeError('Restart did not recover')
+            time.sleep(1)
+        check('volume preserves task and credential after container restart', snapshot['tasks'][0]['id'] == task['id'])
+        result['status'] = 'passed'
+    except Exception as error:
+        result.update(status='failed', error=str(error))
+        raise
+    finally:
+        for name in reversed(started):
+            try:
+                (evidence / (name + '.log')).write_text(docker('logs', name), encoding='utf-8')
+                docker('stop', name)
+            except Exception:
+                result['stop_warning'] = True
+        with (evidence / 'result.json').open('x', encoding='utf-8') as stream:
+            json.dump(result, stream, indent=2)
+        print(json.dumps(result, indent=2))
+
+
+if __name__ == '__main__':
+    main()

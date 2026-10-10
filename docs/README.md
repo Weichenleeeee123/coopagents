@@ -4,6 +4,10 @@
 
 | 文档 | 内容 |
 | --- | --- |
+| [部署与运维](deployment.md) | Docker / Caddy HTTPS、密钥、持久卷、备份恢复与升级 |
+| [P4 发行计划](p4-release-plan.md) | 可部署发行版的阶段与验收边界 |
+| [P4 发行验收](p4-release-report.md) | 实测容器 / TLS / 安装结果及未通过项 |
+| [P4 原生验收](p4-native-report.md) | Claude 实际接入与 Codex 取消证据 |
 | [看板升级](kanban-plan.md) | 自动分列、筛选、任务详情与浏览器验收 |
 | [品牌资产](brand-assets.md) | 生成图标、提示词、文件校验与演示截图 |
 | [仓库结构](repository-layout.md) | 目录职责、迁移记录与服务恢复验证 |

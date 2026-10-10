@@ -1,0 +1,11 @@
+*
+!Dockerfile
+!pyproject.toml
+!README.md
+!LICENSE
+!src/
+!src/**
+!deploy/
+!deploy/constraints.txt
+src/**/__pycache__
+src/**/*.pyc

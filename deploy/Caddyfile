@@ -1,0 +1,20 @@
+{
+    servers {
+        strict_sni_host on
+    }
+}
+
+{$CREWMESH_DOMAIN} {
+    header {
+        Strict-Transport-Security "max-age=31536000"
+        X-Content-Type-Options "nosniff"
+        Referrer-Policy "no-referrer"
+        -Server
+    }
+    request_body {
+        max_size 64KB
+    }
+    reverse_proxy app:8787 {
+        flush_interval -1
+    }
+}

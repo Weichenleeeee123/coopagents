@@ -7,6 +7,9 @@ __pycache__/
 build/
 dist/
 runtime/
+.env
+.env.*
+!.env.example
 .playwright-cli/
 
 # Agent settings are generated per machine and never committed.

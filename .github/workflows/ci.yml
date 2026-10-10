@@ -1,0 +1,43 @@
+name: Verify release
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ['3.11', '3.13']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: python -m pip install -c deploy/constraints.txt -e '.[service]' build
+      - run: python -m unittest discover -s tests -v
+      - run: node --check src/static/app.js
+      - run: python -m build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: crewmesh-python-${{ matrix.python }}
+          path: dist/*
+  container:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t crewmesh:ci .
+      - run: |
+          docker run -d --name crewmesh-ci crewmesh:ci
+          for attempt in $(seq 1 30); do
+            if docker exec crewmesh-ci python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8787/ready', timeout=2).read()"; then exit 0; fi
+            sleep 1
+          done
+          docker logs crewmesh-ci
+          exit 1
+      - run: python scripts/deployment_smoke.py --image crewmesh:ci
