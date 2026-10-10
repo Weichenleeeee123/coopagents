@@ -1,7 +1,5 @@
 # Local environments, retained data and migration archives.
 .local/
-# Empty legacy directory may remain locked by the desktop host until released.
-/work/
 __pycache__/
 *.pyc
 .venv/
