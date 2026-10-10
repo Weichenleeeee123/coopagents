@@ -1,6 +1,6 @@
 # 开发说明
 
-正式领域源码直接放在 `src/`，行为测试在 `tests/`，持续维护的文档在 `docs/`。原生接入实验在 `experiments/agent-integration/`，不与产品源码混用。
+正式 Python 源码直接放在 `src/`，网页资源在 `src/static/`，行为测试在 `tests/`，持续维护的文档在 `docs/`。原生接入实验在 `experiments/agent-integration/`，不与产品源码混用。
 
 ## 本地环境
 
@@ -8,12 +8,12 @@
 
 ```powershell
 python -m venv .venv
-& .\.venv\Scripts\python.exe -m pip install -e ".[integration]"
+& .\.venv\Scripts\python.exe -m pip install -e ".[service]"
 & .\.venv\Scripts\python.exe -m unittest discover -s tests -v
 & .\.venv\Scripts\python.exe -m unittest discover -s experiments/agent-integration -p 'test_*.py' -v
 ```
 
-领域包只使用 Python 标准库；仅开发领域代码时可以用 `pip install -e .`，不安装 MCP 实验依赖。依赖声明以 `pyproject.toml` 为准。
+领域包只使用 Python 标准库；仅开发领域代码时可以用 `pip install -e .`。完整测试和正式服务使用 `service` 依赖组；仅运行原生接入实验可用 `integration` 组。依赖声明以 `pyproject.toml` 为准。正式启动与备份见 [本机运行](docs/app-running.md)。
 
 `pyproject.toml` 将逻辑包名 `crewmesh` 映射到 `src/`，不增加同名物理子目录。安装后直接 `import crewmesh`，无需手动设置 `PYTHONPATH`。实验脚本仍从实验目录运行，接入步骤见 [实验说明](docs/integration-lab.md)。
 
