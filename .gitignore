@@ -8,3 +8,5 @@ work/crewmesh-integration-lab/*
 __pycache__/
 *.pyc
 .venv/
+# Shared-service runtime databases and credentials remain local.
+runtime/
