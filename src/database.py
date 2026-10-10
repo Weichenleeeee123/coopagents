@@ -138,6 +138,55 @@ class Database:
                 FOREIGN KEY(request_id, room_id, author_member_id)
                     REFERENCES message_requests(id, room_id, receiver_member_id)
             )""")
+            connection.execute("CREATE UNIQUE INDEX IF NOT EXISTS message_request_room ON message_requests(id, room_id)")
+            connection.execute("""CREATE TABLE IF NOT EXISTS contracts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                room_id TEXT NOT NULL REFERENCES rooms(id),
+                contract_key TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                UNIQUE(room_id, contract_key),
+                UNIQUE(id, room_id)
+            )""")
+            connection.execute("""CREATE TABLE IF NOT EXISTS contract_versions (
+                contract_id INTEGER NOT NULL,
+                room_id TEXT NOT NULL,
+                version INTEGER NOT NULL CHECK(version > 0),
+                proposer_member_id TEXT NOT NULL,
+                title TEXT NOT NULL,
+                body TEXT NOT NULL,
+                source_request_id INTEGER,
+                commit_ref TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL,
+                PRIMARY KEY(contract_id, version),
+                UNIQUE(contract_id, room_id, version),
+                FOREIGN KEY(contract_id, room_id) REFERENCES contracts(id, room_id),
+                FOREIGN KEY(proposer_member_id, room_id) REFERENCES members(id, room_id),
+                FOREIGN KEY(source_request_id, room_id) REFERENCES message_requests(id, room_id)
+            )""")
+            connection.execute("""CREATE TABLE IF NOT EXISTS contract_decisions (
+                contract_id INTEGER NOT NULL,
+                room_id TEXT NOT NULL,
+                version INTEGER NOT NULL,
+                decision TEXT NOT NULL CHECK(decision IN ('approved', 'rejected')),
+                decided_by_member_id TEXT NOT NULL,
+                decided_at TEXT NOT NULL,
+                PRIMARY KEY(contract_id, version),
+                FOREIGN KEY(contract_id, room_id, version)
+                    REFERENCES contract_versions(contract_id, room_id, version),
+                FOREIGN KEY(decided_by_member_id, room_id) REFERENCES members(id, room_id)
+            )""")
+            connection.execute("""CREATE TABLE IF NOT EXISTS contract_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                contract_id INTEGER NOT NULL,
+                room_id TEXT NOT NULL,
+                version INTEGER NOT NULL,
+                actor_member_id TEXT NOT NULL,
+                event_type TEXT NOT NULL CHECK(event_type IN ('proposed', 'approved', 'rejected')),
+                created_at TEXT NOT NULL,
+                FOREIGN KEY(contract_id, room_id, version)
+                    REFERENCES contract_versions(contract_id, room_id, version),
+                FOREIGN KEY(actor_member_id, room_id) REFERENCES members(id, room_id)
+            )""")
 
     @contextmanager
     def connect(self, write=False):
