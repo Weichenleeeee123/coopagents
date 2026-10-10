@@ -274,4 +274,3 @@ def create_app(database_path='.local/crewmesh.sqlite3', *, base_url=None):
     app = Starlette(routes=routes, lifespan=lifespan)
     app.state.service = service
     return LocalBoundary(app, base_url)
-

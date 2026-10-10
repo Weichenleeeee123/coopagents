@@ -88,5 +88,3 @@ class HTTPTests(unittest.TestCase):
         self.assertEqual(status, 404)
         self.assertNotIn('owner_member_id', body)
         self.assertEqual(self.call('GET', '/api/tasks', other['web_token']), [])
-
-

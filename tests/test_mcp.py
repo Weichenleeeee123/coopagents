@@ -132,4 +132,3 @@ class MCPTests(unittest.TestCase):
             status, result, headers = self.live.request('POST', '/mcp', token, {'jsonrpc': '2.0', 'id': 1, 'method': 'initialize', 'params': {}})
             self.assertEqual(status, 401, result)
             self.assertNotIn('resource_metadata', headers.get('WWW-Authenticate', ''))
-

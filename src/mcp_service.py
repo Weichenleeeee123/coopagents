@@ -86,4 +86,3 @@ def create_mcp_app(service):
     protected = RequireAuthMiddleware(app, required_scopes=['agent'], resource_metadata_url=None)
     authenticated = AuthenticationMiddleware(AuthContextMiddleware(protected), backend=BearerAuthBackend(PersonalTokenVerifier()))
     return app, authenticated
-
