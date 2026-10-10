@@ -4,6 +4,9 @@
 
 | 文档 | 内容 |
 | --- | --- |
+| [后续路线](roadmap.md) | P2 共享服务、P3 网页、P4 双机的任务和验收状态 |
+| [共享服务计划](shared-service-plan.md) | 当前身份基础与任务认领的具体实施步骤 |
+| [共享服务报告](shared-service-report.md) | P2 已实现能力和验证结果 |
 | [产品设计](agent-team-room-design.md) | 使用场景、协作机制、网页范围与权限边界 |
 | [接入实施计划](crewmesh-implementation-plan.md) | 分阶段任务及验收标准 |
 | [接入验证报告](crewmesh-integration-report.md) | 已取得的证据、版本、限制和 Git 提交 |
