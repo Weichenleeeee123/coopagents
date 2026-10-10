@@ -1,0 +1,10 @@
+# Experiment artifacts are retained locally, not deleted.
+work/*
+!work/crewmesh-integration-lab/
+work/crewmesh-integration-lab/*
+!work/crewmesh-integration-lab/*.py
+!work/crewmesh-integration-lab/requirements.txt
+!work/crewmesh-integration-lab/README.md
+__pycache__/
+*.pyc
+.venv/
