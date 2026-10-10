@@ -41,6 +41,38 @@ class Database:
                 CHECK ((state = 'open' AND owner_member_id IS NULL AND claimed_at IS NULL)
                     OR (state = 'claimed' AND owner_member_id IS NOT NULL AND claimed_at IS NOT NULL))
             )""")
+            # Composite keys let SQLite enforce both room and claimed-owner coherence.
+            connection.execute("""CREATE UNIQUE INDEX IF NOT EXISTS task_activity_owner
+                ON tasks (id, room_id, owner_member_id)""")
+            connection.execute("""CREATE TABLE IF NOT EXISTS sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                room_id TEXT NOT NULL REFERENCES rooms(id),
+                member_id TEXT NOT NULL,
+                session_key TEXT NOT NULL,
+                tool TEXT NOT NULL CHECK (tool IN ('claude-code', 'codex-cli', 'codex-desktop')),
+                repository TEXT NOT NULL,
+                branch TEXT NOT NULL,
+                task_id INTEGER,
+                updated_at TEXT NOT NULL,
+                UNIQUE (room_id, member_id, session_key),
+                FOREIGN KEY (member_id, room_id) REFERENCES members(id, room_id),
+                FOREIGN KEY (task_id, room_id, member_id)
+                    REFERENCES tasks(id, room_id, owner_member_id)
+            )""")
+            connection.execute("""CREATE TABLE IF NOT EXISTS progress (
+                task_id INTEGER PRIMARY KEY,
+                room_id TEXT NOT NULL REFERENCES rooms(id),
+                member_id TEXT NOT NULL,
+                state TEXT NOT NULL CHECK (state IN
+                    ('working', 'blocked', 'local_done', 'pushed', 'pr_open', 'merged')),
+                summary TEXT NOT NULL,
+                evidence TEXT NOT NULL,
+                source TEXT NOT NULL CHECK (source = 'agent_report'),
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (member_id, room_id) REFERENCES members(id, room_id),
+                FOREIGN KEY (task_id, room_id, member_id)
+                    REFERENCES tasks(id, room_id, owner_member_id)
+            )""")
 
     @contextmanager
     def connect(self, write=False):
