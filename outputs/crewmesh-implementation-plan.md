@@ -10,7 +10,7 @@
 
 ---
 
-日期：2026-10-10。执行方式：优先在当前会话按阶段推进；无需为普通实施选择再次申请许可。此文中的代码是完整的实施材料，尚未提取为运行中的服务。当前已完成的是任务 0 的只读预检。
+日期：2026-10-10。执行方式：优先在当前会话按阶段推进；无需为普通实施选择再次申请许可。任务 0–3 及任务 4 的配置生成与校验已实施并验证：本机预检、10 项消息服务测试和真实 HTTP MCP 往返已通过。实际实现位于 work/crewmesh-integration-lab；下方代码保留为原始计划示例，验收状态以接入验证报告为准。
 
 ## A. 产品范围与分阶段路线
 
@@ -120,7 +120,7 @@ codex -c 'features.context_management=false' features list
 
 **Files:** Create `requirements.txt`、`test_probe.py`、`probe_server.py`。
 
-- [ ] **Step 1：新建实验目录并创建 requirements.txt。**
+- [x] **Step 1：新建实验目录并创建 requirements.txt。**
 
 ```text
 mcp==2.3.0
@@ -135,7 +135,7 @@ python -m venv .venv
 
 预期：依赖安装成功，版本为 2.3.0。已有虚拟环境时直接复用，不删除重建。
 
-- [ ] **Step 2：先创建 test_probe.py，定义有意义的行为测试。**
+- [x] **Step 2：先创建 test_probe.py，定义有意义的行为测试。**
 
 ```python
 import unittest
@@ -193,7 +193,7 @@ if __name__ == "__main__":
     unittest.main()
 ```
 
-- [ ] **Step 3：运行测试，确认因为服务尚不存在而失败。**
+- [x] **Step 3：运行测试，确认因为服务尚不存在而失败。**
 
 ```powershell
 & '.\.venv\Scripts\python.exe' -m unittest test_probe -v
@@ -201,7 +201,7 @@ if __name__ == "__main__":
 
 预期：导入 `probe_server` 失败。不得把这个预期失败计为最终通过。
 
-- [ ] **Step 4：创建 probe_server.py。**
+- [x] **Step 4：创建 probe_server.py。**
 
 ```python
 import sqlite3
@@ -337,7 +337,7 @@ if __name__ == "__main__":
     )
 ```
 
-- [ ] **Step 5：运行同一组测试。**
+- [x] **Step 5：运行同一组测试。**
 
 预期：6 个测试通过。各次测试数据库保留在 evidence 中；读消息不得创建处理确认，并发重试只能插入一条记录。
 
@@ -345,7 +345,7 @@ if __name__ == "__main__":
 
 **Files:** Create `protocol_check.py`。
 
-- [ ] **Step 1：创建真实协议客户端。**
+- [x] **Step 1：创建真实协议客户端。**
 
 ```python
 import asyncio
@@ -385,7 +385,7 @@ if __name__ == "__main__":
     asyncio.run(check())
 ```
 
-- [ ] **Step 2：在一个进程运行服务，另一个进程执行检查。**
+- [x] **Step 2：在一个进程运行服务，另一个进程执行检查。**
 
 ```powershell
 & '.\.venv\Scripts\python.exe' probe_server.py
@@ -403,7 +403,7 @@ if __name__ == "__main__":
 
 **Files:** Create `test_hook.py`、`hook_probe.py`。
 
-- [ ] **Step 1：创建 test_hook.py。**
+- [x] **Step 1：创建 test_hook.py。**
 
 ```python
 import json
@@ -443,13 +443,13 @@ if __name__ == "__main__":
     unittest.main()
 ```
 
-- [ ] **Step 2：运行 hook 测试，确认缺少脚本时失败。**
+- [x] **Step 2：运行 hook 测试，确认缺少脚本时失败。**
 
 ```powershell
 & '.\.venv\Scripts\python.exe' -m unittest test_hook -v
 ```
 
-- [ ] **Step 3：创建 hook_probe.py。**
+- [x] **Step 3：创建 hook_probe.py。**
 
 ```python
 import argparse
@@ -490,7 +490,7 @@ if __name__ == "__main__":
     main()
 ```
 
-- [ ] **Step 4：重新运行 hook 测试。**
+- [x] **Step 4：重新运行 hook 测试。**
 
 预期：2 个测试通过。探针只记录事件身份、时间和工具名；不保存用户原始提示、完整对话、命令参数或凭据。
 
@@ -498,7 +498,7 @@ if __name__ == "__main__":
 
 **Files:** Create `configure_lab.py`；由它创建实验根目录下四个配置文件。
 
-- [ ] **Step 1：创建配置生成脚本。**
+- [x] **Step 1：创建配置生成脚本。**
 
 ```python
 import json
@@ -547,7 +547,7 @@ if __name__ == "__main__":
     main()
 ```
 
-- [ ] **Step 2：生成并检查配置。**
+- [x] **Step 2：生成并检查配置。**
 
 ```powershell
 & '.\.venv\Scripts\python.exe' configure_lab.py
@@ -621,7 +621,7 @@ CLI 备选：可使用桌面附带的引擎从实验目录启动，单独记录�
 
 本计划明确展开接入实验；产品设计其余需求有后续阶段归属：任务认领与去重、房间身份、协议约定、依赖与人工决定在 P2；网页、状态来源、首次接入引导在 P3；跨电脑真实效果在 P4。
 
-当前已完成的预检不包含：依赖安装、实验服务运行、hook 配置写入、真实 agent 消息、第二台电脑接入或网页实现。只有取得相应证据后才能修改任务复选框与报告状态。
+已完成依赖安装、消息服务测试及 HTTP 实验。原生 agent 消息、第二台电脑接入和网页实现仍待验证；hook 脚本模拟测试与原生会话证据分开记录。只有取得相应证据后才能修改任务复选框与报告状态。
 
 每次执行仅完成当前任务所需的测试。安装过程、配置检查或服务失败时，保留日志和已生成文件，按具体错误修复；不以清空环境作为默认处理方式。
 
