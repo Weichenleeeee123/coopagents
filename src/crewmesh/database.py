@@ -26,6 +26,21 @@ class Database:
                 revoked_at TEXT,
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             )""")
+            connection.execute("""CREATE TABLE IF NOT EXISTS tasks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                room_id TEXT NOT NULL REFERENCES rooms(id),
+                intent_key TEXT NOT NULL,
+                title TEXT NOT NULL,
+                scope TEXT NOT NULL,
+                state TEXT NOT NULL CHECK (state IN ('open', 'claimed')),
+                owner_member_id TEXT,
+                created_at TEXT NOT NULL,
+                claimed_at TEXT,
+                UNIQUE (room_id, intent_key),
+                FOREIGN KEY (owner_member_id, room_id) REFERENCES members(id, room_id),
+                CHECK ((state = 'open' AND owner_member_id IS NULL AND claimed_at IS NULL)
+                    OR (state = 'claimed' AND owner_member_id IS NOT NULL AND claimed_at IS NOT NULL))
+            )""")
 
     @contextmanager
     def connect(self, write=False):
