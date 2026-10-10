@@ -21,7 +21,7 @@ tests/test_tasks.py               # 并发认领、幂等、冲突及权限测�
 docs/shared-service-report.md     # 已实现能力、测试和边界
 ```
 
-测试使用 `work/crewmesh-shared-evidence/<uuid>/test.sqlite3`，始终保留，不使用自动清理临时目录。领域包暂不依赖实验虚拟环境，运行命令在仓库根目录执行：
+测试使用 `work/crewmesh-shared-evidence/identity-<uuid>.sqlite3` 和 `tasks-<uuid>.sqlite3`，始终保留，不使用自动清理临时目录。领域包暂不依赖实验虚拟环境，运行命令在仓库根目录执行：
 
 ```powershell
 $env:PYTHONPATH = (Join-Path (Get-Location) 'src')
@@ -63,7 +63,7 @@ class Principal:
 
 schema 使用 rooms、members、credentials 三张表；成员外键关联房间，凭据外键关联成员。credentials 保存 kind、token_hash、revoked_at，不重复保存客户端可写的 room_id。解析身份通过 JOIN 成员获得房间；角色和值使用 CHECK 约束。所有连接设置 foreign_keys=ON，写事务使用 BEGIN IMMEDIATE，退出关闭连接；任何异常回滚。
 
-- [ ] **Step 1：编写行为测试。** 覆盖无效/空凭据、身份解析、web/agent 分离、agent 无法管理、owner/普通成员权限、跨房间不可见、撤销与重开数据库后仍有效的记录、SQLite 文件无明文凭据。核心例子：
+- [x] **Step 1：编写行为测试。** 覆盖无效/空凭据、身份解析、web/agent 分离、agent 无法管理、owner/普通成员权限、跨房间不可见、撤销与重开数据库后仍有效的记录、SQLite 文件无明文凭据。核心例子：
 
 ```python
 def test_agent_cannot_add_member(self):
@@ -73,13 +73,13 @@ def test_agent_cannot_add_member(self):
     self.assertEqual(len(self.store.list_members(room['web_token'])), 1)
 ```
 
-- [ ] **Step 2：执行 identity 测试确认缺少实现导致失败。**
+- [x] **Step 2：执行 identity 测试确认缺少实现导致失败。**
 
 ```powershell
 C:\Python313\python.exe -m unittest discover -s tests -p test_identity.py -v
 ```
 
-- [ ] **Step 3：实现上述接口与事务。** 名称去掉首尾空白，要求 1–120 字符；无效输入使用 ValidationError，不回显凭据。不存在或撤销的凭据用 AccessDenied；跨房间目标成员用 NotFound，不泄露目标房间。示例中的 helper 实际实现须符合以下散列约定：
+- [x] **Step 3：实现上述接口与事务。** 名称去掉首尾空白，要求 1–120 字符；无效输入使用 ValidationError，不回显凭据。不存在或撤销的凭据用 AccessDenied；跨房间目标成员用 NotFound，不泄露目标房间。示例中的 helper 实际实现须符合以下散列约定：
 
 ```python
 import hashlib
@@ -91,8 +91,8 @@ def issue_token():
     return token, digest
 ```
 
-- [ ] **Step 4：运行全部 identity 测试，检查独立事务与关闭连接。** 预期全部通过；错误权限尝试不得增加成员或使他人的凭据失效。
-- [ ] **Step 5：先规格审查，再代码质量审查；修复后验证并提交 identity 阶段。**
+- [x] **Step 4：运行全部 identity 测试，检查独立事务与关闭连接。** 预期全部通过；错误权限尝试不得增加成员或使他人的凭据失效。
+- [x] **Step 5：先规格审查，再代码质量审查；修复后验证并提交 identity 阶段。**
 
 ## Task 2：原子任务认领
 
@@ -111,14 +111,14 @@ def issue_token():
 
 tasks 以整数 ID 为主键，room_id 外键关联房间，owner_member_id 关联同一房间成员；`UNIQUE(room_id,intent_key)` 保证相同意图只建一条任务。成员和房间匹配必须由复合外键或等价约束保证。intent_key 去首尾空白，1–200 字符；title 1–200，scope 1–500。相同 key 与相同 title/scope 返回原任务；同 key 不同内容用 Conflict。此为精确重复，不宣称语义重复识别。
 
-- [ ] **Step 1：写任务测试。** 覆盖跨房间隐藏、web/agent 创建与认领权限、相同意图幂等、同 key 不同内容拒绝、同成员重复认领返回同一归属、撤销凭据不能认领、独立连接四个成员同时认领只有一个成功。
-- [ ] **Step 2：运行测试确认缺少任务实现而失败。**
+- [x] **Step 1：写任务测试。** 覆盖跨房间隐藏、web/agent 创建与认领权限、相同意图幂等、同 key 不同内容拒绝、同成员重复认领返回同一归属、撤销凭据不能认领、独立连接四个成员同时认领只有一个成功。
+- [x] **Step 2：运行测试确认缺少任务实现而失败。**
 
 ```powershell
 C:\Python313\python.exe -m unittest discover -s tests -p test_tasks.py -v
 ```
 
-- [ ] **Step 3：实现任务接口。** 找不到本房间任务时统一 NotFound。已由另一个成员认领时 Conflict，异常的结构化 owner_member_id 只针对已核实属于调用方房间的任务返回。不自动抢占、更换负责人或释放任务。原子更新必须包含 room_id 和未认领条件：
+- [x] **Step 3：实现任务接口。** 找不到本房间任务时统一 NotFound。已由另一个成员认领时 Conflict，异常的结构化 owner_member_id 只针对已核实属于调用方房间的任务返回。不自动抢占、更换负责人或释放任务。原子更新必须包含 room_id 和未认领条件：
 
 ```sql
 UPDATE tasks
@@ -126,8 +126,8 @@ SET owner_member_id = ?, state = 'claimed', claimed_at = ?
 WHERE id = ? AND room_id = ? AND owner_member_id IS NULL;
 ```
 
-- [ ] **Step 4：执行身份和任务测试。** 检查并发失败方拿到本房间冲突、最终数据库只有一个负责人，重复请求不更改认领时间。
-- [ ] **Step 5：两阶段审查，验证并单独提交任务认领阶段。** 报告只写领域实现通过，不写 MCP、网页或双机已完成。
+- [x] **Step 4：执行身份和任务测试。** 检查并发失败方拿到本房间冲突、最终数据库只有一个负责人，重复请求不更改认领时间。
+- [x] **Step 5：两阶段审查，验证并单独提交任务认领阶段。** 报告只写领域实现通过，不写 MCP、网页或双机已完成。
 
 ## 后续工作包的明确验收
 
@@ -143,4 +143,4 @@ WHERE id = ? AND room_id = ? AND owner_member_id IS NULL;
 
 ## 完成记录
 
-本计划在源码实施前提交。完成复选框与测试数量由实际执行后更新；Git 提交号进入 [共享服务验证报告](shared-service-report.md)。
+本计划在源码实施前提交。Task 1 与 Task 2 已实现并通过两阶段审查，25 项测试全部通过；Git 提交号进入 [共享服务验证报告](shared-service-report.md)。
