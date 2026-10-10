@@ -9,6 +9,9 @@ dist/
 runtime/
 
 # Agent settings are generated per machine and never committed.
+/.codex/
+/.claude/
+/.mcp.json
 experiments/agent-integration/.codex/
 experiments/agent-integration/.claude/
 experiments/agent-integration/.mcp.json
