@@ -7,6 +7,7 @@ name = "crewmesh"
 version = "0.1.0"
 description = "Shared coordination for teammates using their own coding agents"
 readme = "README.md"
+license = {file = "LICENSE"}
 requires-python = ">=3.11"
 dependencies = []
 

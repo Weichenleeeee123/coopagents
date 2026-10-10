@@ -92,4 +92,4 @@ experiments/  原生 agent 接入研究
 
 ---
 
-<div align="center"><strong>让 agent 继续推进，让团队始终同频。</strong></div>
+<div align="center"><strong>让 agent 继续推进，让团队始终同频。</strong><br><a href="LICENSE">MIT License</a> · Built for teams that build with agents.</div>
