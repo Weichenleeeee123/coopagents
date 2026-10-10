@@ -14,6 +14,8 @@
 
 本轮 Task 5 的 CLI 消息实验已实际尝试，因 Claude 组织策略和 Codex 本机 MCP transport 配置失败；Claude 两个原生启动 hook 已取得执行证据。详情见 [原生 CLI 实验](native-cli-validation.md)。消息往返、桌面入口和自动消费仍未通过，P1 不记为完成。
 
+用户原有入口的后续验证已证明 Codex 桌面能实际读取实验消息，Claude 普通交互能正常回答。Claude 项目内发布、跨工具确认和自动消费仍待验证；先前隔离 CLI 失败保留为历史事实，不推广到用户的正常启动方式。
+
 ## A. 产品范围与分阶段路线
 
 **已确认名称：Crewmesh · 同频。** Your agents. One team. / 各自开工，始终同频。
