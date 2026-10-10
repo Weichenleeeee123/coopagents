@@ -26,6 +26,25 @@ class Database:
                 revoked_at TEXT,
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             )""")
+            # Additive upgrades preserve existing rooms and legacy nonexpiring tokens.
+            room_columns = {row['name'] for row in connection.execute('PRAGMA table_info(rooms)')}
+            if 'repository' not in room_columns:
+                connection.execute("ALTER TABLE rooms ADD COLUMN repository TEXT NOT NULL DEFAULT ''")
+            credential_columns = {row['name'] for row in connection.execute('PRAGMA table_info(credentials)')}
+            if 'expires_at' not in credential_columns:
+                connection.execute('ALTER TABLE credentials ADD COLUMN expires_at TEXT')
+            connection.execute("""CREATE TABLE IF NOT EXISTS invitations (
+                token_hash TEXT PRIMARY KEY,
+                room_id TEXT NOT NULL REFERENCES rooms(id),
+                created_by_member_id TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                used_at TEXT,
+                used_by_member_id TEXT,
+                FOREIGN KEY (created_by_member_id, room_id) REFERENCES members(id, room_id),
+                FOREIGN KEY (used_by_member_id, room_id) REFERENCES members(id, room_id),
+                CHECK ((used_at IS NULL AND used_by_member_id IS NULL)
+                    OR (used_at IS NOT NULL AND used_by_member_id IS NOT NULL))
+            )""")
             connection.execute("""CREATE TABLE IF NOT EXISTS tasks (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 room_id TEXT NOT NULL REFERENCES rooms(id),

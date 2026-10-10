@@ -1,5 +1,6 @@
 """Room identities authenticated by opaque, separately scoped credentials."""
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 import hashlib
 import secrets
 from uuid import uuid4
@@ -33,15 +34,33 @@ def _token_hash(token):
     return hashlib.sha256(encoded).hexdigest()
 
 
+def _utcnow():
+    """Server clock, separated for deterministic expiry boundary tests."""
+    return datetime.now(timezone.utc)
+
+
+def _expired(expires_at, now):
+    if expires_at is None:
+        return False  # Pre-expiry credentials retain their original semantics.
+    try:
+        expiry = datetime.fromisoformat(expires_at)
+        return expiry.tzinfo is None or expiry <= now
+    except (TypeError, ValueError):
+        return True
+
+
 class IdentityStore:
     def __init__(self, path):
         self.db = Database(path)
 
-    def create_room(self, name, owner_name):
+    def create_room(self, name, owner_name, repository=''):
         name, owner_name = _name(name), _name(owner_name)
+        if not isinstance(repository, str) or len(repository.strip()) > 500:
+            raise ValidationError('Repository must contain at most 500 characters')
+        repository = repository.strip()
         room_id = str(uuid4())
         with self.db.connect(write=True) as connection:
-            connection.execute("INSERT INTO rooms (id, name) VALUES (?, ?)", (room_id, name))
+            connection.execute("INSERT INTO rooms (id, name, repository) VALUES (?, ?, ?)", (room_id, name, repository))
             return self._create_member(connection, room_id, owner_name, "owner")
 
     def _create_member(self, connection, room_id, display_name, role):
@@ -51,14 +70,70 @@ class IdentityStore:
             (member_id, room_id, display_name, role),
         )
         result = {"room_id": room_id, "member_id": member_id}
+        now = _utcnow()
         for kind in ("web", "agent"):
-            token = secrets.token_urlsafe(32)
-            connection.execute(
-                "INSERT INTO credentials (token_hash, member_id, kind) VALUES (?, ?, ?)",
-                (_token_hash(token), member_id, kind),
-            )
+            token, expires_at = self._issue_credential(connection, member_id, kind, now)
             result[f"{kind}_token"] = token
+            result[f"{kind}_expires_at"] = expires_at
         return result
+
+    def _issue_credential(self, connection, member_id, kind, now):
+        token = secrets.token_urlsafe(32)
+        expires_at = (now + timedelta(days=30 if kind == 'web' else 90)).isoformat()
+        connection.execute(
+            'INSERT INTO credentials (token_hash, member_id, kind, expires_at) VALUES (?, ?, ?, ?)',
+            (_token_hash(token), member_id, kind, expires_at),
+        )
+        return token, expires_at
+
+    def room_info(self, token):
+        with self.db.connect() as connection:
+            principal = self.resolve(connection, token)
+            return dict(connection.execute(
+                'SELECT id, name, repository FROM rooms WHERE id = ?',
+                (principal.room_id,),
+            ).fetchone())
+
+    def create_invite(self, web_token):
+        with self.db.connect(write=True) as connection:
+            principal = self.resolve(connection, web_token, required_kind='web')
+            if principal.role != 'owner':
+                raise AccessDenied('Owner credential required')
+            token = secrets.token_urlsafe(32)
+            expires_at = (_utcnow() + timedelta(hours=1)).isoformat()
+            connection.execute('''INSERT INTO invitations
+                (token_hash, room_id, created_by_member_id, expires_at) VALUES (?, ?, ?, ?)''',
+                (_token_hash(token), principal.room_id, principal.member_id, expires_at))
+            return {'invite_token': token, 'expires_at': expires_at, 'room_id': principal.room_id}
+
+    def join_invite(self, invite_token, display_name):
+        display_name = _name(display_name)
+        try:
+            token_hash = _token_hash(invite_token)
+        except AccessDenied:
+            raise AccessDenied('Invitation not accepted') from None
+        # BEGIN IMMEDIATE serializes validation, consumption and credential creation.
+        with self.db.connect(write=True) as connection:
+            invite = connection.execute('''SELECT room_id, expires_at FROM invitations
+                WHERE token_hash = ? AND used_at IS NULL''', (token_hash,)).fetchone()
+            now = _utcnow()
+            if invite is None or _expired(invite['expires_at'], now):
+                raise AccessDenied('Invitation not accepted')
+            result = self._create_member(connection, invite['room_id'], display_name, 'member')
+            connection.execute('''UPDATE invitations SET used_at = ?, used_by_member_id = ?
+                WHERE token_hash = ?''', (now.isoformat(), result['member_id'], token_hash))
+            return result
+
+    def rotate_agent(self, web_token):
+        with self.db.connect(write=True) as connection:
+            principal = self.resolve(connection, web_token, required_kind='web')
+            now = _utcnow()
+            connection.execute('''UPDATE credentials SET revoked_at = ?
+                WHERE member_id = ? AND kind = 'agent' AND revoked_at IS NULL''',
+                (now.isoformat(), principal.member_id))
+            token, expires_at = self._issue_credential(connection, principal.member_id, 'agent', now)
+            return {'agent_token': token, 'expires_at': expires_at,
+                    'room_id': principal.room_id, 'member_id': principal.member_id}
 
     def add_member(self, owner_web_token, display_name):
         display_name = _name(display_name)
@@ -77,12 +152,15 @@ class IdentityStore:
             raise ValidationError("Credential kind must be web or agent")
         token_hash = _token_hash(token)
         row = connection.execute("""SELECT m.room_id, m.id AS member_id,
-                m.display_name, m.role, c.kind
+                m.display_name, m.role, c.kind, c.expires_at
             FROM credentials c JOIN members m ON m.id = c.member_id
             WHERE c.token_hash = ? AND c.revoked_at IS NULL""", (token_hash,)).fetchone()
-        if row is None or (required_kind is not None and row["kind"] != required_kind):
+        if (row is None or (required_kind is not None and row["kind"] != required_kind)
+                or _expired(row['expires_at'], _utcnow())):
             raise AccessDenied("Credential not accepted")
-        return Principal(**dict(row))
+        fields = dict(row)
+        fields.pop('expires_at')
+        return Principal(**fields)
 
     def list_members(self, token):
         with self.db.connect() as connection:
