@@ -79,7 +79,7 @@ class TaskStore:
                 connection.execute('INSERT INTO task_session_bindings VALUES(?,?,?,?,?,?)',
                     (task_id,principal.room_id,principal.member_id,session_key,epoch,now))
             if fresh:
-                ownership_changed(connection, task_id, None, principal.member_id)
+                ownership_changed(connection, task_id, None, principal.member_id, principal.member_id, principal.kind, "Task claimed")
             result = project_task(task_row(connection, principal, task_id))
             if event_id:
                 connection.execute('UPDATE task_lifecycle_events SET result_json=? WHERE id=?', (json.dumps(result),event_id))

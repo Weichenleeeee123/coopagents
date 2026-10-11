@@ -142,8 +142,9 @@ def archive_claim(db, principal, task, now):
     return cursor.lastrowid
 
 
-def ownership_changed(db, task_id, old_owner, new_owner):
-    """Transaction-local extension point for later task-owner request routing."""
+def ownership_changed(db, task_id, old_owner, new_owner, actor=None, kind="system", reason="Task responsibility changed"):
+    from .dependencies import ownership_changed as route_dependencies
+    route_dependencies(db, task_id, old_owner, new_owner, actor, kind, reason)
 
 
 class TaskLifecycleStore:
@@ -236,7 +237,7 @@ class TaskLifecycleStore:
                 if pending:
                     db.execute('UPDATE task_handoffs SET status=?,decided_at=? WHERE id=?',
                         ('accepted' if action=='accept_handoff' else 'superseded',now,pending['id']))
-                ownership_changed(db, task_id, task['owner_member_id'], next_owner)
+                ownership_changed(db, task_id, task['owner_member_id'], next_owner, principal.member_id, principal.kind, action+': '+summary)
             else:
                 db.execute('UPDATE tasks SET revision=revision+1 WHERE id=?', (task_id,))
                 if action == 'propose_handoff':

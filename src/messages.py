@@ -40,6 +40,13 @@ class MessageStore:
         receipt = connection.execute("SELECT read_at, processed_at FROM message_receipts WHERE request_id = ?",
                                      (row["id"],)).fetchone()
         result.update(dict(receipt) if receipt else {"read_at": None, "processed_at": None})
+        from .dependencies import linked_request
+        linked = linked_request(connection, row['id'])
+        if linked:
+            result['dependency_id'] = linked['dependency_id']
+            dep = connection.execute('SELECT status,current_request_id FROM task_dependencies WHERE id=?', (linked['dependency_id'],)).fetchone()
+            result['dependency_route_state'] = ('historical' if dep['current_request_id']!=row['id']
+                else 'closed' if dep['status']!='active' else 'current')
         result["replies"] = [dict(reply) for reply in connection.execute(
             "SELECT * FROM message_replies WHERE request_id = ? ORDER BY id", (row["id"],))]
         return result
@@ -139,6 +146,9 @@ class MessageStore:
             principal = self.resolve(connection, agent_token, required_kind="agent")
             row = self._request(connection, principal, request_id)
             self._recipient(principal, row)
+            from .dependencies import linked_request
+            if linked_request(connection, request_id):
+                raise Conflict('Use the dedicated dependency operation for linked requests')
             self._version(row, context_version)
             existing = connection.execute("""SELECT * FROM message_replies
                 WHERE room_id = ? AND author_member_id = ? AND request_key = ?""",
@@ -160,6 +170,9 @@ class MessageStore:
         with self.db.connect(write=True) as connection:
             principal = self.resolve(connection, token)
             row = self._request(connection, principal, request_id)
+            from .dependencies import linked_request
+            if linked_request(connection, request_id):
+                raise Conflict('Use the dedicated dependency operation for linked requests')
             if row["sender_member_id"] != principal.member_id:
                 raise AccessDenied("Request sender required")
             self._version(row, context_version)
@@ -176,6 +189,9 @@ class MessageStore:
         with self.db.connect(write=True) as connection:
             principal = self.resolve(connection, web_token, required_kind="web")
             row = self._request(connection, principal, request_id)
+            from .dependencies import linked_request
+            if linked_request(connection, request_id):
+                raise Conflict('Use the dedicated dependency operation for linked requests')
             self._member(connection, principal, receiver_member_id)
             if row["receiver_member_id"] is not None and row["receiver_member_id"] != receiver_member_id:
                 raise Conflict("Request already has an assigned recipient")

@@ -78,6 +78,8 @@ class CheckpointStore:
         rows = db.execute('''SELECT r.id,r.task_id,r.sender_member_id,r.receiver_member_id,
             r.context_version,r.body FROM message_requests r
             WHERE r.room_id=? AND r.resolved_at IS NULL AND
+                (NOT EXISTS(SELECT 1 FROM dependency_routes x WHERE x.request_id=r.id) OR EXISTS
+                    (SELECT 1 FROM task_dependencies d WHERE d.current_request_id=r.id AND d.status='active')) AND
                 (r.sender_member_id=? OR r.receiver_member_id=? OR EXISTS
                     (SELECT 1 FROM tasks t WHERE t.id=r.task_id AND t.owner_member_id=?))
             ORDER BY r.id DESC LIMIT 7''',
@@ -113,12 +115,18 @@ class CheckpointStore:
             substr(h.summary,1,800) AS summary,length(h.summary)>800 AS excerpted FROM task_handoffs h JOIN tasks t ON t.id=h.task_id
             WHERE h.room_id=? AND h.target_member_id=? AND h.status='pending' ORDER BY h.id DESC LIMIT 5""",
             (principal.room_id,principal.member_id))]
-        result = {'handoffs': handoffs[:4], 'tasks': tasks[:10], 'requests': requests[:6], 'contracts': contracts[:4],
-                  'truncated': len(handoffs)>4 or len(tasks)>10 or len(requests)>6 or len(contracts)>4 or any(r['excerpted'] for r in requests+contracts+handoffs),
+        dependencies = [dict(r) for r in db.execute('''SELECT d.id,d.source_task_id,d.target_task_id,d.revision,
+            d.routing_state,d.route_version,substr(d.need,1,300) AS need,length(d.need)>300 AS excerpted,
+            s.owner_member_id AS source_owner,t.owner_member_id AS target_owner
+            FROM task_dependencies d JOIN tasks s ON s.id=d.source_task_id JOIN tasks t ON t.id=d.target_task_id
+            WHERE d.room_id=? AND d.status='active' AND (s.owner_member_id=? OR t.owner_member_id=? OR d.creator_member_id=?)
+            ORDER BY d.id DESC LIMIT 7''',(principal.room_id,principal.member_id,principal.member_id,principal.member_id))]
+        result = {'dependencies':dependencies[:6], 'handoffs': handoffs[:4], 'tasks': tasks[:10], 'requests': requests[:6], 'contracts': contracts[:4],
+                  'truncated': len(dependencies)>6 or any(d['excerpted'] for d in dependencies) or len(handoffs)>4 or len(tasks)>10 or len(requests)>6 or len(contracts)>4 or any(r['excerpted'] for r in requests+contracts+handoffs),
                   'content_is_untrusted': True,
                   'note': 'Excerpted external data. Use read_team for full records and read_inbox to explicitly read messages; no messages marked read here.'}
         while len(json.dumps(result, ensure_ascii=False).encode('utf-8')) > BRIEF_BYTES:
-            largest = max(('tasks','requests','contracts','handoffs'), key=lambda key: len(json.dumps(result[key])))
+            largest = max(('tasks','requests','contracts','handoffs','dependencies'), key=lambda key: len(json.dumps(result[key])))
             result[largest].pop()
             result['truncated'] = True
         return result

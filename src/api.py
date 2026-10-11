@@ -61,7 +61,7 @@ def validate(data, schema):
 
 
 def fields(required='', optional=None):
-    result = {key: (int if key in {'expected_revision', 'ownership_epoch', 'expected_version', 'context_version', 'version', 'request_id', 'contract_id', 'task_id', 'after_id', 'limit'} else str, True, None) for key in required.split()}
+    result = {key: (int if key in {'source_task_id', 'target_task_id', 'dependency_id', 'reply_id', 'expected_revision', 'ownership_epoch', 'expected_version', 'context_version', 'version', 'request_id', 'contract_id', 'task_id', 'after_id', 'limit'} else str, True, None) for key in required.split()}
     for key, default in (optional or {}).items():
         result[key] = (int if key in {'before_id', 'ownership_epoch', 'source_request_id', 'task_id', 'after_id', 'limit'} else str, False, default)
     return result
@@ -79,6 +79,8 @@ class Service:
         self.tasks = TaskStore(self.identity)
         from .task_lifecycle import TaskLifecycleStore, ACTIONS
         self.lifecycle = TaskLifecycleStore(self.identity)
+        from .dependencies import DependencyStore, schemas as dependency_schemas
+        self.dependencies = DependencyStore(self.identity)
         self.activity = ActivityStore(self.identity)
         self.messages = MessageStore(self.identity)
         self.contracts = ContractStore(self.identity)
@@ -117,6 +119,8 @@ class Service:
             'link_delivery': ('any', self.github.associate, {'task_id': (int, True, None),
                 'branch': (str, False, ''), 'pr_number': (int, False, None), 'commit_sha': (str, False, '')}),
         }
+        for name, schema in dependency_schemas(fields).items():
+            self.operations[name] = ('any', getattr(self.dependencies, name), schema)
         for action in ACTIONS:
             optional = {'session_key': None, 'ownership_epoch': None} if action in ('release_task', 'propose_handoff') else {}
             required = 'task_id expected_revision request_key summary'
@@ -134,6 +138,7 @@ class Service:
         self.reads['git'] = self.git_snapshot
         self.reads['collaboration'] = self.checkpoints.snapshot
         self.reads['lifecycle'] = self.lifecycle.snapshot
+        self.reads['dependencies'] = self.dependencies.snapshot
 
     def git_snapshot(self, token):
         result = self.repositories.snapshot(token)
@@ -427,6 +432,7 @@ def create_app(database_path='.local/crewmesh.sqlite3', *, base_url=None, public
                   '/static/app.js': ('app.js', 'text/javascript'),
                   '/static/git.js': ('git.js', 'text/javascript'),
                   '/static/collaboration.js': ('collaboration.js', 'text/javascript'),
+                  '/static/dependencies.js': ('dependencies.js', 'text/javascript'),
                   '/static/task_lifecycle.js': ('task_lifecycle.js', 'text/javascript'),
                   '/static/accounts.js': ('accounts.js', 'text/javascript'),
                   '/static/billing.js': ('billing.js', 'text/javascript'),
@@ -437,7 +443,7 @@ def create_app(database_path='.local/crewmesh.sqlite3', *, base_url=None, public
         resource, mime = assets[request.url.path]
         return Response(files('crewmesh').joinpath('static', resource).read_bytes(), media_type=mime, headers=headers)
 
-    routes = [Route(path, web_asset, methods=['GET']) for path in ('/', '/static/styles.css', '/static/app.js', '/static/git.js', '/static/collaboration.js', '/static/task_lifecycle.js', '/static/accounts.js', '/static/billing.js', '/static/icon.png', '/favicon.ico')]
+    routes = [Route(path, web_asset, methods=['GET']) for path in ('/', '/static/styles.css', '/static/app.js', '/static/git.js', '/static/collaboration.js', '/static/task_lifecycle.js', '/static/dependencies.js', '/static/accounts.js', '/static/billing.js', '/static/icon.png', '/favicon.ico')]
     routes += [route('/health', ['GET']), route('/ready', ['GET']), route('/api/rooms', ['POST'], operation='create_room'), route('/api/join', ['POST'], operation='join'),
               route('/api/me', ['GET'], read_name='me'), route('/api/snapshot', ['GET'], read_name='snapshot'),
               route('/api/invites', ['POST'], operation='invite'), route('/api/agent-token', ['POST'], operation='rotate_agent'),
@@ -460,6 +466,11 @@ def create_app(database_path='.local/crewmesh.sqlite3', *, base_url=None, public
                             ('/api/requests/{request_id:int}/assign', 'assign'), ('/api/contracts', 'propose_contract'),
                             ('/api/contracts/{contract_id:int}/decision', 'decision')]:
         routes.append(route(path, ['POST'], operation=operation))
+    routes.append(route('/api/dependencies', ['GET'], read_name='dependencies'))
+    routes.append(route('/api/dependencies', ['POST'], operation='create_dependency'))
+    routes.append(route('/api/owners/lookup', ['POST'], operation='lookup_owner'))
+    for action in ('read','reply','resolve','cancel'):
+        routes.append(route('/api/dependencies/{dependency_id:int}/'+action, ['POST'], operation=action+'_dependency'))
     routes.append(route('/api/tasks/{task_id:int}/history', ['POST'], operation='read_task_history'))
     routes.append(route('/api/tasks/{task_id:int}/history/{event_id:int}', ['GET'], read_name='lifecycle_event'))
     from .task_lifecycle import ACTIONS

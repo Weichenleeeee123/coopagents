@@ -44,3 +44,11 @@ claude mcp add --transport http --scope local crewmesh http://127.0.0.1:8787/mcp
 ## 接手任务与会话隔离
 
 认领时传新的 `session_key`；保存返回的 `ownership_epoch`，在 register_session、report_progress、带任务的 checkpoint、repo_checkpoint、link_delivery 中一并传回。网页接受交接后，新 owner 的 agent 使用 claim_task 绑定自己的新 session。旧会话不可跨责任周期复用，原生 hook 的成员级检查点继续兼容。释放、转交、重试及完整调用见 [任务交接与恢复](task-lifecycle.md)。
+
+## 显式依赖与自动检查点
+
+遇到任务间技术问题，先用 lookup_owner(task_id 或 scope) 查负责人；多候选必须明确选目标任务。create_dependency 建立 source → target 依赖，expected_revision 使用 source 任务版本。目标当前会话调用 reply_dependency；source 当前会话先 read_dependency，再以最新 dependency revision 和 reply_id 调用 resolve_dependency。没有负责人时明确排队，转交后生成新请求，旧回复不会解除新路由。详细 HTTP/MCP 参数、网页流程和权限见 [任务依赖](dependencies.md)。
+
+checkpoint(session_key,tool,event) 可在 startup / blocker / completion / manual 阶段读取有界任务、消息、约定、交接及依赖摘要。成员级检查点不要求绑定某个任务；带 task_id 时遵守该任务执行会话与 ownership_epoch。网页“仓库接入”提供接入诊断，配置片段使用可信环境变量并保留已有配置；失败明确提示而不阻止开发。检查点不算依赖回复已读，闲置会话不自动唤醒。
+
+F1 实际原生验收：Claude 客户端收到了 773 字符上下文并记录开始/提示事件，模型未报告验收标记；Codex exec 正常退出但没观察到 hook。原生自动消费仍未通过，桌面 hook 未额外验收。详见 [协作闭环报告](collaboration-flow-report.md)。

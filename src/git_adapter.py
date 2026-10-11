@@ -130,7 +130,9 @@ class LocalAdapter:
 
     def forward(self, name, arguments):
         self.validate_project(self.workspace.inspect())
-        paths = {'read_task_history':'/api/tasks/{task_id}/history', 'release_task':'/api/tasks/{task_id}/release-task',
+        paths = {'lookup_owner':'/api/owners/lookup','create_dependency':'/api/dependencies',
+                 'read_dependency':'/api/dependencies/{dependency_id}/read','reply_dependency':'/api/dependencies/{dependency_id}/reply',
+                 'resolve_dependency':'/api/dependencies/{dependency_id}/resolve','cancel_dependency':'/api/dependencies/{dependency_id}/cancel','read_task_history':'/api/tasks/{task_id}/history', 'release_task':'/api/tasks/{task_id}/release-task',
                  'propose_handoff':'/api/tasks/{task_id}/propose-handoff', 'claim_task':'/api/tasks/{task_id}/claim','register_session':'/api/sessions',
                  'checkpoint':'/api/checkpoints','diagnostic_start':'/api/diagnostics/start',
                  'diagnostic_read':'/api/diagnostics/read','diagnostic_complete':'/api/diagnostics/complete',
@@ -143,7 +145,7 @@ class LocalAdapter:
         if name=='read_inbox': return self.request('/api/inbox?'+urlencode(arguments)) if arguments else self.request('/api/inbox')
         if name not in paths: raise ValidationError('Unsupported coordination tool')
         body = dict(arguments); path = paths[name]
-        for field in ('task_id','request_id'):
+        for field in ('task_id','request_id','dependency_id'):
             if '{'+field+'}' in path:
                 value = body.pop(field,None)
                 if type(value) is not int or value<1: raise ValidationError('Expected a positive record id')
@@ -171,6 +173,8 @@ def create_local_mcp(adapter):
         'resolve_request':fields('request_id context_version'),
         'propose_contract':fields('contract_key expected_version title body',{'source_request_id':None,'commit_ref':''}),
         'link_delivery':{'task_id':(int,True,None),'branch':(str,False,''),'pr_number':(int,False,None),'commit_sha':(str,False,''),'session_key':(str,False,None),'ownership_epoch':(int,False,None)}}
+    from .dependencies import schemas as dependency_schemas
+    schemas.update(dependency_schemas(fields))
     async def validate_arguments(ctx,call_next):
         if ctx.method=='tools/call':
             params=ctx.params

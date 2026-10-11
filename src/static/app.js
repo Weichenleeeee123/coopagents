@@ -5,6 +5,7 @@ let generation = 0, snapshot = null, pollTimer = null, syncing = false, lastSucc
 let accountManaged = false;
 const projectRequests = new Set();
 const gitUI = () => typeof window!=='undefined' ? window.CrewmeshGit : null;
+const dependencyUI = () => typeof window!=='undefined' ? window.CrewmeshDependencies : null;
 const lifecycleUI = () => typeof window!=='undefined' ? window.CrewmeshTaskLifecycle : null;
 const collaborationUI = () => typeof window!=='undefined' ? window.CrewmeshCollaboration : null;
 function gitContext(){const epoch=generation;return {api,sync,me:snapshot.me,memberName,origin:location.origin,isCurrent:()=>epoch===generation};}
@@ -49,7 +50,7 @@ function logout(message='') {
   generation++; token=''; snapshot=null; sessionStorage.removeItem('crewmesh_web_token'); clearTimeout(pollTimer);
   projectRequests.forEach(controller=>controller.abort()); projectRequests.clear(); syncing=false;
   gitUI()?.clear(); $('git-connection')?.replaceChildren(); $('git-overlaps')?.replaceChildren();
-  collaborationUI()?.clear(); lifecycleUI()?.clear();
+  collaborationUI()?.clear(); lifecycleUI()?.clear(); dependencyUI()?.clear();
   renderSignature=''; closePrivate(); closeTaskDetail(); $('task-search').value=''; $('task-owner').value=''; if($('task-status'))$('task-status').value='active'; $('workspace').hidden=true; $('login').hidden=false; $('login-error').textContent=message;
   ['members','tasks','requests','contracts','overlaps','summary'].forEach(id => $(id).replaceChildren());
   ['room-name','room-repository','identity','network-error','action-error','board-count'].forEach(id=>$(id).textContent='');
@@ -96,7 +97,11 @@ function restoreRecordFocus(focus){
   else if(record){if(record.tagName!=='BUTTON')record.tabIndex=-1;record.focus({preventScroll:true});}
 }
 function renderOverview(){
-  $('summary').replaceChildren(); for(const [n,label] of [[snapshot.members.length,'团队成员'],[snapshot.tasks.length,'声明任务'],[snapshot.requests.filter(r=>!r.resolved_at).length,'待解决请求']]) add($('summary'),add(text('div','','metric'),text('strong',n),text('span',label)));
+  if($('needs-attention'))dependencyUI()?.renderOverview($('needs-attention'),snapshot,{...gitContext(),openItem:item=>{
+    if(item.task_id){setView('tasks');openTaskDetail(item.task_id);}
+    else{setView(item.kind==='contract'?'contracts':'requests');$(item.kind+'-'+item.id)?.scrollIntoView({block:'center'});}
+  }});
+  $('summary').replaceChildren(); for(const [n,label] of [[snapshot.members.length,'团队成员'],[snapshot.tasks.length,'声明任务'],[snapshot.requests.filter(r=>!r.resolved_at&&(!r.dependency_id||r.dependency_route_state==='current')).length,'待解决请求']]) add($('summary'),add(text('div','','metric'),text('strong',n),text('span',label)));
   $('members').replaceChildren(); snapshot.members.forEach(m => {
     const row=text('article','','member-row'), profile=add(text('div'),text('h3',m.display_name),text('p',m.role==='owner'?'团队创建者':'团队成员','meta')), activity=text('div');
     const sessions=snapshot.sessions.filter(s=>s.member_id===m.member_id), tasks=snapshot.tasks.filter(t=>t.owner_member_id===m.member_id);
@@ -123,6 +128,7 @@ let activeTaskId=null, taskOpener=null;
 function taskColumn(task, progress){
   if(task.cancelled_at||task.state==='cancelled')return 'cancelled';
   if(!task.owner_member_id) return 'open';
+  if(dependencyUI()?.blocked(task,snapshot))return 'blocked';
   const state=gitUI()?.state(task,progress,snapshot?.git) || progress?.state;
   if(state==='blocked')return 'blocked';
   if(state==='merged')return 'merged';
@@ -155,6 +161,7 @@ function renderTasks(){
       add(card,add(text('div','','card-top'),text('span','CM-'+String(t.id).padStart(3,'0'),'task-number'),text('span','↗','card-arrow')),text('h3',t.title),text('p',p?.summary||(t.cancelled_at?'任务已取消，可在详情重新打开。':'已声明工作范围，等待 agent 推进。'),'card-summary'),text('p',t.scope,'card-scope'));
       add(card,add(text('div','','card-bottom'),add(text('span','','card-person'),text('span',(t.owner_member_id?memberName(t.owner_member_id):'?').slice(0,1),'avatar'),text('span',t.cancelled_at?'已取消':t.owner_member_id?memberName(t.owner_member_id):'待认领')),text('span',requests.length+' 请求','card-meta')),text('p',date(p?.updated_at||t.cancelled_at||t.claimed_at||t.created_at)+' · '+(t.cancelled_at?'已取消':p?'agent 自述':t.owner_member_id?'已认领':'任务声明'),'card-time'));
       const handoff=snapshot.lifecycle?.handoffs?.find(h=>h.task_id===t.id&&h.status==='pending');if(handoff)card.append(text('p','待 '+memberName(handoff.target_member_id)+' 接手 · '+handoff.summary,'card-summary'));
+      const deps=(snapshot.dependencies||[]).filter(d=>d.source_task_id===t.id&&d.status==='active');if(deps.length)card.append(text('p','等待 '+deps.map(d=>d.target.title+'（'+(d.target.owner_member_id?memberName(d.target.owner_member_id):'待分派')+'）').join('、'),'card-summary'));
       const gitSummary=gitUI()?.summarize(t.id,snapshot.git);if(gitSummary)card.append(text('p',gitSummary,'card-git'));
       list.append(card);
     });
@@ -169,10 +176,11 @@ function renderTaskDetail(){
   const active=document.activeElement,focused=container.contains(active)?{tag:active.tagName,key:active.dataset.lifecycleFocus,label:active.textContent}:null;
   container.replaceChildren();
   const title=text('h2',t.title);title.id='task-detail-title';
-  add(container,text('p','CM-'+String(t.id).padStart(3,'0'),'eyebrow'),title,add(text('p','','detail-status'),badge(gitUI()?.state(t,p,snapshot.git)||p?.state||t.state),text('span',t.cancelled_at?'已取消，恢复后可认领':t.owner_member_id?memberName(t.owner_member_id):'等待 agent 认领')),text('p','声明范围','detail-label'),text('p',t.scope,'detail-value'),text('p','去重标识','detail-label'),text('p',t.intent_key,'detail-value'),text('p','创建 '+date(t.created_at)+(t.claimed_at?' · 认领 '+date(t.claimed_at):''),'meta'));
+  add(container,text('p','CM-'+String(t.id).padStart(3,'0'),'eyebrow'),title,add(text('p','','detail-status'),badge(dependencyUI()?.blocked(t,snapshot)?'blocked':gitUI()?.state(t,p,snapshot.git)||p?.state||t.state),text('span',t.cancelled_at?'已取消，恢复后可认领':t.owner_member_id?memberName(t.owner_member_id):'等待 agent 认领')),text('p','声明范围','detail-label'),text('p',t.scope,'detail-value'),text('p','去重标识','detail-label'),text('p',t.intent_key,'detail-value'),text('p','创建 '+date(t.created_at)+(t.claimed_at?' · 认领 '+date(t.claimed_at):''),'meta'));
   if(p)add(container,text('p','最新进展','detail-label'),text('p',p.summary,'detail-value'),text('p','agent 自述 · '+memberName(p.member_id)+' · '+date(p.updated_at),'meta'),text('p','证据：'+(p.evidence||'未提供'),'detail-value'));
   gitUI()?.renderDetails(container,t,snapshot.git,gitContext());
   lifecycleUI()?.renderDetails(container,t,snapshot,gitContext());
+  dependencyUI()?.renderDetails(container,t,snapshot,gitContext());
   const related=snapshot.requests.filter(r=>r.task_id===t.id);
   add(container,text('p','关联技术请求','detail-label'));
   if(!related.length)empty(container,'尚无关联请求。');
@@ -195,9 +203,10 @@ function renderRequests(){
   $('requests').replaceChildren(); if(!snapshot.requests.length) empty($('requests'),'尚无技术请求。让 agent 在 MCP 入口发送需要协作的具体问题。');
   snapshot.requests.forEach(r => { const row=text('article','','record'); row.id='request-'+r.id; add(row,add(text('div','','record-header'),add(text('div'),badge(r.resolved_at?'已解决':'待解决'),text('span','#'+r.id+' · 上下文 v'+r.context_version,'meta')),text('span',memberName(r.sender_member_id)+' → '+memberName(r.receiver_member_id),'meta')),text('h3',r.body)); if(r.task_id) row.append(taskLink(r.task_id));
     add(row,text('p','发起 '+date(r.created_at)+' · 分派 '+date(r.assigned_at),'meta'),text('p','读取 '+date(r.read_at)+' · 处理 '+date(r.processed_at)+' · 解决 '+date(r.resolved_at),'timeline'));
-    if(!r.receiver_member_id && !r.resolved_at){ const form=text('form','','assignment'),label=text('label','分派收件人'),select=document.createElement('select'); select.name='receiver_member_id'; select.required=true; add(select,text('option','选择成员')); select.firstChild.value=''; snapshot.members.forEach(m=>{const o=text('option',m.display_name);o.value=m.member_id;select.append(o);}); label.append(select); const submit=text('button','分派');submit.type='submit'; add(form,label,submit); form.addEventListener('submit',e=>{e.preventDefault(); perform(submit,()=>api('/api/requests/'+r.id+'/assign',{receiver_member_id:select.value}));}); row.append(form); }
+    if(!r.dependency_id && !r.receiver_member_id && !r.resolved_at){ const form=text('form','','assignment'),label=text('label','分派收件人'),select=document.createElement('select'); select.name='receiver_member_id'; select.required=true; add(select,text('option','选择成员')); select.firstChild.value=''; snapshot.members.forEach(m=>{const o=text('option',m.display_name);o.value=m.member_id;select.append(o);}); label.append(select); const submit=text('button','分派');submit.type='submit'; add(form,label,submit); form.addEventListener('submit',e=>{e.preventDefault(); perform(submit,()=>api('/api/requests/'+r.id+'/assign',{receiver_member_id:select.value}));}); row.append(form); }
+    if(r.dependency_id)row.append(text('p',r.dependency_route_state==='current'?'当前任务依赖：请在任务详情答复或确认满足。':r.dependency_route_state==='historical'?'历史路由：责任人已变化，原消息和回执保留。':'已关闭的任务依赖，保留处理记录。','notice'));
     r.replies.forEach(reply=>add(row,add(text('div','','reply'),text('p',memberName(reply.author_member_id)+' · 回复 · '+date(reply.created_at),'meta'),text('p',reply.body),text('p','证据：'+(reply.evidence||'未提供'),'meta'))));
-    if(!r.resolved_at && r.replies.length && r.sender_member_id===snapshot.me.member_id) row.append(button('确认请求已解决',e=>perform(e.currentTarget,()=>api('/api/requests/'+r.id+'/resolve',{context_version:r.context_version}))));
+    if(!r.dependency_id && !r.resolved_at && r.replies.length && r.sender_member_id===snapshot.me.member_id) row.append(button('确认请求已解决',e=>perform(e.currentTarget,()=>api('/api/requests/'+r.id+'/resolve',{context_version:r.context_version}))));
     $('requests').append(row);
   });
 }
