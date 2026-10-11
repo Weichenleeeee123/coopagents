@@ -166,7 +166,7 @@ function renderTaskDetail(){
   const t=snapshot?.tasks.find(t=>t.id===activeTaskId); if(!t){closeTaskDetail();return;}
   const container=$('task-detail'), p=snapshot.progress.find(p=>p.task_id===t.id);
   if(container.contains(document.activeElement)&&['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName))return;
-  const focused=container.contains(document.activeElement)?document.activeElement.textContent:null;
+  const active=document.activeElement,focused=container.contains(active)?{tag:active.tagName,key:active.dataset.lifecycleFocus,label:active.textContent}:null;
   container.replaceChildren();
   const title=text('h2',t.title);title.id='task-detail-title';
   add(container,text('p','CM-'+String(t.id).padStart(3,'0'),'eyebrow'),title,add(text('p','','detail-status'),badge(gitUI()?.state(t,p,snapshot.git)||p?.state||t.state),text('span',t.cancelled_at?'已取消，恢复后可认领':t.owner_member_id?memberName(t.owner_member_id):'等待 agent 认领')),text('p','声明范围','detail-label'),text('p',t.scope,'detail-value'),text('p','去重标识','detail-label'),text('p',t.intent_key,'detail-value'),text('p','创建 '+date(t.created_at)+(t.claimed_at?' · 认领 '+date(t.claimed_at):''),'meta'));
@@ -181,7 +181,7 @@ function renderTaskDetail(){
   add(container,text('p','关联公共约定','detail-label'));
   if(!contracts.length)empty(container,'尚无关联公共约定。');
   contracts.forEach(c=>container.append(button(c.contract_key+' · 生效 '+(c.effective_version?'v'+c.effective_version:'未批准'),()=>{closeTaskDetail();setView('contracts');$('contract-'+c.id)?.scrollIntoView({block:'center'});},'detail-link')));
-  if(focused)Array.from(container.querySelectorAll('button')).find(b=>b.textContent===focused)?.focus({preventScroll:true});
+  if(focused)Array.from(container.querySelectorAll('button,summary')).find(node=>node.tagName===focused.tag&&(focused.key?node.dataset.lifecycleFocus===focused.key:node.textContent===focused.label))?.focus({preventScroll:true});
 }
 function openTaskDetail(id){activeTaskId=id;taskOpener=document.activeElement;renderTaskDetail();if(!$('task-dialog').open)$('task-dialog').showModal();}
 function closeTaskDetail(){activeTaskId=null;if($('task-dialog').open)$('task-dialog').close();$('task-detail').replaceChildren();}

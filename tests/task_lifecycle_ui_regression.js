@@ -4,9 +4,12 @@ const fs=require('node:fs');
 assert.ok(fs.existsSync('src/static/task_lifecycle.js'),'task lifecycle UI module missing');
 const Lifecycle=require('../src/static/task_lifecycle.js');
 class Element{
-  constructor(tag){this.tagName=tag.toUpperCase();this.children=[];this.listeners={};this.textContent='';this.value='';this.disabled=false;}
+  constructor(tag){this.tagName=tag.toUpperCase();this.children=[];this.listeners={};this.textContent='';this.value='';this.disabled=false;this.open=false;this.dataset={};}
   append(...children){this.children.push(...children);}
   replaceChildren(){this.children=[];}
+  querySelectorAll(selector){return descendants(this).filter(node=>selector.split(',').some(tag=>node.tagName===tag.toUpperCase()));}
+  focus(){document.activeElement=this;}
+  reset(){}
   setAttribute(){}
   addEventListener(type,fn){this.listeners[type]=fn;}
   contains(target){return target===this||this.children.some(child=>child.contains(target));}
@@ -46,5 +49,62 @@ global.document={createElement:tag=>new Element(tag),activeElement:null};
   const scoped=descendants(root).find(n=>n.textContent==='查询此任务的当前交接');assert.ok(scoped);
   const query=scoped.listeners.click();done({task:{...task,owner_member_id:'next',revision:4},handoff:offered.lifecycle.handoffs[0]});await query;
   assert.match(content(root),/接受交接/);
-  console.log('Lifecycle permission, safe DOM, retained drafts, revision payload and project switching regressions passed');
+  // Exercise the actual app's polling detail render, with nested history and keyboard focus.
+  Lifecycle.clear();
+  const vm=require('node:vm'), elements=new Map();
+  document.getElementById=id=>{if(!elements.has(id))elements.set(id,new Element('div'));return elements.get(id);};
+  document.querySelectorAll=()=>[];
+  const app=vm.createContext({document,window:{CrewmeshTaskLifecycle:Lifecycle},sessionStorage:{getItem:()=>'',setItem(){},removeItem(){}},setTimeout:()=>1,clearTimeout(){},location:{origin:'http://localhost'},AbortController,Date,JSON});
+  vm.runInContext(fs.readFileSync('src/static/app.js','utf8'),app);
+  const event=id=>({id,task_id:1,action:'release_task',actor_member_id:'me',from_owner_member_id:'me',ownership_epoch:1,summary:'Event '+id,created_at:'2026-10-11T00:00:00Z',context:{progress:{summary:'Progress '+id}}});
+  const fixture={...snapshot,tasks:[task],progress:[],requests:[],contracts:[],lifecycle:{...snapshot.lifecycle,history:[event(30)]}};
+  app.fixture=fixture;app.testApi=context.api;
+  vm.runInContext('snapshot=fixture;activeTaskId=1;api=testApi;renderTaskDetail()',app);
+  const panel=document.getElementById('task-detail');
+  const history=()=>descendants(panel).find(n=>n.tagName==='DETAILS');
+  const entries=()=>descendants(history()).filter(n=>n.tagName==='DETAILS');
+  const control=label=>descendants(panel).find(n=>n.textContent===label);
+  const poll=()=>vm.runInContext('snapshot={...snapshot};renderTaskDetail()',app);
+  history().open=true;entries()[0].open=true;
+  const evidence=control('查看完整交接证据').listeners.click();
+  done({context:{progress:{summary:'Complete evidence <script>safe</script>'}}});await evidence;
+  let page=control('查看此任务的更多记录').listeners.click();
+  done({events:[event(30),event(20)],next_before_id:20});await page;
+  entries()[1].open=true;
+  const focused=entries()[1].children[0];focused.focus();
+  poll();
+  assert.equal(history().open,true,'poll must preserve outer history expansion');
+  assert.equal(entries().length,2,'poll must retain loaded history pages');
+  assert.ok(entries().every(n=>n.open),'poll must preserve each event expansion');
+  assert.match(content(panel),/Complete evidence <script>safe<\/script>/,'poll must retain full evidence');
+  assert.ok(panel.contains(document.activeElement),'poll must restore focus to mounted summary');
+  assert.equal(document.activeElement.tagName,'SUMMARY');
+  assert.equal(document.activeElement,entries()[1].children[0],'same-label event focus must use the event ID');
+  page=control('查看此任务的更多记录').listeners.click();
+  assert.equal(calls.at(-1).args.before_id,20,'poll must preserve pagination cursor');
+  poll(); // A pending page may finish after its original DOM has been replaced.
+  assert.equal(control('查看此任务的更多记录').disabled,true);
+  done({events:[event(10)],next_before_id:null});await page;
+  assert.match(content(panel),/Event 10/,'pending page must update the current mounted history');
+  assert.equal(control('查看此任务的更多记录').hidden,true);
+  poll();assert.equal(entries().length,3);assert.equal(control('查看此任务的更多记录').hidden,true);
+  assert.equal(descendants(panel).filter(n=>n.tagName==='PRE').length,1,'cached evidence must not duplicate');
+  history().children[0].focus();poll();assert.equal(document.activeElement,history().children[0]);
+  for(const change of [{me:{room_id:'room',member_id:'other'}},{tasks:[{...task,id:2}]},{me:{room_id:'other',member_id:'me'}}]){
+    app.other={...fixture,...change};
+    vm.runInContext('snapshot=other;activeTaskId=other.tasks[0].id;renderTaskDetail()',app);
+    assert.equal(history().open,false,'history state must be scoped by member, task and project');
+    assert.doesNotMatch(content(panel),/Complete evidence/);
+  }
+  vm.runInContext('snapshot=fixture;activeTaskId=1;renderTaskDetail()',app);
+  assert.equal(history().open,true);assert.equal(entries().length,3);
+  // Clear invalidates in-flight responses even if the caller reuses a context.
+  const late=entries()[1].querySelectorAll('button')[0].listeners.click();
+  Lifecycle.clear();poll();done({context:{private:'Late evidence'}});await late;poll();
+  assert.equal(history().open,false);assert.equal(entries().length,1);
+  assert.doesNotMatch(content(panel),/Late evidence|Complete evidence/);
+  page=control('查看此任务的更多记录').listeners.click();
+  Lifecycle.clear();poll();done({events:[event(5)],next_before_id:5});await page;poll();
+  assert.equal(entries().length,1,'cleared pages must not leak back into replacement project state');
+  console.log('Lifecycle permissions, retained drafts/history/evidence/pagination/focus, and project switching regressions passed');
 })().catch(error=>{console.error(error);process.exitCode=1;});

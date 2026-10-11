@@ -75,6 +75,15 @@ class LifecycleTests(unittest.TestCase):
         self.change('cancel_task'); self.change('reopen_task')
         self.assertEqual(self.s.activity.list_progress(self.a['web_token']), [])
 
+    def test_cancel_hides_declared_overlap_and_reopen_restores_it(self):
+        other = self.s.tasks.create_task(self.b['web_token'], 'overlap', 'Related work', 'src/feature')
+        expected = [self.task['id'], other['id']]
+        self.assertEqual(self.s.activity.overlaps(self.a['web_token'])[0]['task_ids'], expected)
+        self.change('cancel_task')
+        self.assertEqual(self.s.activity.overlaps(self.a['web_token']), [])
+        self.change('reopen_task')
+        self.assertEqual(self.s.activity.overlaps(self.a['web_token'])[0]['task_ids'], expected)
+
     def test_payload_aware_idempotence_stale_revision_and_agent_boundaries(self):
         self.claim()
         args = dict(task_id=self.task['id'], expected_revision=self.task['revision'], request_key='retry', summary='Handoff', target_member_id=self.b['member_id'], session_key='one', ownership_epoch=self.task['ownership_epoch'])

@@ -86,7 +86,7 @@ class ActivityStore:
         """Compare declared scope strings; this performs no filesystem operations."""
         with self.db.connect() as connection:
             principal = self.resolve(connection, token)
-            tasks = connection.execute("SELECT id, scope FROM tasks WHERE room_id = ? ORDER BY id",
+            tasks = connection.execute("SELECT id, scope FROM tasks WHERE room_id = ? AND cancelled_at IS NULL ORDER BY id",
                                        (principal.room_id,)).fetchall()
             result = []
             for first, second in combinations(tasks, 2):

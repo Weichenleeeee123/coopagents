@@ -1,36 +1,49 @@
 'use strict';
 (() => {
-  const drafts=new Map();
+  const drafts=new Map(),histories=new Map();
   const labels={claim_task:'认领任务',release_task:'释放任务',propose_handoff:'提出转交',accept_handoff:'接受交接',reject_handoff:'拒绝交接',force_handoff:'负责人强制转交',cancel_task:'取消任务',reopen_task:'重新打开'};
   const element=(tag,value='',cls)=>{const node=document.createElement(tag);node.textContent=value;if(cls)node.className=cls;return node;};
   const append=(parent,...children)=>{children.forEach(child=>parent.append(child));return parent;};
   const matches=(task,filter)=>filter==='all'||(filter==='cancelled'?Boolean(task.cancelled_at||task.state==='cancelled'):!task.cancelled_at&&task.state!=='cancelled');
-  function clear(){drafts.clear();}
-  function renderHistory(root,records,task,context){
+  function clear(){drafts.clear();histories.clear();}
+  function renderHistory(root,records,task,context,state,key,current){
     records.forEach(record=>{
-      const entry=element('details'),body=element('div');
-      append(entry,element('summary',(labels[record.action]||record.action)+' · '+context.memberName(record.actor_member_id)+' · '+new Date(record.created_at).toLocaleString()),body);
+      let saved=state.events.get(record.id);
+      if(!saved){saved={open:false,loading:false};state.events.set(record.id,saved);}
+      const entry=element('details'),body=element('div'),summary=element('summary',(labels[record.action]||record.action)+' · '+context.memberName(record.actor_member_id)+' · '+new Date(record.created_at).toLocaleString());
+      entry.open=saved.open;saved.entry=entry;summary.dataset.lifecycleFocus=key+':event:'+record.id;
+      append(entry,summary,body);
       append(body,element('p',record.summary,'detail-value'),element('p','责任周期 '+record.ownership_epoch+' · '+context.memberName(record.from_owner_member_id)+' → '+(record.to_owner_member_id?context.memberName(record.to_owner_member_id):'待认领'),'meta'));
       const archived=record.context||{};
       if(archived.progress)append(body,element('p','当时进展：'+archived.progress.summary,'detail-value'));
       (archived.sessions||[]).forEach(session=>append(body,element('p','当时会话 '+session.session_key+' · '+session.branch,'meta')));
       (archived.deliveries||[]).forEach(delivery=>append(body,element('p','历史交付 · '+(delivery.pr_number?'PR #'+delivery.pr_number:delivery.branch||delivery.commit_sha)+' · '+delivery.state,'meta')));
-      const full=element('button','查看完整交接证据');full.type='button';
+      const full=element('button','查看完整交接证据');full.type='button';full.dataset.lifecycleFocus=key+':evidence:'+record.id;
+      let shown=false;const errorMessage=element('p','','error');
+      saved.render=()=>{
+        full.disabled=saved.loading;full.hidden=saved.evidence!==undefined;errorMessage.textContent=saved.error||'';
+        if(!shown&&saved.evidence!==undefined){append(body,element('pre',saved.evidence,'lifecycle-evidence'));shown=true;}
+      };
       full.addEventListener('click',async()=>{
-        full.disabled=true;
+        if(!current()||saved.loading||saved.evidence!==undefined)return;
+        saved.loading=true;saved.error=null;saved.render();
         try{
           const event=await context.api('/api/tasks/'+task.id+'/history/'+record.id);
-          if(!context.isCurrent())return;
-          append(body,element('pre',JSON.stringify(event.context,null,2),'lifecycle-evidence'));
-          full.hidden=true;
-        }catch(error){if(context.isCurrent())append(body,element('p',error.message,'error'));}
-        finally{if(context.isCurrent())full.disabled=false;}
+          if(!current())return;
+          saved.evidence=JSON.stringify(event.context,null,2);
+        }catch(error){if(current())saved.error=error.message;}
+        finally{if(current()){saved.loading=false;saved.render();}}
       });
-      append(body,full);append(root,entry);
+      append(body,full,errorMessage);saved.render();append(root,entry);
     });
   }
   function renderDetails(container,task,snapshot,context){
-    const me=snapshot.me,life=snapshot.lifecycle||{},key=me.room_id+':'+task.id;
+    const me=snapshot.me,life=snapshot.lifecycle||{},key=JSON.stringify([me.room_id,me.member_id,task.id]);
+    let state=histories.get(key);
+    if(!state){state={open:false,records:new Map(),events:new Map(),before:null,loaded:false,loading:false};histories.set(key,state);}
+    // Capture directly: a native details toggle event may still be queued when polling renders.
+    state.capture?.();
+    const current=()=>context.isCurrent()&&histories.get(key)===state;
     let draft=drafts.get(key);if(!draft){draft={summary:'',target:'',request:null};drafts.set(key,draft);}
     const owner=task.owner_member_id===me.member_id,manager=life.can_manage===true;
     const canEdit=owner||manager||(!task.owner_member_id&&[task.creator_member_id,task.last_owner_member_id].includes(me.member_id));
@@ -97,25 +110,35 @@
       }
       append(section,actions,status);
     }
-    const history=element('details'),historyBody=element('div');
-    append(history,element('summary','交接与恢复记录'),historyBody);
-    const records=(life.history||[]).filter(record=>record.task_id===task.id);
-    renderHistory(historyBody,records,task,context);
-    if(!records.length)append(historyBody,element('p','尚无交接记录。','muted'));
-    const load=element('button','查看此任务的更多记录');load.type='button';
-    let before=null;
+    const history=element('details'),historyBody=element('div'),historySummary=element('summary','交接与恢复记录');
+    history.open=state.open;historySummary.dataset.lifecycleFocus=key+':history';
+    append(history,historySummary,historyBody);
+    (life.history||[]).filter(record=>record.task_id===task.id).forEach(record=>state.records.set(record.id,record));
+    const load=element('button','查看此任务的更多记录');load.type='button';load.dataset.lifecycleFocus=key+':more';
+    state.capture=()=>{state.open=history.open;state.events.forEach(saved=>{if(saved.entry)saved.open=saved.entry.open;});};
+    state.render=()=>{
+      state.capture();
+      const focused=historyBody.contains(document.activeElement)?document.activeElement.dataset.lifecycleFocus:null;
+      historyBody.replaceChildren();
+      const records=Array.from(state.records.values()).sort((a,b)=>b.id-a.id);
+      renderHistory(historyBody,records,task,context,state,key,current);
+      if(!records.length)append(historyBody,element('p','尚无交接记录。','muted'));
+      if(state.error)append(historyBody,element('p',state.error,'error'));
+      load.disabled=state.loading;load.hidden=state.loaded&&!state.before;
+      if(focused)Array.from(historyBody.querySelectorAll('button,summary')).find(node=>node.dataset.lifecycleFocus===focused)?.focus({preventScroll:true});
+    };
     load.addEventListener('click',async()=>{
-      load.disabled=true;
+      if(!current()||state.loading)return;
+      state.loading=true;state.error=null;load.disabled=true;
       try{
-        const result=await context.api('/api/tasks/'+task.id+'/history',{before_id:before,limit:20});
-        if(!context.isCurrent())return;
-        if(before===null)historyBody.replaceChildren();
-        renderHistory(historyBody,result.events,task,context);before=result.next_before_id;
-        load.hidden=!before;
-      }catch(error){if(context.isCurrent())append(historyBody,element('p',error.message,'error'));}
-      finally{if(context.isCurrent())load.disabled=false;}
+        const result=await context.api('/api/tasks/'+task.id+'/history',{before_id:state.before,limit:20});
+        if(!current())return;
+        result.events.forEach(record=>state.records.set(record.id,record));
+        state.before=result.next_before_id;state.loaded=true;
+      }catch(error){if(current())state.error=error.message;}
+      finally{if(current()){state.loading=false;state.render();}}
     });
-    append(history,load);append(section,history);container.append(section);
+    state.render();append(history,load);append(section,history);container.append(section);
   }
   const exported={renderDetails,matches,clear};
   if(typeof module!=='undefined')module.exports=exported;
