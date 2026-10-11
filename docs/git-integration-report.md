@@ -32,7 +32,7 @@
 
 ## 实测
 
-- `python -m unittest discover -s tests -v`：最终稳定代码完整回归 **245 项通过**（86.388 秒），含 worker 停止信号及应用集成测试。先前完整 244 项回归也通过。
+- `python -m unittest discover -s tests -v`：Git 集成独立回归 **245 项通过**（86.388 秒），含 worker 停止信号及应用集成测试。随后通过 Git 合入商业化的已提交 `b57c72d`，合并结果完整回归 **319 项通过**（96.729 秒）；三组网页回归再次通过。
 - `python -m unittest discover -s tests -p 'test_github_*.py' -v`：39 项通过，使用离线 HTTP transport / provider；路由专项 4 项通过。
 - `python -m unittest discover -s experiments/agent-integration -p 'test_*.py' -v`：21 项通过，不代表原生双向协作实际通过。
 - 三组 Node 回归通过：Git 证据、新鲜度、安全 DOM、授权控制、项目切换、历史排序；延迟响应的会话隔离；既有账号及项目界面。
@@ -54,6 +54,6 @@
 
 ## 并行商业化工作
 
-基于已提交的 `176bb50`（含主线账单领域 `fe5b431`）在 `feat/git-repository-integration` 隔离实现。发布前重新 fetch 并检查，远端 main 仍为 `fe5b431`；主工作区仍有未提交的支付模块及文档。采用独立 PR 交付，没有覆盖或混入这些文件。后续商业化提交若改动共同 API 或页面，通过 Git 合并并再次验证。
+基于已提交的 `176bb50`（含主线账单领域 `fe5b431`）在 `feat/git-repository-integration` 隔离实现。初次发布前远端 main 为 `fe5b431`，主工作区的支付模块仍未提交。发布期间商业化对话将 `b57c72d` 推送 main；本分支用 Git 合并为 `658aaf8`，文档索引自动合并且完整 319 项回归通过。其仍未提交的 API 测试和报告没有被复制、暂存或覆盖。本 PR 相对 main 只包含 Git 集成变化；后续共同 API 或页面改动继续通过 Git 汇合。
 
 公开交付：[PR #1](https://github.com/Weichenleeeee123/crewmesh/pull/1)。主工作区和隔离工作树及所有原始证据均保留。
