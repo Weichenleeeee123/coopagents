@@ -1,6 +1,6 @@
 """Real Docker/Caddy TLS acceptance. Retains containers, volumes and evidence.
 
-Run from repository root: python scripts/deployment_smoke.py --image crewmesh:0.3.0rc1
+Run from repository root: python scripts/deployment_smoke.py --image crewmesh:0.4.0rc1
 Requires Docker Engine and the pinned Caddy image. No external DNS or CA needed.
 """
 import argparse
@@ -26,7 +26,7 @@ class LoopbackTLS(http.client.HTTPSConnection):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--image', default='crewmesh:0.3.0rc1')
+    parser.add_argument('--image', default='crewmesh:0.4.0rc1')
     parser.add_argument('--docker', default=shutil.which('docker'))
     args = parser.parse_args()
     if not args.docker:
@@ -36,6 +36,7 @@ def main():
     evidence.mkdir(parents=True)
     evidence = evidence.resolve()
     app, proxy = identifier + '-app', identifier + '-proxy'
+    restored_app = identifier + '-restored-app'
     started = []
     result = {'checks': [], 'image': args.image, 'evidence_id': identifier}
 
@@ -66,7 +67,7 @@ def main():
         bootstrap = secrets.token_urlsafe(32)
         environment = evidence / 'app.env'
         environment.write_text('\n'.join((
-            'CREWMESH_HOST=0.0.0.0', 'CREWMESH_PUBLIC_URL=' + origin,
+            'CREWMESH_MODE=self-hosted', 'CREWMESH_HOST=0.0.0.0', 'CREWMESH_PUBLIC_URL=' + origin,
             'CREWMESH_TRUSTED_PROXIES=' + proxy_ip, 'CREWMESH_BOOTSTRAP_SECRET=' + bootstrap)) + '\n', encoding='utf-8')
         docker('run', '-d', '--name', app, '--network', identifier, '--network-alias', 'app',
                '--read-only', '--tmpfs', '/tmp', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges:true',
@@ -84,7 +85,7 @@ def main():
                 time.sleep(1)
         context = ssl.create_default_context(cafile=str(ca))
 
-        def request(path, data=None, token=None, headers=None, include_headers=False):
+        def request(path, data=None, token=None, headers=None, include_headers=False, raw_response=False):
             connection = LoopbackTLS('crewmesh.localhost', port, timeout=10, context=context)
             merged = {'Host': f'crewmesh.localhost:{port}', **(headers or {})}
             if token:
@@ -96,10 +97,13 @@ def main():
                 connection.request('POST' if body is not None else 'GET', path, body, merged)
                 response = connection.getresponse()
                 raw = response.read()
-                try:
-                    data = json.loads(raw) if raw else None
-                except ValueError:
-                    data = raw.decode('utf-8', errors='replace')
+                if raw_response:
+                    data = raw
+                else:
+                    try:
+                        data = json.loads(raw) if raw else None
+                    except ValueError:
+                        data = raw.decode('utf-8', errors='replace')
                 return (response.status, data, dict(response.getheaders())) if include_headers else (response.status, data)
             finally:
                 connection.close()
@@ -135,10 +139,46 @@ def main():
         check('authorized account project selection', status == 200)
         status, account_task = request('/api/tasks', {'intent_key': 'account-persist', 'title': 'C1 persistence', 'scope': 'src'}, selected['web_token'], {'Origin': origin})
         check('selected project credential accesses project API', status == 200)
+        billing_path = '/account/teams/' + team['team_id'] + '/billing'
+
+        def unlimited_billing():
+            status, summary = request(billing_path, headers=account_headers)
+            return (status == 200 and summary['mode'] == 'self-hosted'
+                    and summary['enabled'] is False and summary['plan'] == 'unlimited'
+                    and summary['paid'] is False and summary['status'] == 'disabled'
+                    and summary['limits'] == {'members': None, 'projects': None}
+                    and summary['usage'] == {'members': 1, 'projects': 1}
+                    and summary['over_limit'] == {'members': False, 'projects': False}
+                    and summary.get('price') is None and not summary.get('checkout_available', False))
+
+        check('self-hosted billing is disabled unlimited with actual account/project usage', unlimited_billing())
+        check('anonymous account billing GET rejected', request(billing_path)[0] == 401)
+        check('project web bearer cannot read account billing', request(billing_path, token=selected['web_token'])[0] == 401)
+        for operation in ('checkout', 'portal', 'sync'):
+            check('self-hosted owner billing ' + operation + ' conflicts with valid cookie and CSRF',
+                  request(billing_path + '/' + operation, {}, headers=account_headers)[0] == 409)
+        source_root = Path(__file__).resolve().parent.parent
+        for asset in ('billing.js', 'git.js'):
+            status, body, asset_headers = request('/static/' + asset, include_headers=True, raw_response=True)
+            asset_headers = {key.lower(): value for key, value in asset_headers.items()}
+            check(asset + ' packaged bytes served over verified TLS',
+                  status == 200 and body == (source_root / 'src/static' / asset).read_bytes())
+            check(asset + ' JavaScript MIME and nosniff',
+                  asset_headers.get('content-type', '').split(';')[0] == 'text/javascript'
+                  and asset_headers.get('x-content-type-options') == 'nosniff')
+            policy = asset_headers.get('content-security-policy', '')
+            check(asset + ' same-origin script and frame security policy',
+                  "script-src 'self'" in policy and "frame-ancestors 'none'" in policy
+                  and 'unsafe-inline' not in policy)
         room = {'name': 'P4 deployment test', 'owner_name': 'Owner'}
         check('public anonymous room creation rejected', request('/api/rooms', room)[0] == 401)
         status, owner = request('/api/rooms', room, headers={'X-Crewmesh-Bootstrap': bootstrap, 'Origin': origin})
         check('HTTPS bootstrap room creation', status == 200)
+        check('project agent bearer cannot read account billing', request(billing_path, token=owner['agent_token'])[0] == 401)
+        # Unmounted paths first pass the catch-all MCP authentication boundary.
+        check('self-hosted Stripe webhook is not mounted',
+              request('/billing/stripe/webhook', {})[0] == 401
+              and request('/billing/stripe/webhook', {}, token=owner['agent_token'])[0] == 404)
         status, task = request('/api/tasks', {'intent_key': 'container-persist', 'title': 'Persistence', 'scope': 'src'}, owner['web_token'], {'Origin': origin})
         check('HTTPS authenticated task creation', status == 200)
         rpc = {'jsonrpc': '2.0', 'id': 1, 'method': 'initialize', 'params': {
@@ -172,6 +212,31 @@ def main():
         check('account can reselect authorized project after restart', status == 200)
         status, account_snapshot = request('/api/snapshot', token=reselected['web_token'])
         check('account project task persists after restart', status == 200 and account_snapshot['tasks'][0]['id'] == account_task['id'])
+        check('self-hosted unlimited billing and actual usage persist after restart', unlimited_billing())
+        # Serve the restored database through the same verified TLS origin/CA.
+        # The old app, both databases and every container/volume remain retained.
+        docker('stop', app)
+        docker('run', '-d', '--name', restored_app, '--network', identifier, '--network-alias', 'restored-app',
+               '--read-only', '--tmpfs', '/tmp', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges:true',
+               '--mount', f'type=volume,source={identifier}-data,target=/data', '--env-file', str(environment),
+               '--env', 'CREWMESH_DATABASE=/data/restored.sqlite3', args.image)
+        started.append(restored_app)
+        restored_config = evidence / 'Caddyfile-restored'
+        restored_config.write_text('{\n servers {\n strict_sni_host on\n }\n}\ncrewmesh.localhost {\n tls internal\n reverse_proxy restored-app:8787\n}\n', encoding='utf-8')
+        docker('cp', str(restored_config), proxy + ':/tmp/Caddyfile-restored')
+        docker('exec', proxy, 'caddy', 'reload', '--config', '/tmp/Caddyfile-restored', '--adapter', 'caddyfile')
+        deadline = time.monotonic() + 30
+        while True:
+            try:
+                if request('/ready')[0] == 200:
+                    break
+            except (OSError, ValueError, http.client.HTTPException):
+                pass
+            if time.monotonic() > deadline:
+                raise RuntimeError('Restored TLS service not ready')
+            time.sleep(1)
+        check('restored account session works through verified TLS', request('/account/session', headers=account_headers)[0] == 200)
+        check('new-path backup restore keeps self-hosted billing disabled unlimited and actual usage', unlimited_billing())
         result['status'] = 'passed'
     except Exception as error:
         result.update(status='failed', error=str(error))

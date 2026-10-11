@@ -1,6 +1,16 @@
 # 版本记录
 
-## 未发行 — Git 仓库集成（2026-10-11）
+## 0.4.0rc1 — C2 代码与测试候选版（2026-10-11）
+
+- 可选 cloud 固定月付 Team 订阅，Free / Team 活跃账号成员与绑定项目事务限额；完整 MIT 自托管和无订阅 cloud 保持 Unlimited。
+- 持久 billing ledger、出站 idempotency keys、签名 raw webhook、规范当前 invoice/payment/退款/争议核验、backoff/lease 与 bounded 维护 CLI。
+- 账号中心 Plan & billing、实际 Price/用量、owner 付款操作、Cookie/CSRF 和失效响应/跳转保护。
+- 可选 `deploy/compose.cloud-billing.yaml` 明确要求账号 OAuth、Stripe mode/Price/受保护文件和四项 cap；默认 Compose 不要求提供方密钥。
+- 默认自托管 Docker/Caddy TLS smoke 增加 Unlimited、禁用付款、Billing/Git 资产与重启/恢复验证；当前实际结果由 [C2 报告](commercial-c2-report.md) 记录。
+- 尚无真实 Stripe 账号/Price/付款、外部 webhook、真实 OAuth 或 C3 官方运营验收；保留 v0.2.0 / v0.3.0rc1 既有发行资产，不宣称付费服务上线。
+- 合并以下 Git 仓库集成成果，保留 Billing/Git HTTP、worker 与前端回归共存。
+
+### Git 仓库集成（2026-10-11）
 
 - 本地只读 stdio MCP 适配器，版本化项目约定、实际变更检查点、事务离线队列与精确路径重叠。
 - 独立只读 GitHub App，项目管理者授权及负责人 agent 关联提交/分支/PR；签名持久队列、当前 HEAD 检查、限流与补偿同步。

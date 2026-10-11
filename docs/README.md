@@ -15,6 +15,7 @@
 | [C2 Stripe 接口](c2-stripe.md) | 支付配置、签名、提供方核验与恢复限制 |
 | [C2 HTTP 与恢复](c2-http.md) | 账号账单路由、原始签名、独立 worker 与本地维护命令 |
 | [C2 账单界面](c2-ui.md) | 英文套餐与用量、所有者操作、异步切换保护及浏览器验收 |
+| [C2 配置与运维](c2-operations.md) | 可选托管订阅部署、受保护密钥、事件恢复和真实提供方验收边界 |
 | [C2 验收记录](commercial-c2-report.md) | 分阶段测试、独立审查与外部验证边界 |
 | [Stripe 实施参考](c2-stripe-reference.md) | 固定 API 版本、账期字段、事件和风险核验依据 |
 | [C1 验收](commercial-c1-report.md) | 账号、多项目、迁移与恢复的验证边界 |

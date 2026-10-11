@@ -80,9 +80,9 @@ Create `src/static/billing.js`, `tests/billing_ui_regression.js`; modify static 
 
 Update `.env.example`, CI, deployment docs, README, changelog and indexes; create `docs/commercial-c2-report.md`. Keep flat `src/`; use candidate version `0.4.0rc1` after completed verification, preserving previous release assets.
 
-- [ ] Document catalog/key/secret configuration, provider event registration, test/live boundaries, duplicate/retry recovery, quota rules and C3 pause. No made-up prices, successful payments, deployment or provider sandbox evidence.
+- [x] Document catalog/key/secret configuration, provider event registration, test/live boundaries, duplicate/retry recovery, quota rules and C3 pause. No made-up prices, successful payments, deployment or provider sandbox evidence.
 - [ ] Run fresh full Python suite, experiment regressions, JS checks, build/install and container/TLS acceptance relevant to changed lifespan/routes. Inspect exact candidate CI results; retain all local evidence.
-- [ ] Independently review full C2 authorization, event ordering, checkout idempotency and self-hosting behavior; fix all important findings and rerun affected checks.
+- [x] Independently review full C2 authorization, event ordering, checkout idempotency and self-hosting behavior; fix all important findings and rerun affected checks.
 - [ ] Commit and push stages; record verified counts/commits and missing real Stripe sandbox credentials if unavailable. Publish a clearly labeled candidate only when checks pass; never overwrite prior artifacts.
 
 ## Execution decisions

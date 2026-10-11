@@ -69,7 +69,7 @@ python3 -m venv .venv
 docker compose --env-file .env up -d --build
 ```
 
-应用以非 root 用户运行，后端端口不直接公开。SQLite、证书和代理配置使用持久卷；在线备份和恢复均拒绝覆盖既有文件。实际公网目标由部署者提供。
+应用以非 root 用户运行，后端端口不直接公开。SQLite、证书和代理配置使用持久卷；在线备份和恢复均拒绝覆盖既有文件。可选订阅部署使用 `deploy/compose.cloud-billing.yaml`，须先完成 [C2 配置检查](docs/c2-operations.md)。实际公网目标由部署者提供。
 
 ## 保留你习惯的工具
 
@@ -94,7 +94,7 @@ docker compose --env-file .env up -d --build
 
 ## 当前能做到哪里
 
-**0.3.0rc1 C1 候选版**：完整 MIT 开源本地账号、团队、多项目与显式授权、历史项目认领、管理员及离线密码恢复；保留认证 HTTP/MCP、真实数据看板与备份恢复。自托管不依赖官方服务，不设付费核心功能锁。未来官方托管订阅属于 C2，运营验收属于 C3；尚未上线。当前检查与外部阻塞见 [C1 报告](docs/commercial-c1-report.md)，历史 0.2.0 TLS 通过不能替代本候选版验收。
+**0.4.0rc1 C2 候选版**：完整 MIT 开源账号、团队、多项目与 Git 协作；可选官方 cloud 固定月付 Team 订阅、服务端付款核验、Free / Team 容量限制和账号中心 Plan & billing。自托管及未配置订阅的 cloud 都是 Unlimited；自托管无需 Stripe 或 GitHub 密钥，核心功能不依赖付款或许可服务。金额来自实际 Stripe Price，四项限额由部署者明确配置。当前是代码与测试候选版，真实 Stripe、账号 OAuth、公网部署及 C3 运维尚未验收，付费服务尚未上线。配置和恢复见 [C2 运维](docs/c2-operations.md)，完整候选版验证边界见 [C2 报告](docs/commercial-c2-report.md)。
 
 默认只监听本机；公网部署按 [部署说明](docs/deployment.md) 配置域名、管理员密钥和持久卷后启动。Claude 原生正式接入已验证，历史 Codex CLI 的 MCP 调用取消与真实双机 / 公网验收仍见 [P4 报告](docs/p4-release-report.md)。本轮本地 Git 适配器已通过真实克隆及官方 SDK 验证，没有把这些结果当成原生工具或真实 App 验收。网页五秒拉取数据，agent 在任务检查点读取消息；闲置会话不会自动唤醒。未接入 GitHub 的项目继续使用 agent 自述状态；接入后的远端证据独立标注。待验收列表示交付阶段，公共约定的批准是另一套明确的人工决定。
 

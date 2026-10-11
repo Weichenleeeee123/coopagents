@@ -10,6 +10,9 @@ Claude 正常入口发布、Codex 桌面读取和显式确认已通过。既有�
 
 | 阶段 | 具体任务 | 验收依据 | 状态 |
 | --- | --- | --- | --- |
+| C1 账号基础 | MIT 本地账号、团队、多项目、权限与恢复 | 账号/工作区/API/迁移回归 | 已实现；历史 0.3.0rc1 候选版 |
+| C2 官方订阅 | 可选 cloud Stripe 月付、账本、事务限额、Billing UI 与部署配置 | 规范 provider fixtures、权限/竞态/重试/JS；默认自托管 TLS | 0.4.0rc1 代码与测试候选版；真实 Stripe/OAuth 未验收，见 [C2 报告](commercial-c2-report.md) |
+| C3 官方运营 | 真实账号/Price/webhook、公网部署、升级恢复与订阅运营 | 外部 test 验收后明确 live 决策，原生/双机边界单独记录 | 暂停；未有 Stripe 账号及部署目标，不能宣称上线 |
 | G1 本地 Git | 只读适配器、项目绑定、实际变更、离线队列与重叠提示 | 真实双克隆、HTTP 与 SDK stdio | 已实现；原生新适配器验收另记 |
 | G2 GitHub | 独立只读 App 授权、提交/PR、当前 HEAD 检查、签名队列与补偿同步 | 离线 REST / 状态机 / 真实应用 worker | 已实现；真实 App 与公网回调待部署配置 |
 | G3 看板融合 | 来源、过期时间、交付自动分列、详情及仓库入口 | JavaScript 回归与真实浏览器 | 已实现；详情见 [Git 集成报告](git-integration-report.md) |

@@ -70,7 +70,7 @@ class BillingHTTP:
         account = self.service.accounts.oauth_account('github', str(int(hashlib.sha256(name.encode()).hexdigest()[:10], 16)), name)
         return self.service.accounts.create_session(account['id'])
 
-    def request(self, method, path, session=None, data=None, raw=None, headers=None):
+    def request(self, method, path, session=None, data=None, raw=None, headers=None, raw_response=False):
         values = [('Host', 'team.example')]
         if session:
             values += [('Cookie', 'crewmesh_account=' + session['session_token'])]
@@ -91,7 +91,7 @@ class BillingHTTP:
         conn.endheaders(raw)
         response = conn.getresponse()
         body = response.read()
-        result = response.status, json.loads(body) if body else None, response.getheaders()
+        result = response.status, body if raw_response else (json.loads(body) if body else None), response.getheaders()
         conn.close()
         return result
 
@@ -270,7 +270,16 @@ class BillingConfigurationTests(unittest.TestCase):
                     self.assertFalse(any(name.lower() == 'set-cookie' for name, _ in headers))
                     self.assertEqual(live.request('POST', '/account/teams/missing/billing/' + suffix, owner, {})[0], 401)
                 self.assertEqual(live.request('GET', '/account/session', stranger)[0], 200)
-                self.assertNotEqual(live.request('POST', '/billing/stripe/webhook', raw=b'{}')[0], 200)
+                # The absent route falls through the existing authenticated MCP mount.
+                # Anonymous callers see its 401; an authenticated agent sees 404.
+                self.assertFalse(any(getattr(route, 'path', None) == '/billing/stripe/webhook'
+                                     for route in live.app.app.routes))
+                self.assertEqual(live.request('POST', '/billing/stripe/webhook', data={})[0], 401)
+                agent = live.service.identity.create_room('Webhook boundary', 'Agent owner')['agent_token']
+                status, body, _ = live.request('POST', '/billing/stripe/webhook', data={},
+                    headers=[('Authorization', 'Bearer ' + agent)], raw_response=True)
+                self.assertEqual(status, 404)
+                self.assertEqual(body, b'Not Found')
             finally: live.close()
 
     def test_enabled_requires_valid_direct_config_and_https_origin(self):
