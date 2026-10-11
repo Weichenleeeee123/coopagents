@@ -1,0 +1,21 @@
+# Opt-in GitHub App extension. All real secret files remain outside Git.
+# docker compose --env-file .env -f compose.yaml -f compose.github.yaml up -d --build
+services:
+  app:
+    environment:
+      CREWMESH_GITHUB_APP_ID: ${CREWMESH_GITHUB_APP_ID:?Set the GitHub App ID}
+      CREWMESH_GITHUB_APP_CLIENT_ID: ${CREWMESH_GITHUB_APP_CLIENT_ID:?Set the GitHub App client ID}
+      CREWMESH_GITHUB_APP_CLIENT_SECRET_FILE: /run/secrets/github_client_secret
+      CREWMESH_GITHUB_APP_PRIVATE_KEY_FILE: /run/secrets/github_private_key
+      CREWMESH_GITHUB_WEBHOOK_SECRET_FILE: /run/secrets/github_webhook_secret
+    secrets:
+      - github_client_secret
+      - github_private_key
+      - github_webhook_secret
+secrets:
+  github_client_secret:
+    file: ${CREWMESH_GITHUB_APP_CLIENT_SECRET_PATH:?Set the App client secret file path}
+  github_private_key:
+    file: ${CREWMESH_GITHUB_APP_PRIVATE_KEY_PATH:?Set the RSA private key file path}
+  github_webhook_secret:
+    file: ${CREWMESH_GITHUB_WEBHOOK_SECRET_PATH:?Set the webhook secret file path}

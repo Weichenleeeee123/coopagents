@@ -12,6 +12,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from starlette.applications import Starlette
+from starlette.concurrency import run_in_threadpool
 from starlette.responses import JSONResponse, Response
 from starlette.routing import Route, Mount
 
@@ -67,7 +68,7 @@ def fields(required='', optional=None):
 
 
 class Service:
-    def __init__(self, database_path):
+    def __init__(self, database_path, github_app=None):
         path = Path(database_path)
         path.parent.mkdir(parents=True, exist_ok=True)
         self.identity = IdentityStore(path)
@@ -79,6 +80,11 @@ class Service:
         self.activity = ActivityStore(self.identity)
         self.messages = MessageStore(self.identity)
         self.contracts = ContractStore(self.identity)
+        from .repositories import RepositoryStore
+        self.repositories = RepositoryStore(self.identity)
+        from .github_app import GitHubApp
+        from .github_sync import GitHubSync
+        self.github = GitHubSync(self.identity, self.repositories, github_app or GitHubApp())
         self.operations = {
             'create_room': (None, self.identity.create_room, fields('name owner_name', {'repository': ''})),
             'join': (None, self.identity.join_invite, fields('invite_token display_name')),
@@ -96,11 +102,29 @@ class Service:
             'assign': ('web', self.messages.assign_receiver, fields('request_id receiver_member_id')),
             'propose_contract': ('agent', self.contracts.propose, fields('contract_key expected_version title body', {'source_request_id': None, 'commit_ref': ''})),
             'decision': ('web', self.contracts.decide, fields('contract_id version decision')),
+            'bind_repository': ('web', self.repositories.bind_repository, fields('repository')),
+            'observe_repository': ('agent', self.repositories.observe, {'task_id': (int, True, None), 'observation': (dict, True, None)}),
+            'repo_checkpoint': ('agent', self.repo_checkpoint, {'task_id': (int, True, None), 'observation': (dict, True, None)}),
+            'read_git_team': ('agent', lambda token: self.snapshot(token, web=False), fields()),
+            'link_delivery': ('any', self.github.associate, {'task_id': (int, True, None),
+                'branch': (str, False, ''), 'pr_number': (int, False, None), 'commit_sha': (str, False, '')}),
         }
         self.reads = {'tasks': self.tasks.list_tasks, 'sessions': self.activity.list_sessions,
                       'progress': self.activity.list_progress, 'overlaps': self.activity.overlaps,
                       'requests': self.messages.list_requests, 'contracts': self.contracts.list_contracts,
                       'events': self.contracts.list_events, 'members': self.identity.list_members}
+        self.reads['git'] = self.git_snapshot
+
+    def git_snapshot(self, token):
+        result = self.repositories.snapshot(token)
+        result.update(self.github.snapshot(token))
+        result['github_configured'] = self.github.app.enabled
+        return result
+
+    def repo_checkpoint(self, token, task_id, observation):
+        observed = self.repositories.observe(token, task_id, observation)
+        return {'observation': observed, 'team': self.snapshot(token, web=False),
+                'inbox': self.messages.read_inbox(token)}
 
     def me(self, token):
         return {'me': asdict(self.identity.authenticate(token)), 'room': self.identity.room_info(token)}
@@ -161,7 +185,7 @@ class LocalBoundary:
         origins = [v.decode('latin-1') for k, v in headers if k == b'origin']
         if origins and (len(origins) != 1 or origins[0] != (self.origin or scope['scheme'] + '://' + host)):
             rejection = ('Origin not accepted', 403)
-        if scope.get('query_string') and scope['path'] != '/api/inbox' and not (scope['path'] == '/account/oauth/github/callback' and scope['method'] == 'GET'):
+        if scope.get('query_string') and scope['path'] != '/api/inbox' and not (scope['path'] in ('/account/oauth/github/callback','/api/git/github/callback') and scope['method'] == 'GET'):
             rejection = ('Query parameters not accepted', 400)
         if rejection:
             # Reply after small pending bodies arrive, avoiding Windows TCP reset.
@@ -233,7 +257,7 @@ def bearer(request):
     return values[0][7:]
 
 
-def create_app(database_path='.local/crewmesh.sqlite3', *, base_url=None, public_url=None, bootstrap_secret=None, mode='self-hosted', github_client_id=None, github_client_secret=None, billing_config=None):
+def create_app(database_path='.local/crewmesh.sqlite3', *, base_url=None, public_url=None, bootstrap_secret=None, mode='self-hosted', github_client_id=None, github_client_secret=None, github_app=None, billing_config=None):
     if base_url and public_url:
         raise ValueError('Set only one service origin')
     origin = public_origin(public_url) if public_url is not None else None
@@ -248,7 +272,7 @@ def create_app(database_path='.local/crewmesh.sqlite3', *, base_url=None, public
     from .stripe_billing import StripeClient
     from .billing_worker import BillingWorker
     catalog = billing_catalog(mode, billing_config, origin)
-    service = Service(database_path)
+    service = Service(database_path, github_app)
     store = BillingStore(service.workspaces, mode, catalog)
     client = StripeClient(billing_config.secret_key, catalog.provider_mode) if catalog else None
     service.billing = BillingService(store, client, billing_config.webhook_secret if catalog else None, origin)
@@ -267,11 +291,42 @@ def create_app(database_path='.local/crewmesh.sqlite3', *, base_url=None, public
             async with mcp_app.router.lifespan_context(mcp_app):
                 billing_worker.start()
                 try:
-                    yield
+                    async with github_lifespan():
+                        yield
                 finally:
                     await billing_worker.close()
         finally:
             await billing_runtime.close()
+
+    @asynccontextmanager
+    async def github_lifespan():
+        stop = asyncio.Event()
+        async def github_worker():
+            next_poll = time.monotonic() + 300
+            while not stop.is_set():
+                # Network calls run outside the event loop. Durable inbox records
+                # are committed before acknowledgement and survive restarts.
+                try:
+                    await run_in_threadpool(service.github.process_pending, limit=1, should_stop=stop.is_set)
+                    if not stop.is_set() and time.monotonic() >= next_poll:
+                        await run_in_threadpool(service.github.reconcile_all, should_stop=stop.is_set)
+                        next_poll = time.monotonic() + 300
+                except Exception:
+                    # Do not log request bodies or provider credentials. Failed
+                    # records remain pending; the next pass retries them.
+                    import logging
+                    logging.getLogger(__name__).warning('GitHub reconciliation pass failed')
+                try:
+                    await asyncio.wait_for(stop.wait(), timeout=5)
+                except TimeoutError:
+                    pass
+        worker = asyncio.create_task(github_worker()) if service.github.app.enabled else None
+        try:
+            yield
+        finally:
+            stop.set()
+            if worker:
+                await worker
 
     async def endpoint(request):
         try:
@@ -303,6 +358,10 @@ def create_app(database_path='.local/crewmesh.sqlite3', *, base_url=None, public
                     result = service.me(token)
                 elif name == 'snapshot':
                     result = service.snapshot(token)
+                elif name == 'git_binding':
+                    result = service.repositories.get_binding(token)
+                elif name == 'git_observation':
+                    result = service.repositories.read_observation(token,request.path_params['observation_id'])
                 elif name == 'inbox':
                     if any(k not in ('after_id', 'limit') or len(request.query_params.getlist(k)) != 1 for k in request.query_params):
                         raise ValidationError('Unsupported query parameter')
@@ -344,6 +403,7 @@ def create_app(database_path='.local/crewmesh.sqlite3', *, base_url=None, public
         assets = {'/': ('index.html', 'text/html'),
                   '/static/styles.css': ('styles.css', 'text/css'),
                   '/static/app.js': ('app.js', 'text/javascript'),
+                  '/static/git.js': ('git.js', 'text/javascript'),
                   '/static/accounts.js': ('accounts.js', 'text/javascript'),
                   '/static/icon.png': ('icon.png', 'image/png')}
         headers = {'Content-Security-Policy': WEB_CSP, 'X-Content-Type-Options': 'nosniff'}
@@ -352,14 +412,19 @@ def create_app(database_path='.local/crewmesh.sqlite3', *, base_url=None, public
         resource, mime = assets[request.url.path]
         return Response(files('crewmesh').joinpath('static', resource).read_bytes(), media_type=mime, headers=headers)
 
-    routes = [Route(path, web_asset, methods=['GET']) for path in ('/', '/static/styles.css', '/static/app.js', '/static/accounts.js', '/static/icon.png', '/favicon.ico')]
+    routes = [Route(path, web_asset, methods=['GET']) for path in ('/', '/static/styles.css', '/static/app.js', '/static/git.js', '/static/accounts.js', '/static/icon.png', '/favicon.ico')]
     routes += [route('/health', ['GET']), route('/ready', ['GET']), route('/api/rooms', ['POST'], operation='create_room'), route('/api/join', ['POST'], operation='join'),
               route('/api/me', ['GET'], read_name='me'), route('/api/snapshot', ['GET'], read_name='snapshot'),
               route('/api/invites', ['POST'], operation='invite'), route('/api/agent-token', ['POST'], operation='rotate_agent'),
               route('/api/inbox', ['GET'], read_name='inbox')]
-    for name in ('tasks', 'sessions', 'progress', 'overlaps', 'requests', 'contracts', 'events'):
+    for name in ('tasks', 'sessions', 'progress', 'overlaps', 'requests', 'contracts', 'events', 'git'):
         routes.append(route('/api/' + name, ['GET'], read_name=name))
-    for path, operation in [('/api/tasks', 'create_task'), ('/api/tasks/{task_id:int}/claim', 'claim_task'),
+    routes.append(route('/api/git/binding',['GET'],read_name='git_binding'))
+    routes.append(route('/api/git/observations/{observation_id:int}',['GET'],read_name='git_observation'))
+    for path, operation in [('/api/git/binding', 'bind_repository'), ('/api/git/observations', 'observe_repository'),
+                            ('/api/git/checkpoint', 'repo_checkpoint'),
+                            ('/api/git/team', 'read_git_team'),
+                            ('/api/tasks', 'create_task'), ('/api/tasks/{task_id:int}/claim', 'claim_task'),
                             ('/api/sessions', 'register_session'), ('/api/tasks/{task_id:int}/progress', 'report_progress'),
                             ('/api/requests', 'send_request'), ('/api/requests/{request_id:int}/ack', 'acknowledge'),
                             ('/api/requests/{request_id:int}/reply', 'reply'), ('/api/requests/{request_id:int}/resolve', 'resolve_request'),
@@ -367,6 +432,8 @@ def create_app(database_path='.local/crewmesh.sqlite3', *, base_url=None, public
                             ('/api/contracts/{contract_id:int}/decision', 'decision')]:
         routes.append(route(path, ['POST'], operation=operation))
     routes.extend(account_routes(service, mode=mode, origin=origin or base_url, bootstrap_secret=bootstrap_secret, oauth=oauth))
+    from .git_routes import git_routes
+    routes.extend(git_routes(service, service.github))
     routes.extend(billing_routes(service, billing_runtime, origin=origin or base_url))
     routes.append(Mount('/', app=authenticated_mcp))
     app = Starlette(routes=routes, lifespan=lifespan)
