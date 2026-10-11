@@ -43,7 +43,8 @@ F2 实际协议、兼容边界与验证见 [任务交接与恢复](task-lifecycl
 - [x] 网页详情显示“我在等谁/谁在等我”、回答与确认入口、无负责人/歧义提示；总览统一“需要我处理”汇总请求、交接、待分派依赖和公共约定确认。MCP/本地适配器暴露查负责人、建立与完成依赖，检查点返回相关上下文。
 - [x] tests/test_dependencies.py、真实 HTTP/官方 MCP 验收与网页：双成员后端/前端交换接口问题、答复、确认后继续；无负责人后认领、负责人转交、循环、取消、重试/并发、跨项目隔离、重启。记录 SDK 与真实原生工具测试的不同证据，不混报。
 - [x] 更新 docs/agent-connection.md、docs/roadmap.md、docs/README.md 与 docs/collaboration-flow-report.md。
-- [ ] controller 独立规格/质量审查；最终主线集成完整回归、阶段推送与等待 CI。
+- [x] controller 独立规格/质量审查；合入主线，412 项 Python、21 项实验、七组网页回归及发行构建通过；阶段提交 a0bf495 / c5d7099 已推送。
+- [ ] 最终 GitHub CI 与 PR 发布记录。
 
 ## 验收命令与证据
 
