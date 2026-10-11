@@ -129,7 +129,8 @@ class LocalAdapter:
         paths = {'claim_task':'/api/tasks/{task_id}/claim','register_session':'/api/sessions',
                  'report_progress':'/api/tasks/{task_id}/progress','send_request':'/api/requests',
                  'acknowledge':'/api/requests/{request_id}/ack','reply':'/api/requests/{request_id}/reply',
-                 'resolve_request':'/api/requests/{request_id}/resolve','propose_contract':'/api/contracts'}
+                 'resolve_request':'/api/requests/{request_id}/resolve','propose_contract':'/api/contracts',
+                 'link_delivery':'/api/git/github/link'}
         if name=='whoami': return self.request('/api/me')
         if name=='read_team': return self.request('/api/git/team',{})
         if name=='read_inbox': return self.request('/api/inbox?'+urlencode(arguments)) if arguments else self.request('/api/inbox')
@@ -155,7 +156,8 @@ def create_local_mcp(adapter):
         'send_request':fields('request_key context_version body',{'receiver_member_id':None,'task_id':None}),
         'acknowledge':fields('request_id'),'reply':fields('request_id request_key context_version body',{'evidence':''}),
         'resolve_request':fields('request_id context_version'),
-        'propose_contract':fields('contract_key expected_version title body',{'source_request_id':None,'commit_ref':''})}
+        'propose_contract':fields('contract_key expected_version title body',{'source_request_id':None,'commit_ref':''}),
+        'link_delivery':{'task_id':(int,True,None),'branch':(str,False,''),'pr_number':(int,False,None),'commit_sha':(str,False,'')}}
     async def validate_arguments(ctx,call_next):
         if ctx.method=='tools/call':
             params=ctx.params

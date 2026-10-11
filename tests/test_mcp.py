@@ -35,7 +35,7 @@ class MCPTests(unittest.TestCase):
             async with self.client(self.owner['agent_token']) as owner, self.client(self.member['agent_token']) as member:
                 tools = (await owner.list_tools()).tools
                 names = {tool.name for tool in tools}
-                self.assertEqual(names, {'whoami', 'read_team', 'claim_task', 'register_session', 'report_progress', 'send_request', 'read_inbox', 'acknowledge', 'reply', 'resolve_request', 'propose_contract', 'repo_checkpoint'})
+                self.assertEqual(names, {'whoami', 'read_team', 'claim_task', 'register_session', 'report_progress', 'send_request', 'read_inbox', 'acknowledge', 'reply', 'resolve_request', 'propose_contract', 'repo_checkpoint', 'link_delivery'})
                 for tool in tools:
                     props = tool.input_schema.get('properties', {})
                     self.assertNotIn('author', props)

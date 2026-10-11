@@ -37,13 +37,13 @@ assert store.snapshot(owner['web_token'])['workspaces'][0]['source'] == 'local_g
 
 ## G2: GitHub delivery evidence
 
-- [ ] Add focused modules `src/github_app.py`, `src/github_sync.py`, `src/git_routes.py` and tests: App JWT, installation/user authorization, HTTPS API origin, bounded response parsing and safe errors.
-- [ ] Add one-use short-lived authorization state bound to the requesting project manager; callback verifies authorized repository access before saving installation/repository ID. Existing account GitHub OAuth login is unchanged.
-- [ ] Add signed webhook route and persistent inbox: HMAC validation, delivery-ID deduplication with payload integrity, allowed event filtering and bounded payloads. Durable acceptance precedes remote reconciliation; retry pending deliveries after failures/restart.
-- [ ] Reconcile current PR/check/push state with API results; never derive final state from an old webhook alone. Check heads and repository/fork identity; closed-unmerged differs from merged. Poll/manual refresh provides compensation for missed events; installation revocation removes verified current access.
-- [ ] Add explicit task/branch/PR association for task owner or manager; leave unknown PRs unassociated. Store provenance and server observation time; redact all remote credentials.
-- [ ] Test forged signature, duplicate/mismatched deliveries, retries, stale head checks, fork PR, changed branch HEAD, closed PR, revoked access and cross-project isolation. Record real network/App installation separately from offline protocol tests.
-- [ ] Commit G2 implementation and operational instructions after focused and integration checks.
+- [x] Add focused modules `src/github_app.py`, `src/github_sync.py`, `src/git_routes.py` and tests: App JWT, installation/user authorization, HTTPS API origin, bounded response parsing and safe errors.
+- [x] Add one-use short-lived authorization state bound to the requesting project manager; callback verifies authorized repository access before saving installation/repository ID. Existing account GitHub OAuth login is unchanged.
+- [x] Add signed webhook route and persistent inbox: HMAC validation, delivery-ID deduplication with payload integrity, allowed event filtering and bounded payloads. Durable acceptance precedes remote reconciliation; retry pending deliveries after failures/restart.
+- [x] Reconcile current PR/check/push state with API results; never derive final state from an old webhook alone. Check heads and repository/fork identity; closed-unmerged differs from merged. Poll/manual refresh provides compensation for missed events; installation revocation removes verified current access.
+- [x] Add explicit task/branch/PR association for task owner or manager; leave unknown PRs unassociated. Store provenance and server observation time; redact all remote credentials.
+- [x] Test forged signature, duplicate/mismatched deliveries, retries, stale head checks, fork PR, changed branch HEAD, closed PR, revoked access and cross-project isolation. Record real network/App installation separately from offline protocol tests.
+- [x] Commit G2 implementation and operational instructions after focused and integration checks.
 
 ## G3: kanban and checkpoints
 

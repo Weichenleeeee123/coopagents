@@ -18,6 +18,8 @@ def main():
     import uvicorn
     from .api import create_app
     from .config import bootstrap_from_env, trusted_proxies, github_oauth_from_env
+    from .github_app import GitHubApp
+    from .errors import ValidationError
     try:
         try:
             local_bind = ipaddress.ip_address(args.host).is_loopback
@@ -29,8 +31,9 @@ def main():
         account_config = github_oauth_from_env()
         if args.mode != 'self-hosted':
             account_config['mode'] = args.mode
-        app = create_app(args.database, public_url=args.public_url, bootstrap_secret=bootstrap_from_env(), **account_config)
-    except ValueError as error:
+        app = create_app(args.database, public_url=args.public_url, bootstrap_secret=bootstrap_from_env(),
+                         github_app=GitHubApp.from_env(args.public_url), **account_config)
+    except (ValueError, ValidationError) as error:
         parser.error(str(error))
     uvicorn.run(app, host=args.host, port=args.port, access_log=False,
                 proxy_headers=bool(proxies), forwarded_allow_ips=proxies)

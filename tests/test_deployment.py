@@ -60,7 +60,9 @@ class DeploymentTests(unittest.TestCase):
                'CREWMESH_BOOTSTRAP_SECRET_FILE': str(path), 'CREWMESH_TRUSTED_PROXIES': '10.0.0.2'}
         with patch.dict(os.environ, env, clear=True), patch('sys.argv', ['crewmesh']), patch('crewmesh.api.create_app', return_value='app') as create, patch('uvicorn.run') as run:
             main()
-            self.assertEqual(create.call_args.kwargs, {'public_url': 'https://team.example', 'bootstrap_secret': secret})
+            config=dict(create.call_args.kwargs)
+            self.assertFalse(config.pop('github_app').enabled)
+            self.assertEqual(config, {'public_url': 'https://team.example', 'bootstrap_secret': secret})
             self.assertEqual(run.call_args.kwargs['host'], '0.0.0.0')
             self.assertEqual(run.call_args.kwargs['port'], 9090)
             self.assertTrue(run.call_args.kwargs['proxy_headers'])

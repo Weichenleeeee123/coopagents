@@ -23,7 +23,7 @@ def tool_error(error):
 def create_mcp_app(service, *, origin=None):
     """Return (SDK lifespan application, authenticated ASGI application)."""
     names = ('claim_task', 'register_session', 'report_progress', 'send_request', 'read_inbox',
-             'acknowledge', 'reply', 'resolve_request', 'propose_contract', 'repo_checkpoint')
+             'acknowledge', 'reply', 'resolve_request', 'propose_contract', 'repo_checkpoint', 'link_delivery')
     schemas = {name: service.operations[name][2] for name in names}
     schemas.update({'whoami': {}, 'read_team': {}})
 
