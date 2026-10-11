@@ -8,7 +8,7 @@
 | --- | --- | --- |
 | G1 | 共同仓库绑定、只读 Git 观测、实际变更路径重叠、事务离线队列、stdio 检查点 | `83f2fc7` |
 | G2 | 独立只读 GitHub App、提交/分支/PR 关联、当前 HEAD 检查、签名队列、限流和补偿同步 | `b3d88be` |
-| G3 | 仓库入口、卡片交付来源及新鲜度、自动分列、详情与记录、实际重叠展示 | `feat(web): surface repository evidence across the kanban` 阶段提交 |
+| G3 | 仓库入口、卡片交付来源及新鲜度、自动分列、详情与记录、实际重叠展示 | `941f036` |
 
 实施计划先提交为 `c7820d4`。新增源码保持在 `src/*.py`；维护文档在 `docs/`，原始证据和凭据仅在忽略的 `.local/`。没有删除文件、清理测试目录、切换商业化主工作区或提交其未完成改动。
 
@@ -32,7 +32,7 @@
 
 ## 实测
 
-- `python -m unittest discover -s tests -v`：完整回归 244 项通过；新增 worker 停止信号测试与应用集成专项 3 项通过。最终稳定代码的完整回归见下方最终检查记录。
+- `python -m unittest discover -s tests -v`：最终稳定代码完整回归 **245 项通过**（86.388 秒），含 worker 停止信号及应用集成测试。先前完整 244 项回归也通过。
 - `python -m unittest discover -s tests -p 'test_github_*.py' -v`：39 项通过，使用离线 HTTP transport / provider；路由专项 4 项通过。
 - `python -m unittest discover -s experiments/agent-integration -p 'test_*.py' -v`：21 项通过，不代表原生双向协作实际通过。
 - 三组 Node 回归通过：Git 证据、新鲜度、安全 DOM、授权控制、项目切换、历史排序；延迟响应的会话隔离；既有账号及项目界面。
@@ -40,7 +40,7 @@
 - 官方 SDK 检查了 MCP 原始参数校验，布尔任务 ID 不能被转换后执行；离线/并发重放及错项目拒绝通过。
 - 真实应用边界、OAuth callback 路由和 lifespan worker 接受离线签名事件、自动核对并完成队列记录。测试没有绕过正式 host/origin 或认证边界。
 - Playwright 实际 Chromium 检查了自动合并列、任务详情、实际路径重叠、输入跨轮询保留、授权按钮跨重渲染保留、回调与 finish、切换项目后清空上下文；390px 页面未横向溢出。数据为明确的演示成员和离线 GitHub provider。
-- Wheel 构建成功，`pip check` 无损坏依赖。新增 `compose.github.yaml` 显式挂载 GitHub secrets，默认 Compose 保持 App 可选。
+- 最终源码包与 Wheel 构建成功，`pip check` 无损坏依赖。新增 `compose.github.yaml` 显式挂载 GitHub secrets，默认 Compose 保持 App 可选。
 
 本机原始记录位于隔离工作区 `.local/`：`git-final-tests.log`、`git-release-tests.log`、专项日志、`.local/test-evidence/`、浏览器截图及 `.local/release/git-integration/`。这些文件不提交。浏览器未登录的 `/account/session` 401 为既有会话探测；未发现新增脚本异常。
 
