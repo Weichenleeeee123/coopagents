@@ -1,5 +1,7 @@
 # C1 account workbench
 
+The current visual system is the user-approved Mono palette with the Signal industrial layout: black/white/gray, square controls, strong borders, and shared account/project navigation. The task board uses three columns of phase groups on desktop and local horizontal scrolling on mobile, with totals from the full project snapshot. See [monochrome validation](frontend-monochrome-validation.md) for the latest delivery and browser evidence.
+
 2026-10-11 frontend refresh: the hub now exposes Projects, Members, Team settings, and Plan & billing as separate views. Project creation is expandable within Projects; invitations, legacy claims, and password changes live in Team settings. A same-team refresh retains the view; a team change returns to Projects. Loading is explicit. Team/project choices invalidate an in-flight refresh rather than being silently ignored. Browser titles track the view. See [frontend validation](frontend-validation.md) for current evidence; the original account authorization and lifecycle guarantees below still apply.
 
 The single workbench opens with account login. `/account/config` determines whether local login, first-account bootstrap and invitation registration are available, or whether the real GitHub OAuth navigation is enabled. A cloud deployment without OAuth configuration displays its unavailable state. The expandable legacy entry retains unbound local project creation, invitation redemption and explicit bearer restoration; cloud permits only restoration.
