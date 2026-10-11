@@ -19,12 +19,12 @@
 
 ## G1: local repository integration
 
-- [ ] Add `src/git_workspace.py`, `tests/test_git_workspace.py`: normalize remotes; real Git tests for two clones, linked worktree, detached and unborn HEAD, staged/unstaged rename paths, ignored/untracked files, no origin and credential sanitization. Retain all fixture directories under `.local/test-evidence/`.
-- [ ] Run `python -m unittest discover -s tests -p test_git_workspace.py -v`; demonstrate the new module's absence before implementation, then pass all behavior tests.
-- [ ] Add `src/repositories.py`, `tests/test_repositories.py`: authenticate room owner for binding and claimed task owner for observations; reject cross-room/foreign-owner writes; append idempotent observations, stale/out-of-order filtering, and exact-path overlap evidence. Rebinding with existing evidence is rejected rather than silently rewriting provenance.
-- [ ] Integrate binding, observation and repository reads through `src/api.py`, `src/mcp_service.py`. Add `tests/test_git_http.py` for real HTTP permissions, strict schemas and snapshot fields.
-- [ ] Add `src/git_adapter.py`, tests and `docs/git-local-setup.md`: explicit trusted service origin, project check, environment credential, no redirect credential forwarding, readonly local inspection and stdio MCP checkpoint/forwarding. Preview configuration and preserve existing agent rules/configuration.
-- [ ] Verify focused tests, then the full Python suite; commit G1 code/tests/documentation with exact paths.
+- [x] Add `src/git_workspace.py`, `tests/test_git_workspace.py`: normalize remotes; real Git tests for two clones, linked worktree, detached and unborn HEAD, staged/unstaged rename paths, ignored/untracked files, no origin and credential sanitization. Retain all fixture directories under `.local/test-evidence/`.
+- [x] Run `python -m unittest discover -s tests -p test_git_workspace.py -v`; demonstrate the new module's absence before implementation, then pass all behavior tests.
+- [x] Add `src/repositories.py`, `tests/test_repositories.py`: authenticate room owner for binding and claimed task owner for observations; reject cross-room/foreign-owner writes; append idempotent observations, stale/out-of-order filtering, and exact-path overlap evidence. Rebinding with existing evidence is rejected rather than silently rewriting provenance.
+- [x] Integrate binding, observation and repository reads through `src/api.py`, `src/mcp_service.py`. Add `tests/test_git_http.py` for real HTTP permissions, strict schemas and snapshot fields.
+- [x] Add `src/git_adapter.py`, tests and `docs/git-local-setup.md`: explicit trusted service origin, project check, environment credential, no redirect credential forwarding, readonly local inspection and stdio MCP checkpoint/forwarding. Preview configuration and preserve existing agent rules/configuration.
+- [x] Verify focused tests, then the full Python suite; commit G1 code/tests/documentation with exact paths.
 
 Example domain acceptance:
 

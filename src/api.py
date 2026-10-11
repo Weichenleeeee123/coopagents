@@ -79,6 +79,8 @@ class Service:
         self.activity = ActivityStore(self.identity)
         self.messages = MessageStore(self.identity)
         self.contracts = ContractStore(self.identity)
+        from .repositories import RepositoryStore
+        self.repositories = RepositoryStore(self.identity)
         self.operations = {
             'create_room': (None, self.identity.create_room, fields('name owner_name', {'repository': ''})),
             'join': (None, self.identity.join_invite, fields('invite_token display_name')),
@@ -96,11 +98,21 @@ class Service:
             'assign': ('web', self.messages.assign_receiver, fields('request_id receiver_member_id')),
             'propose_contract': ('agent', self.contracts.propose, fields('contract_key expected_version title body', {'source_request_id': None, 'commit_ref': ''})),
             'decision': ('web', self.contracts.decide, fields('contract_id version decision')),
+            'bind_repository': ('web', self.repositories.bind_repository, fields('repository')),
+            'observe_repository': ('agent', self.repositories.observe, {'task_id': (int, True, None), 'observation': (dict, True, None)}),
+            'repo_checkpoint': ('agent', self.repo_checkpoint, {'task_id': (int, True, None), 'observation': (dict, True, None)}),
+            'read_git_team': ('agent', lambda token: self.snapshot(token, web=False), fields()),
         }
         self.reads = {'tasks': self.tasks.list_tasks, 'sessions': self.activity.list_sessions,
                       'progress': self.activity.list_progress, 'overlaps': self.activity.overlaps,
                       'requests': self.messages.list_requests, 'contracts': self.contracts.list_contracts,
                       'events': self.contracts.list_events, 'members': self.identity.list_members}
+        self.reads['git'] = self.repositories.snapshot
+
+    def repo_checkpoint(self, token, task_id, observation):
+        observed = self.repositories.observe(token, task_id, observation)
+        return {'observation': observed, 'team': self.snapshot(token, web=False),
+                'inbox': self.messages.read_inbox(token)}
 
     def me(self, token):
         return {'me': asdict(self.identity.authenticate(token)), 'room': self.identity.room_info(token)}
@@ -282,6 +294,10 @@ def create_app(database_path='.local/crewmesh.sqlite3', *, base_url=None, public
                     result = service.me(token)
                 elif name == 'snapshot':
                     result = service.snapshot(token)
+                elif name == 'git_binding':
+                    result = service.repositories.get_binding(token)
+                elif name == 'git_observation':
+                    result = service.repositories.read_observation(token,request.path_params['observation_id'])
                 elif name == 'inbox':
                     if any(k not in ('after_id', 'limit') or len(request.query_params.getlist(k)) != 1 for k in request.query_params):
                         raise ValidationError('Unsupported query parameter')
@@ -336,9 +352,14 @@ def create_app(database_path='.local/crewmesh.sqlite3', *, base_url=None, public
               route('/api/me', ['GET'], read_name='me'), route('/api/snapshot', ['GET'], read_name='snapshot'),
               route('/api/invites', ['POST'], operation='invite'), route('/api/agent-token', ['POST'], operation='rotate_agent'),
               route('/api/inbox', ['GET'], read_name='inbox')]
-    for name in ('tasks', 'sessions', 'progress', 'overlaps', 'requests', 'contracts', 'events'):
+    for name in ('tasks', 'sessions', 'progress', 'overlaps', 'requests', 'contracts', 'events', 'git'):
         routes.append(route('/api/' + name, ['GET'], read_name=name))
-    for path, operation in [('/api/tasks', 'create_task'), ('/api/tasks/{task_id:int}/claim', 'claim_task'),
+    routes.append(route('/api/git/binding',['GET'],read_name='git_binding'))
+    routes.append(route('/api/git/observations/{observation_id:int}',['GET'],read_name='git_observation'))
+    for path, operation in [('/api/git/binding', 'bind_repository'), ('/api/git/observations', 'observe_repository'),
+                            ('/api/git/checkpoint', 'repo_checkpoint'),
+                            ('/api/git/team', 'read_git_team'),
+                            ('/api/tasks', 'create_task'), ('/api/tasks/{task_id:int}/claim', 'claim_task'),
                             ('/api/sessions', 'register_session'), ('/api/tasks/{task_id:int}/progress', 'report_progress'),
                             ('/api/requests', 'send_request'), ('/api/requests/{request_id:int}/ack', 'acknowledge'),
                             ('/api/requests/{request_id:int}/reply', 'reply'), ('/api/requests/{request_id:int}/resolve', 'resolve_request'),
