@@ -14,11 +14,14 @@
 | Docker | 实际构建 `crewmesh:0.2.0`，非 root UID 10001；基础镜像及 Caddy 固定 digest，运行依赖固定版本 |
 | TLS / 代理 | 实际运行 Caddy 和独立应用容器，客户端校验测试 CA 及服务器 hostname；12 项部署 smoke 检查通过 |
 | Compose 密钥 | 实际启动 Compose 应用，挂载密钥建房成功、health 为 healthy；容器随后停止且卷与证据保留 |
+| GitHub CI | 2026-10-11 对 `fd789cc` 的 Python 3.11、3.13 与 container 三个 job 全部成功；容器 job 包含真实 TLS smoke |
 | SQLite | 在线备份、完整性检查、新路径恢复、拒绝覆盖；WAL 未 checkpoint 数据也进入备份；容器重启后任务和凭据保留 |
 | 原生 Claude Code | 用户修复认证后，实际完成 whoami、认领、会话、进度与发送请求；正式数据库及网页快照相符 |
 | 原生 Codex CLI | 两次首次 whoami 调用返回 `user cancelled MCP tool call`；未读取、确认或回复，闭环未通过 |
 
 服务阶段和发行配置分别通过独立需求核对与代码审查。GitHub CI 对 Python 3.11 / 3.13、打包、Docker 与 TLS smoke 进行复验；远端执行结果以 GitHub Actions 对应提交为准，不把工作流文件存在视为运行通过。
+
+远端复验：[成功的 GitHub Actions 运行](https://github.com/Weichenleeeee123/crewmesh/actions/runs/38107580009)。发行入口：[v0.2.0 预发行版](https://github.com/Weichenleeeee123/crewmesh/releases/tag/v0.2.0)，提供完整 Git 源码 ZIP、Python wheel 和 SHA256 校验清单；仅含受版本管理的源码与文档。
 
 ## 容器验收内容
 
