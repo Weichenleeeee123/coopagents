@@ -115,5 +115,10 @@ function harness(status, formValues=[['title','fixture']]) {
   board.run('restoreRecordFocus({record:"focused-card",tag:"BUTTON",label:"task"})');
   assert.equal(card.wasFocused,true);
   assert.equal(card.tabIndex,0,'Refreshing a focused native card must retain its Tab stop');
+  const filters=harness(200);filters.element('task-search').value='missing';filters.element('task-owner').value='2';
+  filters.element('task-search').focus=()=>{filters.element('task-search').wasFocused=true;};
+  filters.element('clear-filters').listeners.click();
+  assert.equal(filters.element('task-search').value,'');assert.equal(filters.element('task-owner').value,'');
+  assert.equal(filters.element('task-search').wasFocused,true);
   process.stdout.write('Delayed-body session regressions passed\n');
 })().catch(error => { process.stderr.write(error.stack+'\n'); process.exitCode=1; });

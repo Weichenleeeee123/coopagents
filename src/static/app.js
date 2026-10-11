@@ -15,12 +15,13 @@ const date = value => { if(!value) return '—'; const d = new Date(value); retu
 const memberName = id => snapshot?.members.find(m => m.member_id === id)?.display_name || (id ? '成员 ' + id : '待分派');
 const taskName = id => snapshot?.tasks.find(t => t.id === id)?.title || '任务 #' + id;
 const empty = (target, message) => target.append(text('p',message,'empty'));
-const badge = value => text('span',states[value] || value,'badge');
+const badge = value => text('span',states[value] || value,'badge'+(Object.hasOwn(states,value)?' badge-'+value:''));
 const detail = (title, children) => add(document.createElement('details'),text('summary',title),...children);
 function setView(view) {
   for(const key of Object.keys(views)) $('view-'+key).hidden = key !== view;
   document.querySelectorAll('[data-view]').forEach(b => { if(b.dataset.view === view) b.setAttribute('aria-current','page'); else b.removeAttribute('aria-current'); });
   [$('view-kicker').textContent,$('view-title').textContent,$('view-description').textContent] = views[view];
+  document.title=views[view][1]+' · Crewmesh';
 }
 document.querySelectorAll('[data-view]').forEach(b => b.addEventListener('click',() => setView(b.dataset.view)));
 const tabs = Array.from(document.querySelectorAll('[data-entry]'));
@@ -48,6 +49,7 @@ function logout(message='') {
   projectRequests.forEach(controller=>controller.abort()); projectRequests.clear(); syncing=false;
   gitUI()?.clear(); $('git-connection')?.replaceChildren(); $('git-overlaps')?.replaceChildren();
   renderSignature=''; closePrivate(); closeTaskDetail(); $('task-search').value=''; $('task-owner').value=''; $('workspace').hidden=true; $('login').hidden=false; $('login-error').textContent=message;
+  $('board-empty').hidden=true;
   ['members','tasks','requests','contracts','overlaps','summary'].forEach(id => $(id).replaceChildren());
   ['room-name','room-repository','identity','network-error','action-error','board-count'].forEach(id=>$(id).textContent='');
   $('form-restore').reset(); $('form-join').reset(); $('form-create').reset(); $('task-form').reset();
@@ -135,6 +137,7 @@ function renderTasks(){
   $('task-owner').value=selected;
   const filtered=matchingTasks(snapshot.tasks,snapshot.progress,$('task-search').value,$('task-owner').value);
   $('board-count').textContent=filtered.length+' / '+snapshot.tasks.length+' 项任务';
+  $('board-empty').hidden=filtered.length>0 || snapshot.tasks.length===0;
   $('tasks').replaceChildren();
   taskColumns.forEach(([key,label,note])=>{
     const column=text('section','','kanban-column column-'+key), list=text('div','','column-cards');
@@ -179,6 +182,10 @@ $('close-task').addEventListener('click',closeTaskDetail);
 $('task-dialog').addEventListener('close',()=>{activeTaskId=null;$('task-detail').replaceChildren();const target=taskOpener?.isConnected?taskOpener:$(taskOpener?.id);if(target)target.focus();else $('task-search').focus();taskOpener=null;});
 $('task-search').addEventListener('input',()=>{if(snapshot)renderTasks();});
 $('task-owner').addEventListener('change',()=>{if(snapshot)renderTasks();});
+$('clear-filters').addEventListener('click',()=>{
+  $('task-search').value='';$('task-owner').value='';
+  if(snapshot)renderTasks();$('task-search').focus();
+});
 $('new-task').addEventListener('click',()=>{$('task-create').open=true;$('task-form').querySelector('input').focus();});
 function renderRequests(){
   $('requests').replaceChildren(); if(!snapshot.requests.length) empty($('requests'),'尚无技术请求。让 agent 在 MCP 入口发送需要协作的具体问题。');
@@ -201,7 +208,7 @@ function renderContracts(){
   });
 }
 async function perform(b, operation){ b.disabled=true; $('action-error').textContent=''; const epoch=generation; try { await operation(); if(epoch===generation){ renderSignature=''; await sync(); } } catch(error){ if(epoch===generation) $('action-error').textContent=error.message; } finally{b.disabled=false;} }
-$('task-form').addEventListener('submit',e=>{e.preventDefault();const form=e.currentTarget,b=form.querySelector('button[type=submit]'),epoch=generation;perform(b,async()=>{await api('/api/tasks',Object.fromEntries(new FormData(form)));if(epoch===generation)form.reset();});});
+$('task-form').addEventListener('submit',e=>{e.preventDefault();const form=e.currentTarget,b=form.querySelector('button[type=submit]'),epoch=generation;perform(b,async()=>{await api('/api/tasks',Object.fromEntries(new FormData(form)));if(epoch===generation){form.reset();$('task-create').open=false;$('new-task').focus();}});});
 $('retry').addEventListener('click',sync); $('logout').addEventListener('click',()=>{if(accountManaged && typeof window!=='undefined')window.CrewmeshAccounts.home();else logout();});
 function configTemplate(){const url=location.origin+'/mcp'; const tool=$('connection-tool').value; $('config-template').value=tool==='desktop'?'[mcp_servers.crewmesh]\nurl = "'+url+'"\nhttp_headers = { Authorization = "Bearer TOKEN" }':tool==='cli'?"$env:CREWMESH_AGENT_TOKEN = 'TOKEN'\ncodex mcp add crewmesh --url "+url+' --bearer-token-env-var CREWMESH_AGENT_TOKEN':"claude mcp add --transport http --scope local crewmesh "+url+' --header "Authorization: Bearer TOKEN"';}
 async function copy(value){try{await navigator.clipboard.writeText(value);$('dialog-status').textContent='已复制，请妥善保存。';}catch{$('dialog-status').textContent='复制不可用，请选择字段并手动复制。';}}

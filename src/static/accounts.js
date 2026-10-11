@@ -4,13 +4,31 @@
   const el = id => document.getElementById(id);
   const project = window.CrewmeshProject;
   let epoch = 0, session = null, config = null, teams = [], projects = [], managed = [], members = [], teamId = '', roomId = '', busy = false, operationId = 0;
+  let hubView = 'projects';
+  const hubViews = {
+    projects:['YOUR PROJECTS / 共同的工作现场','我的项目','选择一个项目，继续团队的共同工作。'],
+    members:['PEOPLE / 团队协作','团队成员','看清每位成员的角色与项目访问。'],
+    settings:['TEAM SETTINGS / 空间与权限','团队设置','建立团队、邀请协作者，管理自己的账号。'],
+    billing:['TEAM CAPACITY / PLAN & BILLING','Plan & billing','查看当前团队的套餐、用量与订阅状态。']
+  };
+  function setHubView(view) {
+    if(!hubViews[view])return;
+    hubView=view;
+    for(const key of Object.keys(hubViews)){
+      el('hub-view-'+key).hidden=key!==view;
+      el('hub-nav-'+key).setAttribute('aria-current',key===view?'page':'false');
+    }
+    [el('hub-kicker').textContent,el('hub-title').textContent,el('hub-description').textContent]=hubViews[view];
+    el('billing-empty').hidden=!!teamId;
+  }
+  for(const key of Object.keys(hubViews))el('hub-nav-'+key).addEventListener('click',()=>setHubView(key));
   const pending = new Set();
   const stale = () => new Error('访问已切换');
   const node = (tag, value, cls) => { const n=document.createElement(tag); n.textContent=value == null?'':String(value); if(cls)n.className=cls;return n; };
-  const btn = (label, action) => {const n=node('button',label);n.type='button';n.addEventListener('click',()=>act(n,action));return n;};
+  const btn = (label, action, cls) => {const n=node('button',label,cls);n.type='button';n.addEventListener('click',()=>act(n,action));return n;};
   const routeTeam = () => '/account/teams/'+encodeURIComponent(teamId);
   function invalidate() {
-    window.CrewmeshBilling?.clear();
+    window.CrewmeshBilling?.clear();el('hub-loading').hidden=true;
     epoch++; for(const c of pending)c.abort(); pending.clear(); project.clear();
     el('workspace').hidden=true;el('account-switchers').hidden=true;
     ['hub-projects','hub-members','invite-scopes'].forEach(id=>el(id).replaceChildren());
@@ -60,7 +78,7 @@
   function renderTeams(){
     for(const id of ['hub-team','workspace-team'])options(el(id),teams,teamId,'team_id','选择团队');
     options(el('workspace-project'),projects,roomId,'room_id','选择项目');
-    el('team-manager').hidden=!manager();el('password-section').hidden=!config.local_login_enabled || !session.account.username;
+    el('team-manager').hidden=!manager();el('project-manager').hidden=!manager();el('password-section').hidden=!config.local_login_enabled || !session.account.username;
     el('account-switchers').hidden=!project.managed();
   }
   function renderProjects(){
@@ -83,7 +101,7 @@
         row.append(select,btn('保存角色',async()=>{await change(path+'/role',{role:select.value});}));
       }
       if(last)row.append(node('p','最后一位所有者必须保留','meta'));
-      if(!last && (self || role==='owner' || (role==='admin'&&m.role==='member')))row.append(btn(self?'离开团队':'移出团队',async()=>{await change(path+'/remove',{});}));
+      if(!last && (self || role==='owner' || (role==='admin'&&m.role==='member')))row.append(btn(self?'离开团队':'移出团队',async()=>{await change(path+'/remove',{});},'danger'));
       const canTarget=manager()&&(role==='owner'||m.role==='member'||self);
       if(canTarget){
         const panel=node('details'),summary=node('summary','项目访问与凭据管理');panel.append(summary);
@@ -96,8 +114,11 @@
     }
   }
   async function loadTeam(id) {
-    invalidate();teamId=id;sessionStorage.setItem('crewmesh_selected_team',id);showHub();renderTeams();const mine=epoch;
+    const nextView=id===teamId?hubView:'projects';
+    invalidate();teamId=id;sessionStorage.setItem('crewmesh_selected_team',id);showHub();renderTeams();setHubView(nextView);const mine=epoch;
+    el('hub-loading').hidden=!id;el('hub-projects').setAttribute('aria-busy',String(!!id));
     if(!id){renderProjects();return;}
+    try {
     window.CrewmeshBilling?.load({teamId:id,role:teams.find(t=>t.team_id===id)?.role,
       isCurrent:()=>mine===epoch && !!session && teamId===id,
       request:(path,data)=>{if(mine!==epoch || !session || teamId!==id)return Promise.reject(stale());return request(path,data,{},true,60000);}});
@@ -105,6 +126,7 @@
     members=await request(base+'/members');if(mine!==epoch)return;
     managed=manager()?await request(base+'/managed-projects'):[];if(mine!==epoch)return;
     renderTeams();renderProjects();renderMembers();
+    } finally {if(mine===epoch){el('hub-loading').hidden=true;el('hub-projects').setAttribute('aria-busy','false');}}
   }
   async function reload(preferred=teamId) {
     if(!session)return;const mine=epoch;const rows=await request('/account/teams');if(mine!==epoch)return;teams=rows;
@@ -119,7 +141,7 @@
     el('account-hub').hidden=true;el('account-switchers').hidden=false;el('logout').textContent='返回团队与项目';renderTeams();
   }
   async function home(){
-    invalidate();if(!session)return;showHub();
+    invalidate();if(!session)return;setHubView('projects');showHub();
     try{await reload();}catch(error){if(session && error.message!=='访问已切换')el('hub-error').textContent=error.message;}
   }
   async function denied(){invalidate();showHub();try{await request('/account/session');await reload();el('hub-error').textContent='项目访问已失效，请重新选择获授权的项目。';}catch(error){if(error.status===401)loggedOut();else el('hub-error').textContent=error.message;}}
@@ -156,6 +178,7 @@
     try{info=await request('/account/session',undefined,{},false);}
     catch(error){if(mine!==epoch)return;if(error.status===401){if(wasManaged)loggedOut();return;}throw error;}
     if(mine!==epoch)return;session=info;await reload(storedTeam);
+    if(['#billing','#billing-return'].includes(window.location?.hash))setHubView('billing');
     if(wasManaged&&storedProject&&!['#billing','#billing-return'].includes(window.location?.hash)&&projects.some(p=>p.room_id===storedProject))await selectProject(storedProject);
   }
   window.CrewmeshAccounts={home,denied};

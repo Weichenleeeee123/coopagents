@@ -83,7 +83,10 @@
     if(!root)return;
     if(room!==snapshot.me.room_id){room=snapshot.me.room_id;authorization=null;}
     if(root.contains(document.activeElement)&&['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName))return;
-    root.replaceChildren();const git=snapshot.git||{};
+    const panel=root;
+    panel.replaceChildren();const git=snapshot.git||{};
+    root=element('section','','git-block');root.setAttribute('aria-label','共同仓库');
+    append(root,element('p','01 / SHARED REPOSITORY','eyebrow'));panel.append(root);
     append(root,element('h2','把仓库连接到协作现场'),element('p','本地检查点发现开发中的交叠，GitHub 同步核对远端交付。','muted'));
     if(!git.binding){
       if(!git.can_manage){append(root,element('p','请项目管理者先绑定仓库。'));return;}
@@ -93,7 +96,11 @@
       form.addEventListener('submit',async event=>{event.preventDefault();submit.disabled=true;try{await context.api('/api/git/binding',{repository:input.value});document.activeElement?.blur();await context.sync();}catch(error){feedback.textContent=error.message;}finally{submit.disabled=false;}});root.append(form);return;
     }
     append(root,element('p',git.binding.repository,'git-repository'),element('p','项目 ID：'+snapshot.me.room_id,'meta'));
-    const setup=element('details');append(setup,element('summary','本地 agent 一次接入'),element('p','安装 Crewmesh service 依赖；用自己的 agent 令牌启动本地 stdio MCP。令牌放在环境变量中。'),element('pre','python -m crewmesh.git_adapter --repository PATH --service '+context.origin+' --project '+snapshot.me.room_id),element('p','检查点工具：repo_checkpoint(task_id)。通过 --inspect 诊断、--init-project 创建可提交的公共约定；保留现有 agent 配置。','muted'));root.append(setup);
+    const local=element('section','','git-block');local.setAttribute('aria-label','本地 agent 接入');
+    append(local,element('p','02 / LOCAL AGENT','eyebrow'),element('h3','本地 agent 接入'),element('p','每台电脑配置一次，在任务检查点同步分支与实际变更。','muted'));panel.append(local);
+    const setup=element('details');append(setup,element('summary','本地 agent 一次接入'),element('p','安装 Crewmesh service 依赖；用自己的 agent 令牌启动本地 stdio MCP。令牌放在环境变量中。'),element('pre','python -m crewmesh.git_adapter --repository PATH --service '+context.origin+' --project '+snapshot.me.room_id),element('p','检查点工具：repo_checkpoint(task_id)。通过 --inspect 诊断、--init-project 创建可提交的公共约定；保留现有 agent 配置。','muted'));local.append(setup);
+    root=element('section','','git-block');root.setAttribute('aria-label','GitHub 交付同步');
+    append(root,element('p','03 / VERIFIED DELIVERY','eyebrow'));panel.append(root);
     append(root,element('h3','GitHub 交付同步'),element('p',connected(git)?'已授权 '+git.connection.full_name+' · 最后核对 '+when(git.connection.sync_at):'尚未连接 GitHub App。','meta'));
     const status=element('p','','error');status.setAttribute('role','status');
     if(!git.github_configured){append(root,element('p','服务管理员尚未配置 GitHub App，本地 Git 检查点可独立使用。','muted'));return;}

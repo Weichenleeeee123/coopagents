@@ -1,26 +1,595 @@
 <!doctype html>
 <html lang="zh-CN">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Crewmesh · 同频</title><link rel="icon" type="image/png" href="/static/icon.png"><link rel="stylesheet" href="/static/styles.css"><script src="/static/git.js" defer></script><script src="/static/app.js" defer></script><script src="/static/billing.js" defer></script><script src="/static/accounts.js" defer></script></head>
-<body>
-<div id="login" class="entry">
-  <section class="entry-story"><a class="brand" href="/"><img src="/static/icon.png" alt="" width="36" height="36">Crewmesh <span>同频</span></a><p class="eyebrow">A SHARED WORKBENCH FOR YOUR AGENTS</p><h1>各自推进，<br>在此同频。</h1><p class="intro">让分工、技术请求与公共约定，<br>成为团队共享的清晰上下文。</p><div class="entry-foot"><span>01 / 协作从这里开始</span><p>团队协作工作台 · 通过 MCP 接入自己的 agent</p></div></section>
-  <section class="entry-action"><p class="eyebrow">WELCOME TO CREWMESH</p><h2>进入工作空间</h2><p class="muted">为团队建立共同的工作现场。</p><div id="account-entry"><p id="account-mode" class="muted" role="status">正在读取部署配置…</p><form id="account-login"><label>用户名<input name="username" required autocomplete="username" maxlength="120"></label><label>密码<input name="password" type="password" required autocomplete="current-password"></label><button class="primary">登录账号 ↗</button></form><details id="account-bootstrap" hidden><summary>初始化首个账号</summary><form id="bootstrap-form"><label>用户名<input name="username" required autocomplete="username"></label><label>显示名字<input name="display_name" maxlength="120"></label><label>密码<input name="password" type="password" required minlength="12" autocomplete="new-password"></label><label>管理员初始化密钥<input name="bootstrap_secret" type="password" required autocomplete="off"></label><button class="primary">创建首个账号</button></form></details><details id="account-register" hidden><summary>用邀请创建账号</summary><form id="register-form"><label>邀请令牌<input name="invite_token" type="password" required autocomplete="off"></label><label>用户名<input name="username" required autocomplete="username"></label><label>显示名字<input name="display_name" maxlength="120"></label><label>密码<input name="password" type="password" required minlength="12" autocomplete="new-password"></label><button class="primary">接受邀请并注册</button></form></details><a id="github-login" class="github-link" href="/account/oauth/github/start" hidden>使用 GitHub 登录 ↗</a><p id="account-error" class="error" role="alert"></p><button id="account-retry" type="button">重试连接 ↻</button></div><details id="legacy-entry"><summary>已有项目网页凭据 / 旧版工作空间</summary><div class="tabs" role="tablist" aria-label="进入方式"><button role="tab" aria-selected="true" data-entry="create" id="tab-create" aria-controls="form-create">创建团队</button><button role="tab" aria-selected="false" data-entry="join" id="tab-join" aria-controls="form-join">接受邀请</button><button role="tab" aria-selected="false" data-entry="restore" id="tab-restore" aria-controls="form-restore">恢复访问</button></div>
-  <form id="form-create" role="tabpanel" aria-labelledby="tab-create"><label>团队名称<input name="name" required maxlength="120" placeholder="团队的共同名字"></label><label>你的名字<input name="owner_name" required maxlength="120" autocomplete="name"></label><label>代码仓库 <span class="muted">可选</span><input name="repository" maxlength="500" placeholder="共同仓库地址或标识"></label><label>管理员建房密钥 <span class="muted">公网部署需要，本机可留空</span><input name="bootstrap_secret" type="password" autocomplete="off" maxlength="128"></label><button class="primary" type="submit">建立工作空间 <span>↗</span></button></form>
-  <form id="form-join" role="tabpanel" aria-labelledby="tab-join" hidden><label>邀请令牌<input name="invite_token" type="password" required autocomplete="off"></label><label>你的名字<input name="display_name" required maxlength="120" autocomplete="name"></label><button class="primary" type="submit">加入团队 <span>↗</span></button></form>
-  <form id="form-restore" role="tabpanel" aria-labelledby="tab-restore" hidden><label>网页凭据<input name="web_token" type="password" required autocomplete="off"></label><p class="muted">使用先前保存的个人网页凭据。它与 agent 令牌相互独立。</p><button class="primary" type="submit">恢复访问 <span>↗</span></button></form>
-  </details><p id="login-error" role="alert" class="error"></p><p class="entry-note">公网服务由管理员部署；真实跨电脑协作仍待验收。<br>项目网页凭据只保留在当前标签页；账号会话由服务器 Cookie 维护，最长七天。</p></section>
-</div>
-<div id="account-hub" class="account-hub" hidden><aside class="sidebar"><a class="brand" href="/">Crewmesh <span>同频</span></a><p class="eyebrow">YOUR TEAMS</p><label>当前团队<select id="hub-team"></select></label><p id="hub-identity"></p><button id="account-logout">退出账号</button></aside><main><header class="topline"><span>账号 / 团队与项目</span><button id="hub-refresh">刷新 ↻</button></header><div class="page-heading"><div><p class="eyebrow">A PLACE FOR SHARED WORK</p><h1>共同的工作现场</h1></div><p>选择项目，查看自动同步的任务与协作上下文。</p></div><p id="hub-error" class="error" role="alert"></p><section class="hub-section"><h2>我的项目</h2><div id="hub-projects" class="project-grid"></div></section><section id="billing-panel" lang="en" class="hub-section billing-panel" aria-labelledby="billing-heading" hidden></section><div class="hub-columns"><section class="hub-section"><h2>建立团队</h2><form id="team-form"><label>团队名称<input name="name" required maxlength="120"></label><button class="primary">创建团队</button></form><h2>接受团队邀请</h2><form id="accept-form"><label>邀请令牌<input name="invite_token" type="password" required autocomplete="off"></label><button>接受邀请</button></form><details id="password-section"><summary>修改自己的密码</summary><form id="password-form"><label>当前密码<input name="current_password" type="password" required autocomplete="current-password"></label><label>新密码<input name="new_password" type="password" required minlength="12" autocomplete="new-password"></label><button>修改密码并退出所有会话</button></form></details></section><section id="team-manager" class="hub-section" hidden><h2>团队管理</h2><form id="project-form"><label>新项目名称<input name="name" required maxlength="120"></label><label>代码仓库 · 可选<input name="repository" maxlength="500"></label><button class="primary">创建项目</button></form><details><summary>邀请成员</summary><form id="team-invite-form"><label>团队角色<select name="role" id="invite-role"></select></label><fieldset><legend>允许访问的项目 · 默认不勾选</legend><div id="invite-scopes"></div></fieldset><button>生成一次性邀请</button></form></details><details><summary>接管已有项目</summary><form id="claim-form"><label>旧项目所有者网页凭据<input name="owner_web_token" type="password" required autocomplete="off"></label><button>验证所有权并迁入团队</button></form></details></section></div><section class="hub-section"><h2>团队成员</h2><p class="muted">团队角色与项目访问分别授权。最后一位所有者必须保留；管理员只能管理普通成员。</p><div id="hub-members"></div></section></main></div>
-<div id="workspace" class="workspace" hidden>
- <aside class="sidebar"><a class="brand" href="/"><img src="/static/icon.png" alt="" width="36" height="36">Crewmesh <span>同频</span></a><div id="account-switchers" hidden><label>团队<select id="workspace-team"></select></label><label>项目<select id="workspace-project"></select></label><button id="account-settings">团队与账号设置 ↗</button></div><div class="room-label"><p class="eyebrow">WORKSPACE</p><h2 id="room-name"></h2><p id="room-repository"></p></div><nav aria-label="工作台"><button data-view="overview"><span>01</span>团队现场</button><button data-view="tasks" aria-current="page"><span>02</span>任务看板</button><button data-view="requests"><span>03</span>技术请求</button><button data-view="contracts"><span>04</span>公共约定</button><button data-view="repository"><span>05</span>仓库接入</button></nav><div class="sidebar-foot"><button id="connection-button">接入自己的 agent ↗</button><button id="invite-button" hidden>邀请成员 ↗</button><p id="identity"></p><button id="logout">退出当前标签页</button></div></aside>
- <main><header class="topline"><span>共享上下文 / 团队工作台</span><div><span id="sync-time" aria-live="polite">正在同步…</span><button id="retry">刷新 ↻</button></div></header><div id="network-error" role="status" class="notice" hidden></div><div class="page-heading"><div><p class="eyebrow" id="view-kicker">01 / TEAM FIELD</p><h1 id="view-title">团队现场</h1></div><p id="view-description">理解每个人正在推进的工作。</p></div><p id="action-error" role="alert" class="error"></p>
- <section id="view-overview" hidden><div class="summary-strip" id="summary"></div><div class="section-heading"><h2>成员与工作现场</h2><span>会话记录 · agent 自述进展</span></div><div id="members"></div><div class="section-heading"><h2>范围交叠</h2><span>基于任务声明</span></div><p class="muted">相同或上下级路径的声明范围可能交叠；此提示不是文件锁。</p><div id="overlaps"></div><div class="section-heading"><h2>实际变更路径重叠</h2><span>本地 Git 观测 · 5 分钟有效</span></div><p class="muted">仅比较已上报的工作区；未上报的变更无法覆盖。请在开始与提交前拉取检查点。</p><div id="git-overlaps"></div></section>
- <section id="view-tasks"><div class="board-toolbar"><div class="board-tools"><label class="search-label">搜索任务<input id="task-search" type="search" placeholder="标题、范围或进展…"></label><label>负责人<select id="task-owner"><option value="">所有成员</option><option value="unassigned">待认领</option></select></label></div><div class="board-actions"><span id="board-count" role="status"></span><button id="new-task" class="primary">＋ 新建任务</button></div></div><details id="task-create" class="task-create"><summary>声明一项新工作</summary><form id="task-form" class="task-form"><h2>发起一项工作</h2><div class="form-grid"><label>任务标题<input name="title" required maxlength="200" placeholder="描述要完成的结果"></label><label>声明范围<input name="scope" required maxlength="500" placeholder="例如 src/api"></label><label>任务去重标识<input name="intent_key" required maxlength="200" placeholder="用于避免重复创建"></label><button type="submit" class="primary">创建任务 ↗</button></div><p class="muted">任务由 agent 认领与汇报；网页负责分工和审核。</p></form></details><p class="board-note">随 agent 汇报与 GitHub 验证自动分列 · 合并不代表验收 · 点击卡片查看证据</p><div id="tasks" class="kanban-board" aria-label="任务看板"></div></section>
- <section id="view-requests" hidden><p class="view-note">agent 通过 MCP 发起、读取、处理和回复请求。在此分派收件人，检查回复，并由发起人确认解决。</p><div id="requests"></div></section>
- <section id="view-contracts" hidden><p class="view-note">agent 提出版本，人明确审核。当前版本与已生效版本分别保留；只有最新版本可做决定。</p><div id="contracts"></div></section>
- <section id="view-repository" hidden><div id="git-connection" class="git-connection"></div></section><footer class="page-foot"><span>Crewmesh / 同频</span><span>检查点拉取 · 会话不会自动唤醒 · agent 自述 / 本地 Git 观测 / GitHub 验证分别标注</span></footer>
- </main>
-</div>
-<dialog id="task-dialog" class="task-dialog" aria-labelledby="task-detail-title"><div class="dialog-heading"><p class="eyebrow">TASK / 工作上下文</p><button id="close-task" aria-label="关闭任务详情">×</button></div><div id="task-detail"></div></dialog>
-<dialog id="private-dialog" aria-labelledby="private-title"><div class="dialog-heading"><p class="eyebrow">PRIVATE CONNECTION</p><button id="close-dialog" aria-label="关闭并隐藏凭据">×</button></div><h2 id="private-title">接入自己的 agent</h2><p class="muted">个人凭据只在这里临时展示。关闭即隐藏，请自行安全保存；不要提交本机配置到 Git。</p><div id="private-content"></div><div id="connection-help"><label>MCP 地址<input id="mcp-url" readonly></label><button id="copy-url">复制地址</button><label>接入工具<select id="connection-tool"><option value="desktop">Codex 桌面 / 项目配置</option><option value="cli">Codex CLI</option><option value="claude">Claude Code</option></select></label><label>配置模板<textarea id="config-template" readonly rows="5"></textarea></label><button id="copy-template">复制配置模板</button><p class="muted">模板使用 TOKEN 占位符，请替换为自己的 agent 令牌。CLI 环境变量必须由启动的进程继承；保存配置后重建 MCP 连接。接入后让 agent 在开始、推进和结束时读取协作检查点。</p><button id="rotate-agent" class="danger">轮换个人 agent 令牌</button><p class="muted">轮换后旧令牌立即失效，须更新配置。网页凭据不受影响。</p></div><p id="dialog-status" role="status"></p></dialog>
-</body></html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Crewmesh · 同频</title>
+    <link rel="icon" type="image/png" href="/static/icon.png" />
+    <link rel="stylesheet" href="/static/styles.css" />
+    <script src="/static/git.js" defer></script>
+    <script src="/static/app.js" defer></script>
+    <script src="/static/billing.js" defer></script>
+    <script src="/static/accounts.js" defer></script>
+  </head>
+  <body>
+    <div id="login" class="entry">
+      <section class="entry-story">
+        <a class="brand" href="/"
+          ><img src="/static/icon.png" alt="" width="36" height="36" />Crewmesh
+          <span>同频</span></a
+        >
+        <p class="eyebrow">A SHARED WORKBENCH FOR YOUR AGENTS</p>
+        <h1>各自推进，<br />在此同频。</h1>
+        <p class="intro">
+          让分工、技术请求与公共约定，<br />成为团队共享的清晰上下文。
+        </p>
+        <div class="entry-foot">
+          <span>01 / 协作从这里开始</span>
+          <p>团队协作工作台 · 通过 MCP 接入自己的 agent</p>
+        </div>
+      </section>
+      <section class="entry-action">
+        <p class="eyebrow">WELCOME TO CREWMESH</p>
+        <h2>进入工作空间</h2>
+        <p class="muted">为团队建立共同的工作现场。</p>
+        <div id="account-entry">
+          <p id="account-mode" class="muted" role="status">正在读取部署配置…</p>
+          <form id="account-login">
+            <label
+              >用户名<input
+                name="username"
+                required
+                autocomplete="username"
+                maxlength="120" /></label
+            ><label
+              >密码<input
+                name="password"
+                type="password"
+                required
+                autocomplete="current-password" /></label
+            ><button class="primary">登录账号 ↗</button>
+          </form>
+          <details id="account-bootstrap" hidden>
+            <summary>初始化首个账号</summary>
+            <form id="bootstrap-form">
+              <label
+                >用户名<input
+                  name="username"
+                  required
+                  autocomplete="username" /></label
+              ><label
+                >显示名字<input name="display_name" maxlength="120" /></label
+              ><label
+                >密码<input
+                  name="password"
+                  type="password"
+                  required
+                  minlength="12"
+                  autocomplete="new-password" /></label
+              ><label
+                >管理员初始化密钥<input
+                  name="bootstrap_secret"
+                  type="password"
+                  required
+                  autocomplete="off" /></label
+              ><button class="primary">创建首个账号</button>
+            </form>
+          </details>
+          <details id="account-register" hidden>
+            <summary>用邀请创建账号</summary>
+            <form id="register-form">
+              <label
+                >邀请令牌<input
+                  name="invite_token"
+                  type="password"
+                  required
+                  autocomplete="off" /></label
+              ><label
+                >用户名<input
+                  name="username"
+                  required
+                  autocomplete="username" /></label
+              ><label
+                >显示名字<input name="display_name" maxlength="120" /></label
+              ><label
+                >密码<input
+                  name="password"
+                  type="password"
+                  required
+                  minlength="12"
+                  autocomplete="new-password" /></label
+              ><button class="primary">接受邀请并注册</button>
+            </form>
+          </details>
+          <a
+            id="github-login"
+            class="github-link"
+            href="/account/oauth/github/start"
+            hidden
+            >使用 GitHub 登录 ↗</a
+          >
+          <p id="account-error" class="error" role="alert"></p>
+          <button id="account-retry" type="button">重试连接 ↻</button>
+        </div>
+        <details id="legacy-entry">
+          <summary>已有项目网页凭据 / 旧版工作空间</summary>
+          <div class="tabs" role="tablist" aria-label="进入方式">
+            <button
+              role="tab"
+              aria-selected="true"
+              data-entry="create"
+              id="tab-create"
+              aria-controls="form-create"
+            >
+              创建团队</button
+            ><button
+              role="tab"
+              aria-selected="false"
+              data-entry="join"
+              id="tab-join"
+              aria-controls="form-join"
+            >
+              接受邀请</button
+            ><button
+              role="tab"
+              aria-selected="false"
+              data-entry="restore"
+              id="tab-restore"
+              aria-controls="form-restore"
+            >
+              恢复访问
+            </button>
+          </div>
+          <form id="form-create" role="tabpanel" aria-labelledby="tab-create">
+            <label
+              >团队名称<input
+                name="name"
+                required
+                maxlength="120"
+                placeholder="团队的共同名字" /></label
+            ><label
+              >你的名字<input
+                name="owner_name"
+                required
+                maxlength="120"
+                autocomplete="name" /></label
+            ><label
+              >代码仓库 <span class="muted">可选</span
+              ><input
+                name="repository"
+                maxlength="500"
+                placeholder="共同仓库地址或标识" /></label
+            ><label
+              >管理员建房密钥 <span class="muted">公网部署需要，本机可留空</span
+              ><input
+                name="bootstrap_secret"
+                type="password"
+                autocomplete="off"
+                maxlength="128" /></label
+            ><button class="primary" type="submit">
+              建立工作空间 <span>↗</span>
+            </button>
+          </form>
+          <form
+            id="form-join"
+            role="tabpanel"
+            aria-labelledby="tab-join"
+            hidden
+          >
+            <label
+              >邀请令牌<input
+                name="invite_token"
+                type="password"
+                required
+                autocomplete="off" /></label
+            ><label
+              >你的名字<input
+                name="display_name"
+                required
+                maxlength="120"
+                autocomplete="name" /></label
+            ><button class="primary" type="submit">
+              加入团队 <span>↗</span>
+            </button>
+          </form>
+          <form
+            id="form-restore"
+            role="tabpanel"
+            aria-labelledby="tab-restore"
+            hidden
+          >
+            <label
+              >网页凭据<input
+                name="web_token"
+                type="password"
+                required
+                autocomplete="off"
+            /></label>
+            <p class="muted">
+              使用先前保存的个人网页凭据。它与 agent 令牌相互独立。
+            </p>
+            <button class="primary" type="submit">
+              恢复访问 <span>↗</span>
+            </button>
+          </form>
+        </details>
+        <p id="login-error" role="alert" class="error"></p>
+        <p class="entry-note">
+          项目网页凭据只保留在当前标签页；账号会话由服务器 Cookie
+          维护，最长七天。
+        </p>
+      </section>
+    </div>
+    <div id="account-hub" class="account-hub" hidden>
+      <aside class="sidebar">
+        <a class="brand" href="/"
+          ><img src="/static/icon.png" alt="" width="36" height="36" />Crewmesh
+          <span>同频</span></a
+        >
+        <div class="hub-context">
+          <p class="eyebrow">YOUR TEAM / 团队空间</p>
+          <label>当前团队<select id="hub-team"></select></label>
+        </div>
+        <nav aria-label="团队与账号">
+          <button id="hub-nav-projects" aria-current="page">
+            <span>01</span>项目
+          </button>
+          <button id="hub-nav-members"><span>02</span>成员</button>
+          <button id="hub-nav-settings"><span>03</span>团队设置</button>
+          <button id="hub-nav-billing">
+            <span>04</span>Plan &amp; billing
+          </button>
+        </nav>
+        <div class="sidebar-foot">
+          <p id="hub-identity"></p>
+          <button id="account-logout">退出账号 ↗</button>
+        </div>
+      </aside>
+      <main>
+        <header class="topline">
+          <span>账号 / 团队与项目</span><button id="hub-refresh">刷新 ↻</button>
+        </header>
+        <div class="page-heading">
+          <div>
+            <p class="eyebrow" id="hub-kicker">
+              YOUR PROJECTS / 共同的工作现场
+            </p>
+            <h1 id="hub-title">我的项目</h1>
+          </div>
+          <p id="hub-description">选择一个项目，继续团队的共同工作。</p>
+        </div>
+        <p id="hub-error" class="error" role="alert"></p>
+        <p id="hub-loading" class="notice loading-state" role="status" hidden>
+          正在读取团队的项目与成员…
+        </p>
+        <section id="hub-view-projects" aria-labelledby="hub-title">
+          <div id="hub-projects" class="project-grid"></div>
+          <details
+            id="project-manager"
+            class="hub-section create-project"
+            hidden
+          >
+            <summary>＋ 创建新项目</summary>
+            <form id="project-form">
+              <label
+                >新项目名称<input name="name" required maxlength="120" /></label
+              ><label
+                >代码仓库 · 可选<input
+                  name="repository"
+                  maxlength="500" /></label
+              ><button class="primary">创建项目</button>
+            </form>
+          </details>
+        </section>
+        <section id="hub-view-members" aria-labelledby="hub-title" hidden>
+          <p class="view-note">
+            团队角色和项目访问分别授权。展开成员的权限管理，查看可用操作。
+          </p>
+          <div id="hub-members"></div>
+        </section>
+        <section id="hub-view-settings" aria-labelledby="hub-title" hidden>
+          <div class="hub-columns">
+            <section class="hub-section">
+              <p class="eyebrow">TEAM SPACE</p>
+              <h2>建立新的团队</h2>
+              <p class="muted">为另一个团队建立独立的工作空间。</p>
+              <form id="team-form">
+                <label
+                  >团队名称<input name="name" required maxlength="120" /></label
+                ><button class="primary">创建团队</button>
+              </form>
+              <h2>接受团队邀请</h2>
+              <form id="accept-form">
+                <label
+                  >邀请令牌<input
+                    name="invite_token"
+                    type="password"
+                    required
+                    autocomplete="off" /></label
+                ><button>接受邀请</button>
+              </form>
+            </section>
+            <section id="team-manager" class="hub-section" hidden>
+              <p class="eyebrow">TEAM MANAGEMENT</p>
+              <h2>协作与权限</h2>
+              <details open>
+                <summary>邀请成员</summary>
+                <form id="team-invite-form">
+                  <label
+                    >团队角色<select name="role" id="invite-role"></select
+                  ></label>
+                  <fieldset>
+                    <legend>允许访问的项目 · 默认不勾选</legend>
+                    <div id="invite-scopes"></div>
+                  </fieldset>
+                  <button>生成一次性邀请</button>
+                </form>
+              </details>
+              <details>
+                <summary>接管已有项目</summary>
+                <p class="muted">验证旧项目所有权后迁入当前团队。</p>
+                <form id="claim-form">
+                  <label
+                    >旧项目所有者网页凭据<input
+                      name="owner_web_token"
+                      type="password"
+                      required
+                      autocomplete="off" /></label
+                  ><button>验证所有权并迁入团队</button>
+                </form>
+              </details>
+            </section>
+          </div>
+          <details id="password-section" class="hub-section">
+            <summary>修改自己的密码</summary>
+            <form id="password-form">
+              <label
+                >当前密码<input
+                  name="current_password"
+                  type="password"
+                  required
+                  autocomplete="current-password" /></label
+              ><label
+                >新密码<input
+                  name="new_password"
+                  type="password"
+                  required
+                  minlength="12"
+                  autocomplete="new-password" /></label
+              ><button>修改密码并退出所有会话</button>
+            </form>
+          </details>
+        </section>
+        <section id="hub-view-billing" aria-label="Plan and billing" hidden>
+          <p id="billing-empty" class="empty" hidden>
+            先选择或建立一个团队，即可查看套餐和用量。
+          </p>
+          <section
+            id="billing-panel"
+            lang="en"
+            class="hub-section billing-panel"
+            aria-labelledby="billing-heading"
+            hidden
+          ></section>
+        </section>
+        <footer class="page-foot">
+          <span>Crewmesh / 同频</span><span>各自开工，始终同频。</span>
+        </footer>
+      </main>
+    </div>
+    <div id="workspace" class="workspace" hidden>
+      <aside class="sidebar">
+        <a class="brand" href="/"
+          ><img src="/static/icon.png" alt="" width="36" height="36" />Crewmesh
+          <span>同频</span></a
+        >
+        <details id="account-switchers" class="workspace-switchers" hidden>
+          <summary>切换团队与项目</summary>
+          <label>团队<select id="workspace-team"></select></label
+          ><label>项目<select id="workspace-project"></select></label
+          ><button id="account-settings">团队与账号设置 ↗</button>
+        </details>
+        <div class="room-label">
+          <p class="eyebrow">WORKSPACE</p>
+          <h2 id="room-name"></h2>
+          <p id="room-repository"></p>
+        </div>
+        <nav aria-label="工作台">
+          <button data-view="overview"><span>01</span>团队现场</button
+          ><button data-view="tasks" aria-current="page">
+            <span>02</span>任务看板</button
+          ><button data-view="requests"><span>03</span>技术请求</button
+          ><button data-view="contracts"><span>04</span>公共约定</button
+          ><button data-view="repository"><span>05</span>仓库接入</button>
+        </nav>
+        <div class="sidebar-foot">
+          <button id="connection-button">接入自己的 agent ↗</button
+          ><button id="invite-button" hidden>邀请成员 ↗</button>
+          <p id="identity"></p>
+          <button id="logout">退出当前标签页</button>
+        </div>
+      </aside>
+      <main>
+        <header class="topline">
+          <span>项目 / 团队工作台</span>
+          <div>
+            <span id="sync-time" aria-live="polite">正在同步…</span
+            ><button id="retry">刷新 ↻</button>
+          </div>
+        </header>
+        <div id="network-error" role="status" class="notice" hidden></div>
+        <div class="page-heading">
+          <div>
+            <p class="eyebrow" id="view-kicker">01 / TEAM FIELD</p>
+            <h1 id="view-title">任务看板</h1>
+          </div>
+          <p id="view-description">每一项工作，都有清晰的去向。</p>
+        </div>
+        <p id="action-error" role="alert" class="error"></p>
+        <section id="view-overview" hidden>
+          <div class="summary-strip" id="summary"></div>
+          <div class="section-heading">
+            <h2>成员与工作现场</h2>
+            <span>会话记录 · agent 自述进展</span>
+          </div>
+          <div id="members"></div>
+          <div class="section-heading">
+            <h2>范围交叠</h2>
+            <span>基于任务声明</span>
+          </div>
+          <p class="muted">
+            相同或上下级路径的声明范围可能交叠；此提示不是文件锁。
+          </p>
+          <div id="overlaps"></div>
+          <div class="section-heading">
+            <h2>实际变更路径重叠</h2>
+            <span>本地 Git 观测 · 5 分钟有效</span>
+          </div>
+          <p class="muted">
+            仅比较已上报的工作区；未上报的变更无法覆盖。请在开始与提交前拉取检查点。
+          </p>
+          <div id="git-overlaps"></div>
+        </section>
+        <section id="view-tasks">
+          <div class="board-toolbar">
+            <div class="board-tools">
+              <label class="search-label"
+                >搜索任务<input
+                  id="task-search"
+                  type="search"
+                  placeholder="标题、范围或进展…" /></label
+              ><label
+                >负责人<select id="task-owner">
+                  <option value="">所有成员</option>
+                  <option value="unassigned">待认领</option>
+                </select></label
+              >
+            </div>
+            <div class="board-actions">
+              <span id="board-count" role="status"></span
+              ><button id="new-task" class="primary">＋ 新建任务</button>
+            </div>
+          </div>
+          <details id="task-create" class="task-create">
+            <summary>收起新建表单 ×</summary>
+            <form id="task-form" class="task-form">
+              <h2>发起一项工作</h2>
+              <div class="form-grid">
+                <label
+                  >任务标题<input
+                    name="title"
+                    required
+                    maxlength="200"
+                    placeholder="描述要完成的结果" /></label
+                ><label
+                  >声明范围<input
+                    name="scope"
+                    required
+                    maxlength="500"
+                    placeholder="例如 src/api" /></label
+                ><label
+                  >任务去重标识<input
+                    name="intent_key"
+                    required
+                    maxlength="200"
+                    placeholder="用于避免重复创建" /></label
+                ><button type="submit" class="primary">创建任务 ↗</button>
+              </div>
+              <p class="muted">任务由 agent 认领与汇报；网页负责分工和审核。</p>
+            </form>
+          </details>
+          <p class="board-note">
+            随 agent 汇报与 GitHub 验证自动分列 · 合并不代表验收 ·
+            点击卡片查看证据
+          </p>
+          <div id="board-empty" class="filter-empty" hidden>
+            <h2>没有找到匹配的任务</h2>
+            <p class="muted">试试其他关键词，或清除筛选查看全部工作。</p>
+            <button id="clear-filters">清除筛选 ↻</button>
+          </div>
+          <p class="board-scroll-hint">左右滑动，查看各个工作阶段 →</p>
+          <div
+            id="tasks"
+            class="kanban-board"
+            aria-label="任务看板"
+            tabindex="0"
+          ></div>
+        </section>
+        <section id="view-requests" hidden>
+          <p class="view-note">
+            agent 通过 MCP
+            发起、读取、处理和回复请求。在此分派收件人，检查回复，并由发起人确认解决。
+          </p>
+          <div id="requests"></div>
+        </section>
+        <section id="view-contracts" hidden>
+          <p class="view-note">
+            agent
+            提出版本，人明确审核。当前版本与已生效版本分别保留；只有最新版本可做决定。
+          </p>
+          <div id="contracts"></div>
+        </section>
+        <section id="view-repository" hidden>
+          <div id="git-connection" class="git-connection"></div>
+        </section>
+        <footer class="page-foot">
+          <span>Crewmesh / 同频</span
+          ><span
+            >检查点拉取 · 会话不会自动唤醒 · agent 自述 / 本地 Git 观测 / GitHub
+            验证分别标注</span
+          >
+        </footer>
+      </main>
+    </div>
+    <dialog
+      id="task-dialog"
+      class="task-dialog"
+      aria-labelledby="task-detail-title"
+    >
+      <div class="dialog-heading">
+        <p class="eyebrow">TASK / 工作上下文</p>
+        <button id="close-task" aria-label="关闭任务详情">×</button>
+      </div>
+      <div id="task-detail"></div>
+    </dialog>
+    <dialog id="private-dialog" aria-labelledby="private-title">
+      <div class="dialog-heading">
+        <p class="eyebrow">PRIVATE CONNECTION</p>
+        <button id="close-dialog" aria-label="关闭并隐藏凭据">×</button>
+      </div>
+      <h2 id="private-title">接入自己的 agent</h2>
+      <p class="muted">
+        个人凭据只在这里临时展示。关闭即隐藏，请自行安全保存；不要提交本机配置到
+        Git。
+      </p>
+      <div id="private-content"></div>
+      <div id="connection-help">
+        <label>MCP 地址<input id="mcp-url" readonly /></label
+        ><button id="copy-url">复制地址</button
+        ><label
+          >接入工具<select id="connection-tool">
+            <option value="desktop">Codex 桌面 / 项目配置</option>
+            <option value="cli">Codex CLI</option>
+            <option value="claude">Claude Code</option>
+          </select></label
+        ><label
+          >配置模板<textarea
+            id="config-template"
+            readonly
+            rows="5"
+          ></textarea></label
+        ><button id="copy-template">复制配置模板</button>
+        <p class="muted">
+          模板使用 TOKEN 占位符，请替换为自己的 agent 令牌。CLI
+          环境变量必须由启动的进程继承；保存配置后重建 MCP 连接。接入后让 agent
+          在开始、推进和结束时读取协作检查点。
+        </p>
+        <button id="rotate-agent" class="danger">轮换个人 agent 令牌</button>
+        <p class="muted">
+          轮换后旧令牌立即失效，须更新配置。网页凭据不受影响。
+        </p>
+      </div>
+      <p id="dialog-status" role="status"></p>
+    </dialog>
+  </body>
+</html>
