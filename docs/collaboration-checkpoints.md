@@ -18,6 +18,8 @@ python -m crewmesh.checkpoint_hook --tool codex-cli --doctor
 
 `--config-preview` 只打印 JSON。`--export NEW_FILE` 以独占方式创建新片段，文件已存在就失败。两者不写入任何原生工具设置，也不建立已接入记录。
 
+Codex 模板单独设置文档支持的 `additionalContextLimit: 9000`（近似 token 阈值），覆盖本产品不超过 9,000 ASCII 字符的完整上下文预算，避免默认约 2,500 token 阈值把正文换成落盘摘要。Claude 模板不包含这一 Codex 专用字段。配置变更仍须由用户重新审阅。
+
 审阅并手动合并片段到 Claude Code 的 `.claude/settings.local.json`，或本地 Codex 的 `.codex/hooks.json`；保留已有 hook。Codex 需要在原生 `/hooks` 中审阅、批准准确版本，配置生成器不会替用户批准或修改信任。Codex 桌面仅指支持本地 command hook 的本地会话，云端编排不能据此保证可用。
 
 配置结构参考 [Claude Code Hooks](https://code.claude.com/docs/en/hooks) 与 [Codex Hooks](https://learn.chatgpt.com/docs/hooks)。本实现只用三个通知事件及 `hookSpecificOutput.additionalContext`，不会输出 permission / approval 决策，不改变审批规则，不唤醒空闲会话。
@@ -37,13 +39,14 @@ python -m crewmesh.checkpoint_hook --tool codex-cli --doctor
 
 `/api/snapshot` 增加 `collaboration`，包含项目最近 200 条会话记录，以及当前成员最近 5 次诊断状态。挑战和 proof 不进入网页快照。不同成员和项目不能读回彼此的诊断。
 
-`--doctor` 校验服务地址、令牌身份、项目一致性，再进行发送挑战、读回 challenge 与服务端 proof、确认完成的真实 HTTP 过程。只有配置文件或一次连接成功都不能产生 `completed`。doctor 自身不制造 hook 检查点，也不声称原生 agent 已消费上下文。诊断失败返回非零退出码；hook 失败写入不含凭据的警告并返回 0，让原生工作继续。
+`--doctor` 校验服务地址、令牌身份、项目一致性，再进行发送挑战、读回 challenge 与服务端 proof、确认完成的真实 HTTP 过程。只有配置文件或一次连接成功都不能产生 `completed`。doctor 自身不制造 hook 检查点，也不声称原生 agent 已消费上下文。诊断、预览和导出失败返回非零退出码，只向 stderr 写入安全警告。普通 hook 失败返回 0，同时向 stdout 输出只含顶层 `systemMessage` 的固定警告 JSON，供 Claude/Codex 的原生界面或事件流显示；stderr 保留同一安全简讯。失败输出不含 `continue`、`decision`、permission 或 approval 字段，不回显异常、凭据和原生输入。
 
 ## 数据与执行边界
 
 - 入口仅从 stdin 使用 `session_id`、`hook_event_name`。不转发 prompt、cwd、transcript 路径/正文、tool 输入或输出，不读取这些字段指向的文件。输入超过 64 KiB 时跳过并警告。
 - 服务地址只能来自显式 `CREWMESH_SERVICE_URL`，支持 HTTPS 或 loopback HTTP origin，禁止重定向。每个 HTTP 响应最多 64 KiB，每请求默认 2 秒、可设 0.05–3 秒；hook 的网络与节流操作整体 8 秒截止，生成配置 timeout 为 10 秒。独立 doctor 整体 12 秒截止。
-- 摘要最多 10 项本人任务、6 条相关待解决请求、每请求 2 条回复、4 份最新已批准版本。请求正文 400 字符，回复 300 字符，证据 150 字符，约定正文 800 字符；序列化摘要最多 16,000 UTF-8 字节。字段/列表截断标记 `excerpted` / `truncated`，明确要求用 `read_team` 或显式 `read_inbox` 查看完整数据。Hook 输出另有字节上限。
+- 摘要最多 10 项本人任务、6 条相关待解决请求、每请求 2 条回复、4 份最新已批准版本。请求正文 400 字符，回复 300 字符，证据 150 字符，约定正文 800 字符；服务序列化摘要最多 16,000 UTF-8 字节。字段/列表截断标记 `excerpted` / `truncated`，明确要求用 `read_team` 或显式 `read_inbox` 查看完整数据。
+- Hook 成品 `additionalContext` 含完整外部数据边界不超过 9,000 ASCII 字符，低于 Claude 的 10,000 字符落盘阈值。超限时先移除列表末尾记录、尽量保留每类至少一项，再缩短长正文/范围；始终保留完整可解析 JSON、`truncated` 与显式读取提示。Unicode 和控制字符先做 JSON 转义再计数，Python 与原生 UTF-16 计数一致，完整 stdout JSON 仍低于 30,000 字节。不在字节中间截断正文或数据边界。
 - 自动检查点只 peek，不写入已读、处理、回复或解决状态。显式 `read_inbox` 等工具维持原有语义。本地 Git `repo_checkpoint` 是独立既有操作，不作为自动 hook 的入口。
 - `PostToolUse` 按服务、项目、鉴权成员、会话、工具节流 30 秒；每次仍先校验身份，过期或撤销令牌不能凭节流缓存继续被视作有效。`SessionStart` 和 `UserPromptSubmit` 强制检查。跨进程 SQLite 事务协调节流，只有服务成功才更新成功时间。
 - 节流数据库放在操作系统用户状态目录的 `Crewmesh/hook-state/`，只持久化键哈希和成功时间，不保存令牌、prompt 或 brief。不会删除状态文件。服务数据库以新增表升级，保留已有任务、消息及账户数据。
@@ -53,8 +56,9 @@ python -m crewmesh.checkpoint_hook --tool codex-cli --doctor
 
 测试先失败再实现：新增检查点操作、诊断路由、hook 入口、MCP/stdio 工具、网页模块分别验证了缺失行为；整体截止、字段截断和工作目录模块覆盖另有先红后绿回归。
 
-- 完整 Python：`python -m unittest discover -s tests -v`，371 项通过（基线 350，新增 21）。原始结果保留 `.local/f1-full-tests.log`。
-- 自查额外加入了 hook 嵌套 JSON 转义后的输出字节上限回归，并在独立 hook 专项中验证；当前总计 372 项用例。实验目录 21 项测试通过。
+- 完整 Python：控制器独立运行 `python -m unittest discover -s tests -v`，372 项通过，耗时 84.463 秒。原始结果保留 `.local/f1-controller-full.log`。实验目录 21 项测试通过。
+- 规格审查补充失败可见性：先验证五组回归因缺失 `systemMessage` 失败，再实现固定警告 JSON；hook 专项 12 项通过，覆盖三个事件、错误凭据、网络失败、输入错误，以及 doctor/配置失败不输出成功协议。证据保留 `.local/f1-warning-red.log` 与 `.local/f1-warning-green.log`。
+- 规格审查补充原生输出预算：合法大摘要先复现 10,331 字符上下文超过预算，再限制成品到 9,000 字符并保留各类有用记录。ASCII、中文、非 BMP 字符、转义字符和 Codex/Claude 模板差异回归通过；最终 hook 专项 14 项通过，证据为 `.local/f1-native-cap-green.log`。
 - 新增用例覆盖真实 HTTP + hook 子进程、错误项目/令牌、跨项目隔离、不同成员及会话、无自动已读回执、挑战完整顺序、300 秒边界、超时/重定向/响应大小、prompt 不泄漏、跨进程节流、配置保留、旧数据库升级。
 - 网页：`collaboration_ui_regression.js`、`web_session_regression.js`、`git_ui_regression.js`、`account_ui_regression.js`、`billing_ui_regression.js` 均通过；包括过期状态、诊断不冒充 hook、安全文本渲染、切换项目后的异步结果和工具选择保留。新增网页测试已加入 CI。
 - 真实浏览器验收确认仓库接入页显示自动协作面板，390px 宽度无横向溢出；未发现新增脚本错误。步骤展开和工具选择在刷新时保留，退出/切换项目重置。
