@@ -45,3 +45,9 @@ Playwright CLI 使用保留的独立 profile，真实随机端口 loopback 服�
 - `cloud-fixture-desktop.png` / `cloud-fixture-mobile.png`：合成配置云 UI，1280px / 390px。
 
 早先 `selfhost-member-mobile.png` 的名称不准确，内容仍是合成云 fixture；它保留作为原始证据，真实自托管移动截图以 `-actual` 结尾。服务仅通过自己的 stop.flag 优雅停止；数据库、profile、截图、日志及原始证据全部保留，不删除文件。
+
+## 与 Git 接入并行阶段的源码合并
+
+Task 4 与远端 `ce2efa1` 的 Git 接入成果合并时，四处冲突按功能并存解决：CI 同时检查 Billing/Git 脚本及各自回归；固定静态白名单同时提供 billing.js/git.js；页面脚本顺序为 git → app → billing → accounts；CSS 保留两套按区域限定的样式。账号中心 Billing、项目仓库接入、GitHub worker 与 Billing worker 均保留，自动合并的共享 lifespan 无额外改动。test_web 的资源覆盖增加 Git 资产，MIME/CSP/packaged bytes 仍逐项验证。
+
+合并后本机检查：4 个 JS syntax、Git UI / 原有 session / account UI / Billing 29 个行为组回归均通过；`test_git*.py` 73 项（含 Git+Billing 双 worker 与授权 API 集成）、test_web 6 项、MCP 3 项、repositories 7 项均通过。证据保留于 `.local/c2-ui-merge-{git,web,mcp,repositories}-20261011-792a.log`。现有环境已安装声明的 PyJWT 2.15.1 和 cryptography 50.0.2，无新增安装步骤。此源码合并不增加真实 GitHub/Stripe 外部账号或部署验收声明。

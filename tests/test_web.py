@@ -20,6 +20,7 @@ class WebTests(unittest.TestCase):
         for path, mime, resource in [('/', 'text/html', 'index.html'),
                                     ('/static/styles.css', 'text/css', 'styles.css'),
                                     ('/static/app.js', 'text/javascript', 'app.js'),
+                                    ('/static/git.js', 'text/javascript', 'git.js'),
                                     ('/static/accounts.js', 'text/javascript', 'accounts.js'),
                                     ('/static/billing.js', 'text/javascript', 'billing.js'),
                                     ('/static/icon.png', 'image/png', 'icon.png')]:

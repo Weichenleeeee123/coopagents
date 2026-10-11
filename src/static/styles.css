@@ -776,3 +776,22 @@ fieldset {border:1px solid var(--line);margin:16px 0;padding:16px}
 .billing-error {font-size:13px;margin-top:16px;line-height:1.7}
 .billing-panel p,.billing-panel h2 {overflow-wrap:anywhere}
 @media(max-width:760px){.billing-panel{padding:20px}.billing-overview{grid-template-columns:1fr;gap:23px}.billing-usage{border-left:0;border-top:1px solid var(--line);padding:20px 0 0}.billing-state{display:block}.billing-state p + p{margin-top:8px}.billing-actions{align-items:stretch}.billing-actions button{flex:1 1 150px}}
+.card-git {font-size:11px;line-height:1.6;color:var(--forest);border-top:1px dashed var(--line);padding-top:9px;margin-top:10px;overflow-wrap:anywhere}
+.git-connection {max-width:880px;border-top:1px solid var(--line);padding:28px 0}
+.git-connection h2 {font-size:28px;margin-bottom:12px}
+.git-connection h3 {margin:30px 0 12px}
+.git-repository {font-family:monospace;font-size:18px;margin:24px 0 8px;overflow-wrap:anywhere}
+.git-connection details {border:1px solid var(--line);padding:18px;margin:24px 0}
+.git-connection pre {white-space:pre-wrap;overflow-wrap:anywhere;background:var(--paper);padding:16px;font-size:12px}
+.git-bind-form,.git-link-form {display:grid;gap:14px;margin:20px 0}
+.git-link-form {grid-template-columns:repeat(3,minmax(0,1fr));padding:18px;border:1px solid var(--line)}
+.git-link-form label {margin:0;font-size:12px}
+.git-link-form p {grid-column:1/-1}
+.git-link-form button,.git-bind-form button {justify-self:start}
+.git-evidence {padding:14px 16px;border-left:3px solid var(--forest);background:var(--paper);margin:12px 0;overflow-wrap:anywhere}
+.git-evidence p {margin:5px 0}
+.git-evidence a,.git-authorization a {color:var(--forest);font-weight:600}
+.git-authorization {display:flex;flex-wrap:wrap;align-items:center;gap:16px;margin:18px 0}
+.git-connection > button {margin:8px 12px 8px 0}
+.git-overlap {border-left:3px solid #b36c32}
+@media(max-width:650px){.git-link-form {grid-template-columns:1fr}.git-connection h2{font-size:24px}.git-connection pre{font-size:11px}}

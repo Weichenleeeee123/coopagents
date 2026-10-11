@@ -4,6 +4,11 @@
 
 | 文档 | 内容 |
 | --- | --- |
+| [Git 集成验收](git-integration-report.md) | G1/G2/G3 实现、真实克隆及 HTTP/stdio 验证、外部验收边界 |
+| [本地 Git 接入](git-local-setup.md) | 原有 agent 工具的 stdio 配置、检查点、项目约定与离线队列 |
+| [GitHub App 接入](git-github-setup.md) | 独立仓库授权、只读权限、签名事件、重试与部署配置 |
+| [Git 集成设计](git-integration-proposal.md) | 已批准的本地 Git + GitHub 协作范围 |
+| [Git 实施计划](git-integration-plan.md) | G1 → G2 → G3 阶段与验证清单 |
 | [C2 设计](commercial-c2-design.md) | 已批准的 Stripe 团队月订阅、额度与私有部署边界 |
 | [C2 计划](commercial-c2-plan.md) | 订阅领域、支付适配器、账单界面与分阶段验收 |
 | [C2 领域接口](c2-domain.md) | 事务额度、计费绑定、结账租约和同步版本接口 |
