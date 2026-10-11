@@ -228,6 +228,30 @@ class BillingTests(unittest.TestCase):
             self.billing.customer_state('unknown-team')
         self.assertEqual(self.team, self.billing.team_for_customer('cus_fixture', provider_mode='test'))
 
+    def test_existing_only_checkout_refresh_never_creates_after_other_process_resolves(self):
+        self.bind()
+        self.assertIsNone(self.billing.reserve_checkout(self.team,refresh=True,existing_only=True))
+        attempt=self.billing.reserve_checkout(self.team)
+        self.assertTrue(self.billing.update_checkout(attempt,status='expired',checkout_id='cs_fixture'))
+        self.assertIsNone(self.billing.reserve_checkout(self.team,refresh=True,existing_only=True))
+        with self.billing.db.connect() as c:
+            self.assertEqual(1,c.execute('SELECT COUNT(*) FROM billing_checkouts').fetchone()[0])
+        self.apply()
+        self.assertIsNone(self.billing.reserve_checkout(self.team,refresh=True,existing_only=True))
+
+    def test_checkout_provider_opaque_fragment_persists_only_for_exact_host(self):
+        self.bind();attempt=self.billing.reserve_checkout(self.team)
+        url='https://checkout.stripe.com/c/pay/cs_test_fixture#fidkdWxOYHwn'
+        self.assertTrue(self.billing.update_checkout(attempt,status='open',checkout_id='cs_fixture',
+            checkout_url=url,expires_at=int(datetime.now(timezone.utc).timestamp())+3600))
+        with self.billing.db.connect() as c:
+            self.assertEqual(url,c.execute('SELECT checkout_url FROM billing_checkouts').fetchone()[0])
+        for bad in ['https://other.example/c#opaque','https://checkout.stripe.com.evil/c#opaque',
+                'https://checkout.stripe.com:444/c#opaque','https://user@checkout.stripe.com/c#opaque',
+                'https://checkout.stripe.com/c#op aque','https://checkout.stripe.com/c#opaque\n']:
+            with self.subTest(url=bad),self.assertRaises(ValidationError):
+                self.billing.update_checkout(attempt,status='open',checkout_id='cs_fixture',checkout_url=bad,expires_at=1)
+
     def test_checkout_has_one_unresolved_attempt_and_durable_lease(self):
         self.bind()
         with ThreadPoolExecutor(max_workers=2) as pool:
