@@ -10,6 +10,7 @@ from .identity import _name, _token_hash, _utcnow, _expired
 class WorkspaceStore:
     def __init__(self, accounts):
         self.accounts, self.identity, self.db = accounts, accounts.identity, accounts.db
+        self.capacity_check = lambda connection, team_id, resource: None
         with self.db.connect(write=True) as c:
             for sql in (
                 '''CREATE TABLE IF NOT EXISTS teams(id TEXT PRIMARY KEY,name TEXT NOT NULL)''',
@@ -124,6 +125,7 @@ class WorkspaceStore:
             raise ValidationError('Repository must contain at most 500 characters')
         with self.db.connect(write=True) as c:
             actor, _ = self._manager(c, session_token, team_id)
+            self.capacity_check(c, team_id, 'projects')
             room_id, member_id = str(uuid4()), str(uuid4())
             c.execute('INSERT INTO rooms(id,name,repository) VALUES(?,?,?)', (room_id, _name(name), repository.strip()))
             c.execute("INSERT INTO members(id,room_id,display_name,role) VALUES(?,?,?,'owner')", (member_id, room_id, actor['display_name']))
@@ -210,6 +212,7 @@ class WorkspaceStore:
             existing = c.execute('SELECT active FROM team_members WHERE team_id=? AND account_id=?', (invite['team_id'], account['id'])).fetchone()
             if existing and existing['active']:
                 raise AccessDenied('Already a team member')
+            self.capacity_check(c, invite['team_id'], 'members')
             c.execute('INSERT INTO team_members VALUES(?,?,?,1) ON CONFLICT(team_id,account_id) DO UPDATE SET role=excluded.role,active=1', (invite['team_id'], account['id'], invite['role']))
             for project in c.execute('SELECT room_id FROM team_invite_projects WHERE token_hash=?', (token_hash,)).fetchall():
                 self._grant(c, project['room_id'], account['id'])
@@ -222,6 +225,7 @@ class WorkspaceStore:
             owner = self.identity.resolve(c, owner_web_token, 'web')
             if owner.role != 'owner' or c.execute('SELECT 1 FROM team_projects WHERE room_id=?', (owner.room_id,)).fetchone():
                 raise AccessDenied('Unbound project owner credential required')
+            self.capacity_check(c, team_id, 'projects')
             c.execute('INSERT INTO team_projects VALUES(?,?)', (owner.room_id, team_id))
             self._grant(c, owner.room_id, actor['id'], owner.member_id)
             return {'team_id': team_id, 'room_id': owner.room_id}
