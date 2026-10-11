@@ -11,6 +11,7 @@ function harness(hash='', invitation=false, anonymous=false, oauth=false){
     append(...n){this.children.push(...n);}prepend(...n){this.children.unshift(...n);}replaceChildren(...n){this.children=n;this.textContent='';}
     addEventListener(type,cb){this.listeners[type]=cb;}setAttribute(k,v){this[k]=v;}reset(){for(const n of this.querySelectorAll('input[type=password]'))n.value='';this.fields={};}
     querySelector(selector){return element(this.id+(selector==='[name=invite_token]'?'-invite':'-submit'));}querySelectorAll(){return [];}
+    closest(selector){return selector==='label'?element(this.id+'-label'):null;}
     click(){return this.listeners.click?.({currentTarget:this});}
   }
   const team={team_id:'t1',name:'Team',role:'owner'},p={room_id:'p1',team_id:'t1',name:'Project',repository:''};
@@ -39,11 +40,14 @@ function harness(hash='', invitation=false, anonymous=false, oauth=false){
   assert.equal(invite.calls.some(c=>c.path==='/account/invites/accept'),false);
   assert.equal(invite.element('invitation-accept').hidden,false);
   assert.equal(invite.element('register-form-invite').value,'private+invite');
+  assert.equal(invite.element('register-form-invite-label').hidden,true);
   assert.equal(invite.window.CrewmeshInvitations.link({invite_token:'a+b'}),'https://crew.example/#invite=a%2Bb');
   invite.element('invitation-accept').click();await flush();
   assert.equal(invite.calls.filter(c=>c.path==='/account/invites/accept').length,1);
   assert.deepEqual(invite.entered,['scoped-private-token']);
   assert.equal(invite.element('invitation-panel').hidden,true);
+  assert.equal(invite.element('register-form-invite-label').hidden,false);
+  assert.equal(invite.element('register-form-invite').value,'');
   assert.ok([...invite.storage.values()].every(v=>!String(v).includes('private+invite')));
   // Local login keeps the in-memory invitation and still requires explicit acceptance.
   const loginInvite=harness('#invite=login-secret',true,true);await flush();
@@ -56,6 +60,12 @@ function harness(hash='', invitation=false, anonymous=false, oauth=false){
   await registerInvite.submit('register-form',{username:'new',password:'password',invite_token:''});
   assert.equal(JSON.parse(registerInvite.calls.find(c=>c.path==='/account/invites/accept').body).invite_token,'registration-secret');
   assert.deepEqual(registerInvite.entered,['scoped-private-token']);
+  const dismissedInvite=harness('#invite=dismissed-secret',true,true);await flush();
+  assert.equal(dismissedInvite.element('register-form-invite-label').hidden,true);
+  dismissedInvite.element('invitation-dismiss').click();await flush();
+  assert.equal(dismissedInvite.element('register-form-invite-label').hidden,false);
+  assert.equal(dismissedInvite.element('register-form-invite').value,'');
+  assert.equal(dismissedInvite.calls.some(c=>c.path==='/account/invites/accept'),false);
   // OAuth preserves the secret in the original page while authentication runs in a new tab.
   const oauthInvite=harness('#invite=oauth-secret',true,true,true);await flush();
   assert.equal(oauthInvite.element('github-login').target,'_blank');

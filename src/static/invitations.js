@@ -32,7 +32,7 @@
       el('invitation-status').textContent='GitHub 登录在新标签页完成。登录后回到此页，点击“我已完成登录”。请保留此页；刷新或关闭后需重新打开原邀请链接。';
     }else el('invitation-status').textContent='请登录后明确接受邀请，或在下面创建账号并接受。刷新或关闭页面后，请重新打开原邀请链接。';
     const input=el('register-form').querySelector('[name=invite_token]');
-    if(input)input.value=token;
+    if(input){input.value=token;const label=input.closest('label');if(label)label.hidden=true;}
     if(hooks?.config?.local_login_enabled)el('account-register').open=true;
     if(hooks?.config?.github_oauth_enabled){el('github-login').target='_blank';el('github-login').rel='noopener';}
   }
@@ -45,7 +45,7 @@
     }catch(error){if(error.message==='访问已切换')retry=true;else if(mine===revision){failure=error.message;render();}}
     finally{loading=false;el('invitation-accept').disabled=false;if(retry || mine!==revision)load();}
   }
-  function clear(){token='';preview=null;revision++;el('invitation-panel').hidden=true;const input=el('register-form').querySelector('[name=invite_token]');if(input)input.value='';el('github-login').target='';}
+  function clear(){token='';preview=null;revision++;el('invitation-panel').hidden=true;const input=el('register-form').querySelector('[name=invite_token]');if(input){input.value='';const label=input.closest('label');if(label)label.hidden=false;}el('github-login').target='';}
   el('invitation-accept').addEventListener('click',async()=>{
     if(loading || !token || !preview || !hooks?.session)return;
     const mine=revision;loading=true;el('invitation-accept').disabled=true;
