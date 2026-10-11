@@ -23,7 +23,9 @@ jobs:
       - run: python -m unittest discover -s tests -v
       - run: node --check src/static/app.js
       - run: node --check src/static/accounts.js
+      - run: node --check src/static/billing.js
       - run: node tests/account_ui_regression.js src/static/accounts.js
+      - run: node tests/billing_ui_regression.js src/static/billing.js src/static/accounts.js
       - run: python -m unittest discover -s experiments/agent-integration -p 'test_*.py' -v
       - run: python -m build
       - uses: actions/upload-artifact@v4

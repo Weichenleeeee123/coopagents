@@ -749,3 +749,30 @@ fieldset {border:1px solid var(--line);margin:16px 0;padding:16px}
 #account-switchers select,.account-hub .sidebar select {min-width:0;max-width:100%}
 .scope-option {min-width:0;overflow-wrap:anywhere}
 .scope-option input {flex:none}
+
+/* Billing keeps capacity and payment status legible within the team workbench. */
+.billing-panel {margin:8px 0 28px;padding:26px;border:1px solid var(--line);border-top:3px solid #67cfa3;background:#fff;border-radius:8px;min-width:0}
+.billing-heading .eyebrow {font-size:10px;color:var(--muted);letter-spacing:1.3px;margin-bottom:9px}
+.billing-panel h2 {margin:0;font-size:23px;letter-spacing:-.4px}
+.billing-notice:empty,.billing-error:empty {display:none}
+.billing-notice {margin-top:18px;padding:12px 14px;border-left:3px solid #67cfa3;background:#f0faf5;font-size:13px;line-height:1.65}
+.billing-content {margin-top:24px}
+.billing-overview {display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:32px}
+.billing-plan .eyebrow {font-size:10px;color:var(--muted);margin-bottom:7px}
+.billing-plan-name {font-family:Georgia,serif;font-size:38px!important;font-weight:500;line-height:1.2;margin-bottom:12px}
+.billing-price {font-size:20px;font-weight:600;margin-top:20px;overflow-wrap:anywhere}
+.billing-detail {font-size:12px;color:var(--muted);line-height:1.7;margin-top:9px}
+.billing-mode {display:inline-block;font-size:11px;border:1px solid #b9d6c8;background:#f0faf5;color:#305743;border-radius:4px;padding:3px 8px;margin-top:13px}
+.billing-usage {border-left:1px solid var(--line);padding-left:32px;min-width:0}
+.billing-usage-item + .billing-usage-item {margin-top:20px}
+.billing-usage-item .muted {font-size:12px}
+.billing-usage-value {font-family:Consolas,monospace;font-size:22px;line-height:1.4;margin-top:6px;overflow-wrap:anywhere}
+.billing-warning {font-size:12px;color:#965230;margin-top:6px}
+.billing-state {display:flex;flex-wrap:wrap;gap:8px 24px;border-top:1px solid var(--line);margin-top:24px;padding-top:17px;font-size:12px;line-height:1.7}
+.billing-actions {display:flex;flex-wrap:wrap;gap:10px;margin-top:20px}
+.billing-actions button {font-size:12px;white-space:normal;max-width:100%}
+.billing-panel button:focus-visible {outline:3px solid #3c976e;outline-offset:3px}
+.billing-panel button:disabled {opacity:.55;cursor:wait}
+.billing-error {font-size:13px;margin-top:16px;line-height:1.7}
+.billing-panel p,.billing-panel h2 {overflow-wrap:anywhere}
+@media(max-width:760px){.billing-panel{padding:20px}.billing-overview{grid-template-columns:1fr;gap:23px}.billing-usage{border-left:0;border-top:1px solid var(--line);padding:20px 0 0}.billing-state{display:block}.billing-state p + p{margin-top:8px}.billing-actions{align-items:stretch}.billing-actions button{flex:1 1 150px}}

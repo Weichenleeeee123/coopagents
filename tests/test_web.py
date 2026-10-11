@@ -21,6 +21,7 @@ class WebTests(unittest.TestCase):
                                     ('/static/styles.css', 'text/css', 'styles.css'),
                                     ('/static/app.js', 'text/javascript', 'app.js'),
                                     ('/static/accounts.js', 'text/javascript', 'accounts.js'),
+                                    ('/static/billing.js', 'text/javascript', 'billing.js'),
                                     ('/static/icon.png', 'image/png', 'icon.png')]:
             with urlopen(self.live.url + path) as response:
                 self.assertEqual(response.status, 200)
@@ -60,6 +61,14 @@ class WebTests(unittest.TestCase):
         root = Path(__file__).resolve().parent.parent
         result = subprocess.run(['node', str(root / 'tests/account_ui_regression.js'),
                                  str(root / 'src/static/accounts.js')], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    @unittest.skipUnless(shutil.which('node'), 'Node is needed for billing UI regression checks')
+    def test_billing_ui_lifecycle_and_payment_destinations(self):
+        root = Path(__file__).resolve().parent.parent
+        result = subprocess.run(['node', str(root / 'tests/billing_ui_regression.js'),
+                                 str(root / 'src/static/billing.js'), str(root / 'src/static/accounts.js')],
+                                capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
 

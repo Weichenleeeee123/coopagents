@@ -71,10 +71,10 @@ Route behavior is verified by actual HTTP requests against unique retained datab
 
 Create `src/static/billing.js`, `tests/billing_ui_regression.js`; modify static index/accounts/styles, asset whitelist and web tests.
 
-- [ ] Add English `Plan & billing` section inside team hub with current plan, actual usage/limits, verified Price, subscription status/paid-through, last-sync and safe errors. Show unrestricted self-hosted or unconfigured cloud truthfully; hide unavailable purchase controls.
-- [ ] Only owner sees checkout/portal/sync controls. Use server-returned validated HTTPS destinations; no local success/paid setter. A return fragment displays awaiting confirmation and refreshes through authorized server state.
-- [ ] Integrate account epoch and abort lifecycle: switching team/account clears billing and prevents delayed fetch/JSON or checkout URLs from the previous team redirecting the new context. Use `textContent`, accessible controls and wrapping at narrow widths.
-- [ ] Run both existing JS regressions, new meaningful billing lifecycle tests and real browser QA for disabled/self-hosted and configured fixture states. Review spec then quality; root commits UI.
+- [x] Add English `Plan & billing` section inside team hub with current plan, actual usage/limits, verified Price, subscription status/paid-through, last-sync and safe errors. Show unrestricted self-hosted or unconfigured cloud truthfully; hide unavailable purchase controls.
+- [x] Only owner sees checkout/portal/sync controls. Use server-returned validated HTTPS destinations; no local success/paid setter. A return fragment displays awaiting confirmation and refreshes through authorized server state.
+- [x] Integrate account epoch and abort lifecycle: switching team/account clears billing and prevents delayed fetch/JSON or checkout URLs from the previous team redirecting the new context. Use `textContent`, accessible controls and wrapping at narrow widths.
+- [x] Run both existing JS regressions, new meaningful billing lifecycle tests and real browser QA for disabled/self-hosted and configured fixture states. Review spec then quality; root commits UI.
 
 ## 5. Packaging, operations docs and acceptance
 

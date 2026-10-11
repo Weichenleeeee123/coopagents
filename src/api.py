@@ -345,6 +345,7 @@ def create_app(database_path='.local/crewmesh.sqlite3', *, base_url=None, public
                   '/static/styles.css': ('styles.css', 'text/css'),
                   '/static/app.js': ('app.js', 'text/javascript'),
                   '/static/accounts.js': ('accounts.js', 'text/javascript'),
+                  '/static/billing.js': ('billing.js', 'text/javascript'),
                   '/static/icon.png': ('icon.png', 'image/png')}
         headers = {'Content-Security-Policy': WEB_CSP, 'X-Content-Type-Options': 'nosniff'}
         if request.url.path == '/favicon.ico':
@@ -352,7 +353,7 @@ def create_app(database_path='.local/crewmesh.sqlite3', *, base_url=None, public
         resource, mime = assets[request.url.path]
         return Response(files('crewmesh').joinpath('static', resource).read_bytes(), media_type=mime, headers=headers)
 
-    routes = [Route(path, web_asset, methods=['GET']) for path in ('/', '/static/styles.css', '/static/app.js', '/static/accounts.js', '/static/icon.png', '/favicon.ico')]
+    routes = [Route(path, web_asset, methods=['GET']) for path in ('/', '/static/styles.css', '/static/app.js', '/static/accounts.js', '/static/billing.js', '/static/icon.png', '/favicon.ico')]
     routes += [route('/health', ['GET']), route('/ready', ['GET']), route('/api/rooms', ['POST'], operation='create_room'), route('/api/join', ['POST'], operation='join'),
               route('/api/me', ['GET'], read_name='me'), route('/api/snapshot', ['GET'], read_name='snapshot'),
               route('/api/invites', ['POST'], operation='invite'), route('/api/agent-token', ['POST'], operation='rotate_agent'),

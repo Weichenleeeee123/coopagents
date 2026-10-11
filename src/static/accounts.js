@@ -10,6 +10,7 @@
   const btn = (label, action) => {const n=node('button',label);n.type='button';n.addEventListener('click',()=>act(n,action));return n;};
   const routeTeam = () => '/account/teams/'+encodeURIComponent(teamId);
   function invalidate() {
+    window.CrewmeshBilling?.clear();
     epoch++; for(const c of pending)c.abort(); pending.clear(); project.clear();
     el('workspace').hidden=true;el('account-switchers').hidden=true;
     ['hub-projects','hub-members','invite-scopes'].forEach(id=>el(id).replaceChildren());
@@ -24,9 +25,9 @@
     ['account-login','bootstrap-form','register-form','accept-form','password-form','claim-form','project-form','team-form','team-invite-form'].forEach(id=>el(id).reset());
     el('hub-team').replaceChildren();el('workspace-team').replaceChildren();el('workspace-project').replaceChildren();
   }
-  async function request(path, data, headers = {}, check = true) {
+  async function request(path, data, headers = {}, check = true, timeout = 10000) {
     const mine=epoch, c=new AbortController();pending.add(c);
-    const timer=setTimeout(()=>c.abort(),10000);
+    const timer=setTimeout(()=>c.abort(),timeout);
     try {
       const h={...headers};if(data!==undefined){h['Content-Type']='application/json';if(session)h['X-Crewmesh-CSRF']=session.csrf_token;}
       const response=await fetch(path,{method:data===undefined?'GET':'POST',credentials:'same-origin',cache:'no-store',headers:h,body:data===undefined?undefined:JSON.stringify(data),signal:c.signal});
@@ -97,6 +98,9 @@
   async function loadTeam(id) {
     invalidate();teamId=id;sessionStorage.setItem('crewmesh_selected_team',id);showHub();renderTeams();const mine=epoch;
     if(!id){renderProjects();return;}
+    window.CrewmeshBilling?.load({teamId:id,role:teams.find(t=>t.team_id===id)?.role,
+      isCurrent:()=>mine===epoch && !!session && teamId===id,
+      request:(path,data)=>{if(mine!==epoch || !session || teamId!==id)return Promise.reject(stale());return request(path,data,{},true,60000);}});
     const base=routeTeam();projects=await request(base+'/projects');if(mine!==epoch)return;
     members=await request(base+'/members');if(mine!==epoch)return;
     managed=manager()?await request(base+'/managed-projects'):[];if(mine!==epoch)return;
@@ -152,7 +156,7 @@
     try{info=await request('/account/session',undefined,{},false);}
     catch(error){if(mine!==epoch)return;if(error.status===401){if(wasManaged)loggedOut();return;}throw error;}
     if(mine!==epoch)return;session=info;await reload(storedTeam);
-    if(wasManaged&&storedProject&&projects.some(p=>p.room_id===storedProject))await selectProject(storedProject);
+    if(wasManaged&&storedProject&&!['#billing','#billing-return'].includes(window.location?.hash)&&projects.some(p=>p.room_id===storedProject))await selectProject(storedProject);
   }
   window.CrewmeshAccounts={home,denied};
   el('account-retry').addEventListener('click',()=>act(el('account-retry'),start));
