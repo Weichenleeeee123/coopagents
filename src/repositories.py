@@ -96,6 +96,13 @@ class RepositoryStore:
         if not isinstance(observation, dict) or set(observation) != keys:
             raise ValidationError('Unsupported observation fields')
         result = dict(observation)
+        try:
+            for value in result.values():
+                if isinstance(value,str): value.encode('utf-8')
+            for path in result.get('paths',[]) if isinstance(result.get('paths'),list) else []:
+                if isinstance(path,str): path.encode('utf-8')
+        except UnicodeEncodeError:
+            raise ValidationError('Observation must contain valid Unicode') from None
         for key, maximum in [('request_key',200),('workspace_id',128),('branch',250),('head',64)]:
             value = result[key]
             if not isinstance(value, str) or len(value) > maximum or any(ord(ch)<32 for ch in value):

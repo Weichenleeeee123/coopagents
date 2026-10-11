@@ -78,6 +78,7 @@ class AdapterTests(unittest.TestCase):
             return subprocess.run(['git','-c','core.hooksPath='+os.devnull,'-C',str(seed),*args],check=True,capture_output=True)
         seed_git('init');seed_git('config','user.email','test@example.invalid');seed_git('config','user.name','Test')
         (seed/'auth.py').write_text('v1');seed_git('add','auth.py');seed_git('commit','-m','initial')
+        adapters=[]
         for index, identity in enumerate([owner,member]):
             repo = root / str(index); repo.mkdir()
             subprocess.run(['git','-c','core.hooksPath='+os.devnull,'clone','--no-hardlinks',str(seed.resolve()),str(repo.resolve())],check=True,capture_output=True)
@@ -88,9 +89,14 @@ class AdapterTests(unittest.TestCase):
             task = live.request('POST','/api/tasks',owner['web_token'],{'intent_key':str(index),'title':'Task','scope':'src'})[1]
             live.request('POST',f"/api/tasks/{task['id']}/claim",identity['agent_token'],{})
             adapter = LocalAdapter(repo,live.url,owner['room_id'],identity['agent_token'],state_root=root/'state')
+            adapters.append(adapter)
             result = adapter.checkpoint(task['id'])
             self.assertEqual(result['observation']['paths'],['auth.py'])
             self.assertEqual(result['team']['me']['member_id'],identity['member_id'])
+            if index==0:
+                contract=adapter.forward('propose_contract',{'contract_key':'login','expected_version':0,'title':'Login','body':'v1 returns user_id'})
+                status,_,_=live.request('POST',f"/api/contracts/{contract['id']}/decision",owner['web_token'],{'version':1,'decision':'approved'})
+                self.assertEqual(status,200)
             if index == 1:
                 async def stdio_checkpoint():
                     params=StdioServerParameters(command=sys.executable,
@@ -105,8 +111,19 @@ class AdapterTests(unittest.TestCase):
                         checkpoint=await client.call_tool('repo_checkpoint',{'task_id':task['id']})
                         self.assertFalse(checkpoint.is_error,checkpoint.content)
                         self.assertEqual(checkpoint.structured_content['team']['me']['member_id'],identity['member_id'])
+                        self.assertEqual(checkpoint.structured_content['team']['contracts'][0]['effective_version'],1)
                 asyncio.run(stdio_checkpoint())
         self.assertEqual(result['team']['git']['overlaps'][0]['paths'],['auth.py'])
+        contract=adapters[1].forward('propose_contract',{'contract_key':'login','expected_version':1,'title':'Login v2','body':'v2 adds login_ticket'})
+        self.assertEqual(live.request('POST',f"/api/contracts/{contract['id']}/decision",owner['web_token'],{'version':2,'decision':'approved'})[0],200)
+        team=adapters[0].forward('read_team',{})
+        self.assertEqual(team['contracts'][0]['effective_version'],2)
+        request=adapters[0].forward('send_request',{'request_key':'login-check','context_version':2,'body':'Confirm login_ticket','receiver_member_id':member['member_id']})
+        inbox=adapters[1].forward('read_inbox',{})
+        self.assertEqual(inbox['requests'][0]['id'],request['id'])
+        adapters[1].forward('acknowledge',{'request_id':request['id']})
+        adapters[1].forward('reply',{'request_id':request['id'],'request_key':'login-reply','context_version':2,'body':'login_ticket confirmed'})
+        adapters[0].forward('resolve_request',{'request_id':request['id'],'context_version':2})
         wrong = LocalAdapter(repo,live.url,str(uuid4()),member['agent_token'],state_root=root/'wrong')
         with self.assertRaises(ValidationError): wrong.checkpoint(task['id'])
         with self.assertRaises(ValidationError): wrong.forward('claim_task',{'task_id':task['id']})

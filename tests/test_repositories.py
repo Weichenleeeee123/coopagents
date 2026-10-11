@@ -93,7 +93,8 @@ class RepositoryTests(unittest.TestCase):
                         dict(paths=['.git/config']),dict(paths=['src\\secret']),dict(paths=['a\x00b']),
                         dict(paths=['x']*1001),dict(head='fake'),dict(captured_at='yesterday'),
                         dict(captured_at=(datetime.now(timezone.utc)+timedelta(hours=1)).isoformat()),
-                        dict(extra='unsupported'),dict(workspace_id=''),dict(branch='a\n'),dict(paths='src')]:
+                        dict(extra='unsupported'),dict(workspace_id=''),dict(branch='a\n'),dict(paths='src'),
+                        dict(paths=['src/\udcff']),dict(branch='bad\udcff')]:
             with self.subTest(changes=changes), self.assertRaises(ValidationError):
                 self.store.observe(self.member['agent_token'], task['id'], self.observation(**changes))
         self.assertEqual(self.store.snapshot(self.owner['web_token'])['events'], [])

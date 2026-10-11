@@ -47,15 +47,15 @@ assert store.snapshot(owner['web_token'])['workspaces'][0]['source'] == 'local_g
 
 ## G3: kanban and checkpoints
 
-- [ ] Add `src/static/git.js` with safe DOM-only rendering and minimal hooks in existing UI: repository binding/setup; per-card branch/PR/check/freshness; task detail workspaces, delivery evidence and timeline.
-- [ ] Prefer verified associated remote delivery states for the delivery columns; preserve explicit blocked state and human decisions. Existing agent-only projects retain original behavior. A merged related PR records delivery, not task acceptance.
-- [ ] Show actual-path overlap separately from declared scope overlaps; ignore expired local observations in active risk prompts.
-- [ ] Add JavaScript regression coverage for stale data, untrusted text/URLs, blocked state, PR head change, project switching and missing Git binding. Verify keyboard-accessible controls and unchanged task detail behavior.
-- [ ] Exercise two real local members/clones with independent tokens through HTTP and stdio MCP checkpoints, shared contract updates and PR/check simulation. Save evidence in `.local/`; document actual GitHub/native-tool acceptance limitations explicitly.
-- [ ] Run full Python and existing JavaScript regressions; perform independent spec review and code-quality review, repair findings, then stage commit G3.
+- [x] Add `src/static/git.js` with safe DOM-only rendering and minimal hooks in existing UI: repository binding/setup; per-card branch/PR/check/freshness; task detail workspaces, delivery evidence and timeline.
+- [x] Prefer verified associated remote delivery states for the delivery columns; preserve explicit blocked state and human decisions. Existing agent-only projects retain original behavior. A merged related PR records delivery, not task acceptance.
+- [x] Show actual-path overlap separately from declared scope overlaps; ignore expired local observations in active risk prompts.
+- [x] Add JavaScript regression coverage for stale data, untrusted text/URLs, blocked state, PR head change, project switching and missing Git binding. Verify keyboard-accessible controls and unchanged task detail behavior.
+- [x] Exercise two real local members/clones with independent tokens through HTTP and stdio MCP checkpoints, shared contract updates and PR/check simulation. Save evidence in `.local/`; document actual GitHub/native-tool acceptance limitations explicitly.
+- [x] Run full Python and existing JavaScript regressions; perform independent spec review and code-quality review, repair findings, then stage commit G3.
 
 ## Integration and reporting
 
-- [ ] Recheck the commercial branch's committed HTTP/MCP/account changes. Merge through Git rather than overwriting its worktree; never include its uncommitted files.
-- [ ] Update the project documentation index/README only after reconciling shared edits. Publish an isolated feature branch/PR if the shared checkout still has in-flight commercial edits.
-- [ ] `docs/git-integration-report.md` records commits, tested behaviors, actual commands/results and remaining environment-dependent acceptance. Do not label simulated GitHub callbacks as a live App installation.
+- [x] Recheck the commercial branch's committed HTTP/MCP/account changes. Merge through Git rather than overwriting its worktree; never include its uncommitted files.
+- [x] Update the project documentation index/README only after reconciling shared edits. Publish an isolated feature branch/PR if the shared checkout still has in-flight commercial edits.
+- [x] `docs/git-integration-report.md` records commits, tested behaviors, actual commands/results and remaining environment-dependent acceptance. Do not label simulated GitHub callbacks as a live App installation.
