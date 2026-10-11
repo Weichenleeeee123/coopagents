@@ -4,6 +4,7 @@
 
 | 文档 | 内容 |
 | --- | --- |
+| [整体前端设计提案](frontend-design-proposal.md) | 待确认的视觉统一、页面布局、移动适配与分阶段验收范围 |
 | [Git 集成验收](git-integration-report.md) | G1/G2/G3 实现、真实克隆及 HTTP/stdio 验证、外部验收边界 |
 | [本地 Git 接入](git-local-setup.md) | 原有 agent 工具的 stdio 配置、检查点、项目约定与离线队列 |
 | [GitHub App 接入](git-github-setup.md) | 独立仓库授权、只读权限、签名事件、重试与部署配置 |
