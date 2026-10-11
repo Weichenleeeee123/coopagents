@@ -20,16 +20,11 @@ class ActivityStore:
         self.db = identity_store.db
         self.resolve = identity_store.resolve
 
-    def _owned_task(self, connection, principal, task_id):
-        task = connection.execute("SELECT * FROM tasks WHERE id = ? AND room_id = ?",
-                                  (task_id, principal.room_id)).fetchone()
-        if task is None:
-            raise NotFound("Task not found")
-        if task["state"] != "claimed" or task["owner_member_id"] != principal.member_id:
-            raise AccessDenied("Claimed task owner required")
-        return task
+    def _owned_task(self, connection, principal, task_id, session_key=None, ownership_epoch=None):
+        from .task_lifecycle import execution_task
+        return execution_task(connection, principal, task_id, session_key, ownership_epoch)
 
-    def register_session(self, agent_token, session_key, tool, repository, branch, task_id=None):
+    def register_session(self, agent_token, session_key, tool, repository, branch, task_id=None, ownership_epoch=None):
         session_key = _text(session_key, "Session key", 200)
         repository = _text(repository, "Repository", 500)
         branch = _text(branch, "Branch", 200)
@@ -40,7 +35,7 @@ class ActivityStore:
         with self.db.connect(write=True) as connection:
             principal = self.resolve(connection, agent_token, required_kind="agent")
             if task_id is not None:
-                self._owned_task(connection, principal, task_id)
+                self._owned_task(connection, principal, task_id, session_key, ownership_epoch)
             connection.execute("""INSERT INTO sessions
                 (room_id, member_id, session_key, tool, repository, branch, task_id, updated_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -60,7 +55,7 @@ class ActivityStore:
             return [dict(row) for row in connection.execute(
                 "SELECT * FROM sessions WHERE room_id = ? ORDER BY id", (principal.room_id,))]
 
-    def report_progress(self, agent_token, task_id, state, summary, evidence=""):
+    def report_progress(self, agent_token, task_id, state, summary, evidence="", session_key=None, ownership_epoch=None):
         task_id = _task_id(task_id)
         if state not in PROGRESS_STATES:
             raise ValidationError("Unsupported progress state")
@@ -70,11 +65,11 @@ class ActivityStore:
         evidence = evidence.strip()
         with self.db.connect(write=True) as connection:
             principal = self.resolve(connection, agent_token, required_kind="agent")
-            self._owned_task(connection, principal, task_id)
+            self._owned_task(connection, principal, task_id, session_key, ownership_epoch)
             connection.execute("""INSERT INTO progress
                 (task_id, room_id, member_id, state, summary, evidence, source, updated_at)
                 VALUES (?, ?, ?, ?, ?, ?, 'agent_report', ?)
-                ON CONFLICT (task_id) DO UPDATE SET state = excluded.state,
+                ON CONFLICT (task_id) DO UPDATE SET member_id = excluded.member_id, state = excluded.state,
                     summary = excluded.summary, evidence = excluded.evidence,
                     updated_at = excluded.updated_at""",
                 (task_id, principal.room_id, principal.member_id, state, summary, evidence, _utc_now()))
@@ -91,7 +86,7 @@ class ActivityStore:
         """Compare declared scope strings; this performs no filesystem operations."""
         with self.db.connect() as connection:
             principal = self.resolve(connection, token)
-            tasks = connection.execute("SELECT id, scope FROM tasks WHERE room_id = ? ORDER BY id",
+            tasks = connection.execute("SELECT id, scope FROM tasks WHERE room_id = ? AND cancelled_at IS NULL ORDER BY id",
                                        (principal.room_id,)).fetchall()
             result = []
             for first, second in combinations(tasks, 2):

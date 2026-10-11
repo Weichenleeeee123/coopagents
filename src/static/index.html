@@ -7,6 +7,9 @@
     <link rel="icon" type="image/png" href="/static/icon.png" />
     <link rel="stylesheet" href="/static/styles.css" />
     <script src="/static/git.js" defer></script>
+    <script src="/static/collaboration.js" defer></script>
+    <script src="/static/task_lifecycle.js" defer></script>
+    <script src="/static/dependencies.js" defer></script>
     <script src="/static/app.js" defer></script>
     <script src="/static/billing.js" defer></script>
     <script src="/static/accounts.js" defer></script>
@@ -427,6 +430,7 @@
         </div>
         <p id="action-error" role="alert" class="error"></p>
         <section id="view-overview" hidden>
+          <section id="needs-attention" class="needs-attention"></section>
           <div class="summary-strip" id="summary"></div>
           <div class="section-heading">
             <h2>成员与工作现场</h2>
@@ -458,6 +462,7 @@
           ></div>
           <div class="board-toolbar">
             <div class="board-tools">
+              <label>任务状态<select id="task-status"><option value="active">进行中的任务</option><option value="cancelled">已取消的任务</option><option value="all">全部任务</option></select></label>
               <label class="search-label"
                 >搜索任务<input
                   id="task-search"
@@ -535,6 +540,7 @@
           <div id="contracts"></div>
         </section>
         <section id="view-repository" hidden>
+          <div id="collaboration-status" class="collaboration-panel"></div>
           <div id="git-connection" class="git-connection"></div>
         </section>
         <footer class="page-foot">
@@ -569,6 +575,7 @@
       </p>
       <div id="private-content"></div>
       <div id="connection-help">
+        <div id="collaboration-setup" class="collaboration-setup"></div>
         <label>MCP 地址<input id="mcp-url" readonly /></label
         ><button id="copy-url">复制地址</button
         ><label

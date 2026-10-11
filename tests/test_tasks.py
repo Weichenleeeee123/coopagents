@@ -32,7 +32,7 @@ class TaskTests(unittest.TestCase):
     def test_creation_shape_strip_and_listing_order(self):
         first = self.create(" key ", " Title ", " Scope ", self.member["web_token"])
         second = self.create("second")
-        self.assertEqual(set(first), {"id", "room_id", "intent_key", "title", "scope", "state", "owner_member_id", "created_at", "claimed_at"})
+        self.assertEqual(set(first), {"id", "room_id", "intent_key", "title", "scope", "state", "owner_member_id", "created_at", "claimed_at", "revision", "ownership_epoch", "execution_session_key", "creator_member_id", "last_owner_member_id", "cancelled_at", "epoch_started_at"})
         self.assertEqual((first["intent_key"], first["title"], first["scope"]), ("key", "Title", "Scope"))
         self.assertEqual(first["room_id"], self.owner["room_id"])
         self.assertEqual(first["state"], "open")

@@ -10,6 +10,10 @@
 | [整体前端设计](frontend-design-proposal.md) | 已确认的视觉统一、页面布局、移动适配与分阶段验收范围 |
 | [前端实施计划](frontend-implementation-plan.md) | 账号视图、看板详情、样式整合与浏览器验收步骤 |
 | [前端验收记录](frontend-validation.md) | 整体设计交付、回归检查、真实浏览器与移动端证据 |
+| [任务依赖与路由](dependencies.md) | 查负责人、依赖答复、明确阅读确认与责任变化语义 |
+| [协作闭环验证](collaboration-flow-report.md) | F1–F3 实现、真实协议/网页与原生消费边界 |
+| [任务交接与恢复](task-lifecycle.md) | 释放、转交、取消恢复、执行会话隔离和审计协议 |
+| [协作闭环计划](collaboration-flow-plan.md) | F1 接入检查点、F2 生命周期与 F3 依赖阶段 |
 | [Git 集成验收](git-integration-report.md) | G1/G2/G3 实现、真实克隆及 HTTP/stdio 验证、外部验收边界 |
 | [本地 Git 接入](git-local-setup.md) | 原有 agent 工具的 stdio 配置、检查点、项目约定与离线队列 |
 | [GitHub App 接入](git-github-setup.md) | 独立仓库授权、只读权限、签名事件、重试与部署配置 |
