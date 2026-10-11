@@ -5,6 +5,7 @@
   function connected(git){return git?.connection && (git.connection.active===true||git.connection.status==='active');}
   function deliveries(taskId,git){return connected(git)?(git.deliveries||[]).filter(d=>d.task_id===taskId&&d.source==='github_verified'&&!d.stale):[];}
   function state(task,progress,git){
+    if(task.cancelled_at||task.state==='cancelled')return 'cancelled';
     if(progress?.state==='blocked')return 'blocked';
     const all=deliveries(task.id,git),phase=all.filter(d=>!d.commit_sha);
     const rows=phase.length?phase:all;
@@ -59,7 +60,7 @@
     });
     const events=(git?.events||[]).filter(e=>e.task_id===task.id).sort((a,b)=>Date.parse(b.captured_at)-Date.parse(a.captured_at)||b.id-a.id).slice(0,12);
     if(events.length){const history=element('details');append(history,element('summary','Git 检查点记录 · '+events.length));events.forEach(e=>append(history,element('p',when(e.captured_at)+' · '+(e.branch||'detached HEAD')+' · '+(e.head||'无提交').slice(0,12),'meta')));container.append(history);}
-    if(git?.binding&&connected(git)&&git.can_manage){
+    if(!task.cancelled_at&&git?.binding&&connected(git)&&git.can_manage){
       const form=element('form','','git-link-form'),branch=element('input'),pr=element('input'),commit=element('input'),submit=element('button','关联交付'),feedback=element('p','','meta');
       branch.name='branch';branch.placeholder='分支，例如 feature/login';pr.name='pr_number';pr.type='number';pr.min='1';pr.placeholder='或 PR 编号';submit.type='submit';
       commit.name='commit_sha';commit.placeholder='或完整提交 SHA';commit.maxLength=64;

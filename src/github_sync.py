@@ -65,6 +65,9 @@ class GitHubSync:
                 linked_by TEXT NOT NULL, linked_at TEXT NOT NULL,
                 UNIQUE(room_id,task_id,commit_sha),
                 FOREIGN KEY(task_id,room_id) REFERENCES tasks(id,room_id))''')
+            for table in ('github_refs', 'github_commit_refs'):
+                if 'ownership_epoch' not in {r['name'] for r in c.execute(f'PRAGMA table_info({table})')}:
+                    c.execute(f'ALTER TABLE {table} ADD COLUMN ownership_epoch INTEGER NOT NULL DEFAULT 0')
             c.execute('''CREATE TABLE IF NOT EXISTS github_evidence (
                 room_id TEXT PRIMARY KEY REFERENCES rooms(id), revision INTEGER NOT NULL,
                 deliveries_json TEXT NOT NULL, pending_json TEXT NOT NULL, sync_at TEXT NOT NULL)''')
@@ -163,7 +166,7 @@ class GitHubSync:
         with self._token_lock: self._user_tokens.pop(key,None)
         return self.snapshot(token)['connection']
 
-    def associate(self,token,task_id,branch='',pr_number=None,commit_sha=''):
+    def associate(self,token,task_id,branch='',pr_number=None,commit_sha='',session_key=None,ownership_epoch=None):
         self._enabled()
         if branch: branch_name(branch)
         elif not isinstance(branch,str): raise ValidationError('Expected branch text')
@@ -176,7 +179,7 @@ class GitHubSync:
         with self.db.connect(write=True) as c:
             principal=self.identity.resolve(c,token)
             if principal.kind=='web': require_manager(self.identity,c,principal)
-            visible_task(c,principal,task_id,manager=principal.kind=='web')
+            task = visible_task(c,principal,task_id,manager=principal.kind=='web',session_key=session_key,ownership_epoch=ownership_epoch)
             conn=c.execute("SELECT * FROM github_connections WHERE room_id=? AND status='active'",(principal.room_id,)).fetchone()
             if not conn: raise Conflict('GitHub repository is not authorized')
             existing=(c.execute('SELECT * FROM github_commit_refs WHERE room_id=? AND task_id=? AND commit_sha=?',
@@ -188,13 +191,13 @@ class GitHubSync:
                 (SELECT COUNT(*) FROM github_commit_refs WHERE room_id=?)''',(principal.room_id,principal.room_id)).fetchone()[0]
             if count>=MAX_REFS: raise ValidationError('Project GitHub reference limit is 100')
             if commit_sha:
-                c.execute('''INSERT OR IGNORE INTO github_commit_refs(room_id,task_id,commit_sha,linked_by,linked_at)
-                    VALUES(?,?,?,?,?)''',(principal.room_id,task_id,commit_sha,principal.member_id,now().isoformat()))
+                c.execute('''INSERT OR IGNORE INTO github_commit_refs(room_id,task_id,commit_sha,linked_by,linked_at,ownership_epoch)
+                    VALUES(?,?,?,?,?,?)''',(principal.room_id,task_id,commit_sha,principal.member_id,now().isoformat(),task['ownership_epoch']))
                 c.execute('UPDATE github_connections SET revision=revision+1 WHERE room_id=?',(principal.room_id,))
                 return dict(c.execute('SELECT * FROM github_commit_refs WHERE room_id=? AND task_id=? AND commit_sha=?',
                     (principal.room_id,task_id,commit_sha)).fetchone())
-            c.execute('''INSERT OR IGNORE INTO github_refs(room_id,task_id,branch,pr_number,linked_by,linked_at)
-                VALUES(?,?,?,?,?,?)''',(principal.room_id,task_id,branch,pr_number or 0,principal.member_id,now().isoformat()))
+            c.execute('''INSERT OR IGNORE INTO github_refs(room_id,task_id,branch,pr_number,linked_by,linked_at,ownership_epoch)
+                VALUES(?,?,?,?,?,?,?)''',(principal.room_id,task_id,branch,pr_number or 0,principal.member_id,now().isoformat(),task['ownership_epoch']))
             c.execute('UPDATE github_connections SET revision=revision+1 WHERE room_id=?',(principal.room_id,))
             return dict(c.execute('SELECT * FROM github_refs WHERE room_id=? AND task_id=? AND branch=? AND pr_number=?',
                 (principal.room_id,task_id,branch,pr_number or 0)).fetchone())
@@ -293,6 +296,9 @@ class GitHubSync:
                         'checks_truncated':bool(commits.get(sha,{}).get('checks_truncated')),'statuses_truncated':bool(commits.get(sha,{}).get('statuses_truncated')),
                         'source':'github_verified','sync_at':sync_at,'stale':False,'url':''})
             else: deliveries.append(unavailable(ref))
+        by_ref = {ref['id']: ref for ref in refs}
+        for delivery in deliveries:
+            delivery['ownership_epoch'] = by_ref[delivery['ref_id']].get('ownership_epoch', 0)
         return deliveries,[p for p in normalized if p['number'] not in associated]
 
     def _reconcile(self,room_id,token=None):
@@ -366,6 +372,13 @@ class GitHubSync:
                     discovery=json.loads(evidence['discovery_json'])
                     for row in deliveries+pending:
                         row['stale']=timestamp(evidence['sync_at'])<now()-timedelta(minutes=15)
+            active_refs = {r['id']:(r['task_id'],r['ownership_epoch'],r['linked_at']) for r in c.execute('SELECT * FROM github_refs WHERE room_id=?',(principal.room_id,))}
+            active_refs.update({'commit:'+str(r['id']):(r['task_id'],r['ownership_epoch'],r['linked_at']) for r in c.execute('SELECT * FROM github_commit_refs WHERE room_id=?',(principal.room_id,))})
+            tasks = {r['id']:dict(r) for r in c.execute('SELECT * FROM tasks WHERE room_id=?',(principal.room_id,))}
+            deliveries = [r for r in deliveries if r.get('ref_id') in active_refs
+                and r['task_id'] in tasks and not tasks[r['task_id']]['cancelled_at']
+                and r.get('ownership_epoch',0)==tasks[r['task_id']]['ownership_epoch']==active_refs[r['ref_id']][1]
+                and r['sync_at'] >= active_refs[r['ref_id']][2]]
             snapshot={'connection':dict(conn) if conn else None,'deliveries':deliveries,'github_events':events,
                       'github_pending':pending,'github_discovery':discovery}
             if len(json.dumps(snapshot).encode())>MAX_SNAPSHOT_BYTES: raise GitHubError('GitHub snapshot exceeds output budget')

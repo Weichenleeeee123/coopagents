@@ -795,3 +795,16 @@ fieldset {border:1px solid var(--line);margin:16px 0;padding:16px}
 .git-connection > button {margin:8px 12px 8px 0}
 .git-overlap {border-left:3px solid #b36c32}
 @media(max-width:650px){.git-link-form {grid-template-columns:1fr}.git-connection h2{font-size:24px}.git-connection pre{font-size:11px}}
+
+.collaboration-panel{padding:24px;border:1px solid var(--line);margin-bottom:24px;border-radius:12px}.collaboration-panel h2,.collaboration-setup h3{margin-top:0}.collaboration-commands{white-space:pre-wrap;overflow-wrap:anywhere;padding:16px;background:#f5f3ed;font-size:12px;line-height:1.6}.collaboration-session h4{margin:0 0 8px}.collaboration-panel details{margin:20px 0}.collaboration-setup{margin:20px 0}
+
+.task-lifecycle{margin-top:24px;padding-top:12px;border-top:1px solid #d7d9d2}.task-lifecycle textarea,.task-lifecycle select{width:100%;box-sizing:border-box}.lifecycle-actions{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}.lifecycle-evidence{white-space:pre-wrap;overflow-wrap:anywhere;max-height:360px;overflow:auto;font-size:12px}.column-cancelled{opacity:.85}
+
+/* Explicit dependency decisions remain adjacent to task context. */
+.dependency-section{margin-top:24px;padding-top:20px;border-top:1px solid var(--line,#deded8)}
+.dependency-record{padding:16px;margin:12px 0;border:1px solid var(--line,#deded8);border-radius:12px;overflow-wrap:anywhere}
+.dependency-record h4{margin:0 0 10px}.dependency-record button{margin:6px 8px 6px 0}
+.dependency-record label,.dependency-section details label{display:block;margin:12px 0}
+.dependency-section input,.dependency-section textarea,.dependency-section select{width:100%;max-width:100%;box-sizing:border-box}
+.dependency-reply{padding:12px;background:#f1f4ec;border-left:3px solid #92a174;white-space:pre-wrap}
+.needs-attention{padding:20px 0}.needs-attention button{display:block;width:100%;text-align:left;white-space:normal;margin:8px 0;overflow-wrap:anywhere}
