@@ -40,17 +40,17 @@ Files: modify `src/static/index.html`, `src/static/app.js`, `src/static/styles.c
 
 ## Task 4: Deployment, migration and acceptance
 
-Files: update `deploy/compose.yaml` (verify actual filename), `.env.example`, `README.md`, `docs/deployment.md`, `docs/app-running.md`; create `docs/commercial-c1-report.md`; update CI to include new UI checks if necessary.
+Files: update root `compose.yaml`, `.env.example`, `README.md`, `docs/deployment.md`, `docs/app-running.md`; create `src/account_recovery.py`, recovery tests and `docs/commercial-c1-report.md`; update CI with new UI checks.
 
 - [x] Document local bootstrap, invite-only signup, team/project permissions, legacy owner claim, password recovery, cloud provider configuration and cookie/proxy requirements. Self-hosted Compose defaults must remain usable without any official service.
-- [ ] Run the full Python suite, existing experiment regression, JS checks, package build/install and Docker/TLS smoke appropriate to changed configuration. Retain all outputs/evidence and never clean files/containers/volumes by deletion.
-- [ ] Independently review complete change for tenant isolation, session security and migration compatibility. Fix findings and rerun affected checks.
+- [x] Run the full Python suite, existing experiment regression, JS checks, package build/install and Docker/TLS smoke appropriate to changed configuration. Retain all outputs/evidence and never clean files/containers/volumes by deletion.
+- [x] Independently review complete change for tenant isolation, session security and migration compatibility. Fix findings and rerun affected checks.
 - [x] Record verified results and unresolved external validations. C1 does not include subscriptions/payment, real GitHub login without provider setup, high availability or a successful native Codex collaboration loop.
-- [ ] Commit `docs: document open account workspace deployment and C1 acceptance` and push completed stages to the already authorized public repository. Do not overwrite v0.2.0 release assets or claim cloud deployment.
+- [x] Commit and push completed stages to the already authorized public repository (`61a323b` packages deployment/recovery; final evidence recorded separately). Do not overwrite v0.2.0 release assets or claim cloud deployment.
 
 ## Acceptance status
 
-Tasks 1–3 are implemented and committed; Task 4 code/docs are implemented for review. Checked boxes record implemented scope; final full-suite/build/TLS results and external validations must be read from [C1 report](commercial-c1-report.md). Task 4 final commit/push and fresh root acceptance are pending. Real GitHub login requires provider credentials; local Docker Engine is unavailable, and final CI TLS acceptance is pending. No deletion/cleanup is permitted.
+Tasks 1–4 are implemented, reviewed and committed. Fresh full-suite/build/install/browser results and final CI TLS acceptance are recorded in [C1 report](commercial-c1-report.md). Real GitHub login requires provider credentials; official deployment and subscriptions remain deferred. Local Docker Engine is unavailable; the expanded TLS acceptance passed in GitHub CI. No deletion/cleanup is permitted.
 
 ## Execution decisions
 

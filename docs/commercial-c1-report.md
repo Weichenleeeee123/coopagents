@@ -1,6 +1,6 @@
 # C1 账号与工作区候选版验收
 
-日期：2026-10-11。候选版：`0.3.0rc1`。用户已批准完整开源 + 未来官方托管订阅，C1 设计和实施均已批准。C1 代码、独立审查、本机测试与打包安装已完成；最终候选版 CI 中的扩展 TLS 验收待补入实际结果。保留 v0.2.0 发行资产，不覆盖历史发行。
+日期：2026-10-11。候选版：`0.3.0rc1`。用户已批准完整开源 + 未来官方托管订阅，C1 设计和实施均已批准。C1 代码、独立审查、本机测试、打包安装及最终 CI 的扩展 TLS 验收已通过。保留 v0.2.0 发行资产，不覆盖历史发行。
 
 ## 已实现范围
 
@@ -23,17 +23,17 @@
 | 实际浏览器 | owner 初始化并创建 Alpha/Beta；Alpha 任务切换到 Beta 为零任务且旧对话框清除；邀请新成员只授权 Alpha、无管理控件；刷新恢复 Cookie 与 Alpha 权限；退出清除项目 |
 | 实际移动浏览器 | 390px，120 字符项目名与 493 字符仓库标识，修正后页面宽度保持 390px；截图及 DB 保留于上述忽略目录 |
 | 已提交 Task 3 CI | `6ed0a55` 的 run `38111340621` 三个作业通过，包括历史 12 项 Docker / TLS smoke；这不是扩展 C1 smoke 的最终通过证据 |
-| 扩展 C1 TLS smoke | 代码新增真实 TLS 账号初始化、Secure/HttpOnly Cookie、CSRF 拒绝、团队/项目创建选择、备份恢复内容、重启持久化。语法编译通过；本机 Docker 引擎 pipe 不可用，扩展 smoke 尚未执行 |
+| 扩展 C1 TLS smoke | 最终 CI 实际通过 25 项：可信 TLS、账号初始化、Secure/HttpOnly Cookie、CSRF 拒绝、团队/项目创建选择、备份恢复内容和重启持久化等。证据 ID `crewmesh-p4-1822660808ab`；本机 Docker 引擎仍不可用，未宣称本机运行通过 |
 | 候选版打包安装 | 最终 0.3.0rc1 wheel/sdist 构建成功，独立 venv 按 constraints 安装 wheel[service]，仓库外导入全部账号模块与 recovery、检查账号资源、禁止明文回退代码及版本通过；最终恢复源码与 wheel 内容匹配。证据 `.local/c1-build/005bb932c94246778e63750b1b0ff273/`，早期包另行保留 |
 | Compose 配置 | 根执行者运行 `docker compose --env-file .env.example config --quiet` 通过，无需 Docker 引擎启动 |
 | 独立审查 | 每阶段规格与质量审查通过；最终账号 / 工作区 / OAuth / UI 全量审查未发现高或中级缺陷，独立工作区回归 17/17 通过；Task 4 规格与质量审查均通过 |
-| 最终候选版 CI | 扩展 TLS 实际结果待本阶段推送后的 CI；本机 134 项、实验 21 项、JS、Compose 和最终打包安装已通过 |
+| 最终候选版 CI | [run 38111779942](https://github.com/Weichenleeeee123/crewmesh/actions/runs/38111779942)，代码提交 `61a323b`，Python 3.11 / 3.13 与 container 三个作业全通过；两套 Python 各 134 项、实验各 21 项，以及 JS、包构建与 25 项 TLS smoke 全通过 |
 
 所有数据库、截图和原始日志保留在 `.local/`，不提交 Git，不自动删除文件、容器或卷。最终完整回归已包含禁止明文输入回退的新增恢复测试。
 
 ## 尚未验证与后续范围
 
-真实 GitHub OAuth App / 账号 / callback 未提供配置，不能声明真实提供方登录已通过。官方托管部署目标未选择，公网 / 双机验收未完成。本地 Docker Engine 不可用，候选版实际 TLS 以最终 CI 的真实输出为准；历史 TLS 通过仅作基线。
+真实 GitHub OAuth App / 账号 / callback 未提供配置，不能声明真实提供方登录已通过。官方托管部署目标未选择，公网 / 双机验收未完成。本地 Docker Engine 不可用，候选版实际 TLS 由上述最终 CI 验证；历史 TLS 通过仅作基线。
 
 Claude 原生单向接入既有证据仍有效；Codex 原生 MCP 调用取消未解决，完整双向 agent 闭环未验收，不将单元测试或 HTTP 检查当作替代证据。
 
