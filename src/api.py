@@ -146,8 +146,9 @@ class Service:
 
 class LocalBoundary:
     """Validate host/origin and actual body bytes before HTTP or MCP handling."""
-    def __init__(self, app, base_url=None, public_url=None):
+    def __init__(self, app, base_url=None, public_url=None, *, billing_webhook=False):
         self.app = app
+        self.billing_webhook = billing_webhook
         self.state = getattr(app, "state", None)
         parsed = urlsplit(base_url) if base_url else None
         if parsed and (parsed.hostname not in ('127.0.0.1', 'localhost') or parsed.scheme not in ('http', 'https') or parsed.username or parsed.password):
@@ -220,7 +221,8 @@ class LocalBoundary:
                 return await reject('Request body too large', 413)
             if not message.get('more_body', False):
                 break
-        if body and scope['method'] not in ('GET', 'HEAD', 'OPTIONS'):
+        raw_webhook = self.billing_webhook and scope['path'] == '/billing/stripe/webhook' and scope['method'] == 'POST'
+        if body and scope['method'] not in ('GET', 'HEAD', 'OPTIONS') and not raw_webhook:
             try:
                 decoded = bytes(body).decode('utf-8')
                 decoded.encode('utf-8')
@@ -255,7 +257,7 @@ def bearer(request):
     return values[0][7:]
 
 
-def create_app(database_path='.local/crewmesh.sqlite3', *, base_url=None, public_url=None, bootstrap_secret=None, mode='self-hosted', github_client_id=None, github_client_secret=None, github_app=None):
+def create_app(database_path='.local/crewmesh.sqlite3', *, base_url=None, public_url=None, bootstrap_secret=None, mode='self-hosted', github_client_id=None, github_client_secret=None, github_app=None, billing_config=None):
     if base_url and public_url:
         raise ValueError('Set only one service origin')
     origin = public_origin(public_url) if public_url is not None else None
@@ -264,7 +266,19 @@ def create_app(database_path='.local/crewmesh.sqlite3', *, base_url=None, public
     if bootstrap_secret is not None:
         validate_bootstrap_secret(bootstrap_secret)
     bootstrap_hash = hashlib.sha256(validate_bootstrap_secret(bootstrap_secret).encode('ascii')).digest() if origin and mode == 'self-hosted' else None
+    from .billing_api import billing_catalog, billing_routes, BillingRuntime
+    from .billing import BillingStore
+    from .billing_service import BillingService
+    from .stripe_billing import StripeClient
+    from .billing_worker import BillingWorker
+    catalog = billing_catalog(mode, billing_config, origin)
     service = Service(database_path, github_app)
+    store = BillingStore(service.workspaces, mode, catalog)
+    client = StripeClient(billing_config.secret_key, catalog.provider_mode) if catalog else None
+    service.billing = BillingService(store, client, billing_config.webhook_secret if catalog else None, origin)
+    service.billing_store = store
+    billing_runtime = BillingRuntime()
+    billing_worker = BillingWorker(service.billing, billing_runtime)
     from .account_api import account_routes
     from .oauth import GitHubOAuth
     oauth = GitHubOAuth.configured(service.accounts, mode, origin, github_client_id, github_client_secret)
@@ -273,34 +287,46 @@ def create_app(database_path='.local/crewmesh.sqlite3', *, base_url=None, public
 
     @asynccontextmanager
     async def lifespan(app):
-        async with mcp_app.router.lifespan_context(mcp_app):
-            stop = asyncio.Event()
-            async def github_worker():
-                next_poll = time.monotonic() + 300
-                while not stop.is_set():
-                    # Network calls run outside the event loop. Durable inbox records
-                    # are committed before acknowledgement and survive restarts.
-                    try:
-                        await run_in_threadpool(service.github.process_pending, limit=1, should_stop=stop.is_set)
-                        if not stop.is_set() and time.monotonic() >= next_poll:
-                            await run_in_threadpool(service.github.reconcile_all, should_stop=stop.is_set)
-                            next_poll = time.monotonic() + 300
-                    except Exception:
-                        # Do not log request bodies or provider credentials. Failed
-                        # records remain pending; the next pass retries them.
-                        import logging
-                        logging.getLogger(__name__).warning('GitHub reconciliation pass failed')
-                    try:
-                        await asyncio.wait_for(stop.wait(), timeout=5)
-                    except TimeoutError:
-                        pass
-            worker = asyncio.create_task(github_worker()) if service.github.app.enabled else None
-            try:
-                yield
-            finally:
-                stop.set()
-                if worker:
-                    await worker
+        try:
+            async with mcp_app.router.lifespan_context(mcp_app):
+                billing_worker.start()
+                try:
+                    async with github_lifespan():
+                        yield
+                finally:
+                    await billing_worker.close()
+        finally:
+            await billing_runtime.close()
+
+    @asynccontextmanager
+    async def github_lifespan():
+        stop = asyncio.Event()
+        async def github_worker():
+            next_poll = time.monotonic() + 300
+            while not stop.is_set():
+                # Network calls run outside the event loop. Durable inbox records
+                # are committed before acknowledgement and survive restarts.
+                try:
+                    await run_in_threadpool(service.github.process_pending, limit=1, should_stop=stop.is_set)
+                    if not stop.is_set() and time.monotonic() >= next_poll:
+                        await run_in_threadpool(service.github.reconcile_all, should_stop=stop.is_set)
+                        next_poll = time.monotonic() + 300
+                except Exception:
+                    # Do not log request bodies or provider credentials. Failed
+                    # records remain pending; the next pass retries them.
+                    import logging
+                    logging.getLogger(__name__).warning('GitHub reconciliation pass failed')
+                try:
+                    await asyncio.wait_for(stop.wait(), timeout=5)
+                except TimeoutError:
+                    pass
+        worker = asyncio.create_task(github_worker()) if service.github.app.enabled else None
+        try:
+            yield
+        finally:
+            stop.set()
+            if worker:
+                await worker
 
     async def endpoint(request):
         try:
@@ -408,7 +434,9 @@ def create_app(database_path='.local/crewmesh.sqlite3', *, base_url=None, public
     routes.extend(account_routes(service, mode=mode, origin=origin or base_url, bootstrap_secret=bootstrap_secret, oauth=oauth))
     from .git_routes import git_routes
     routes.extend(git_routes(service, service.github))
+    routes.extend(billing_routes(service, billing_runtime, origin=origin or base_url))
     routes.append(Mount('/', app=authenticated_mcp))
     app = Starlette(routes=routes, lifespan=lifespan)
     app.state.service = service
-    return LocalBoundary(app, base_url, origin)
+    app.state.billing_worker = billing_worker
+    return LocalBoundary(app, base_url, origin, billing_webhook=store.enabled)

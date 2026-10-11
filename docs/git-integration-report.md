@@ -57,3 +57,11 @@
 基于已提交的 `176bb50`（含主线账单领域 `fe5b431`）在 `feat/git-repository-integration` 隔离实现。初次发布前远端 main 为 `fe5b431`，主工作区的支付模块仍未提交。发布期间商业化对话将 `b57c72d` 推送 main；本分支用 Git 合并为 `658aaf8`，文档索引自动合并且完整 319 项回归通过。其仍未提交的 API 测试和报告没有被复制、暂存或覆盖。本 PR 相对 main 只包含 Git 集成变化；后续共同 API 或页面改动继续通过 Git 汇合。
 
 公开交付：[PR #1](https://github.com/Weichenleeeee123/crewmesh/pull/1)。主工作区和隔离工作树及所有原始证据均保留。
+
+### 合并前的商业化 API 兼容验收
+
+用户选择 Create a merge commit 后，远端 main 已推进至 `3004c73`，包含支付 HTTP API 和持久事件 worker。本分支再次合入已提交主线，解决 `src/api.py` 的共同服务初始化冲突：保留 `github_app` 与 `billing_config` 两个配置入口、两组路由，以及各自后台任务的启动、停止和资源关闭。`src/server.py` 同时传递两组配置。商业化主工作区中的网页和其他未提交改动没有被暂存、复制或覆盖。
+
+合并结果完整 Python 回归 **348 项通过**（124.972 秒）；随后新增的 Git 与支付共存专项 **1 项通过**。专项使用离线 provider，检查两个 worker 同时执行、账号账单与 Git 快照路由、Git OAuth 回调边界、无关查询拒绝及退出后两个任务停止和账单执行器关闭。独立审查未发现合并阻塞问题。三组 Node 网页回归和 **21 项**实验回归通过，`pip check` 无损坏依赖，源码包和 Wheel 重新构建成功。
+
+原始记录保留在 `.local/git-final-merge-tests.log`、`.local/git-final-merge-experiments.log`、`.local/git-merge-build.log` 和 `.local/release/git-merge-final/`。GitHub 最终 CI 与 merge commit 以 PR 的检查和合并记录为准；以上离线验收没有扩大真实 App、公网或跨电脑验收的声明范围。

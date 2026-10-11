@@ -17,6 +17,7 @@ def main():
         parser.error('port must be between 1 and 65535')
     import uvicorn
     from .api import create_app
+    from .billing_config import load_billing_config
     from .config import bootstrap_from_env, trusted_proxies, github_oauth_from_env
     from .github_app import GitHubApp
     from .errors import ValidationError
@@ -29,6 +30,9 @@ def main():
             raise ValueError('Non-loopback binding requires an explicit HTTPS public URL and bootstrap secret')
         proxies = trusted_proxies(args.trusted_proxies)
         account_config = github_oauth_from_env()
+        billing_config = load_billing_config(args.mode)
+        if billing_config.enabled:
+            account_config['billing_config'] = billing_config
         if args.mode != 'self-hosted':
             account_config['mode'] = args.mode
         app = create_app(args.database, public_url=args.public_url, bootstrap_secret=bootstrap_from_env(),

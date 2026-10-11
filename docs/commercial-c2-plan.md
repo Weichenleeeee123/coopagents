@@ -59,11 +59,11 @@ Only valid signatures inside tolerance proceed to JSON and event persistence.
 
 Create `src/billing_api.py`, `src/billing_admin.py`, `tests/test_billing_api.py`; modify `src/api.py`, `src/server.py` and configuration/lifespan integration.
 
-- [ ] Add read `/account/teams/{team_id}/billing` and owner-only POST suffixes `/checkout`, `/portal`, `/sync`. Reuse strict account cookie parsing and Origin/CSRF rules; bearer-only requests cannot access billing. Return safe typed errors and preserve valid sessions on role denial.
-- [ ] Mount exact `/billing/stripe/webhook` only when configured cloud billing is enabled. Require signature; no cookie/CSRF requirement for provider callbacks. Preserve existing Host/body/query boundary. Unknown or irrelevant valid events are safely acknowledged without granting rights.
-- [ ] Start a bounded worker from app lifespan to retry durable event jobs and restore pending work after restart; synchronous provider I/O runs off event loop. Failed provider requests must not block unrelated project/MCP requests. Stop only owned worker on shutdown without deleting evidence.
-- [ ] Add local maintenance command for bounded retry and reconciliation of stored teams; existing DB only, no fake subscription setters, no secrets in command args/output. Document exit statuses and recovery after provider outage.
-- [ ] Test full HTTP cookie/CSRF/role/tenant matrix, disabled self-hosted routes, signed callback persistence, failed processing/retry and current C1 behavior. Review spec then quality; root commits stage.
+- [x] Add read `/account/teams/{team_id}/billing` and owner-only POST suffixes `/checkout`, `/portal`, `/sync`. Reuse strict account cookie parsing and Origin/CSRF rules; bearer-only requests cannot access billing. Return safe typed errors and preserve valid sessions on role denial.
+- [x] Mount exact `/billing/stripe/webhook` only when configured cloud billing is enabled. Require signature; no cookie/CSRF requirement for provider callbacks. Preserve existing Host/body/query boundary. Unknown or irrelevant valid events are safely acknowledged without granting rights.
+- [x] Start a bounded worker from app lifespan to retry durable event jobs and restore pending work after restart; synchronous provider I/O runs off event loop. Failed provider requests must not block unrelated project/MCP requests. Stop only owned worker on shutdown without deleting evidence.
+- [x] Add local maintenance command for bounded retry and reconciliation of stored teams; existing DB only, no fake subscription setters, no secrets in command args/output. Document exit statuses and recovery after provider outage.
+- [x] Test full HTTP cookie/CSRF/role/tenant matrix, disabled self-hosted routes, signed callback persistence, failed processing/retry and current C1 behavior. Review spec then quality; root commits stage.
 
 Route behavior is verified by actual HTTP requests against unique retained databases, with test transport stubs scoped inside tests. Browser return requests never mutate entitlement.
 
