@@ -40,7 +40,7 @@
 - 官方 SDK 检查了 MCP 原始参数校验，布尔任务 ID 不能被转换后执行；离线/并发重放及错项目拒绝通过。
 - 真实应用边界、OAuth callback 路由和 lifespan worker 接受离线签名事件、自动核对并完成队列记录。测试没有绕过正式 host/origin 或认证边界。
 - Playwright 实际 Chromium 检查了自动合并列、任务详情、实际路径重叠、输入跨轮询保留、授权按钮跨重渲染保留、回调与 finish、切换项目后清空上下文；390px 页面未横向溢出。数据为明确的演示成员和离线 GitHub provider。
-- 最终源码包与 Wheel 构建成功，`pip check` 无损坏依赖。新增 `compose.github.yaml` 显式挂载 GitHub secrets，默认 Compose 保持 App 可选。
+- 最终源码包与 Wheel 构建成功，`pip check` 无损坏依赖。Wheel 在独立 target 安装后通过实际模块导入、增量数据库迁移、ready 和 Git 静态资源检查。新增 `compose.github.yaml` 显式挂载 GitHub secrets，默认 Compose 保持 App 可选。
 
 本机原始记录位于隔离工作区 `.local/`：`git-final-tests.log`、`git-release-tests.log`、专项日志、`.local/test-evidence/`、浏览器截图及 `.local/release/git-integration/`。这些文件不提交。浏览器未登录的 `/account/session` 401 为既有会话探测；未发现新增脚本异常。
 
@@ -48,10 +48,12 @@
 
 当前没有真实 GitHub App 配置及部署目标。尚不能确认实际安装与组织批准、公网 HTTPS callback/webhook、实际检查事件、在线限流和权限移除恢复。新本地 Git 适配器的 Claude / Codex 原生入口及真实跨电脑验收也尚未完成；官方 SDK、同机双克隆及历史入口截图不能替代它们。
 
-本机 Docker daemon 未运行，本轮容器构建不记为通过；仓库 CI 已包含 Python 3.11/3.13、网页回归、Wheel、容器及部署 smoke。公开分支/PR 的 CI 结果另记，不把配置存在当成构建成功。
+本机 Docker daemon 未运行，未声称本机构建容器。代码提交 `fafb06b` 的 [GitHub CI](https://github.com/Weichenleeeee123/crewmesh/actions/runs/38124665616) 已于 2026-10-11 完成并全部通过：Python 3.11/3.13、245 项测试、21 项实验回归、三组网页回归、源码包/Wheel、实际 Docker 构建、容器启动及 deployment smoke。这里的 smoke 仍不包含真实 App 与公网验收。
 
 部署步骤见 [本地 Git 接入](git-local-setup.md)、[GitHub App 配置](git-github-setup.md) 和 [部署运维](deployment.md)。回调与 finish 需落到同一服务进程；本轮没有跨进程用户授权 token 共享。
 
 ## 并行商业化工作
 
 基于已提交的 `176bb50`（含主线账单领域 `fe5b431`）在 `feat/git-repository-integration` 隔离实现。发布前重新 fetch 并检查，远端 main 仍为 `fe5b431`；主工作区仍有未提交的支付模块及文档。采用独立 PR 交付，没有覆盖或混入这些文件。后续商业化提交若改动共同 API 或页面，通过 Git 合并并再次验证。
+
+公开交付：[PR #1](https://github.com/Weichenleeeee123/crewmesh/pull/1)。主工作区和隔离工作树及所有原始证据均保留。
