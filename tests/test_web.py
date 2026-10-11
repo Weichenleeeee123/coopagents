@@ -20,6 +20,7 @@ class WebTests(unittest.TestCase):
         for path, mime, resource in [('/', 'text/html', 'index.html'),
                                     ('/static/styles.css', 'text/css', 'styles.css'),
                                     ('/static/app.js', 'text/javascript', 'app.js'),
+                                    ('/static/accounts.js', 'text/javascript', 'accounts.js'),
                                     ('/static/icon.png', 'image/png', 'icon.png')]:
             with urlopen(self.live.url + path) as response:
                 self.assertEqual(response.status, 200)
@@ -51,6 +52,14 @@ class WebTests(unittest.TestCase):
         root = Path(__file__).resolve().parent.parent
         result = subprocess.run(['node', str(root / 'tests/web_session_regression.js'),
                                  str(root / 'src/static/app.js')], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+
+    @unittest.skipUnless(shutil.which('node'), 'Node is needed for account UI regression checks')
+    def test_account_ui_session_switching_and_permission_denials(self):
+        root = Path(__file__).resolve().parent.parent
+        result = subprocess.run(['node', str(root / 'tests/account_ui_regression.js'),
+                                 str(root / 'src/static/accounts.js')], capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
 

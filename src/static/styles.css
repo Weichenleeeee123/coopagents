@@ -709,3 +709,43 @@ button.primary:hover { background:#a5f9d3; }
   .kanban-column { scroll-snap-align:start; min-height:300px; }
   .board-note { line-height:1.8; }
 }
+
+/* Account pages share the forest sidebar and paper workbench. */
+#legacy-entry {margin-top:28px;border-top:1px solid var(--line);padding-top:18px}
+#legacy-entry summary, #account-entry summary {cursor:pointer;color:var(--muted);margin:12px 0}
+#account-entry form {margin:18px 0}
+.github-link {display:block;padding:12px 18px;background:var(--forest);color:var(--paper);margin:24px 0;text-decoration:none}
+.account-hub {display:grid;grid-template-columns:260px minmax(0,1fr);min-height:100vh}
+.account-hub main {padding:30px 42px}
+.account-hub .sidebar {position:sticky;top:0;height:100vh;gap:20px}
+.account-hub .sidebar select,#account-switchers select {width:100%;background:var(--paper);color:var(--ink)}
+#account-switchers {margin-top:24px}
+#account-switchers label {font-size:12px;margin:8px 0}
+#account-switchers button {width:100%;text-align:left;margin-top:10px}
+.hub-section {padding:24px 0;border-top:1px solid var(--line)}
+.hub-section h2 {margin-bottom:18px}
+.hub-section form {margin:16px 0 26px}
+.hub-columns {display:grid;grid-template-columns:1fr 1fr;gap:40px}
+.project-grid {display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:18px}
+.project-card {border:1px solid var(--line);background:#faf9f2;padding:24px;display:grid;gap:12px}
+.project-card h3 {font-size:28px}
+.project-card button {justify-self:start;margin-top:12px}
+.account-member {padding:18px 0;border-bottom:1px solid var(--line)}
+.account-member > button,.account-member > select {margin:12px 8px 8px 0}
+.account-member details {margin-top:10px}
+.grant-line {display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:12px 0}
+.grant-line span {flex:1;min-width:150px}
+.scope-option {display:flex;align-items:center;gap:10px}
+.scope-option input {width:auto}
+fieldset {border:1px solid var(--line);margin:16px 0;padding:16px}
+@media(max-width:900px){.account-hub {grid-template-columns:210px minmax(0,1fr)}.account-hub main{padding:24px}.hub-columns{grid-template-columns:1fr;gap:0}}
+@media(max-width:650px){.account-hub{display:block}.account-hub .sidebar{position:static;height:auto;padding:24px}.account-hub main{padding:20px}.account-hub .page-heading{display:block}.account-hub h1{font-size:38px}}
+
+/* Repository URLs and maximum-length names must stay within narrow workbenches. */
+.account-hub main,.hub-columns > *,.project-card,.account-member {min-width:0}
+.project-card h3,.project-card p,.account-member h3,.account-member p,.grant-line span,#hub-identity {overflow-wrap:anywhere}
+.project-grid {grid-template-columns:repeat(auto-fit,minmax(min(240px,100%),1fr))}
+.grant-line > * {max-width:100%}
+#account-switchers select,.account-hub .sidebar select {min-width:0;max-width:100%}
+.scope-option {min-width:0;overflow-wrap:anywhere}
+.scope-option input {flex:none}

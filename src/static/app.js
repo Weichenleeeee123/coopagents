@@ -2,6 +2,8 @@
 const $ = id => document.getElementById(id);
 let token = sessionStorage.getItem('crewmesh_web_token') || '';
 let generation = 0, snapshot = null, pollTimer = null, syncing = false, lastSuccess = null;
+let accountManaged = false;
+const projectRequests = new Set();
 const states = {open:'待认领', claimed:'已认领', working:'推进中', blocked:'受阻', local_done:'本地完成', pushed:'已推送', pr_open:'PR 已打开', merged:'已合并', approved:'已批准', rejected:'已拒绝'};
 const views = {overview:['01 / TEAM FIELD','团队现场','理解每个人正在推进的工作。'],tasks:['TEAM OPERATIONS / 任务协作','任务看板','每一项工作，都有清晰的去向。'],requests:['03 / TECHNICAL REQUESTS','技术请求','让依赖有去处，让答复有记录。'],contracts:['04 / SHARED AGREEMENTS','公共约定','把技术共识变成明确生效的版本。']};
 const text = (tag, value, cls) => { const e = document.createElement(tag); e.textContent = value == null ? '' : String(value); if(cls) e.className = cls; return e; };
@@ -20,10 +22,11 @@ function setView(view) {
 }
 document.querySelectorAll('[data-view]').forEach(b => b.addEventListener('click',() => setView(b.dataset.view)));
 const tabs = Array.from(document.querySelectorAll('[data-entry]'));
-function entryTab(b) { tabs.forEach(t => { const active=t===b; t.setAttribute('aria-selected',String(active)); t.tabIndex=active?0:-1; $('form-'+t.dataset.entry).hidden=!active; }); }
-tabs.forEach((b,i) => { b.tabIndex=i? -1:0; b.addEventListener('click',() => entryTab(b)); b.addEventListener('keydown',e => { if(['ArrowLeft','ArrowRight','Home','End'].includes(e.key)){ e.preventDefault(); const next = e.key==='Home'?0:e.key==='End'?2:(i+(e.key==='ArrowRight'?1:2))%3; entryTab(tabs[next]); tabs[next].focus(); } }); });
+function entryTab(b) { if(b.hidden)return;tabs.forEach(t => { const active=t===b; t.setAttribute('aria-selected',String(active)); t.tabIndex=active?0:-1; $('form-'+t.dataset.entry).hidden=!active; }); }
+tabs.forEach((b,i) => { b.tabIndex=i? -1:0; b.addEventListener('click',() => entryTab(b)); b.addEventListener('keydown',e => { if(['ArrowLeft','ArrowRight','Home','End'].includes(e.key)){ e.preventDefault(); const visible=tabs.filter(t=>!t.hidden),current=visible.indexOf(b); const next=e.key==='Home'?0:e.key==='End'?visible.length-1:(current+(e.key==='ArrowRight'?1:visible.length-1))%visible.length; entryTab(visible[next]); visible[next].focus(); } }); });
 async function api(path, data, authenticated = true, extraHeaders = {}) {
   const epoch=generation, credential=token, controller=new AbortController();
+  projectRequests.add(controller);
   const timeout=setTimeout(() => controller.abort(),10000);
   try {
     const headers={...extraHeaders}; if(authenticated) headers.Authorization='Bearer '+credential;
@@ -32,17 +35,19 @@ async function api(path, data, authenticated = true, extraHeaders = {}) {
     if(epoch!==generation) throw new Error('访问已切换');
     let result; try { result=await response.json(); } catch { throw new Error('服务返回了无法读取的响应'); }
     if(epoch!==generation) throw new Error('访问已切换');
-    if(response.status===401){ if(authenticated) logout('网页凭据已失效，请恢复访问或重新加入。'); throw new Error(authenticated?'网页凭据已失效':(result.message || '邀请或凭据不可用')); }
+    if(response.status===401){ if(authenticated){if(accountManaged && typeof window!=='undefined')window.CrewmeshAccounts.denied();else logout('网页凭据已失效，请恢复访问或重新加入。');} throw new Error(authenticated?'网页凭据已失效':(result.message || '邀请或凭据不可用')); }
     if(!response.ok) throw new Error(result.message || '操作未完成');
     return result;
   } catch(error) { if(error.name==='AbortError') throw new Error('连接超时，请重试'); throw error; }
-  finally { clearTimeout(timeout); }
+  finally { clearTimeout(timeout); projectRequests.delete(controller); }
 }
 function logout(message='') {
   generation++; token=''; snapshot=null; sessionStorage.removeItem('crewmesh_web_token'); clearTimeout(pollTimer);
+  projectRequests.forEach(controller=>controller.abort()); projectRequests.clear(); syncing=false;
   renderSignature=''; closePrivate(); closeTaskDetail(); $('task-search').value=''; $('task-owner').value=''; $('workspace').hidden=true; $('login').hidden=false; $('login-error').textContent=message;
   ['members','tasks','requests','contracts','overlaps','summary'].forEach(id => $(id).replaceChildren());
-  $('form-restore').reset(); $('form-join').reset(); $('task-form').reset();
+  ['room-name','room-repository','identity','network-error','action-error','board-count'].forEach(id=>$(id).textContent='');
+  $('form-restore').reset(); $('form-join').reset(); $('form-create').reset(); $('task-form').reset();
 }
 function enter(credential) { generation++; renderSignature=''; token=credential; sessionStorage.setItem('crewmesh_web_token',credential); $('login').hidden=true; $('workspace').hidden=false; $('action-error').textContent=''; $('sync-time').textContent='正在同步…'; $('network-error').hidden=true; lastSuccess=null; clearTimeout(pollTimer); sync(); }
 for(const name of ['create','join','restore']) $('form-'+name).addEventListener('submit',async e => {
@@ -60,7 +65,7 @@ async function sync() {
   syncing=true; const epoch=generation;
   try { const result=await api('/api/snapshot'); if(epoch!==generation) return; snapshot=result; lastSuccess=new Date(); $('network-error').hidden=true; $('sync-time').textContent='最后同步 '+date(lastSuccess); render(); }
   catch(error){ if(epoch===generation && token){ $('network-error').hidden=false; $('network-error').textContent='连接中断：'+error.message+'。保留上次数据'+(lastSuccess?'（最后成功 '+date(lastSuccess)+'）':'')+'，可点击刷新重试。'; } }
-  finally { syncing=false; if(token){ clearTimeout(pollTimer); pollTimer=setTimeout(sync,5000); } }
+  finally { if(epoch===generation){syncing=false; if(token){ clearTimeout(pollTimer); pollTimer=setTimeout(sync,5000); }} }
 }
 // Keep forms, selection and keyboard focus intact when the snapshot is unchanged.
 let renderSignature='';
@@ -71,7 +76,7 @@ function render() {
   const active=document.activeElement, activeRecord=active?.closest('.record,.task-card');
   const focus=activeRecord ? {record:activeRecord.id,tag:active.tagName,label:active.textContent} : null;
   const expanded=Array.from(document.querySelectorAll('.record details[open]')).map(d=>({record:d.closest('.record').id,label:d.querySelector('summary').textContent}));
-  $('room-name').textContent=snapshot.room.name; $('room-repository').textContent=snapshot.room.repository || '未声明仓库'; $('identity').textContent=snapshot.me.display_name+' / '+(snapshot.me.role==='owner'?'团队创建者':'团队成员'); $('invite-button').hidden=snapshot.me.role!=='owner';
+  $('room-name').textContent=snapshot.room.name; $('room-repository').textContent=snapshot.room.repository || '未声明仓库'; $('identity').textContent=snapshot.me.display_name+' / '+(snapshot.me.role==='owner'?'项目创建者':'项目成员'); $('invite-button').hidden=accountManaged || snapshot.me.role!=='owner';
   renderOverview(); renderTasks(); renderRequests(); renderContracts();
   expanded.forEach(item=>{ const record=$(item.record); record?.querySelectorAll('details').forEach(d=>{if(d.querySelector('summary').textContent===item.label)d.open=true;}); });
   if(focus)restoreRecordFocus(focus);
@@ -189,7 +194,7 @@ function renderContracts(){
 }
 async function perform(b, operation){ b.disabled=true; $('action-error').textContent=''; const epoch=generation; try { await operation(); if(epoch===generation){ renderSignature=''; await sync(); } } catch(error){ if(epoch===generation) $('action-error').textContent=error.message; } finally{b.disabled=false;} }
 $('task-form').addEventListener('submit',e=>{e.preventDefault();const form=e.currentTarget,b=form.querySelector('button[type=submit]'),epoch=generation;perform(b,async()=>{await api('/api/tasks',Object.fromEntries(new FormData(form)));if(epoch===generation)form.reset();});});
-$('retry').addEventListener('click',sync); $('logout').addEventListener('click',()=>logout());
+$('retry').addEventListener('click',sync); $('logout').addEventListener('click',()=>{if(accountManaged && typeof window!=='undefined')window.CrewmeshAccounts.home();else logout();});
 function configTemplate(){const url=location.origin+'/mcp'; const tool=$('connection-tool').value; $('config-template').value=tool==='desktop'?'[mcp_servers.crewmesh]\nurl = "'+url+'"\nhttp_headers = { Authorization = "Bearer TOKEN" }':tool==='cli'?"$env:CREWMESH_AGENT_TOKEN = 'TOKEN'\ncodex mcp add crewmesh --url "+url+' --bearer-token-env-var CREWMESH_AGENT_TOKEN':"claude mcp add --transport http --scope local crewmesh "+url+' --header "Authorization: Bearer TOKEN"';}
 async function copy(value){try{await navigator.clipboard.writeText(value);$('dialog-status').textContent='已复制，请妥善保存。';}catch{$('dialog-status').textContent='复制不可用，请选择字段并手动复制。';}}
 let dialogOpener=null;
@@ -208,4 +213,11 @@ $('copy-url').addEventListener('click',()=>copy($('mcp-url').value)); $('connect
 $('invite-button').addEventListener('click',e=>{const epoch=generation;perform(e.currentTarget,async()=>{const result=await api('/api/invites',{});if(epoch===generation)showPrivate('邀请一位团队成员',result);});});
 $('rotate-agent').addEventListener('click',async e=>{ const b=e.currentTarget; b.disabled=true;const epoch=generation;try{const result=await api('/api/agent-token',{});if(epoch===generation){showPrivate('保存新的 agent 令牌',result);$('dialog-status').textContent='旧 agent 令牌已立即失效。请更新配置并重建连接。';}}catch(error){if(epoch===generation)$('dialog-status').textContent=error.message;}finally{b.disabled=false;} });
 setView('tasks');
-if(token) enter(token);
+if(typeof window!=='undefined') window.CrewmeshProject={
+  enter(credential){logout();accountManaged=true;sessionStorage.setItem('crewmesh_account_project','1');enter(credential);},
+  clear(){logout();accountManaged=false;},
+  private:showPrivate,
+  managed(){return accountManaged;}
+};
+// Account-managed project credentials are reissued only after validating the cookie.
+if(token && !sessionStorage.getItem('crewmesh_account_project')) enter(token);
