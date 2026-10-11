@@ -44,7 +44,7 @@ F2 实际协议、兼容边界与验证见 [任务交接与恢复](task-lifecycl
 - [x] tests/test_dependencies.py、真实 HTTP/官方 MCP 验收与网页：双成员后端/前端交换接口问题、答复、确认后继续；无负责人后认领、负责人转交、循环、取消、重试/并发、跨项目隔离、重启。记录 SDK 与真实原生工具测试的不同证据，不混报。
 - [x] 更新 docs/agent-connection.md、docs/roadmap.md、docs/README.md 与 docs/collaboration-flow-report.md。
 - [x] controller 独立规格/质量审查；合入主线，412 项 Python、21 项实验、七组网页回归及发行构建通过；阶段提交 a0bf495 / c5d7099 已推送。
-- [ ] 最终 GitHub CI 与 PR 发布记录。
+- [x] PR #2 与最终 GitHub CI 链接已记录在验证报告；执行结果以 PR Checks 为准。
 
 ## 验收命令与证据
 

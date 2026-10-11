@@ -34,4 +34,6 @@ F3 阶段提交 a0bf495 已通过独立规格和质量审查。质量审查发�
 
 已合入同期主线的 0.4.0rc1 / C2 改动（9bcac3b），并重新 fetch 确认没有遗漏新主线提交。集成完整回归 **412 项 Python 测试通过**（154.312 秒），实验 **21 项通过**，七组网页回归及所有静态 JavaScript 语法检查通过。上述网页权限小修后补跑了 13 项依赖测试和网页行为回归。sdist 与 wheel 构建成功，产物保留在忽略的 `.local/`。
 
-最终 GitHub CI 与 PR 链接由 controller 在提交和推送后补充。此前 C1/C2/C3、GitHub App 和公网部署验收边界保持原记录。
+已发布 [PR #2](https://github.com/Weichenleeeee123/crewmesh/pull/2)，包含全部阶段提交。推送与 PR 分别触发 [GitHub CI](https://github.com/Weichenleeeee123/crewmesh/actions/runs/38136403975) 和 [PR CI](https://github.com/Weichenleeeee123/crewmesh/actions/runs/38136429658)，记录此段时仍在执行；最终状态以 PR Checks 为准。构建后的 wheel 另经检查，包含全部协作模块与静态资源，未包含 `.local/` 或实验数据库。
+
+此前 C1/C2/C3、GitHub App 和公网部署验收边界保持原记录。
