@@ -1,6 +1,6 @@
 # C2 implementation and acceptance
 
-Date: 2026-10-11 (Asia/Taipei). Status: C2 code and package acceptance complete for candidate `0.4.0rc1`; public deployment and real provider acceptance are not claimed. The user approved overseas team subscriptions using Stripe, complete MIT source and unrestricted self-hosting. C3 public deployment and operations remain deferred.
+Date: 2026-10-11 (Asia/Taipei). Status: C2 code and package acceptance complete; candidate `0.4.0rc1` is published as a public GitHub prerelease. Public deployment and real provider acceptance are not claimed. The user approved overseas team subscriptions using Stripe, complete MIT source and unrestricted self-hosting. C3 public deployment and operations remain deferred.
 
 ## Stage evidence
 
@@ -45,6 +45,21 @@ The expanded deployment smoke preserves all 25 original assertions and adds 17: 
 Candidate source commit `afc40208852c85cacd17114d414ae102cff2b198` passed [its exact Linux CI run](https://github.com/Weichenleeeee123/crewmesh/actions/runs/38128054788). Python 3.11 and 3.13 each passed 353 application tests and 21 experiment tests, all four JS regressions and syntax checks, and package builds. Actual Docker/Caddy TLS passed all 42 checks, including the corrected disabled webhook behavior and new-path restored database, with no container-stop warning. Retained log: `.local/c2-final-ci-d4721fb0-75d3-459b-9018-66b5937e8ce4.log`. This is actual CI-runner TLS evidence, not local Docker or public DNS/merchant acceptance.
 
 The built wheel's 41 payload files and the sdist's 75 tracked files were compared byte-for-byte with the accepted source commit; both match. Retained provenance: `.local/c2-package-final-mv3m2lt3/candidate-provenance.json`. Final documentation records these completed checks without changing the accepted production source.
+
+## Published candidate
+
+[Public prerelease `v0.4.0rc1`](https://github.com/Weichenleeeee123/crewmesh/releases/tag/v0.4.0rc1) points to commit `34a20dee861a30faa0e03aec29303382b58303b3`. [The exact release commit CI](https://github.com/Weichenleeeee123/crewmesh/actions/runs/38128262118) completed successfully before publication: Python 3.11 and 3.13 each passed 353 application tests and 21 experiment tests, all four JavaScript regressions and syntax checks, package builds, and actual Docker/Caddy TLS smoke with 42 checks. Retained log: `.local/c2-tag-ci-0c1a4b40-af2a-4fba-a56f-466baeb77c87.log`.
+
+GitHub confirms the repository is public, the release is published rather than a draft, and the release is explicitly marked as a prerelease. Four assets were uploaded; each GitHub SHA256 digest matches its retained local file:
+
+| Asset | SHA256 |
+| --- | --- |
+| `crewmesh-0.4.0rc1-deploy.zip` | `3d3a32a50b0283d26c335afb102372acf1f2544917afb02a55f8dff60e885d59` |
+| `crewmesh-0.4.0rc1-py3-none-any.whl` | `1736a3cc803bdd3c0aba8c9a706bf3e7f34ae31b88cec5ec84049e759a2bd61b` |
+| `crewmesh-0.4.0rc1.tar.gz` | `66ec586f6c0dc255a3af9e0616e87e429c6929f7db9ff2507ca98188b901e75e` |
+| `SHA256SUMS.txt` | `80a0df654c60ff836caf1d65b62e317ccc360bc9d6689fb3086a75ac9f2c020c` |
+
+The deployment ZIP archives the exact release commit. Wheel and source-package payloads were also compared with this commit: all 41 wheel payload files and 75 tracked source files match. Retained release files and notes are under `.local/c2-public-release-mv3manba/`, with provenance at `.local/c2-public-release-mv3manba-result.json`. Earlier release assets remain preserved. Publication does not claim public service deployment, real Stripe acceptance or C3 completion.
 
 ## External verification boundaries
 

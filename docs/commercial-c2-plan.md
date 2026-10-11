@@ -84,7 +84,7 @@ Update `.env.example`, CI, deployment docs, README, changelog and indexes; creat
 - [x] Run fresh full Python suite, experiment regressions, JS checks, build/install and container/TLS acceptance relevant to changed lifespan/routes. Inspect exact candidate CI results; retain all local evidence.
 - [x] Independently review full C2 authorization, event ordering, checkout idempotency and self-hosting behavior; fix all important findings and rerun affected checks.
 - [x] Commit and push stages; record verified counts/commits and missing real Stripe sandbox credentials if unavailable.
-- [ ] Publish a clearly labeled candidate only when checks pass; never overwrite prior artifacts.
+- [x] Publish a clearly labeled candidate only when checks pass; never overwrite prior artifacts. Public prerelease `v0.4.0rc1` points to `34a20dee861a30faa0e03aec29303382b58303b3`; its exact CI passed before publication. Release assets and checksums are recorded in the acceptance report.
 
 ## Execution decisions
 
