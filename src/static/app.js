@@ -77,7 +77,7 @@ let renderSignature='';
 function render() {
   const signature=JSON.stringify({...snapshot,server_time:null}); if(signature===renderSignature) return; renderSignature=signature;
   // Defer dynamic lists while a user edits a receiver or interacts with a record.
-  if((['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName) && ['requests','contracts','tasks','task-detail','git-connection'].some(id => $(id)?.contains(document.activeElement))) || !window.getSelection().isCollapsed){ renderSignature=''; return; }
+  if((['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName) && ['requests','contracts','tasks','task-detail','git-connection','collaboration-status'].some(id => $(id)?.contains(document.activeElement))) || !window.getSelection().isCollapsed){ renderSignature=''; return; }
   const active=document.activeElement, activeRecord=active?.closest('.record,.task-card');
   const focus=activeRecord ? {record:activeRecord.id,tag:active.tagName,label:active.textContent} : null;
   const expanded=Array.from(document.querySelectorAll('.record details[open]')).map(d=>({record:d.closest('.record').id,label:d.querySelector('summary').textContent}));

@@ -1,6 +1,7 @@
 from concurrent.futures import ThreadPoolExecutor
 import json
 import os
+import shlex
 from pathlib import Path
 import subprocess
 import sys
@@ -224,6 +225,23 @@ class HookTests(unittest.TestCase):
                     self.assertEqual(command.get('additionalContextLimit'),9000)
                 else:
                     self.assertNotIn('additionalContextLimit',command)
+
+    def test_first_setup_guide_commands_ignore_repository_module_shadowing(self):
+        (self.root/'crewmesh.py').write_text("print('repository-module-shadowed-hook')",encoding='utf-8')
+        guide=Path('docs/collaboration-checkpoints.md').read_text(encoding='utf-8')
+        commands=[shlex.split(line) for line in guide.splitlines()
+                  if line.startswith('python ') and 'crewmesh.checkpoint_hook' in line]
+        self.assertEqual(len(commands),2)
+        for command in commands:
+            result=subprocess.run([sys.executable,*command[1:]],cwd=self.root,env=self.env,
+                text=True,capture_output=True,timeout=15)
+            self.assertEqual(result.returncode,0,result.stderr)
+            self.assertNotIn('repository-module-shadowed-hook',result.stdout)
+            output=json.loads(result.stdout)
+            if '--doctor' in command:
+                self.assertEqual(output['diagnostic']['status'],'completed')
+            else:
+                self.assertIn('hooks',output)
 
 
 if __name__ == '__main__':

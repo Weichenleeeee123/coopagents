@@ -10,8 +10,8 @@ F1 在服务收到个人 agent 的调用时记录协作检查点，并返回当�
 $env:CREWMESH_SERVICE_URL = 'http://127.0.0.1:8787'
 $env:CREWMESH_PROJECT_ID = 'YOUR_PROJECT_ID'
 $env:CREWMESH_AGENT_TOKEN = 'YOUR_PERSONAL_AGENT_TOKEN'
-python -m crewmesh.checkpoint_hook --tool codex-cli --config-preview
-python -m crewmesh.checkpoint_hook --tool codex-cli --doctor
+python -I -m crewmesh.checkpoint_hook --tool codex-cli --config-preview
+python -I -m crewmesh.checkpoint_hook --tool codex-cli --doctor
 ```
 
 `--tool` 支持 `claude-code`、`codex-cli`、`codex-desktop`。每种模板都有 `SessionStart`、`UserPromptSubmit`、`PostToolUse` 三个 command hook。模板使用生成时的 `sys.executable`；Python `-I` 避免工作目录中的同名模块覆盖已安装入口。Windows 使用带正确单引号的 PowerShell 命令，经 UTF-16LE `EncodedCommand` 传递，因此带空格的 Python 路径不会拆开。编码内容仅为固定 Python 入口及工具名，不含令牌或用户输入。
@@ -63,6 +63,7 @@ Codex 模板单独设置文档支持的 `additionalContextLimit: 9000`（近似 
 - 网页：`collaboration_ui_regression.js`、`web_session_regression.js`、`git_ui_regression.js`、`account_ui_regression.js`、`billing_ui_regression.js` 均通过；包括过期状态、诊断不冒充 hook、安全文本渲染、切换项目后的异步结果和工具选择保留。新增网页测试已加入 CI。
 - 真实浏览器验收确认仓库接入页显示自动协作面板，390px 宽度无横向溢出；未发现新增脚本错误。步骤展开和工具选择在刷新时保留，退出/切换项目重置。
 - Windows 含空格的真实 `sys.executable` 命令完成本机 shell 执行。另从含同名 `crewmesh.py` 的工作目录执行，确认生成入口使用已安装包。
+- 质量审查补充首次接入：网页和文档的 preview/doctor 命令统一使用 `python -I -m`。从包含同名 `crewmesh.py` 的目录实际执行文档中的两条命令，验证其不会先执行仓库模块；hook 专项 15 项通过。网页回归确认接入工具选框聚焦时快照不重建面板，离开焦点后正常补绘并保留选项。
 - 实际 Claude 新会话触发了 `SessionStart` 与 `UserPromptSubmit`；客户端调试日志确认接受带 `additionalContext` 的 JSON。但模型未复述只存在于上下文的随机标识。极小 literal-context 对照同样未复述，因此**模型消费验收未通过**，不能声称完成端到端上下文注入。
 - 隔离 Codex CLI 项目尚未产生原生 hook 记录；没有修改用户个人配置或绕过 `/hooks` 信任。Codex 桌面尚未独立验收。
 

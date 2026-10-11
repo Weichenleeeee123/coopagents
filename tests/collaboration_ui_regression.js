@@ -26,6 +26,8 @@ global.document={createElement:tag=>new Element(tag),activeElement:null};
   assert.doesNotMatch(content(root),/诊断已完成/);
   Collaboration.renderSetup(setup,snapshot,context);
   assert.match(content(setup),/CREWMESH_PROJECT_ID/);
+  assert.match(content(setup),/python -I -m crewmesh\.checkpoint_hook --tool codex-cli --config-preview/);
+  assert.match(content(setup),/python -I -m crewmesh\.checkpoint_hook --tool codex-cli --doctor/);
   assert.match(content(setup),/--config-preview/);
   assert.match(content(setup),/--doctor/);
   assert.match(content(setup),/\/hooks/);

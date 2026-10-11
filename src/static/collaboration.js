@@ -26,8 +26,8 @@
         '$env:CREWMESH_SERVICE_URL = '+quote(context.origin)+'\n'+
         '$env:CREWMESH_PROJECT_ID = '+quote(snapshot.me.room_id)+'\n'+
         "$env:CREWMESH_AGENT_TOKEN = 'YOUR_PERSONAL_AGENT_TOKEN'\n"+
-        'python -m crewmesh.checkpoint_hook --tool '+tool+' --config-preview\n'+
-        'python -m crewmesh.checkpoint_hook --tool '+tool+' --doctor';
+        'python -I -m crewmesh.checkpoint_hook --tool '+tool+' --config-preview\n'+
+        'python -I -m crewmesh.checkpoint_hook --tool '+tool+' --doctor';
       settings.textContent=tool==='claude-code'?
         '审阅生成片段后，手动合并到 .claude/settings.local.json；保留原有 hooks。重新启动 Claude Code。':
         '审阅生成片段后，手动合并到 .codex/hooks.json；保留原有 hooks。在原生工具 /hooks 中审阅并批准准确的配置版本。';

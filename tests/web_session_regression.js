@@ -115,5 +115,20 @@ function harness(status, formValues=[['title','fixture']]) {
   board.run('restoreRecordFocus({record:"focused-card",tag:"BUTTON",label:"task"})');
   assert.equal(card.wasFocused,true);
   assert.equal(card.tabIndex,0,'Refreshing a focused native card must retain its Tab stop');
+  // Keep the collaboration picker mounted while a fresh snapshot arrives.
+  const collaboration=harness(200);
+  collaboration.run(`let panelRenderCount=0;
+    window={getSelection:()=>({isCollapsed:true}),CrewmeshCollaboration:{renderPanel:()=>panelRenderCount++}};
+    const focusedPicker={tagName:'SELECT',value:'claude-code',closest:()=>null};
+    document.activeElement=focusedPicker;
+    for(const id of ['requests','contracts','tasks','task-detail','git-connection'])document.getElementById(id).contains=()=>false;
+    document.getElementById('collaboration-status').contains=target=>target===focusedPicker;
+    snapshot={room:{name:'Team'},me:{display_name:'Owner',role:'owner',room_id:'room'},collaboration:{checkpoints:[]}};
+    renderOverview=()=>{};renderTasks=()=>{};renderRequests=()=>{};renderContracts=()=>{};
+    render();`);
+  assert.equal(collaboration.run('panelRenderCount'),0,'A fresh snapshot must not redraw a focused collaboration picker');
+  assert.equal(collaboration.run('document.activeElement.value'),'claude-code');
+  collaboration.run('document.activeElement=null;render()');
+  assert.equal(collaboration.run('panelRenderCount'),1,'The deferred collaboration update must render after focus leaves');
   process.stdout.write('Delayed-body session regressions passed\n');
 })().catch(error => { process.stderr.write(error.stack+'\n'); process.exitCode=1; });
