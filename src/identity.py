@@ -97,6 +97,7 @@ class IdentityStore:
     def create_invite(self, web_token):
         with self.db.connect(write=True) as connection:
             principal = self.resolve(connection, web_token, required_kind='web')
+            self._require_unmanaged_room(connection, principal.room_id)
             if principal.role != 'owner':
                 raise AccessDenied('Owner credential required')
             token = secrets.token_urlsafe(32)
@@ -119,6 +120,7 @@ class IdentityStore:
             now = _utcnow()
             if invite is None or _expired(invite['expires_at'], now):
                 raise AccessDenied('Invitation not accepted')
+            self._require_unmanaged_room(connection, invite['room_id'])
             result = self._create_member(connection, invite['room_id'], display_name, 'member')
             connection.execute('''UPDATE invitations SET used_at = ?, used_by_member_id = ?
                 WHERE token_hash = ?''', (now.isoformat(), result['member_id'], token_hash))
@@ -139,6 +141,7 @@ class IdentityStore:
         display_name = _name(display_name)
         with self.db.connect(write=True) as connection:
             principal = self.resolve(connection, owner_web_token, required_kind="web")
+            self._require_unmanaged_room(connection, principal.room_id)
             if principal.role != "owner":
                 raise AccessDenied("Owner credential required")
             return self._create_member(connection, principal.room_id, display_name, "member")
@@ -160,7 +163,28 @@ class IdentityStore:
             raise AccessDenied("Credential not accepted")
         fields = dict(row)
         fields.pop('expires_at')
+        if self._has_table(connection, 'project_members'):
+            mapping = connection.execute('''SELECT p.active,t.active AS team_active
+                FROM project_members p JOIN team_projects r ON r.room_id=p.room_id
+                JOIN team_members t ON t.team_id=r.team_id AND t.account_id=p.account_id
+                WHERE p.member_id=?''', (row['member_id'],)).fetchone()
+            if mapping is not None and (not mapping['active'] or not mapping['team_active']):
+                raise AccessDenied('Credential not accepted')
+            session = connection.execute('''SELECT s.expires_at,s.revoked_at
+                FROM session_project_credentials p JOIN account_sessions s ON s.token_hash=p.session_hash
+                WHERE p.credential_hash=?''', (token_hash,)).fetchone()
+            if session is not None and (session['revoked_at'] is not None or _expired(session['expires_at'], _utcnow())):
+                raise AccessDenied('Credential not accepted')
         return Principal(**fields)
+
+    @staticmethod
+    def _has_table(connection, name):
+        return connection.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (name,)).fetchone() is not None
+
+    def _require_unmanaged_room(self, connection, room_id):
+        if self._has_table(connection, 'team_projects') and connection.execute(
+                'SELECT 1 FROM team_projects WHERE room_id=?', (room_id,)).fetchone():
+            raise AccessDenied('Use team project membership management')
 
     def list_members(self, token):
         with self.db.connect() as connection:
@@ -178,7 +202,23 @@ class IdentityStore:
             ).fetchone()
             if target is None:
                 raise NotFound("Member not found")
-            if principal.role != "owner" and principal.member_id != member_id:
-                raise AccessDenied("Member credential does not authorize revocation")
+            if principal.member_id != member_id:
+                managed = self._has_table(connection, 'team_projects') and connection.execute(
+                    'SELECT team_id FROM team_projects WHERE room_id=?', (principal.room_id,)).fetchone()
+                if managed:
+                    actor_role = connection.execute('''SELECT t.role FROM project_members p
+                        JOIN team_members t ON t.account_id=p.account_id AND t.team_id=?
+                        WHERE p.member_id=? AND p.active=1 AND t.active=1''',
+                        (managed['team_id'], principal.member_id)).fetchone()
+                    target_role = connection.execute('''SELECT t.role FROM project_members p
+                        JOIN team_members t ON t.account_id=p.account_id AND t.team_id=?
+                        WHERE p.member_id=? AND p.active=1 AND t.active=1''',
+                        (managed['team_id'], member_id)).fetchone()
+                    if (actor_role is None or actor_role['role'] not in ('owner', 'admin')
+                            or (actor_role['role'] == 'admin' and target_role is not None
+                                and target_role['role'] != 'member')):
+                        raise AccessDenied('Team role does not authorize revocation')
+                elif principal.role != 'owner':
+                    raise AccessDenied("Member credential does not authorize revocation")
             connection.execute("""UPDATE credentials SET revoked_at = CURRENT_TIMESTAMP
                 WHERE member_id = ? AND kind = 'agent' AND revoked_at IS NULL""", (member_id,))
