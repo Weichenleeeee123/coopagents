@@ -1,16 +1,16 @@
 # C2 implementation and acceptance
 
-Date: 2026-10-11 (Asia/Taipei). Status: implementation in progress; this is not a release or deployment acceptance claim. The user approved overseas team subscriptions using Stripe, complete MIT source and unrestricted self-hosting. C3 public deployment and operations remain deferred.
+Date: 2026-10-11 (Asia/Taipei). Status: C2 code and package acceptance complete; candidate `0.4.0rc1` is published as a public GitHub prerelease. Public deployment and real provider acceptance are not claimed. The user approved overseas team subscriptions using Stripe, complete MIT source and unrestricted self-hosting. C3 public deployment and operations remain deferred.
 
 ## Stage evidence
 
 | Stage | Current evidence | Status |
 | --- | --- | --- |
 | Billing domain and transactional capacity | 32 billing tests, 17 workspace regression tests; independent specification and quality reviews passed | Complete |
-| Stripe transport and durable synchronization | 17 adapter/configuration, 55 coordinator and 34 domain tests; full 240-test application regression passed | Complete; independent specification and quality reviews passed |
+| Stripe transport and durable synchronization | Final 18 adapter/configuration, 56 coordinator and 35 domain tests; canonical provider fixtures and retained ledgers | Complete; independent specification and quality reviews passed |
 | HTTP, worker and maintenance command | 20 HTTP/lifecycle and 9 admin tests; root full 268-test run plus the added production transport regression passed | Complete; independent specification and quality reviews passed |
 | Billing interface | 29 functional billing groups, existing JS regressions, 6 web tests and 26 account tests; actual self-hosted and explicitly synthetic cloud browser QA | Complete; independent specification and quality reviews passed |
-| Candidate packaging and full acceptance | Existing C1 evidence does not replace C2 checks | Pending |
+| Candidate packaging and full acceptance | Final 353-test application regression, 21 experiments, four JS regressions, wheel/sdist build and isolated install; 13 Compose cases; exact source CI and actual 42-check TLS smoke | Complete within the documented code/package boundary |
 
 Domain source commit: `fe5b431`. [Its exact CI run](https://github.com/Weichenleeeee123/crewmesh/actions/runs/38121842217) passed both Python 3.11 and 3.13 with 166 application tests and 21 integration experiment tests each, JavaScript regressions, package builds, and the actual container/Caddy TLS smoke. This verifies the domain stage only; the final C2 candidate must run fresh checks after the remaining implementation.
 
@@ -30,9 +30,42 @@ HTTP integration adds exact cookie/Origin/CSRF/role checks, the raw signed callb
 
 Shutdown joins owned service, SQLite and executor jobs. Independent review reproduced the separately bounded HTTPS daemon helper surviving a caller timeout. The added actual-transport test verifies retained physical capacity, no POST after delayed DNS, no later database writes and reuse of the durable customer key after restart. Timed-out DNS helpers can remain alive; an already-sent provider request can still finish remotely. Neither is described as joined or proof of payment. See [HTTP shutdown and recovery contract](c2-http.md).
 
+## Candidate checks
+
+The final C2 review found no outstanding Critical, Important or Minor issues. It independently verified authorization, canonical payment and risk evidence, stable request recovery, transactional quotas and shared Git/Billing lifecycle. A final validator mismatch was reproduced: server-side Portal validation accepted a bare `#` and raw backslashes that the browser rejected. Adapter and persisted-domain validation now agree; three failing-then-passing regressions cover adapter, retained storage and a Portal operation that must remain pending on invalid response. Final specification review passed nine focused tests, followed by quality review with six tests and seven independent probes.
+
+After these fixes the root ran all 353 application tests: passed in 109.219 seconds, retained at `.local/c2-final-urls-root-a22faa14-74e6-49df-a4f2-d45cec75d38d.log`. All 21 experiment regressions and four JavaScript regressions passed. The earlier final 350-test run is retained at `.local/c2-final-root-1bcdf635-18e4-4abe-91bf-3339c8c93d8f.log`.
+
+Version `0.4.0rc1` wheel and sdist build, dependency installation into a new isolated virtual environment, import isolation, packaged asset equality and installed HTTP probes passed. Evidence: `.local/c2-package-final-mv3m2lt3/result.json`. The installed self-hosted service ignores enabled billing configuration without constructing Stripe, serves all four packaged scripts, and has no webhook route. Original failed probe evidence is retained separately: it first inspected the outer middleware as a router, then exposed the incorrect anonymous-404 expectation in the proposed smoke. Disabled callback traffic actually reaches the existing MCP authentication fallback: anonymous 401, valid agent 404. Updated real HTTP regressions, deployment smoke and operations documentation now reflect this behavior without changing production authentication.
+
+The optional billing overlay passed 13 retained Compose checks, including default self-hosting without provider files, complete synthetic cloud configuration, independent GitHub App coexistence, and each of ten required values missing separately. Evidence: `.local/c2-release-config-6e6b1f5f7425/result.json`; independent specification review repeated these with clean configuration. The default deployment does not require Stripe/OAuth files. No fixture credentials or monetary values are a production configuration.
+
+The expanded deployment smoke preserves all 25 original assertions and adds 17: actual unlimited usage, cookie/bearer boundaries, disabled owner payment operations, absent webhook, billing/Git assets, restart and a restored database served through the same verified TLS origin. Local execution failed before any checks because Docker Engine was unavailable; failure evidence remains at `.local/deployment-smoke/crewmesh-p4-0e16feb607d3/result.json`.
+
+Candidate source commit `afc40208852c85cacd17114d414ae102cff2b198` passed [its exact Linux CI run](https://github.com/Weichenleeeee123/crewmesh/actions/runs/38128054788). Python 3.11 and 3.13 each passed 353 application tests and 21 experiment tests, all four JS regressions and syntax checks, and package builds. Actual Docker/Caddy TLS passed all 42 checks, including the corrected disabled webhook behavior and new-path restored database, with no container-stop warning. Retained log: `.local/c2-final-ci-d4721fb0-75d3-459b-9018-66b5937e8ce4.log`. This is actual CI-runner TLS evidence, not local Docker or public DNS/merchant acceptance.
+
+The built wheel's 41 payload files and the sdist's 75 tracked files were compared byte-for-byte with the accepted source commit; both match. Retained provenance: `.local/c2-package-final-mv3m2lt3/candidate-provenance.json`. Final documentation records these completed checks without changing the accepted production source.
+
+## Published candidate
+
+[Public prerelease `v0.4.0rc1`](https://github.com/Weichenleeeee123/crewmesh/releases/tag/v0.4.0rc1) points to commit `34a20dee861a30faa0e03aec29303382b58303b3`. [The exact release commit CI](https://github.com/Weichenleeeee123/crewmesh/actions/runs/38128262118) completed successfully before publication: Python 3.11 and 3.13 each passed 353 application tests and 21 experiment tests, all four JavaScript regressions and syntax checks, package builds, and actual Docker/Caddy TLS smoke with 42 checks. Retained log: `.local/c2-tag-ci-0c1a4b40-af2a-4fba-a56f-466baeb77c87.log`.
+
+GitHub confirms the repository is public, the release is published rather than a draft, and the release is explicitly marked as a prerelease. Four assets were uploaded; each GitHub SHA256 digest matches its retained local file:
+
+| Asset | SHA256 |
+| --- | --- |
+| `crewmesh-0.4.0rc1-deploy.zip` | `3d3a32a50b0283d26c335afb102372acf1f2544917afb02a55f8dff60e885d59` |
+| `crewmesh-0.4.0rc1-py3-none-any.whl` | `1736a3cc803bdd3c0aba8c9a706bf3e7f34ae31b88cec5ec84049e759a2bd61b` |
+| `crewmesh-0.4.0rc1.tar.gz` | `66ec586f6c0dc255a3af9e0616e87e429c6929f7db9ff2507ca98188b901e75e` |
+| `SHA256SUMS.txt` | `80a0df654c60ff836caf1d65b62e317ccc360bc9d6689fb3086a75ac9f2c020c` |
+
+The deployment ZIP archives the exact release commit. Wheel and source-package payloads were also compared with this commit: all 41 wheel payload files and 75 tracked source files match. Retained release files and notes are under `.local/c2-public-release-mv3manba/`, with provenance at `.local/c2-public-release-mv3manba-result.json`. Earlier release assets remain preserved. Publication does not claim public service deployment, real Stripe acceptance or C3 completion.
+
 ## External verification boundaries
 
 Billing UI commit `9e25d5d` was integrated with the concurrently published Git repository feature at remote `ce2efa1`. Conflict resolution preserves both static modules, routes, worker lifespans and CI checks; independent specification and quality reviews passed again. The root ran all 350 merged application tests successfully in 128.665 seconds, retained at `.local/c2-merged-root-375e6719-fe8f-440d-86da-5b66f5897ca2.log`, and all 21 integration experiment regressions passed. This shared-source check is separate from the final candidate's package and container acceptance.
+
+Merged UI source commit `46fdf61b6791b8c567433db975d4ffcf3a9cc13e` also passed [its exact CI run](https://github.com/Weichenleeeee123/crewmesh/actions/runs/38126911842): Python 3.11/3.13 application and experiment suites, all four JavaScript regressions and syntax checks, package builds, and actual Docker/Caddy TLS smoke. Candidate deployment configuration and expanded billing TLS checks are not covered by this earlier run.
 
 The root independently ran the full application suite after the initial UI implementation: 270 tests passed in 94.915 seconds, retained at `.local/c2-ui-root-d7992cc6-26a0-4441-b9e5-32f0e788928e.log`. Independent review then found two UI integration gaps: a literal empty Portal fragment escaped parsed-fragment validation, and saved project restoration hid billing on payment return. Both have observed-failing then passing regressions; Portal rejects every literal fragment, and billing hashes preserve the authorized team hub. The root reran all six affected web tests successfully after the fixes. Final specification and quality re-reviews passed all 29 billing groups and the web suite. One unchanged Windows transport teardown test initially failed during review and passed on two subsequent runs; final candidate CI still requires fresh verification.
 
@@ -42,6 +75,6 @@ The user currently has no Stripe test account available. No real Stripe sandbox 
 
 No C3 deployment or live charge is performed in this phase. Existing native Codex MCP cancellation and complete native agent-loop limitations remain subject to their earlier reports; a billing implementation does not resolve them.
 
-Local Docker Engine is currently unavailable: the Docker client cannot open `dockerDesktopLinuxEngine`. The domain-stage container/TLS result above comes from the actual GitHub CI runner, not a local or mocked Docker run. The final candidate still requires its own exact CI verification.
+Local Docker Engine is currently unavailable: the Docker client cannot open `dockerDesktopLinuxEngine`. Container/TLS results come from actual GitHub CI runners, not local or mocked Docker runs; the accepted candidate's exact 42-check result is recorded above.
 
 Approved scope: [design](commercial-c2-design.md), [plan](commercial-c2-plan.md). Domain interfaces: [contract](c2-domain.md).

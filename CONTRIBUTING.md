@@ -27,6 +27,19 @@ python -m venv .venv
 
 发行依赖固定在 `deploy/constraints.txt`，完整安装可使用 `pip install -c deploy/constraints.txt -e '.[service]'`。GitHub CI 覆盖 Python 3.11 / 3.13、网页脚本、发行包、镜像与 TLS smoke。
 
-本地容器验收：`docker build -t crewmesh:0.3.0rc1 .`，然后 `python scripts/deployment_smoke.py --image crewmesh:0.3.0rc1`。需要运行的 Docker 引擎；测试只停止自己的容器并保留证据。原生 CLI 验收入口为 `experiments/agent-integration/p4_native_check.py`，需要已认证的实际工具，失败不能用模拟数据代替。
+本地容器验收：`docker build -t crewmesh:0.4.0rc1 .`，然后 `python scripts/deployment_smoke.py --image crewmesh:0.4.0rc1`。需要运行的 Docker 引擎；测试只停止自己的容器并保留证据。原生 CLI 验收入口为 `experiments/agent-integration/p4_native_check.py`，需要已认证的实际工具，失败不能用模拟数据代替。
 
-部署、密钥及备份恢复见 [部署与运维](docs/deployment.md)，实际验收边界见 [P4 报告](docs/p4-release-report.md)。
+候选版 0.4.0rc1 的默认自托管 TLS smoke 同时覆盖账号、项目、MCP、禁用订阅的 Unlimited/实际用量、付款操作拒绝、Billing/Git 静态资源及重启/恢复。Docker CLI 存在不等于 Engine 可用；执行失败必须保留原始失败记录，不沿用历史版本通过结果。
+
+网页回归入口（需 Node）：
+
+```powershell
+node tests/web_session_regression.js src/static/app.js
+node tests/account_ui_regression.js src/static/accounts.js
+node tests/billing_ui_regression.js src/static/billing.js src/static/accounts.js
+node tests/git_ui_regression.js
+```
+
+默认与可选覆盖配置均使用 `docker compose ... config --quiet` 验证，避免输出展开配置和密钥路径。覆盖文件缺少任一 OAuth/Stripe/cap 必填项必须失败；可用保留在独立 `.local/` 目录的明确合成 env 验证语法，不能视作真实 OAuth/Stripe 验收。
+
+部署、密钥及备份恢复见 [部署与运维](docs/deployment.md)、[C2 运维](docs/c2-operations.md)，当前验收边界见 [C2 报告](docs/commercial-c2-report.md)，历史记录保留于 [P4 报告](docs/p4-release-report.md)。

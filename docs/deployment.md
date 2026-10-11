@@ -1,6 +1,6 @@
 # 自托管部署与运维
 
-发行版支持单实例服务、SQLite 持久卷和 Caddy HTTPS。实际公网部署目标尚未提供；当前候选版验收见 [C1 报告](commercial-c1-report.md)，历史容器与原生验收事实见 [P4 报告](p4-release-report.md)。需要 Docker Engine / Compose、能解析到服务器的域名及可用的 TCP 80/443 端口。不要直接暴露应用的 8787 端口。
+发行版支持单实例服务、SQLite 持久卷和 Caddy HTTPS。实际公网部署目标尚未提供；当前 0.4.0rc1 C2 代码与测试候选版验收见 [C2 报告](commercial-c2-report.md)，历史容器与原生验收事实见 [P4 报告](p4-release-report.md)。需要 Docker Engine / Compose、能解析到服务器的域名及可用的 TCP 80/443 端口。不要直接暴露应用的 8787 端口。
 
 ## 首次部署
 
@@ -50,7 +50,7 @@ docker compose exec app python -m crewmesh.backup backup /data/crewmesh.sqlite3 
 docker compose cp app:/data/backups/crewmesh-20261010-01.sqlite3 .local/crewmesh-20261010-01.sqlite3
 ```
 
-备份包含成员、凭据哈希及所有团队消息，应像生产数据一样保护并额外保存到独立介质。命令校验数据库完整性，拒绝覆盖已有目标。失败时任何部分文件保留，使用新的目标重试；本项目不自动删除文件。
+备份包含账号、成员、凭据哈希、所有团队消息及完整 billing ledger（catalog、bindings、事件、lease、audit、出站与 Checkout idempotency keys），应像生产数据一样保护并额外保存到独立介质。命令校验数据库完整性，拒绝覆盖已有目标。失败时任何部分文件保留，使用新的目标重试；本项目不自动删除文件。
 
 ## 恢复、升级与回退
 
@@ -61,7 +61,7 @@ docker compose exec app python -m crewmesh.backup restore /data/backups/crewmesh
 docker compose stop app
 ```
 
-在 `.env` 设置 `CREWMESH_DATABASE=/data/restored-20261010-01.sqlite3`，再执行 `docker compose up -d app`。通过网页检查房间、任务、消息和 MCP 认证，保留旧文件以便回退。恢复历史备份也会恢复当时的令牌状态，可能让备份后已撤销的令牌重新有效；恢复后立即轮换相关成员的 agent 令牌，重新签发邀请并确认网页凭据的有效性。
+在 `.env` 设置 `CREWMESH_DATABASE=/data/restored-20261010-01.sqlite3`，再执行 `docker compose up -d app`。通过网页检查房间、任务、消息和 MCP 认证，保留旧文件以便回退。启用 billing 时保留原 mode/catalog 与所有出站 key，按 [C2 运维](c2-operations.md) 进行 bounded canonical reconcile 与到期 retry；不得删除账本或重置 key。恢复历史备份也会恢复当时的令牌状态，可能让备份后已撤销的令牌重新有效；恢复后立即轮换相关成员的 agent 令牌，重新签发邀请并确认网页凭据的有效性。
 
 升级前做一致备份并记录镜像版本 / digest。领取新版源码或发行包，更新 `CREWMESH_VERSION`，运行 `docker compose up -d --build`，检查就绪状态和业务数据。本版数据库升级为附加字段；未来版本能否降级需阅读变更说明。回退代码时仍保留原卷，必要时从升级前备份恢复到新路径。
 
@@ -110,3 +110,14 @@ secrets:
 ```
 
 将覆盖文件保存为 `.local/compose-cloud.yaml`，在未提交的 `.env` 中设置 ID 和 secret 文件路径，然后运行 `docker compose --env-file .env -f compose.yaml -f .local/compose-cloud.yaml config --quiet` 和相同参数的 `up -d --build`。密钥文件需允许 UID 10001 读取；支持有限长度文件，缺失/部分/冲突配置会启动失败。Cloud 关闭本地登录/初始化/密码重置，用户通过 GitHub 登录创建团队或接受团队邀请。只有 OAuth 交换需要访问 GitHub，自托管默认没有这项依赖。代码及隔离测试不等于真实 OAuth 登录已通过；目前没有提供方凭据，真实回调未验收。
+
+## 可选 cloud 月付订阅
+
+默认自托管无需 Stripe/GitHub secret 文件。无 billing 配置的 cloud 仍要求账号 GitHub OAuth，但为 Unlimited，没有 webhook 或支付 worker。需要订阅时使用受版本控制的 `deploy/compose.cloud-billing.yaml`，它强制 cloud 并要求账号 OAuth、匹配 test/live 的 Stripe key 与 endpoint signing secret、实际固定月付 Price ID 和四项明确正整数 cap。基础 bootstrap 挂载保留，cloud 不使用账号初始化入口；与只读 App 的 `compose.github.yaml` 独立。
+
+```bash
+docker compose --env-file .env -f compose.yaml -f deploy/compose.cloud-billing.yaml config --quiet
+docker compose --env-file .env -f compose.yaml -f deploy/compose.cloud-billing.yaml up -d --build
+```
+
+全部密钥留在服务器受保护文件，允许 UID 10001 读取。实际 Price、Portal 限制、API `2026-09-30.endive` webhook 注册、容量/付款核验、durable retries 和恢复步骤见 [C2 运维](c2-operations.md)。当前无真实 Stripe/OAuth/public callback 验收，C3 保持暂停，代码与容器通过不能等同于官方付费服务上线。

@@ -376,12 +376,12 @@ class BillingStore:
         if expires_at is not None:
             _integer(expires_at)
         if checkout_url is not None:
-            if (not isinstance(checkout_url, str) or len(checkout_url) > 4096 or
+            if (not isinstance(checkout_url, str) or len(checkout_url) > 4096 or '\\' in checkout_url or
                 any(ord(char)<=32 or ord(char)==127 for char in checkout_url)):
                 raise ValidationError('Invalid checkout URL')
             url = urlsplit(checkout_url)
             if (url.scheme != 'https' or not url.hostname or url.username or url.password or
-                (url.fragment and url.netloc not in ('checkout.stripe.com','checkout.stripe.com:443'))):
+                ('#' in checkout_url and url.netloc not in ('checkout.stripe.com','checkout.stripe.com:443'))):
                 raise ValidationError('Invalid checkout URL')
         if status == 'open' and (checkout_url is None or expires_at is None):
             raise ValidationError('Open checkout requires URL and expiry')
