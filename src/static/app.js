@@ -240,13 +240,13 @@ $('retry').addEventListener('click',sync); $('logout').addEventListener('click',
 function configTemplate(){const url=location.origin+'/mcp'; const tool=$('connection-tool').value; $('config-template').value=tool==='desktop'?'[mcp_servers.crewmesh]\nurl = "'+url+'"\nhttp_headers = { Authorization = "Bearer TOKEN" }':tool==='cli'?"$env:CREWMESH_AGENT_TOKEN = 'TOKEN'\ncodex mcp add crewmesh --url "+url+' --bearer-token-env-var CREWMESH_AGENT_TOKEN':"claude mcp add --transport http --scope local crewmesh "+url+' --header "Authorization: Bearer TOKEN"';}
 async function copy(value){try{await navigator.clipboard.writeText(value);$('dialog-status').textContent='已复制，请妥善保存。';}catch{$('dialog-status').textContent='复制不可用，请选择字段并手动复制。';}}
 let dialogOpener=null;
-function showPrivate(title, credentials={}) { $('private-content').replaceChildren(); $('private-title').textContent=title; $('dialog-status').textContent=''; $('connection-help').hidden=!!credentials.invite_token;
-  for(const [key,label,expiry] of [['invite_token','邀请令牌',credentials.expires_at],['web_token','网页恢复凭据',credentials.web_expires_at],['agent_token','个人 agent 令牌',credentials.agent_expires_at||credentials.expires_at]]) if(credentials[key]) {
+function showPrivate(title, credentials={}) { $('private-content').replaceChildren(); $('private-title').textContent=title; $('dialog-status').textContent=''; $('connection-help').hidden=!!(credentials.invite_token||credentials.invite_url);
+  for(const [key,label,expiry] of [['invite_url','邀请链接',credentials.expires_at],['invite_token','邀请令牌',credentials.expires_at],['web_token','网页恢复凭据',credentials.web_expires_at],['agent_token','个人 agent 令牌',credentials.agent_expires_at||credentials.expires_at]]) if(credentials[key]) {
     const value=credentials[key],block=text('div','','secret'),l=text('label',label),input=document.createElement('input');input.type='password';input.readOnly=true;input.value=value;input.autocomplete='off';l.append(input);
     add(block,l,button('显示 / 隐藏',()=>{input.type=input.type==='password'?'text':'password';}),button('复制',()=>copy(input.value)),text('p','有效期至 '+date(expiry)+' · 关闭后不再展示','meta')); $('private-content').append(block);
   }
   $('mcp-url').value=location.origin+'/mcp'; configTemplate(); if(!$('private-dialog').open){dialogOpener=document.activeElement;$('private-dialog').showModal();}
-  if(snapshot&&!credentials.invite_token)collaborationUI()?.renderSetup($('collaboration-setup'),snapshot,gitContext());
+  if(snapshot&&!credentials.invite_token&&!credentials.invite_url)collaborationUI()?.renderSetup($('collaboration-setup'),snapshot,gitContext());
 }
 function clearPrivate(){ $('private-content').replaceChildren(); $('dialog-status').textContent=''; $('config-template').value=''; $('collaboration-setup')?.replaceChildren(); }
 function closePrivate(){if($('private-dialog').open)$('private-dialog').close();clearPrivate();}

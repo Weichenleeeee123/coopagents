@@ -3,14 +3,14 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('nod
 const source=fs.readFileSync(process.argv[2],'utf8');
 const flush=async()=>{for(let i=0;i<12;i++)await new Promise(r=>setImmediate(r));};
 function deferred(){let release;const promise=new Promise(r=>release=r);return {promise,release};}
-function harness(hash=''){
-  const elements=new Map(),storage=new Map(),calls=[],delays=new Map();let bridgeManaged=false,entered=[];
+function harness(hash='', invitation=false, anonymous=false, oauth=false){
+  const elements=new Map(),storage=new Map(),calls=[],delays=new Map(),privateViews=[];let bridgeManaged=false,entered=[];
   function element(id){if(!elements.has(id))elements.set(id,new N(id));return elements.get(id);}
   class N {
     constructor(id=''){this.id=id;this.children=[];this.hidden=false;this.value='';this.textContent='';this.listeners={};this.fields={};this.open=false;this.disabled=false;this.tagName='DIV';}
     append(...n){this.children.push(...n);}prepend(...n){this.children.unshift(...n);}replaceChildren(...n){this.children=n;this.textContent='';}
     addEventListener(type,cb){this.listeners[type]=cb;}setAttribute(k,v){this[k]=v;}reset(){for(const n of this.querySelectorAll('input[type=password]'))n.value='';this.fields={};}
-    querySelector(){return element(this.id+'-submit');}querySelectorAll(){return [];}
+    querySelector(selector){return element(this.id+(selector==='[name=invite_token]'?'-invite':'-submit'));}querySelectorAll(){return [];}
     click(){return this.listeners.click?.({currentTarget:this});}
   }
   const team={team_id:'t1',name:'Team',role:'owner'},p={room_id:'p1',team_id:'t1',name:'Project',repository:''};
@@ -21,11 +21,66 @@ function harness(hash=''){
     '/account/teams/t1/managed-projects':[{...p,has_access:true}],'/account/teams/t1/members':[{account_id:'a1',username:'alice',display_name:'Alice',role:'owner'}],
     '/account/projects/p1/select':{web_token:'scoped-private-token',room_id:'p1'},'/account/logout':{ok:true},
   };
-  const context=vm.createContext({window:{listeners:{},addEventListener(type,cb){this.listeners[type]=cb;},location:{hash},CrewmeshProject:{clear(){bridgeManaged=false;storage.delete('crewmesh_web_token');element('workspace').hidden=true;},enter(token){bridgeManaged=true;entered.push(token);storage.set('crewmesh_web_token',token);element('workspace').hidden=false;},managed:()=>bridgeManaged,private(){}}},document:{getElementById:element,querySelectorAll:()=>[],createElement:tag=>{const n=new N();n.tagName=tag.toUpperCase();return n;}},sessionStorage:{getItem:k=>storage.get(k),setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},AbortController,setTimeout:()=>1,clearTimeout(){},JSON,Error,FormData:class{constructor(form){this.form=form;}*[Symbol.iterator](){yield* Object.entries(this.form.fields);}},fetch:async(path,options)=>{calls.push({path,...options});const delay=delays.get(path);if(delay){delays.delete(path);return {status:delay.status||200,ok:!delay.status||delay.status===200,json:()=>delay.body.promise};}const reply=replies[path];return {status:reply===undefined?401:200,ok:reply!==undefined,json:async()=>reply===undefined?{message:'Permission denied'}:reply};}});
+  if(anonymous)delete replies['/account/session'];
+  if(oauth)replies['/account/config']={mode:'cloud',local_login_enabled:false,github_oauth_enabled:true};
+  replies['/account/invites/preview']={team_id:'t1',team_name:'Team',role:'member',projects:[{room_id:'p1',name:'Project'}],expires_at:'2099-01-01'};
+  replies['/account/invites/accept']={...info,team_id:'t1',project_ids:['p1']};replies['/account/login']=info;
+  const location={hash,origin:'https://crew.example',pathname:'/',search:''};
+  const context=vm.createContext({window:{listeners:{},addEventListener(type,cb){const prior=this.listeners[type];this.listeners[type]=async(...args)=>{await prior?.(...args);return cb(...args);};},location,history:{replaceState(){location.hash='';}},CrewmeshProject:{clear(){bridgeManaged=false;storage.delete('crewmesh_web_token');element('workspace').hidden=true;},enter(token){bridgeManaged=true;entered.push(token);storage.set('crewmesh_web_token',token);element('workspace').hidden=false;},managed:()=>bridgeManaged,private(...args){privateViews.push(args);}}},document:{getElementById:element,querySelectorAll:()=>[],createElement:tag=>{const n=new N();n.tagName=tag.toUpperCase();return n;}},sessionStorage:{getItem:k=>storage.get(k),setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},AbortController,setTimeout:()=>1,clearTimeout(){},JSON,Error,FormData:class{constructor(form){this.form=form;}*[Symbol.iterator](){yield* Object.entries(this.form.fields);}},fetch:async(path,options)=>{calls.push({path,...options});const delay=delays.get(path);if(delay){delays.delete(path);return {status:delay.status||200,ok:!delay.status||delay.status===200,json:()=>delay.body.promise};}const reply=replies[path];return {status:reply===undefined?401:200,ok:reply!==undefined,json:async()=>reply===undefined?{message:'Permission denied'}:reply};}});
+  if(invitation)vm.runInContext(fs.readFileSync('src/static/invitations.js','utf8'),context);
   vm.runInContext(source,context);
-  return {element,storage,calls,delays,replies,info,entered,window:context.window,document:context.document,async submit(id,fields={}){const form=element(id);form.fields=fields;form.listeners.submit({preventDefault(){},currentTarget:form});await flush();}};
+  return {element,storage,calls,delays,replies,info,entered,privateViews,window:context.window,document:context.document,async submit(id,fields={}){const form=element(id);form.fields=fields;form.listeners.submit({preventDefault(){},currentTarget:form});await flush();}};
 }
 (async()=>{
+  // Landing immediately strips the fragment, previews without consuming, and waits for a person.
+  const invite=harness('#invite=private%2Binvite',true);await flush();
+  assert.equal(invite.window.location.hash,'');
+  assert.equal(invite.calls.filter(c=>c.path==='/account/invites/preview').length,1);
+  assert.equal(invite.calls.some(c=>c.path==='/account/invites/accept'),false);
+  assert.equal(invite.element('invitation-accept').hidden,false);
+  assert.equal(invite.element('register-form-invite').value,'private+invite');
+  assert.equal(invite.window.CrewmeshInvitations.link({invite_token:'a+b'}),'https://crew.example/#invite=a%2Bb');
+  invite.element('invitation-accept').click();await flush();
+  assert.equal(invite.calls.filter(c=>c.path==='/account/invites/accept').length,1);
+  assert.deepEqual(invite.entered,['scoped-private-token']);
+  assert.equal(invite.element('invitation-panel').hidden,true);
+  assert.ok([...invite.storage.values()].every(v=>!String(v).includes('private+invite')));
+  // Local login keeps the in-memory invitation and still requires explicit acceptance.
+  const loginInvite=harness('#invite=login-secret',true,true);await flush();
+  await loginInvite.submit('account-login',{username:'alice',password:'password'});
+  assert.equal(loginInvite.calls.some(c=>c.path==='/account/invites/accept'),false);
+  assert.equal(loginInvite.element('invitation-accept').hidden,false);
+  loginInvite.element('invitation-accept').click();await flush();assert.deepEqual(loginInvite.entered,['scoped-private-token']);
+  // New local registration includes the pending token and routes to the invited project.
+  const registerInvite=harness('#invite=registration-secret',true,true);await flush();
+  await registerInvite.submit('register-form',{username:'new',password:'password',invite_token:''});
+  assert.equal(JSON.parse(registerInvite.calls.find(c=>c.path==='/account/invites/accept').body).invite_token,'registration-secret');
+  assert.deepEqual(registerInvite.entered,['scoped-private-token']);
+  // OAuth preserves the secret in the original page while authentication runs in a new tab.
+  const oauthInvite=harness('#invite=oauth-secret',true,true,true);await flush();
+  assert.equal(oauthInvite.element('github-login').target,'_blank');
+  assert.match(oauthInvite.element('invitation-status').textContent,/新标签页/);
+  oauthInvite.replies['/account/session']=oauthInvite.info;
+  oauthInvite.element('invitation-refresh').click();await flush();
+  assert.equal(oauthInvite.element('invitation-accept').hidden,false);
+  assert.equal(oauthInvite.calls.some(c=>c.path==='/account/invites/accept'),false);
+  assert.ok([...oauthInvite.storage.values()].every(v=>!String(v).includes('oauth-secret')));
+  // Invalid/used invitations never enable acceptance; unrelated billing hashes are preserved.
+  const invalidInvite=harness('#invite=used-secret',true,true);delete invalidInvite.replies['/account/invites/preview'];await flush();
+  assert.equal(invalidInvite.element('invitation-accept').hidden,true);
+  assert.equal(invalidInvite.element('invitation-status').textContent,'Permission denied');
+  const billingInvite=harness('#billing',true);await flush();assert.equal(billingInvite.window.location.hash,'#billing');
+  // A team-load generation switch during preview retries instead of losing the invitation.
+  const slowInvite=harness('#invite=slow-secret',true),previewBody=deferred();
+  slowInvite.delays.set('/account/invites/preview',{body:previewBody});await flush();
+  previewBody.release(slowInvite.replies['/account/invites/preview']);await flush();
+  assert.equal(slowInvite.element('invitation-accept').hidden,false);
+  // A project-card shortcut issues a member invite for exactly that project and shows a copyable link.
+  const shortcut=harness('',true);await flush();shortcut.replies['/account/teams/t1/invites']={invite_token:'copy-secret',expires_at:'2099-01-01'};
+  shortcut.element('hub-projects').children[0].children[4].click();await flush();
+  assert.deepEqual(JSON.parse(shortcut.calls.find(c=>c.path==='/account/teams/t1/invites').body),{role:'member',project_ids:['p1']});
+  assert.equal(shortcut.privateViews[0][1].invite_url,'https://crew.example/#invite=copy-secret');
+  assert.equal(shortcut.privateViews[0][1].invite_token,undefined);
   // A delayed account JSON body must never restore the hub after explicit logout.
   const a=harness(),body=deferred();a.delays.set('/account/session',{body});await flush();a.element('account-logout').click();await flush();body.release(a.info);await flush();assert.equal(a.element('account-hub').hidden,true);assert.equal(a.element('login').hidden,false);
   // Selecting a project returns a scoped token only after the current generation check.

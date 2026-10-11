@@ -199,25 +199,43 @@ class WorkspaceStore:
                 c.execute('INSERT INTO team_invite_projects VALUES(?,?)', (_token_hash(token), project))
             return {'invite_token': token, 'expires_at': expiry, 'team_id': team_id, 'role': role, 'project_ids': projects}
 
+    def _invitation(self, c, invite_token):
+        token_hash = _token_hash(invite_token)
+        invite = c.execute('SELECT * FROM team_invitations WHERE token_hash=? AND used_at IS NULL AND revoked_at IS NULL', (token_hash,)).fetchone()
+        if invite is None or _expired(invite['expires_at'], _utcnow()):
+            raise AccessDenied('Invitation expired, used, revoked or unavailable')
+        issuer_role = self._role(c, invite['team_id'], invite['issued_by'])
+        if issuer_role not in ('owner', 'admin') or (invite['role'] != 'member' and issuer_role != 'owner'):
+            raise AccessDenied('Invitation issuer no longer authorized')
+        projects = [dict(row) for row in c.execute('''SELECT r.id AS room_id,r.name FROM team_invite_projects i
+            JOIN team_projects p ON p.room_id=i.room_id JOIN rooms r ON r.id=i.room_id
+            WHERE i.token_hash=? AND p.team_id=? ORDER BY r.name,r.id''', (token_hash, invite['team_id']))]
+        return token_hash, invite, issuer_role, projects
+
+    def preview_invite(self, invite_token):
+        """Possession permits metadata preview, never redemption or account creation."""
+        with self.db.connect() as c:
+            _, invite, _, projects = self._invitation(c, invite_token)
+            return {'team_id': invite['team_id'], 'team_name': c.execute('SELECT name FROM teams WHERE id=?', (invite['team_id'],)).fetchone()['name'],
+                    'role': invite['role'], 'projects': projects, 'expires_at': invite['expires_at']}
+
     def accept_invite(self, invite_token, session_token=None, username=None, password=None, display_name=None):
         with self.db.connect(write=True) as c:
-            token_hash = _token_hash(invite_token)
-            invite = c.execute('SELECT * FROM team_invitations WHERE token_hash=? AND used_at IS NULL AND revoked_at IS NULL', (token_hash,)).fetchone()
-            if invite is None or _expired(invite['expires_at'], _utcnow()):
-                raise AccessDenied('Invitation not accepted')
-            issuer_role = self._role(c, invite['team_id'], invite['issued_by'])
-            if issuer_role not in ('owner', 'admin') or (invite['role'] != 'member' and issuer_role != 'owner'):
-                raise AccessDenied('Invitation issuer no longer authorized')
+            token_hash, invite, issuer_role, projects = self._invitation(c, invite_token)
             account = self.accounts.resolve(c, session_token) if session_token else self.accounts._create_local(c, username, password, display_name)
-            existing = c.execute('SELECT active FROM team_members WHERE team_id=? AND account_id=?', (invite['team_id'], account['id'])).fetchone()
+            existing = c.execute('SELECT active,role FROM team_members WHERE team_id=? AND account_id=?', (invite['team_id'], account['id'])).fetchone()
+            role = invite['role']
             if existing and existing['active']:
-                raise AccessDenied('Already a team member')
-            self.capacity_check(c, invite['team_id'], 'members')
-            c.execute('INSERT INTO team_members VALUES(?,?,?,1) ON CONFLICT(team_id,account_id) DO UPDATE SET role=excluded.role,active=1', (invite['team_id'], account['id'], invite['role']))
-            for project in c.execute('SELECT room_id FROM team_invite_projects WHERE token_hash=?', (token_hash,)).fetchall():
+                role = existing['role']
+                if issuer_role == 'admin' and role != 'member' and account['id'] != invite['issued_by']:
+                    raise AccessDenied('Cannot manage this project member')
+            else:
+                self.capacity_check(c, invite['team_id'], 'members')
+                c.execute('INSERT INTO team_members VALUES(?,?,?,1) ON CONFLICT(team_id,account_id) DO UPDATE SET role=excluded.role,active=1', (invite['team_id'], account['id'], role))
+            for project in projects:
                 self._grant(c, project['room_id'], account['id'])
             c.execute('UPDATE team_invitations SET used_at=? WHERE token_hash=?', (_utcnow().isoformat(), token_hash))
-            return {'account': account, 'team_id': invite['team_id'], 'role': invite['role']}
+            return {'account': account, 'team_id': invite['team_id'], 'role': role, 'project_ids': [p['room_id'] for p in projects]}
 
     def claim_legacy_project(self, session_token, team_id, owner_web_token):
         with self.db.connect(write=True) as c:

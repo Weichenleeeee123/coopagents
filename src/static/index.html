@@ -6,6 +6,7 @@
     <title>Crewmesh · 同频</title>
     <link rel="icon" type="image/png" href="/static/icon.png" />
     <link rel="stylesheet" href="/static/styles.css" />
+    <script src="/static/invitations.js" defer></script>
     <script src="/static/git.js" defer></script>
     <script src="/static/collaboration.js" defer></script>
     <script src="/static/task_lifecycle.js" defer></script>
@@ -15,6 +16,16 @@
     <script src="/static/accounts.js" defer></script>
   </head>
   <body>
+    <section id="invitation-panel" class="project-card" aria-labelledby="invitation-title" hidden>
+      <p class="eyebrow">TEAM INVITATION</p>
+      <h2 id="invitation-title">加入共同的项目</h2>
+      <p id="invitation-details"></p>
+      <p id="invitation-expiry" class="meta"></p>
+      <p id="invitation-status" role="status"></p>
+      <button id="invitation-accept" type="button" class="primary" hidden>接受邀请并进入项目 ↗</button>
+      <button id="invitation-refresh" type="button" hidden>我已完成登录 ↻</button>
+      <button id="invitation-dismiss" type="button">关闭邀请</button>
+    </section>
     <div id="login" class="entry">
       <section class="entry-story">
         <a class="brand" href="/"

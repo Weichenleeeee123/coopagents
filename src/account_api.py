@@ -147,6 +147,9 @@ def account_routes(service, *, mode, origin, bootstrap_secret, oauth):
                     response = JSONResponse({'ok': True})
                     response.delete_cookie(COOKIE, httponly=True, secure=secure, samesite='lax', path='/')
                     return response
+            if path == '/account/invites/preview':
+                data = validate(data, schema('invite_token'))
+                return JSONResponse(await execute(workspaces.preview_invite, **data), headers={'Cache-Control': 'no-store'})
             if token and path not in ('/account/login', '/account/bootstrap'):
                 csrf = request.headers.getlist('x-crewmesh-csrf')
                 if len(csrf) != 1:
@@ -198,12 +201,12 @@ def account_routes(service, *, mode, origin, bootstrap_secret, oauth):
             return JSONResponse(payload, status_code=status)
 
     result = []
-    patterns = set(operations) | set(reads) | {'/account/config', '/account/bootstrap', '/account/login', '/account/invites/accept'}
+    patterns = set(operations) | set(reads) | {'/account/config', '/account/bootstrap', '/account/login', '/account/invites/accept', '/account/invites/preview'}
     for pattern in sorted(patterns):
         async def endpoint(request, pattern=pattern):
             request.scope['account_pattern'] = pattern
             return await handle(request)
-        methods = (['GET'] if pattern in reads or pattern == '/account/config' else []) + (['POST'] if pattern in operations or pattern in ('/account/bootstrap', '/account/login', '/account/invites/accept') else [])
+        methods = (['GET'] if pattern in reads or pattern == '/account/config' else []) + (['POST'] if pattern in operations or pattern in ('/account/bootstrap', '/account/login', '/account/invites/accept', '/account/invites/preview') else [])
         result.append(Route(pattern, endpoint, methods=methods))
     if oauth:
         result.extend(oauth.routes(service, execute, secure))

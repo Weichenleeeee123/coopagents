@@ -51,6 +51,46 @@ class WorkspaceTests(unittest.TestCase):
         session = self.accounts.login('new', 'long password 123')['session_token']
         self.assertEqual(project, self.workspaces.list_projects(session, self.team)[0]['room_id'])
 
+    def test_invitation_preview_is_repeatable_and_never_consumes(self):
+        project = self.workspaces.create_project(self.owner, self.team, 'Shared project')['room_id']
+        invite = self.workspaces.create_invite(self.owner, self.team, project_ids=[project])
+        first = self.workspaces.preview_invite(invite['invite_token'])
+        self.assertEqual(first, self.workspaces.preview_invite(invite['invite_token']))
+        self.assertEqual('Team', first['team_name'])
+        self.assertEqual([{'room_id': project, 'name': 'Shared project'}], first['projects'])
+        self.assertNotIn('invite_token', first)
+        accepted = self.workspaces.accept_invite(invite['invite_token'], username='previewed', password='long password 123')
+        self.assertEqual([project], accepted['project_ids'])
+        with self.assertRaises(AccessDenied): self.workspaces.preview_invite(invite['invite_token'])
+
+    def test_preview_rejects_expired_revoked_and_unauthorized_issuer(self):
+        for state in ('expired', 'revoked', 'demoted', 'inactive'):
+            with self.subTest(state=state):
+                _, admin = self.join('issuer-' + state, 'admin')
+                invite = self.workspaces.create_invite(admin, self.team)
+                from crewmesh.identity import _token_hash
+                with self.accounts.db.connect(write=True) as c:
+                    if state == 'expired': c.execute("UPDATE team_invitations SET expires_at='2000-01-01T00:00:00+00:00' WHERE token_hash=?", (_token_hash(invite['invite_token']),))
+                    if state == 'revoked': c.execute("UPDATE team_invitations SET revoked_at='revoked' WHERE token_hash=?", (_token_hash(invite['invite_token']),))
+                    if state == 'demoted': c.execute("UPDATE team_members SET role='member' WHERE account_id=?", (self.accounts.authenticate(admin)['id'],))
+                    if state == 'inactive': c.execute("UPDATE team_members SET active=0 WHERE account_id=?", (self.accounts.authenticate(admin)['id'],))
+                with self.assertRaises(AccessDenied): self.workspaces.preview_invite(invite['invite_token'])
+
+    def test_existing_member_invitation_adds_projects_without_role_change(self):
+        project = self.workspaces.create_project(self.owner, self.team, 'Additional')['room_id']
+        _, member = self.join()
+        invite = self.workspaces.create_invite(self.owner, self.team, role='owner', project_ids=[project])
+        self.workspaces.capacity_check = lambda *args: self.fail('Existing membership must not consume capacity')
+        accepted = self.workspaces.accept_invite(invite['invite_token'], session_token=member)
+        self.assertEqual('member', accepted['role'])
+        self.assertEqual([project], accepted['project_ids'])
+        self.assertEqual(project, self.workspaces.list_projects(member, self.team)[0]['room_id'])
+        self.workspaces.capacity_check = lambda *args: None
+        _, admin = self.join('admin', 'admin')
+        invite = self.workspaces.create_invite(admin, self.team, project_ids=[project])
+        with self.assertRaises(AccessDenied): self.workspaces.accept_invite(invite['invite_token'], session_token=self.owner)
+        self.assertEqual('member', self.workspaces.preview_invite(invite['invite_token'])['role'])
+
     def test_legacy_claim_preserves_collaborator_but_blocks_invites(self):
         old = self.identity.create_room('legacy', 'old')
         collaborator = self.identity.add_member(old['web_token'], 'colleague')
