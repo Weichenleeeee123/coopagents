@@ -103,6 +103,17 @@ function harness(status, formValues=[['title','fixture']]) {
   }
   assert.equal(board.run('taskColumn({owner_member_id:null},{state:"merged"})'),'open');
   assert.equal(board.run('taskColumn({owner_member_id:1},null)'),'working');
+  // The workbench summary reflects the whole project, not filtered cards or
+  // session registrations (a member may register multiple agent sessions).
+  board.run(`snapshot={members:[{member_id:1},{member_id:2}],sessions:[{},{},{}],
+    tasks:[{id:1,owner_member_id:1},{id:2,owner_member_id:2},{id:3,owner_member_id:null},{id:4,owner_member_id:1}],
+    progress:[{task_id:1,state:'merged'},{task_id:2,state:'pr_open'},{task_id:3,state:'merged'},{task_id:4,state:'blocked'}],
+    requests:[{resolved_at:null},{resolved_at:'2026-10-11T00:00:00Z'},{resolved_at:null}]};`);
+  assert.deepEqual(JSON.parse(board.run('JSON.stringify(boardMetrics())')), [
+    [4,'协作任务'],[2,'团队成员'],[2,'待解决请求'],[1,'已合并任务']
+  ]);
+  board.run("snapshot={members:[],tasks:[],progress:[],requests:[],sessions:[]}");
+  assert.deepEqual(JSON.parse(board.run('JSON.stringify(boardMetrics().map(item=>item[0]))')),[0,0,0,0]);
   board.run(`const fixtureTasks=[{id:1,title:'Login',scope:'src/auth',intent_key:'login',owner_member_id:1},{id:2,title:'UI',scope:'src/web',intent_key:'ui',owner_member_id:2},{id:3,title:'Pending',scope:'src/new',intent_key:'new',owner_member_id:null}];
     const fixtureProgress=[{task_id:1,summary:'Waiting for token'}];`);
   assert.equal(board.run('matchingTasks(fixtureTasks,fixtureProgress,"TOKEN","1").length'),1);

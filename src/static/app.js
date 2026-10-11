@@ -50,7 +50,7 @@ function logout(message='') {
   gitUI()?.clear(); $('git-connection')?.replaceChildren(); $('git-overlaps')?.replaceChildren();
   renderSignature=''; closePrivate(); closeTaskDetail(); $('task-search').value=''; $('task-owner').value=''; $('workspace').hidden=true; $('login').hidden=false; $('login-error').textContent=message;document.title='Crewmesh · 同频';
   $('board-empty').hidden=true;
-  ['members','tasks','requests','contracts','overlaps','summary'].forEach(id => $(id).replaceChildren());
+  ['members','tasks','requests','contracts','overlaps','summary','board-summary'].forEach(id => $(id).replaceChildren());
   ['room-name','room-repository','identity','network-error','action-error','board-count'].forEach(id=>$(id).textContent='');
   $('form-restore').reset(); $('form-join').reset(); $('form-create').reset(); $('task-form').reset();
 }
@@ -130,7 +130,14 @@ function matchingTasks(tasks, progress, query, owner){
   return tasks.filter(t=> (!owner || (owner==='unassigned'?!t.owner_member_id:String(t.owner_member_id)===owner)) &&
     (!needle || [t.title,t.scope,t.intent_key,progress.find(p=>p.task_id===t.id)?.summary||''].join(' ').toLocaleLowerCase().includes(needle)));
 }
+function boardMetrics(){
+  return [[snapshot.tasks.length,'协作任务'],[snapshot.members.length,'团队成员'],
+    [snapshot.requests.filter(r=>!r.resolved_at).length,'待解决请求'],
+    [snapshot.tasks.filter(t=>taskColumn(t,snapshot.progress.find(p=>p.task_id===t.id))==='merged').length,'已合并任务']];
+}
 function renderTasks(){
+  $('board-summary').replaceChildren();
+  boardMetrics().forEach(([n,label])=>add($('board-summary'),add(text('div','','metric'),text('span',label),text('strong',String(n).padStart(2,'0')))));
   const selected=$('task-owner').value;
   $('task-owner').replaceChildren();
   [['','所有成员'],['unassigned','待认领'],...snapshot.members.map(m=>[String(m.member_id),m.display_name])].forEach(([value,label])=>{const o=text('option',label);o.value=value;$('task-owner').append(o);});
