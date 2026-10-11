@@ -5,6 +5,7 @@ let generation = 0, snapshot = null, pollTimer = null, syncing = false, lastSucc
 let accountManaged = false;
 const projectRequests = new Set();
 const gitUI = () => typeof window!=='undefined' ? window.CrewmeshGit : null;
+const collaborationUI = () => typeof window!=='undefined' ? window.CrewmeshCollaboration : null;
 function gitContext(){const epoch=generation;return {api,sync,me:snapshot.me,memberName,origin:location.origin,isCurrent:()=>epoch===generation};}
 const states = {open:'待认领', claimed:'已认领', working:'推进中', blocked:'受阻', local_done:'本地完成', pushed:'已推送', pr_open:'PR 已打开', merged:'已合并', approved:'已批准', rejected:'已拒绝'};
 const views = {overview:['01 / TEAM FIELD','团队现场','理解每个人正在推进的工作。'],tasks:['TEAM OPERATIONS / 任务协作','任务看板','每一项工作，都有清晰的去向。'],requests:['03 / TECHNICAL REQUESTS','技术请求','让依赖有去处，让答复有记录。'],contracts:['04 / SHARED AGREEMENTS','公共约定','把技术共识变成明确生效的版本。'],repository:['05 / REPOSITORY','仓库接入','让实际开发和远端交付成为可追溯的协作证据。']};
@@ -47,6 +48,7 @@ function logout(message='') {
   generation++; token=''; snapshot=null; sessionStorage.removeItem('crewmesh_web_token'); clearTimeout(pollTimer);
   projectRequests.forEach(controller=>controller.abort()); projectRequests.clear(); syncing=false;
   gitUI()?.clear(); $('git-connection')?.replaceChildren(); $('git-overlaps')?.replaceChildren();
+  collaborationUI()?.clear();
   renderSignature=''; closePrivate(); closeTaskDetail(); $('task-search').value=''; $('task-owner').value=''; $('workspace').hidden=true; $('login').hidden=false; $('login-error').textContent=message;
   ['members','tasks','requests','contracts','overlaps','summary'].forEach(id => $(id).replaceChildren());
   ['room-name','room-repository','identity','network-error','action-error','board-count'].forEach(id=>$(id).textContent='');
@@ -82,6 +84,7 @@ function render() {
   $('room-name').textContent=snapshot.room.name; $('room-repository').textContent=snapshot.git?.binding?.repository || snapshot.room.repository || '未声明仓库'; $('identity').textContent=snapshot.me.display_name+' / '+(snapshot.me.role==='owner'?'项目创建者':'项目成员'); $('invite-button').hidden=accountManaged || snapshot.me.role!=='owner';
   renderOverview(); renderTasks(); renderRequests(); renderContracts();
   gitUI()?.renderPanel($('git-connection'),snapshot,gitContext());
+  collaborationUI()?.renderPanel($('collaboration-status'),snapshot,gitContext());
   expanded.forEach(item=>{ const record=$(item.record); record?.querySelectorAll('details').forEach(d=>{if(d.querySelector('summary').textContent===item.label)d.open=true;}); });
   if(focus)restoreRecordFocus(focus);
 }
@@ -212,8 +215,9 @@ function showPrivate(title, credentials={}) { $('private-content').replaceChildr
     add(block,l,button('显示 / 隐藏',()=>{input.type=input.type==='password'?'text':'password';}),button('复制',()=>copy(input.value)),text('p','有效期至 '+date(expiry)+' · 关闭后不再展示','meta')); $('private-content').append(block);
   }
   $('mcp-url').value=location.origin+'/mcp'; configTemplate(); if(!$('private-dialog').open){dialogOpener=document.activeElement;$('private-dialog').showModal();}
+  if(snapshot&&!credentials.invite_token)collaborationUI()?.renderSetup($('collaboration-setup'),snapshot,gitContext());
 }
-function clearPrivate(){ $('private-content').replaceChildren(); $('dialog-status').textContent=''; $('config-template').value=''; }
+function clearPrivate(){ $('private-content').replaceChildren(); $('dialog-status').textContent=''; $('config-template').value=''; $('collaboration-setup')?.replaceChildren(); }
 function closePrivate(){if($('private-dialog').open)$('private-dialog').close();clearPrivate();}
 $('private-dialog').addEventListener('close',()=>{clearPrivate();if(dialogOpener?.isConnected)dialogOpener.focus();dialogOpener=null;});
 $('close-dialog').addEventListener('click',closePrivate); $('connection-button').addEventListener('click',()=>showPrivate('接入自己的 agent'));

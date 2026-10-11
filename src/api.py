@@ -80,12 +80,18 @@ class Service:
         self.activity = ActivityStore(self.identity)
         self.messages = MessageStore(self.identity)
         self.contracts = ContractStore(self.identity)
+        from .checkpoints import CheckpointStore
+        self.checkpoints = CheckpointStore(self.identity)
         from .repositories import RepositoryStore
         self.repositories = RepositoryStore(self.identity)
         from .github_app import GitHubApp
         from .github_sync import GitHubSync
         self.github = GitHubSync(self.identity, self.repositories, github_app or GitHubApp())
         self.operations = {
+            'checkpoint': ('agent', self.checkpoints.checkpoint, fields('session_key tool event', {'task_id': None})),
+            'diagnostic_start': ('agent', self.checkpoints.diagnostic_start, fields('challenge')),
+            'diagnostic_read': ('agent', self.checkpoints.diagnostic_read, fields('diagnostic_id')),
+            'diagnostic_complete': ('agent', self.checkpoints.diagnostic_complete, fields('diagnostic_id proof')),
             'create_room': (None, self.identity.create_room, fields('name owner_name', {'repository': ''})),
             'join': (None, self.identity.join_invite, fields('invite_token display_name')),
             'invite': ('web', self.identity.create_invite, fields()),
@@ -114,6 +120,7 @@ class Service:
                       'requests': self.messages.list_requests, 'contracts': self.contracts.list_contracts,
                       'events': self.contracts.list_events, 'members': self.identity.list_members}
         self.reads['git'] = self.git_snapshot
+        self.reads['collaboration'] = self.checkpoints.snapshot
 
     def git_snapshot(self, token):
         result = self.repositories.snapshot(token)
@@ -404,6 +411,7 @@ def create_app(database_path='.local/crewmesh.sqlite3', *, base_url=None, public
                   '/static/styles.css': ('styles.css', 'text/css'),
                   '/static/app.js': ('app.js', 'text/javascript'),
                   '/static/git.js': ('git.js', 'text/javascript'),
+                  '/static/collaboration.js': ('collaboration.js', 'text/javascript'),
                   '/static/accounts.js': ('accounts.js', 'text/javascript'),
                   '/static/billing.js': ('billing.js', 'text/javascript'),
                   '/static/icon.png': ('icon.png', 'image/png')}
@@ -413,7 +421,7 @@ def create_app(database_path='.local/crewmesh.sqlite3', *, base_url=None, public
         resource, mime = assets[request.url.path]
         return Response(files('crewmesh').joinpath('static', resource).read_bytes(), media_type=mime, headers=headers)
 
-    routes = [Route(path, web_asset, methods=['GET']) for path in ('/', '/static/styles.css', '/static/app.js', '/static/git.js', '/static/accounts.js', '/static/billing.js', '/static/icon.png', '/favicon.ico')]
+    routes = [Route(path, web_asset, methods=['GET']) for path in ('/', '/static/styles.css', '/static/app.js', '/static/git.js', '/static/collaboration.js', '/static/accounts.js', '/static/billing.js', '/static/icon.png', '/favicon.ico')]
     routes += [route('/health', ['GET']), route('/ready', ['GET']), route('/api/rooms', ['POST'], operation='create_room'), route('/api/join', ['POST'], operation='join'),
               route('/api/me', ['GET'], read_name='me'), route('/api/snapshot', ['GET'], read_name='snapshot'),
               route('/api/invites', ['POST'], operation='invite'), route('/api/agent-token', ['POST'], operation='rotate_agent'),
@@ -423,6 +431,10 @@ def create_app(database_path='.local/crewmesh.sqlite3', *, base_url=None, public
     routes.append(route('/api/git/binding',['GET'],read_name='git_binding'))
     routes.append(route('/api/git/observations/{observation_id:int}',['GET'],read_name='git_observation'))
     for path, operation in [('/api/git/binding', 'bind_repository'), ('/api/git/observations', 'observe_repository'),
+                            ('/api/checkpoints', 'checkpoint'),
+                            ('/api/diagnostics/start', 'diagnostic_start'),
+                            ('/api/diagnostics/read', 'diagnostic_read'),
+                            ('/api/diagnostics/complete', 'diagnostic_complete'),
                             ('/api/git/checkpoint', 'repo_checkpoint'),
                             ('/api/git/team', 'read_git_team'),
                             ('/api/tasks', 'create_task'), ('/api/tasks/{task_id:int}/claim', 'claim_task'),

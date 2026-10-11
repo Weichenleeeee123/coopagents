@@ -105,6 +105,10 @@ class AdapterTests(unittest.TestCase):
                     async with Client(params,cache=None) as client:
                         names={t.name for t in (await client.list_tools()).tools}
                         self.assertIn('repo_checkpoint',names)
+                        self.assertIn('checkpoint',names)
+                        collaboration=await client.call_tool('checkpoint',{'session_key':'local-adapter','tool':'codex-cli','event':'startup'})
+                        self.assertFalse(collaboration.is_error,collaboration.content)
+                        self.assertEqual(collaboration.structured_content['checkpoint']['source'],'tool')
                         invalid=await client.call_tool('claim_task',{'task_id':True})
                         self.assertTrue(invalid.is_error)
                         self.assertIn('Invalid field type',invalid.content[0].text)

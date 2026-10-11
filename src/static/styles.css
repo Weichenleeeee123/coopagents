@@ -795,3 +795,5 @@ fieldset {border:1px solid var(--line);margin:16px 0;padding:16px}
 .git-connection > button {margin:8px 12px 8px 0}
 .git-overlap {border-left:3px solid #b36c32}
 @media(max-width:650px){.git-link-form {grid-template-columns:1fr}.git-connection h2{font-size:24px}.git-connection pre{font-size:11px}}
+
+.collaboration-panel{padding:24px;border:1px solid var(--line);margin-bottom:24px;border-radius:12px}.collaboration-panel h2,.collaboration-setup h3{margin-top:0}.collaboration-commands{white-space:pre-wrap;overflow-wrap:anywhere;padding:16px;background:#f5f3ed;font-size:12px;line-height:1.6}.collaboration-session h4{margin:0 0 8px}.collaboration-panel details{margin:20px 0}.collaboration-setup{margin:20px 0}

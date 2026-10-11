@@ -35,12 +35,14 @@ class MCPTests(unittest.TestCase):
             async with self.client(self.owner['agent_token']) as owner, self.client(self.member['agent_token']) as member:
                 tools = (await owner.list_tools()).tools
                 names = {tool.name for tool in tools}
-                self.assertEqual(names, {'whoami', 'read_team', 'claim_task', 'register_session', 'report_progress', 'send_request', 'read_inbox', 'acknowledge', 'reply', 'resolve_request', 'propose_contract', 'repo_checkpoint', 'link_delivery'})
+                self.assertEqual(names, {'whoami', 'read_team', 'claim_task', 'register_session', 'report_progress', 'send_request', 'read_inbox', 'acknowledge', 'reply', 'resolve_request', 'propose_contract', 'repo_checkpoint', 'link_delivery', 'checkpoint', 'diagnostic_start', 'diagnostic_read', 'diagnostic_complete'})
                 for tool in tools:
                     props = tool.input_schema.get('properties', {})
                     self.assertNotIn('author', props)
                     self.assertNotIn('token', props)
                 results = await asyncio.gather(self.call(owner, 'whoami', {}), self.call(member, 'whoami', {}))
+                checkpoint = await self.call(owner, 'checkpoint', {'session_key':'mcp','tool':'codex-cli','event':'startup'})
+                self.assertEqual(checkpoint['checkpoint']['source'], 'tool')
                 self.assertEqual([r['me']['member_id'] for r in results], [self.owner['member_id'], self.member['member_id']])
                 claims = await asyncio.gather(owner.call_tool('claim_task', {'task_id': task['id']}), member.call_tool('claim_task', {'task_id': task['id']}))
                 self.assertEqual(sum(r.is_error for r in claims), 1)
