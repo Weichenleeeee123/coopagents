@@ -23,7 +23,7 @@
 
 网页每五秒拉取一次数据，断线保留最后记录并提示最后同步时间；这不是实时在线检测，也不会唤醒 agent。401 凭据失效会清除当前会话和私密展示。进展属于 agent 自述，范围交叠提示依据声明路径，均不代替 Git 验证。
 
-可用 `--port 8789 --database '绝对路径.sqlite3'` 指定另一份独立实例。服务始终绑定本机回环地址，当前不供第二台电脑访问。启动失败时先检查端口占用；不要停止不属于当前实例的进程。
+可用 `--port 8789 --database '绝对路径.sqlite3'` 指定另一份独立实例。服务默认绑定本机回环地址；跨电脑使用时按 [部署与运维](deployment.md) 显式配置 HTTPS 公网模式。启动失败时先检查端口占用；不要停止不属于当前实例的进程。
 
 ## 身份与接入
 
@@ -35,7 +35,13 @@
 
 ## 数据与停止
 
-在运行服务的终端按 Ctrl+C 正常停止，然后复制 `.local/crewmesh.sqlite3` 到自己指定的备份位置。服务停止后再备份，避免在写入过程中复制不完整状态。不要删除原数据库。测试生成独立 UUID 数据库，保留在 `.local/test-evidence/`。
+在运行服务的终端按 Ctrl+C 正常停止。备份可在服务运行时通过 SQLite 一致备份命令完成，目标使用未存在的新路径：
+
+```powershell
+& .\.venv\Scripts\python.exe -m crewmesh.backup backup .local/crewmesh.sqlite3 .local/crewmesh-backup-20261011-01.sqlite3
+```
+
+恢复同样写入新文件：将 `backup` 改为 `restore`，指定备份来源和新的数据库路径，停止服务后用 `--database` 指向恢复文件。详细验收、备份权限及恢复后令牌状态见 [部署与运维](deployment.md)。不要删除原数据库。测试生成独立 UUID 数据库，保留在 `.local/test-evidence/`。
 
 已有原生接入实验使用端口 `8768` 和 `.local/agent-integration/runtime/`，与正式服务相互独立。不要把实验消息当作正式房间任务或约定。
 
