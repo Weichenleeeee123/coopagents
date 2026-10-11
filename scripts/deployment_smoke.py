@@ -1,6 +1,6 @@
 """Real Docker/Caddy TLS acceptance. Retains containers, volumes and evidence.
 
-Run from repository root: python scripts/deployment_smoke.py --image crewmesh:0.2.0
+Run from repository root: python scripts/deployment_smoke.py --image crewmesh:0.3.0rc1
 Requires Docker Engine and the pinned Caddy image. No external DNS or CA needed.
 """
 import argparse
@@ -26,7 +26,7 @@ class LoopbackTLS(http.client.HTTPSConnection):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--image', default='crewmesh:0.2.0')
+    parser.add_argument('--image', default='crewmesh:0.3.0rc1')
     parser.add_argument('--docker', default=shutil.which('docker'))
     args = parser.parse_args()
     if not args.docker:
@@ -84,7 +84,7 @@ def main():
                 time.sleep(1)
         context = ssl.create_default_context(cafile=str(ca))
 
-        def request(path, data=None, token=None, headers=None):
+        def request(path, data=None, token=None, headers=None, include_headers=False):
             connection = LoopbackTLS('crewmesh.localhost', port, timeout=10, context=context)
             merged = {'Host': f'crewmesh.localhost:{port}', **(headers or {})}
             if token:
@@ -100,7 +100,7 @@ def main():
                     data = json.loads(raw) if raw else None
                 except ValueError:
                     data = raw.decode('utf-8', errors='replace')
-                return response.status, data
+                return (response.status, data, dict(response.getheaders())) if include_headers else (response.status, data)
             finally:
                 connection.close()
 
@@ -118,6 +118,23 @@ def main():
         check('backend has no published port', not json.loads(docker('inspect', app))[0]['NetworkSettings']['Ports'].get('8787/tcp'))
         check('wrong Host rejected', request('/health', headers={'Host': 'evil.example'})[0] != 200)
         check('cross-site Origin rejected', request('/health', headers={'Origin': 'https://evil.example'})[0] == 403)
+        status, account, response_headers = request('/account/bootstrap',
+            {'username': 'tls-owner', 'password': secrets.token_urlsafe(24)},
+            headers={'X-Crewmesh-Bootstrap': bootstrap, 'Origin': origin}, include_headers=True)
+        check('HTTPS local account bootstrap', status == 200)
+        cookie = response_headers.get('set-cookie', response_headers.get('Set-Cookie', ''))
+        check('account cookie is Secure HttpOnly SameSite=Lax', all(flag.lower() in cookie.lower() for flag in ('Secure', 'HttpOnly', 'SameSite=Lax')))
+        account_headers = {'Origin': origin, 'Cookie': cookie.split(';', 1)[0], 'X-Crewmesh-CSRF': account['csrf_token']}
+        check('account cookie restores session through TLS', request('/account/session', headers=account_headers)[0] == 200)
+        check('account write requires CSRF', request('/account/teams', {'name': 'denied'}, headers={'Origin': origin, 'Cookie': account_headers['Cookie']})[0] == 401)
+        status, team = request('/account/teams', {'name': 'C1 TLS team'}, headers=account_headers)
+        check('CSRF authenticated team creation', status == 200)
+        status, project = request('/account/teams/' + team['team_id'] + '/projects', {'name': 'C1 TLS project'}, headers=account_headers)
+        check('CSRF authenticated project creation', status == 200)
+        status, selected = request('/account/projects/' + project['room_id'] + '/select', {}, headers=account_headers)
+        check('authorized account project selection', status == 200)
+        status, account_task = request('/api/tasks', {'intent_key': 'account-persist', 'title': 'C1 persistence', 'scope': 'src'}, selected['web_token'], {'Origin': origin})
+        check('selected project credential accesses project API', status == 200)
         room = {'name': 'P4 deployment test', 'owner_name': 'Owner'}
         check('public anonymous room creation rejected', request('/api/rooms', room)[0] == 401)
         status, owner = request('/api/rooms', room, headers={'X-Crewmesh-Bootstrap': bootstrap, 'Origin': origin})
@@ -132,6 +149,9 @@ def main():
         docker('exec', app, 'python', '-m', 'crewmesh.backup', 'backup', '/data/crewmesh.sqlite3', '/data/backup.sqlite3')
         docker('exec', app, 'python', '-m', 'crewmesh.backup', 'restore', '/data/backup.sqlite3', '/data/restored.sqlite3')
         check('container online backup and restore', True)
+        restored_check = "from crewmesh.identity import IdentityStore; from crewmesh.accounts import AccountStore; from crewmesh.workspaces import WorkspaceStore; i=IdentityStore('/data/restored.sqlite3'); a=AccountStore(i); w=WorkspaceStore(a); c=i.db.connect(); db=c.__enter__(); assert db.execute('SELECT count(*) FROM accounts WHERE username=?', ('tls-owner',)).fetchone()[0]==1; assert db.execute('SELECT count(*) FROM teams WHERE name=?', ('C1 TLS team',)).fetchone()[0]==1; assert db.execute('SELECT count(*) FROM tasks WHERE intent_key=?', ('account-persist',)).fetchone()[0]==1; assert db.execute('SELECT count(*) FROM session_project_credentials p JOIN account_sessions s ON s.token_hash=p.session_hash WHERE s.revoked_at IS NULL').fetchone()[0]>=1; c.__exit__(None,None,None)"
+        docker('exec', app, 'python', '-c', restored_check)
+        check('restored DB retains account workspace task and session project mapping', True)
         docker('restart', app)
         deadline = time.monotonic() + 30
         while True:
@@ -145,6 +165,13 @@ def main():
                 raise RuntimeError('Restart did not recover')
             time.sleep(1)
         check('volume preserves task and credential after container restart', snapshot['tasks'][0]['id'] == task['id'])
+        check('account session persists after container restart', request('/account/session', headers=account_headers)[0] == 200)
+        status, projects = request('/account/teams/' + team['team_id'] + '/projects', headers=account_headers)
+        check('account team project persists after restart', status == 200 and projects[0]['room_id'] == project['room_id'])
+        status, reselected = request('/account/projects/' + project['room_id'] + '/select', {}, headers=account_headers)
+        check('account can reselect authorized project after restart', status == 200)
+        status, account_snapshot = request('/api/snapshot', token=reselected['web_token'])
+        check('account project task persists after restart', status == 200 and account_snapshot['tasks'][0]['id'] == account_task['id'])
         result['status'] = 'passed'
     except Exception as error:
         result.update(status='failed', error=str(error))

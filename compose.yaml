@@ -1,10 +1,11 @@
 name: crewmesh
 services:
   app:
-    image: crewmesh:${CREWMESH_VERSION:-0.2.0}
+    image: crewmesh:${CREWMESH_VERSION:-0.3.0rc1}
     build: .
     restart: unless-stopped
     environment:
+      CREWMESH_MODE: ${CREWMESH_MODE:-self-hosted}
       CREWMESH_HOST: 0.0.0.0
       CREWMESH_PORT: 8787
       CREWMESH_DATABASE: ${CREWMESH_DATABASE:-/data/crewmesh.sqlite3}

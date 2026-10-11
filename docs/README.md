@@ -4,6 +4,11 @@
 
 | 文档 | 内容 |
 | --- | --- |
+| [C1 验收](commercial-c1-report.md) | 账号、多项目、迁移与恢复的验证边界 |
+| [C1 设计](commercial-c1-design.md) | 已批准的完整开源身份与工作区设计 |
+| [C1 计划](commercial-c1-plan.md) | 分阶段源码、测试、部署与验收 |
+| [商业化提案](commercialization-proposal.md) | 完整开源及未来官方托管订阅，C2 / C3 待实施 |
+| [版本记录](changelog.md) | 候选版与历史发行变化 |
 | [部署与运维](deployment.md) | Docker / Caddy HTTPS、密钥、持久卷、备份恢复与升级 |
 | [P4 发行计划](p4-release-plan.md) | 可部署发行版的阶段与验收边界 |
 | [P4 发行验收](p4-release-report.md) | 实测容器 / TLS / 安装结果及未通过项 |
