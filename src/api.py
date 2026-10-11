@@ -3,6 +3,8 @@ from contextlib import asynccontextmanager
 from dataclasses import asdict
 from datetime import datetime, timezone
 import json
+import asyncio
+import time
 import hmac
 import hashlib
 from importlib.resources import files
@@ -69,6 +71,10 @@ class Service:
         path = Path(database_path)
         path.parent.mkdir(parents=True, exist_ok=True)
         self.identity = IdentityStore(path)
+        from .accounts import AccountStore
+        from .workspaces import WorkspaceStore
+        self.accounts = AccountStore(self.identity)
+        self.workspaces = WorkspaceStore(self.accounts)
         self.tasks = TaskStore(self.identity)
         self.activity = ActivityStore(self.identity)
         self.messages = MessageStore(self.identity)
@@ -142,8 +148,9 @@ class LocalBoundary:
         appropriate = {f'127.0.0.1:{port}', f'localhost:{port}'}
         if port == (443 if scope['scheme'] == 'https' else 80):
             appropriate.update({'127.0.0.1', 'localhost'})
+        close_connection = False
         async def reject(message, status=400):
-            await JSONResponse({'error': 'ValidationError', 'message': message}, status_code=status)(scope, receive, response_send)
+            await JSONResponse({'error': 'ValidationError', 'message': message}, status_code=status, headers={'Connection': 'close'} if close_connection else {})(scope, receive, response_send)
         rejection = None
         if not host or (host != self.host if self.host else host not in appropriate):
             rejection = ('Host not accepted', 400)
@@ -153,9 +160,31 @@ class LocalBoundary:
         origins = [v.decode('latin-1') for k, v in headers if k == b'origin']
         if origins and (len(origins) != 1 or origins[0] != (self.origin or scope['scheme'] + '://' + host)):
             rejection = ('Origin not accepted', 403)
-        if scope.get('query_string') and scope['path'] != '/api/inbox':
+        if scope.get('query_string') and scope['path'] != '/api/inbox' and not (scope['path'] == '/account/oauth/github/callback' and scope['method'] == 'GET'):
             rejection = ('Query parameters not accepted', 400)
         if rejection:
+            # Reply after small pending bodies arrive, avoiding Windows TCP reset.
+            # Hostile streams remain bounded by both bytes and elapsed time.
+            deadline, consumed = time.monotonic() + 2, 0
+            while True:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    close_connection = True
+                    break
+                try:
+                    message = await asyncio.wait_for(receive(), timeout=remaining)
+                except TimeoutError:
+                    close_connection = True
+                    break
+                if message['type'] != 'http.request':
+                    close_connection = True
+                    break
+                consumed += len(message.get('body', b''))
+                if consumed > BODY_LIMIT:
+                    close_connection = True
+                    break
+                if not message.get('more_body', False):
+                    break
             return await reject(*rejection)
         body = bytearray()
         while True:
@@ -202,12 +231,19 @@ def bearer(request):
     return values[0][7:]
 
 
-def create_app(database_path='.local/crewmesh.sqlite3', *, base_url=None, public_url=None, bootstrap_secret=None):
+def create_app(database_path='.local/crewmesh.sqlite3', *, base_url=None, public_url=None, bootstrap_secret=None, mode='self-hosted', github_client_id=None, github_client_secret=None):
     if base_url and public_url:
         raise ValueError('Set only one service origin')
     origin = public_origin(public_url) if public_url is not None else None
-    bootstrap_hash = hashlib.sha256(validate_bootstrap_secret(bootstrap_secret).encode('ascii')).digest() if origin else None
+    if mode not in ('self-hosted', 'cloud'):
+        raise ValueError('Mode must be self-hosted or cloud')
+    if bootstrap_secret is not None:
+        validate_bootstrap_secret(bootstrap_secret)
+    bootstrap_hash = hashlib.sha256(validate_bootstrap_secret(bootstrap_secret).encode('ascii')).digest() if origin and mode == 'self-hosted' else None
     service = Service(database_path)
+    from .account_api import account_routes
+    from .oauth import GitHubOAuth
+    oauth = GitHubOAuth.configured(service.accounts, mode, origin, github_client_id, github_client_secret)
     from .mcp_service import create_mcp_app
     mcp_app, authenticated_mcp = create_mcp_app(service, origin=origin or base_url)
 
@@ -229,6 +265,8 @@ def create_app(database_path='.local/crewmesh.sqlite3', *, base_url=None, public
                 except Exception:
                     return JSONResponse({'status': 'unavailable'}, status_code=503)
             operation = request.scope.get('operation')
+            if mode == 'cloud' and operation in ('create_room', 'join'):
+                raise AccessDenied('GitHub account workspace required')
             if operation == 'create_room' and bootstrap_hash is not None:
                 credentials = request.headers.getlist('x-crewmesh-bootstrap')
                 candidate = credentials[0] if len(credentials) == 1 else ''
@@ -306,6 +344,7 @@ def create_app(database_path='.local/crewmesh.sqlite3', *, base_url=None, public
                             ('/api/requests/{request_id:int}/assign', 'assign'), ('/api/contracts', 'propose_contract'),
                             ('/api/contracts/{contract_id:int}/decision', 'decision')]:
         routes.append(route(path, ['POST'], operation=operation))
+    routes.extend(account_routes(service, mode=mode, origin=origin or base_url, bootstrap_secret=bootstrap_secret, oauth=oauth))
     routes.append(Mount('/', app=authenticated_mcp))
     app = Starlette(routes=routes, lifespan=lifespan)
     app.state.service = service

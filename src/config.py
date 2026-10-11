@@ -67,3 +67,29 @@ def trusted_proxies(value):
     except ValueError:
         raise ValueError('Trusted proxies must be explicit IP addresses or CIDRs; wildcard trust is forbidden') from None
     return result
+
+
+def github_oauth_from_env(environ=None):
+    """No default credentials; mutually exclusive, bounded secret sources."""
+    environ = os.environ if environ is None else environ
+    client_id = environ.get('CREWMESH_GITHUB_CLIENT_ID')
+    secret = environ.get('CREWMESH_GITHUB_CLIENT_SECRET')
+    filename = environ.get('CREWMESH_GITHUB_CLIENT_SECRET_FILE')
+    if secret is not None and filename is not None:
+        raise ValueError('Set only one GitHub client secret source')
+    if filename is not None:
+        try:
+            with Path(filename).open('r', encoding='ascii') as source:
+                raw = source.read(4097)
+            if len(raw) > 4096:
+                raise ValueError()
+            secret = raw.rstrip('\r\n')
+            if not secret or len(secret) > 4096:
+                raise ValueError()
+        except (OSError, UnicodeError, ValueError):
+            raise ValueError('GitHub secret file could not be read or exceeds limit') from None
+    if client_id is None and secret is None:
+        return {}
+    if not client_id or not secret:
+        raise ValueError('GitHub client ID and secret must both be configured')
+    return {'github_client_id': client_id, 'github_client_secret': secret}
