@@ -6,6 +6,9 @@
 | --- | --- |
 | [C2 设计](commercial-c2-design.md) | 已批准的 Stripe 团队月订阅、额度与私有部署边界 |
 | [C2 计划](commercial-c2-plan.md) | 订阅领域、支付适配器、账单界面与分阶段验收 |
+| [C2 领域接口](c2-domain.md) | 事务额度、计费绑定、结账租约和同步版本接口 |
+| [C2 Stripe 接口](c2-stripe.md) | 支付配置、签名、提供方核验与恢复限制 |
+| [C2 验收记录](commercial-c2-report.md) | 分阶段测试、独立审查与外部验证边界 |
 | [Stripe 实施参考](c2-stripe-reference.md) | 固定 API 版本、账期字段、事件和风险核验依据 |
 | [C1 验收](commercial-c1-report.md) | 账号、多项目、迁移与恢复的验证边界 |
 | [C1 设计](commercial-c1-design.md) | 已批准的完整开源身份与工作区设计 |

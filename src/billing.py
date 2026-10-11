@@ -330,9 +330,10 @@ class BillingStore:
     def _checkout(self, row: sqlite3.Row, claimed: bool) -> CheckoutReservation:
         return CheckoutReservation(**dict(row), claimed=claimed)
 
-    def reserve_checkout(self, team_id: str, *, lease_seconds: int = 60, refresh: bool = False) -> CheckoutReservation:
+    def reserve_checkout(self, team_id: str, *, lease_seconds: int = 60, refresh: bool = False,
+                         existing_only: bool = False) -> CheckoutReservation | None:
         _integer(lease_seconds, 1, 3600)
-        if type(refresh) is not bool:
+        if type(refresh) is not bool or type(existing_only) is not bool:
             raise ValidationError('Invalid checkout refresh flag')
         with self.db.connect(write=True) as c:
             team = self._ensure_team(c, team_id)
@@ -340,6 +341,11 @@ class BillingStore:
                 raise Conflict('Billing customer must be bound first')
             sub = c.execute('SELECT * FROM billing_subscriptions WHERE team_id=?', (team_id,)).fetchone()
             row = c.execute("SELECT * FROM billing_checkouts WHERE team_id=? AND status IN ('pending','open','complete')", (team_id,)).fetchone()
+            # Resolve under the same writer transaction: another process may have
+            # confirmed/expired the previously observed attempt. Cleanup must
+            # never insert a new pending attempt after that race.
+            if existing_only and row is None:
+                return None
             if sub and sub['status'] not in ('none', 'canceled', 'incomplete_expired') and not (row and refresh):
                 raise Conflict('Manage the existing subscription instead')
             now = int(time.time())
@@ -370,10 +376,12 @@ class BillingStore:
         if expires_at is not None:
             _integer(expires_at)
         if checkout_url is not None:
-            if not isinstance(checkout_url, str) or len(checkout_url) > 4096:
+            if (not isinstance(checkout_url, str) or len(checkout_url) > 4096 or
+                any(ord(char)<=32 or ord(char)==127 for char in checkout_url)):
                 raise ValidationError('Invalid checkout URL')
             url = urlsplit(checkout_url)
-            if url.scheme != 'https' or not url.hostname or url.username or url.password or url.fragment:
+            if (url.scheme != 'https' or not url.hostname or url.username or url.password or
+                (url.fragment and url.netloc not in ('checkout.stripe.com','checkout.stripe.com:443'))):
                 raise ValidationError('Invalid checkout URL')
         if status == 'open' and (checkout_url is None or expires_at is None):
             raise ValidationError('Open checkout requires URL and expiry')
