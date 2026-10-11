@@ -72,12 +72,13 @@ def validate_object(value, kind, mode, expected=None):
 
 
 def hosted_url(value, host):
-    if not isinstance(value, str) or len(value)>4096 or any(ord(c)<=32 or ord(c)==127 for c in value):
+    if (not isinstance(value, str) or len(value)>4096 or '\\' in value or
+        any(ord(c)<=32 or ord(c)==127 for c in value)):
         raise StripeError('invalid_provider_url')
     try:
         parsed = urlsplit(value)
         if (parsed.scheme != 'https' or parsed.hostname != host or parsed.username is not None or
-                parsed.password is not None or (parsed.fragment and host!='checkout.stripe.com') or parsed.port not in (None,443) or
+                parsed.password is not None or ('#' in value and host!='checkout.stripe.com') or parsed.port not in (None,443) or
                 parsed.netloc not in (host,host+':443')):
             raise StripeError('invalid_provider_url')
     except ValueError:

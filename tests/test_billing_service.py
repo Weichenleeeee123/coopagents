@@ -163,6 +163,22 @@ class BillingServiceTests(unittest.TestCase):
         self.assertEqual('team',self.store.summary(self.owner,self.team)['plan'])
         self.assertEqual(1900,self.service.summary(self.owner,self.team)['price']['amount'])
 
+    def test_portal_invalid_raw_urls_never_return_redirect_or_complete_operation(self):
+        self.bind();original=self.transport.__call__;bad_url=[]
+        def invalid_url(method,url,headers,body,timeout,max_bytes):
+            status,raw=original(method,url,headers,body,timeout,max_bytes)
+            if method=='POST' and urlsplit(url).path=='/v1/billing_portal/sessions':
+                obj=json.loads(raw);obj['url']=bad_url[0];raw=json.dumps(obj).encode()
+            return status,raw
+        self.client.transport=invalid_url
+        for url in ['https://billing.stripe.com/p/session#',r'https://billing.stripe.com/p\session']:
+            bad_url[:]=[url]
+            with self.subTest(url=url):
+                with self.assertRaises(StripeError) as error:self.service.portal(self.owner,self.team)
+                self.assertEqual('invalid_provider_url',error.exception.code)
+                with self.store.db.connect() as c:
+                    self.assertEqual('pending',c.execute("SELECT state FROM billing_outbound_operations WHERE purpose='portal'").fetchone()[0])
+
     def test_wrong_checkout_currency_is_rejected_before_owner_receives_url(self):
         original=self.transport.__call__
         def wrong_currency(method,url,headers,body,timeout,max_bytes):

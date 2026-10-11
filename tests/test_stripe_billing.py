@@ -109,6 +109,18 @@ class StripeAdapterTests(unittest.TestCase):
             with self.subTest(url=bad),self.assertRaises(self.s.StripeError):
                 self.s.hosted_url(bad,'billing.stripe.com' if 'billing.stripe.com' in bad else 'checkout.stripe.com')
 
+    def test_hosted_urls_reject_raw_backslash_and_portal_bare_fragment(self):
+        for host,url in [('billing.stripe.com','https://billing.stripe.com/p/session#'),
+                ('billing.stripe.com',r'https://billing.stripe.com/p\session'),
+                ('checkout.stripe.com',r'https://checkout.stripe.com/c\pay#opaque'),
+                ('checkout.stripe.com',r'https://checkout.stripe.com/c/pay?token=a\b'),
+                ('checkout.stripe.com',r'https://checkout.stripe.com/c/pay#opaque\suffix')]:
+            with self.subTest(url=url):
+                with self.assertRaises(self.s.StripeError) as error:self.s.hosted_url(url,host)
+                self.assertEqual('invalid_provider_url',error.exception.code)
+        for url in ['https://checkout.stripe.com:443/c/pay#opaque','https://checkout.stripe.com/c/pay#']:
+            self.assertEqual(url,self.s.hosted_url(url,'checkout.stripe.com'))
+
     def test_legacy_checkout_call_verifies_base_currency_inside_shared_budget_and_authorization(self):
         calls=[];guards=[]
         price=dict(id='price_fixture',object='price',livemode=False,active=True,unit_amount=1900,

@@ -252,6 +252,20 @@ class BillingTests(unittest.TestCase):
             with self.subTest(url=bad),self.assertRaises(ValidationError):
                 self.billing.update_checkout(attempt,status='open',checkout_id='cs_fixture',checkout_url=bad,expires_at=1)
 
+    def test_checkout_storage_rejects_raw_backslash_and_other_host_bare_fragment(self):
+        self.bind();attempt=self.billing.reserve_checkout(self.team)
+        for url in [r'https://checkout.stripe.com/c\pay#opaque',
+                r'https://checkout.stripe.com/c/pay#opaque\suffix',
+                'https://billing.stripe.com/p/session#','https://other.example/path#']:
+            with self.subTest(url=url),self.assertRaises(ValidationError):
+                self.billing.update_checkout(attempt,status='open',checkout_id='cs_fixture',
+                    checkout_url=url,expires_at=2000000000)
+        url='https://checkout.stripe.com:443/c/pay#opaque'
+        self.assertTrue(self.billing.update_checkout(attempt,status='open',checkout_id='cs_fixture',
+            checkout_url=url,expires_at=2000000000))
+        with self.billing.db.connect() as c:
+            self.assertEqual(url,c.execute('SELECT checkout_url FROM billing_checkouts').fetchone()[0])
+
     def test_checkout_has_one_unresolved_attempt_and_durable_lease(self):
         self.bind()
         with ThreadPoolExecutor(max_workers=2) as pool:
