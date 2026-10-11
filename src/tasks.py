@@ -1,7 +1,9 @@
 """Room-scoped tasks with transactional, exclusive agent ownership."""
 from datetime import datetime, timezone
+import json
 
 from .errors import Conflict, NotFound, ValidationError
+from .task_lifecycle import project_task, task_row, ownership_changed, archive_claim
 
 
 def _text(value, field, maximum):
@@ -32,37 +34,53 @@ class TaskStore:
             if existing is not None:
                 if existing["title"] != title or existing["scope"] != scope:
                     raise Conflict("Intent key already has a different task payload")
-                return dict(existing)
+                return project_task(existing)
             cursor = connection.execute("""INSERT INTO tasks
-                (room_id, intent_key, title, scope, state, created_at)
-                VALUES (?, ?, ?, ?, 'open', ?)""",
-                (principal.room_id, intent_key, title, scope, _utc_now()),
+                (room_id, intent_key, title, scope, state, created_at, creator_member_id)
+                VALUES (?, ?, ?, ?, 'open', ?, ?)""",
+                (principal.room_id, intent_key, title, scope, _utc_now(), principal.member_id),
             )
-            return dict(connection.execute("SELECT * FROM tasks WHERE id = ?", (cursor.lastrowid,)).fetchone())
+            return project_task(connection.execute("SELECT * FROM tasks WHERE id = ?", (cursor.lastrowid,)).fetchone())
 
     def list_tasks(self, token):
         with self.db.connect() as connection:
             principal = self.resolve(connection, token)
-            return [dict(row) for row in connection.execute(
+            return [project_task(row) for row in connection.execute(
                 "SELECT * FROM tasks WHERE room_id = ? ORDER BY id ASC", (principal.room_id,),
             )]
 
-    def claim_task(self, agent_token, task_id):
+    def claim_task(self, agent_token, task_id, session_key=None):
+        if session_key is not None:
+            session_key = _text(session_key, "Session key", 200)
         with self.db.connect(write=True) as connection:
             principal = self.resolve(connection, agent_token, required_kind="agent")
-            row = connection.execute(
-                "SELECT * FROM tasks WHERE id = ? AND room_id = ?", (task_id, principal.room_id),
-            ).fetchone()
-            if row is None:
-                raise NotFound("Task not found")
-            if row["owner_member_id"] == principal.member_id:
-                return dict(row)
-            if row["owner_member_id"] is not None:
-                raise Conflict("Task already claimed", owner_member_id=row["owner_member_id"])
-            connection.execute("""UPDATE tasks SET state = 'claimed', owner_member_id = ?, claimed_at = ?
-                WHERE id = ? AND room_id = ? AND owner_member_id IS NULL""",
-                (principal.member_id, _utc_now(), task_id, principal.room_id),
-            )
-            return dict(connection.execute(
-                "SELECT * FROM tasks WHERE id = ? AND room_id = ?", (task_id, principal.room_id),
-            ).fetchone())
+            row = task_row(connection, principal, task_id)
+            if row['cancelled_at']:
+                raise Conflict('Task is cancelled; reopen it first')
+            if row['owner_member_id'] is not None and row['owner_member_id'] != principal.member_id:
+                raise Conflict('Task already claimed', owner_member_id=row['owner_member_id'])
+            if row['execution_session_key']:
+                if session_key != row['execution_session_key']:
+                    raise Conflict('Task already bound to another execution session')
+                return project_task(row)
+            if row['owner_member_id'] == principal.member_id and session_key is None:
+                return project_task(row)
+            if session_key and connection.execute('''SELECT 1 FROM task_session_bindings
+                WHERE task_id=? AND member_id=? AND session_key=?''', (task_id,principal.member_id,session_key)).fetchone():
+                raise Conflict('Retired session key cannot be reused; start a new session')
+            fresh = row['owner_member_id'] is None
+            epoch = row['ownership_epoch'] + int(fresh)
+            now = _utc_now()
+            event_id = archive_claim(connection, principal, row, now) if fresh else None
+            connection.execute('''UPDATE tasks SET state='claimed',owner_member_id=?,claimed_at=COALESCE(claimed_at,?),
+                revision=revision+1,ownership_epoch=?,execution_session_key=?,epoch_started_at=COALESCE(epoch_started_at,?)
+                WHERE id=?''', (principal.member_id,now,epoch,session_key,now,task_id))
+            if session_key:
+                connection.execute('INSERT INTO task_session_bindings VALUES(?,?,?,?,?,?)',
+                    (task_id,principal.room_id,principal.member_id,session_key,epoch,now))
+            if fresh:
+                ownership_changed(connection, task_id, None, principal.member_id)
+            result = project_task(task_row(connection, principal, task_id))
+            if event_id:
+                connection.execute('UPDATE task_lifecycle_events SET result_json=? WHERE id=?', (json.dumps(result),event_id))
+            return result

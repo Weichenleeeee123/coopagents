@@ -5,9 +5,10 @@ let generation = 0, snapshot = null, pollTimer = null, syncing = false, lastSucc
 let accountManaged = false;
 const projectRequests = new Set();
 const gitUI = () => typeof window!=='undefined' ? window.CrewmeshGit : null;
+const lifecycleUI = () => typeof window!=='undefined' ? window.CrewmeshTaskLifecycle : null;
 const collaborationUI = () => typeof window!=='undefined' ? window.CrewmeshCollaboration : null;
 function gitContext(){const epoch=generation;return {api,sync,me:snapshot.me,memberName,origin:location.origin,isCurrent:()=>epoch===generation};}
-const states = {open:'待认领', claimed:'已认领', working:'推进中', blocked:'受阻', local_done:'本地完成', pushed:'已推送', pr_open:'PR 已打开', merged:'已合并', approved:'已批准', rejected:'已拒绝'};
+const states = {cancelled:'已取消',open:'待认领', claimed:'已认领', working:'推进中', blocked:'受阻', local_done:'本地完成', pushed:'已推送', pr_open:'PR 已打开', merged:'已合并', approved:'已批准', rejected:'已拒绝'};
 const views = {overview:['01 / TEAM FIELD','团队现场','理解每个人正在推进的工作。'],tasks:['TEAM OPERATIONS / 任务协作','任务看板','每一项工作，都有清晰的去向。'],requests:['03 / TECHNICAL REQUESTS','技术请求','让依赖有去处，让答复有记录。'],contracts:['04 / SHARED AGREEMENTS','公共约定','把技术共识变成明确生效的版本。'],repository:['05 / REPOSITORY','仓库接入','让实际开发和远端交付成为可追溯的协作证据。']};
 const text = (tag, value, cls) => { const e = document.createElement(tag); e.textContent = value == null ? '' : String(value); if(cls) e.className = cls; return e; };
 const add = (parent, ...children) => { children.forEach(c => parent.append(c)); return parent; };
@@ -48,8 +49,8 @@ function logout(message='') {
   generation++; token=''; snapshot=null; sessionStorage.removeItem('crewmesh_web_token'); clearTimeout(pollTimer);
   projectRequests.forEach(controller=>controller.abort()); projectRequests.clear(); syncing=false;
   gitUI()?.clear(); $('git-connection')?.replaceChildren(); $('git-overlaps')?.replaceChildren();
-  collaborationUI()?.clear();
-  renderSignature=''; closePrivate(); closeTaskDetail(); $('task-search').value=''; $('task-owner').value=''; $('workspace').hidden=true; $('login').hidden=false; $('login-error').textContent=message;
+  collaborationUI()?.clear(); lifecycleUI()?.clear();
+  renderSignature=''; closePrivate(); closeTaskDetail(); $('task-search').value=''; $('task-owner').value=''; if($('task-status'))$('task-status').value='active'; $('workspace').hidden=true; $('login').hidden=false; $('login-error').textContent=message;
   ['members','tasks','requests','contracts','overlaps','summary'].forEach(id => $(id).replaceChildren());
   ['room-name','room-repository','identity','network-error','action-error','board-count'].forEach(id=>$(id).textContent='');
   $('form-restore').reset(); $('form-join').reset(); $('form-create').reset(); $('task-form').reset();
@@ -115,10 +116,12 @@ const taskColumns = [
   ['working','推进中','agent 正在推进'],
   ['blocked','遇到阻塞','需要团队协助'],
   ['review','待验收','本地完成、已推送或 PR 打开'],
-  ['merged','已合并','查看卡片中的交付证据来源']
+  ['merged','已合并','查看卡片中的交付证据来源'],
+  ['cancelled','已取消','保留历史，可重新打开']
 ];
 let activeTaskId=null, taskOpener=null;
 function taskColumn(task, progress){
+  if(task.cancelled_at||task.state==='cancelled')return 'cancelled';
   if(!task.owner_member_id) return 'open';
   const state=gitUI()?.state(task,progress,snapshot?.git) || progress?.state;
   if(state==='blocked')return 'blocked';
@@ -136,10 +139,12 @@ function renderTasks(){
   $('task-owner').replaceChildren();
   [['','所有成员'],['unassigned','待认领'],...snapshot.members.map(m=>[String(m.member_id),m.display_name])].forEach(([value,label])=>{const o=text('option',label);o.value=value;$('task-owner').append(o);});
   $('task-owner').value=selected;
-  const filtered=matchingTasks(snapshot.tasks,snapshot.progress,$('task-search').value,$('task-owner').value);
+  const filtered=matchingTasks(snapshot.tasks,snapshot.progress,$('task-search').value,$('task-owner').value).filter(t=>lifecycleUI()?.matches(t,$('task-status')?.value||'active')??true);
   $('board-count').textContent=filtered.length+' / '+snapshot.tasks.length+' 项任务';
   $('tasks').replaceChildren();
   taskColumns.forEach(([key,label,note])=>{
+    const filter=$('task-status')?.value||'active';
+    if((key==='cancelled'&&filter==='active')||(key!=='cancelled'&&filter==='cancelled'))return;
     const column=text('section','','kanban-column column-'+key), list=text('div','','column-cards');
     const tasks=filtered.filter(t=>taskColumn(t,snapshot.progress.find(p=>p.task_id===t.id))===key);
     add(column,add(text('header','','column-heading'),add(text('div'),text('span','','status-dot'),text('h2',label),text('span',tasks.length,'column-count')),text('p',note)),list);
@@ -147,8 +152,9 @@ function renderTasks(){
     tasks.forEach(t=>{
       const p=snapshot.progress.find(p=>p.task_id===t.id), requests=snapshot.requests.filter(r=>r.task_id===t.id), card=button('',()=>openTaskDetail(t.id),'task-card');
       card.id='task-'+t.id;card.setAttribute('aria-label','查看任务 #'+t.id+'：'+t.title);
-      add(card,add(text('div','','card-top'),text('span','CM-'+String(t.id).padStart(3,'0'),'task-number'),text('span','↗','card-arrow')),text('h3',t.title),text('p',p?.summary||'已声明工作范围，等待 agent 推进。','card-summary'),text('p',t.scope,'card-scope'));
-      add(card,add(text('div','','card-bottom'),add(text('span','','card-person'),text('span',(t.owner_member_id?memberName(t.owner_member_id):'?').slice(0,1),'avatar'),text('span',t.owner_member_id?memberName(t.owner_member_id):'待认领')),text('span',requests.length+' 请求','card-meta')),text('p',date(p?.updated_at||t.claimed_at||t.created_at)+' · '+(p?'agent 自述':t.owner_member_id?'已认领':'任务声明'),'card-time'));
+      add(card,add(text('div','','card-top'),text('span','CM-'+String(t.id).padStart(3,'0'),'task-number'),text('span','↗','card-arrow')),text('h3',t.title),text('p',p?.summary||(t.cancelled_at?'任务已取消，可在详情重新打开。':'已声明工作范围，等待 agent 推进。'),'card-summary'),text('p',t.scope,'card-scope'));
+      add(card,add(text('div','','card-bottom'),add(text('span','','card-person'),text('span',(t.owner_member_id?memberName(t.owner_member_id):'?').slice(0,1),'avatar'),text('span',t.cancelled_at?'已取消':t.owner_member_id?memberName(t.owner_member_id):'待认领')),text('span',requests.length+' 请求','card-meta')),text('p',date(p?.updated_at||t.cancelled_at||t.claimed_at||t.created_at)+' · '+(t.cancelled_at?'已取消':p?'agent 自述':t.owner_member_id?'已认领':'任务声明'),'card-time'));
+      const handoff=snapshot.lifecycle?.handoffs?.find(h=>h.task_id===t.id&&h.status==='pending');if(handoff)card.append(text('p','待 '+memberName(handoff.target_member_id)+' 接手 · '+handoff.summary,'card-summary'));
       const gitSummary=gitUI()?.summarize(t.id,snapshot.git);if(gitSummary)card.append(text('p',gitSummary,'card-git'));
       list.append(card);
     });
@@ -163,9 +169,10 @@ function renderTaskDetail(){
   const focused=container.contains(document.activeElement)?document.activeElement.textContent:null;
   container.replaceChildren();
   const title=text('h2',t.title);title.id='task-detail-title';
-  add(container,text('p','CM-'+String(t.id).padStart(3,'0'),'eyebrow'),title,add(text('p','','detail-status'),badge(gitUI()?.state(t,p,snapshot.git)||p?.state||t.state),text('span',t.owner_member_id?memberName(t.owner_member_id):'等待 agent 认领')),text('p','声明范围','detail-label'),text('p',t.scope,'detail-value'),text('p','去重标识','detail-label'),text('p',t.intent_key,'detail-value'),text('p','创建 '+date(t.created_at)+(t.claimed_at?' · 认领 '+date(t.claimed_at):''),'meta'));
+  add(container,text('p','CM-'+String(t.id).padStart(3,'0'),'eyebrow'),title,add(text('p','','detail-status'),badge(gitUI()?.state(t,p,snapshot.git)||p?.state||t.state),text('span',t.cancelled_at?'已取消，恢复后可认领':t.owner_member_id?memberName(t.owner_member_id):'等待 agent 认领')),text('p','声明范围','detail-label'),text('p',t.scope,'detail-value'),text('p','去重标识','detail-label'),text('p',t.intent_key,'detail-value'),text('p','创建 '+date(t.created_at)+(t.claimed_at?' · 认领 '+date(t.claimed_at):''),'meta'));
   if(p)add(container,text('p','最新进展','detail-label'),text('p',p.summary,'detail-value'),text('p','agent 自述 · '+memberName(p.member_id)+' · '+date(p.updated_at),'meta'),text('p','证据：'+(p.evidence||'未提供'),'detail-value'));
   gitUI()?.renderDetails(container,t,snapshot.git,gitContext());
+  lifecycleUI()?.renderDetails(container,t,snapshot,gitContext());
   const related=snapshot.requests.filter(r=>r.task_id===t.id);
   add(container,text('p','关联技术请求','detail-label'));
   if(!related.length)empty(container,'尚无关联请求。');
@@ -182,6 +189,7 @@ $('close-task').addEventListener('click',closeTaskDetail);
 $('task-dialog').addEventListener('close',()=>{activeTaskId=null;$('task-detail').replaceChildren();const target=taskOpener?.isConnected?taskOpener:$(taskOpener?.id);if(target)target.focus();else $('task-search').focus();taskOpener=null;});
 $('task-search').addEventListener('input',()=>{if(snapshot)renderTasks();});
 $('task-owner').addEventListener('change',()=>{if(snapshot)renderTasks();});
+$('task-status')?.addEventListener('change',()=>{if(snapshot)renderTasks();});
 $('new-task').addEventListener('click',()=>{$('task-create').open=true;$('task-form').querySelector('input').focus();});
 function renderRequests(){
   $('requests').replaceChildren(); if(!snapshot.requests.length) empty($('requests'),'尚无技术请求。让 agent 在 MCP 入口发送需要协作的具体问题。');

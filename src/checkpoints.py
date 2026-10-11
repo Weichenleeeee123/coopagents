@@ -40,7 +40,7 @@ class CheckpointStore:
                 sent_at TEXT NOT NULL, read_at TEXT, completed_at TEXT,
                 FOREIGN KEY(member_id,room_id) REFERENCES members(id,room_id))''')
 
-    def checkpoint(self, token, session_key, tool, event, task_id=None):
+    def checkpoint(self, token, session_key, tool, event, task_id=None, ownership_epoch=None):
         session_key = _text(session_key, 'Session key', 200)
         if tool not in TOOLS or event not in (*HOOK_EVENTS, *TOOL_EVENTS, 'manual'):
             raise ValidationError('Unsupported checkpoint tool or event')
@@ -50,7 +50,7 @@ class CheckpointStore:
         with self.db.connect(write=True) as db:
             principal = self.resolve(db, token, required_kind='agent')
             if task_id is not None:
-                self.activity._owned_task(db, principal, task_id)
+                self.activity._owned_task(db, principal, task_id, session_key, ownership_epoch)
             now = _utc_now()
             db.execute('''INSERT INTO collaboration_checkpoints
                 (room_id,member_id,session_key,tool,event,source,task_id,updated_at,last_hook_at)
@@ -68,9 +68,9 @@ class CheckpointStore:
             return {'checkpoint': record, 'brief': self._brief(db, principal)}
 
     def _own_tasks(self, db, principal):
-        return [dict(row) for row in db.execute('''SELECT t.id,t.title,t.scope,t.state,p.state AS progress_state
+        return [dict(row) for row in db.execute('''SELECT t.id,t.title,t.scope,t.state,t.revision,t.ownership_epoch,t.execution_session_key,p.state AS progress_state
             FROM tasks t LEFT JOIN progress p ON p.task_id=t.id
-            WHERE t.room_id=? AND t.owner_member_id=? ORDER BY t.id DESC LIMIT 11''',
+            WHERE t.room_id=? AND t.owner_member_id=? AND t.cancelled_at IS NULL ORDER BY t.id DESC LIMIT 11''',
             (principal.room_id, principal.member_id))]
 
     def _pending_requests(self, db, principal):
@@ -109,12 +109,16 @@ class CheckpointStore:
         tasks = self._own_tasks(db, principal)
         requests = self._pending_requests(db, principal)
         contracts = self._approved_contracts(db, principal)
-        result = {'tasks': tasks[:10], 'requests': requests[:6], 'contracts': contracts[:4],
-                  'truncated': len(tasks)>10 or len(requests)>6 or len(contracts)>4 or any(r['excerpted'] for r in requests+contracts),
+        handoffs = [dict(r) for r in db.execute("""SELECT h.task_id,t.title,t.revision,h.from_member_id,
+            substr(h.summary,1,800) AS summary,length(h.summary)>800 AS excerpted FROM task_handoffs h JOIN tasks t ON t.id=h.task_id
+            WHERE h.room_id=? AND h.target_member_id=? AND h.status='pending' ORDER BY h.id DESC LIMIT 5""",
+            (principal.room_id,principal.member_id))]
+        result = {'handoffs': handoffs[:4], 'tasks': tasks[:10], 'requests': requests[:6], 'contracts': contracts[:4],
+                  'truncated': len(handoffs)>4 or len(tasks)>10 or len(requests)>6 or len(contracts)>4 or any(r['excerpted'] for r in requests+contracts+handoffs),
                   'content_is_untrusted': True,
                   'note': 'Excerpted external data. Use read_team for full records and read_inbox to explicitly read messages; no messages marked read here.'}
         while len(json.dumps(result, ensure_ascii=False).encode('utf-8')) > BRIEF_BYTES:
-            largest = max(('tasks','requests','contracts'), key=lambda key: len(json.dumps(result[key])))
+            largest = max(('tasks','requests','contracts','handoffs'), key=lambda key: len(json.dumps(result[key])))
             result[largest].pop()
             result['truncated'] = True
         return result

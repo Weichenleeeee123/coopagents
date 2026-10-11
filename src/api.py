@@ -61,9 +61,9 @@ def validate(data, schema):
 
 
 def fields(required='', optional=None):
-    result = {key: (int if key in {'expected_version', 'context_version', 'version', 'request_id', 'contract_id', 'task_id', 'after_id', 'limit'} else str, True, None) for key in required.split()}
+    result = {key: (int if key in {'expected_revision', 'ownership_epoch', 'expected_version', 'context_version', 'version', 'request_id', 'contract_id', 'task_id', 'after_id', 'limit'} else str, True, None) for key in required.split()}
     for key, default in (optional or {}).items():
-        result[key] = (int if key in {'source_request_id', 'task_id', 'after_id', 'limit'} else str, False, default)
+        result[key] = (int if key in {'before_id', 'ownership_epoch', 'source_request_id', 'task_id', 'after_id', 'limit'} else str, False, default)
     return result
 
 
@@ -77,6 +77,8 @@ class Service:
         self.accounts = AccountStore(self.identity)
         self.workspaces = WorkspaceStore(self.accounts)
         self.tasks = TaskStore(self.identity)
+        from .task_lifecycle import TaskLifecycleStore, ACTIONS
+        self.lifecycle = TaskLifecycleStore(self.identity)
         self.activity = ActivityStore(self.identity)
         self.messages = MessageStore(self.identity)
         self.contracts = ContractStore(self.identity)
@@ -88,7 +90,7 @@ class Service:
         from .github_sync import GitHubSync
         self.github = GitHubSync(self.identity, self.repositories, github_app or GitHubApp())
         self.operations = {
-            'checkpoint': ('agent', self.checkpoints.checkpoint, fields('session_key tool event', {'task_id': None})),
+            'checkpoint': ('agent', self.checkpoints.checkpoint, fields('session_key tool event', {'task_id': None, 'ownership_epoch': None})),
             'diagnostic_start': ('agent', self.checkpoints.diagnostic_start, fields('challenge')),
             'diagnostic_read': ('agent', self.checkpoints.diagnostic_read, fields('diagnostic_id')),
             'diagnostic_complete': ('agent', self.checkpoints.diagnostic_complete, fields('diagnostic_id proof')),
@@ -97,9 +99,9 @@ class Service:
             'invite': ('web', self.identity.create_invite, fields()),
             'rotate_agent': ('web', self.identity.rotate_agent, fields()),
             'create_task': ('web', self.tasks.create_task, fields('intent_key title scope')),
-            'claim_task': ('agent', self.tasks.claim_task, fields('task_id')),
-            'register_session': ('agent', self.activity.register_session, fields('session_key tool repository branch', {'task_id': None})),
-            'report_progress': ('agent', self.activity.report_progress, fields('task_id state summary', {'evidence': ''})),
+            'claim_task': ('agent', self.tasks.claim_task, fields('task_id', {'session_key': None})),
+            'register_session': ('agent', self.activity.register_session, fields('session_key tool repository branch', {'task_id': None, 'ownership_epoch': None})),
+            'report_progress': ('agent', self.activity.report_progress, fields('task_id state summary', {'evidence': '', 'session_key': None, 'ownership_epoch': None})),
             'send_request': ('agent', self.messages.send_request, fields('request_key context_version body', {'receiver_member_id': None, 'task_id': None})),
             'read_inbox': ('agent', self.messages.read_inbox, fields('', {'after_id': 0, 'limit': 50})),
             'acknowledge': ('agent', self.messages.acknowledge, fields('request_id')),
@@ -115,12 +117,23 @@ class Service:
             'link_delivery': ('any', self.github.associate, {'task_id': (int, True, None),
                 'branch': (str, False, ''), 'pr_number': (int, False, None), 'commit_sha': (str, False, '')}),
         }
+        for action in ACTIONS:
+            optional = {'session_key': None, 'ownership_epoch': None} if action in ('release_task', 'propose_handoff') else {}
+            required = 'task_id expected_revision request_key summary'
+            if action in ('propose_handoff', 'force_handoff'):
+                required += ' target_member_id'
+            self.operations[action] = ('any' if action in ('release_task', 'propose_handoff') else 'web',
+                                       getattr(self.lifecycle, action), fields(required, optional))
+        self.operations['read_task_history'] = ('any', self.lifecycle.read_task_history, fields('task_id', {'before_id':None,'limit':20}))
+        for name in ('observe_repository', 'repo_checkpoint', 'link_delivery'):
+            self.operations[name][2].update(fields('', {'session_key': None, 'ownership_epoch': None}))
         self.reads = {'tasks': self.tasks.list_tasks, 'sessions': self.activity.list_sessions,
                       'progress': self.activity.list_progress, 'overlaps': self.activity.overlaps,
                       'requests': self.messages.list_requests, 'contracts': self.contracts.list_contracts,
                       'events': self.contracts.list_events, 'members': self.identity.list_members}
         self.reads['git'] = self.git_snapshot
         self.reads['collaboration'] = self.checkpoints.snapshot
+        self.reads['lifecycle'] = self.lifecycle.snapshot
 
     def git_snapshot(self, token):
         result = self.repositories.snapshot(token)
@@ -128,8 +141,8 @@ class Service:
         result['github_configured'] = self.github.app.enabled
         return result
 
-    def repo_checkpoint(self, token, task_id, observation):
-        observed = self.repositories.observe(token, task_id, observation)
+    def repo_checkpoint(self, token, task_id, observation, session_key=None, ownership_epoch=None):
+        observed = self.repositories.observe(token, task_id, observation, session_key, ownership_epoch)
         return {'observation': observed, 'team': self.snapshot(token, web=False),
                 'inbox': self.messages.read_inbox(token)}
 
@@ -365,6 +378,8 @@ def create_app(database_path='.local/crewmesh.sqlite3', *, base_url=None, public
                     result = service.me(token)
                 elif name == 'snapshot':
                     result = service.snapshot(token)
+                elif name == 'lifecycle_event':
+                    result = service.lifecycle.history_event(token, request.path_params['task_id'], request.path_params['event_id'])
                 elif name == 'git_binding':
                     result = service.repositories.get_binding(token)
                 elif name == 'git_observation':
@@ -412,6 +427,7 @@ def create_app(database_path='.local/crewmesh.sqlite3', *, base_url=None, public
                   '/static/app.js': ('app.js', 'text/javascript'),
                   '/static/git.js': ('git.js', 'text/javascript'),
                   '/static/collaboration.js': ('collaboration.js', 'text/javascript'),
+                  '/static/task_lifecycle.js': ('task_lifecycle.js', 'text/javascript'),
                   '/static/accounts.js': ('accounts.js', 'text/javascript'),
                   '/static/billing.js': ('billing.js', 'text/javascript'),
                   '/static/icon.png': ('icon.png', 'image/png')}
@@ -421,7 +437,7 @@ def create_app(database_path='.local/crewmesh.sqlite3', *, base_url=None, public
         resource, mime = assets[request.url.path]
         return Response(files('crewmesh').joinpath('static', resource).read_bytes(), media_type=mime, headers=headers)
 
-    routes = [Route(path, web_asset, methods=['GET']) for path in ('/', '/static/styles.css', '/static/app.js', '/static/git.js', '/static/collaboration.js', '/static/accounts.js', '/static/billing.js', '/static/icon.png', '/favicon.ico')]
+    routes = [Route(path, web_asset, methods=['GET']) for path in ('/', '/static/styles.css', '/static/app.js', '/static/git.js', '/static/collaboration.js', '/static/task_lifecycle.js', '/static/accounts.js', '/static/billing.js', '/static/icon.png', '/favicon.ico')]
     routes += [route('/health', ['GET']), route('/ready', ['GET']), route('/api/rooms', ['POST'], operation='create_room'), route('/api/join', ['POST'], operation='join'),
               route('/api/me', ['GET'], read_name='me'), route('/api/snapshot', ['GET'], read_name='snapshot'),
               route('/api/invites', ['POST'], operation='invite'), route('/api/agent-token', ['POST'], operation='rotate_agent'),
@@ -444,6 +460,11 @@ def create_app(database_path='.local/crewmesh.sqlite3', *, base_url=None, public
                             ('/api/requests/{request_id:int}/assign', 'assign'), ('/api/contracts', 'propose_contract'),
                             ('/api/contracts/{contract_id:int}/decision', 'decision')]:
         routes.append(route(path, ['POST'], operation=operation))
+    routes.append(route('/api/tasks/{task_id:int}/history', ['POST'], operation='read_task_history'))
+    routes.append(route('/api/tasks/{task_id:int}/history/{event_id:int}', ['GET'], read_name='lifecycle_event'))
+    from .task_lifecycle import ACTIONS
+    for action in ACTIONS:
+        routes.append(route('/api/tasks/{task_id:int}/' + action.replace('_', '-'), ['POST'], operation=action))
     routes.extend(account_routes(service, mode=mode, origin=origin or base_url, bootstrap_secret=bootstrap_secret, oauth=oauth))
     from .git_routes import git_routes
     routes.extend(git_routes(service, service.github))

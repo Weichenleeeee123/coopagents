@@ -40,15 +40,15 @@ def require_manager(identity, connection, principal):
         raise AccessDenied('Project manager required')
 
 
-def visible_task(connection, principal, task_id, *, manager=False):
-    if type(task_id) is not int or not 0<task_id<2**63:
-        raise ValidationError('Task id must be a positive integer')
-    task = connection.execute('SELECT * FROM tasks WHERE room_id=? AND id=?', (principal.room_id, task_id)).fetchone()
-    if task is None:
-        raise NotFound('Task not found')
-    if not manager and (task['state'] != 'claimed' or task['owner_member_id'] != principal.member_id):
-        raise AccessDenied('Claimed task owner required')
+def visible_task(connection, principal, task_id, *, manager=False, session_key=None, ownership_epoch=None):
+    from .task_lifecycle import task_row, execution_task
+    if not manager:
+        return execution_task(connection, principal, task_id, session_key, ownership_epoch)
+    task = task_row(connection, principal, task_id)
+    if task['cancelled_at']:
+        raise Conflict('Task is cancelled; reopen it first')
     return task
+
 
 
 class RepositoryStore:
@@ -68,6 +68,8 @@ class RepositoryStore:
                 UNIQUE(room_id,member_id,request_key),
                 FOREIGN KEY(member_id,room_id) REFERENCES members(id,room_id),
                 FOREIGN KEY(task_id,room_id) REFERENCES tasks(id,room_id))''')
+            if 'ownership_epoch' not in {r['name'] for r in c.execute('PRAGMA table_info(git_observations)')}:
+                c.execute('ALTER TABLE git_observations ADD COLUMN ownership_epoch INTEGER NOT NULL DEFAULT 0')
             c.execute('CREATE INDEX IF NOT EXISTS git_observation_room ON git_observations(room_id,id)')
 
     def bind_repository(self, token, repository):
@@ -136,12 +138,13 @@ class RepositoryStore:
         value['source'] = 'local_git'
         return value
 
-    def observe(self, token, task_id, observation):
+    def observe(self, token, task_id, observation, session_key=None, ownership_epoch=None):
         data = self.validate_observation(observation)
-        payload_hash = hashlib.sha256(json.dumps([task_id,data],sort_keys=True).encode()).hexdigest()
+        payload = [task_id,data] if session_key is None and ownership_epoch is None else [task_id,data,session_key,ownership_epoch]
+        payload_hash = hashlib.sha256(json.dumps(payload,sort_keys=True).encode()).hexdigest()
         with self.db.connect(write=True) as c:
             principal = self.identity.resolve(c, token, required_kind='agent')
-            visible_task(c, principal, task_id)
+            task = visible_task(c, principal, task_id, session_key=session_key, ownership_epoch=ownership_epoch)
             binding = c.execute('SELECT * FROM repo_bindings WHERE room_id=?', (principal.room_id,)).fetchone()
             if not binding or binding['repository'] != data['repository']:
                 raise Conflict('Local repository does not match the project binding')
@@ -149,15 +152,15 @@ class RepositoryStore:
                 WHERE room_id=? AND member_id=? AND request_key=?''',
                 (principal.room_id,principal.member_id,data['request_key'])).fetchone()
             if existing:
-                if existing['payload_hash'] != payload_hash:
+                if existing['payload_hash'] != payload_hash or existing['ownership_epoch'] != task['ownership_epoch']:
                     raise Conflict('Request key already has another payload')
                 return self.observation_row(existing)
             row = c.execute('''INSERT INTO git_observations(room_id,member_id,task_id,workspace_id,
-                repository,branch,head,paths_json,captured_at,received_at,request_key,payload_hash)
-                VALUES(?,?,?,?,?,?,?,?,?,?,?,?)''',
+                repository,branch,head,paths_json,captured_at,received_at,request_key,payload_hash,ownership_epoch)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)''',
                 (principal.room_id,principal.member_id,task_id,data['workspace_id'],data['repository'],
                  data['branch'],data['head'],json.dumps(data['paths']),data['captured_at'],now().isoformat(),
-                 data['request_key'],payload_hash))
+                 data['request_key'],payload_hash,task['ownership_epoch']))
             return self.observation_row(c.execute('SELECT * FROM git_observations WHERE id=?', (row.lastrowid,)).fetchone())
 
     def snapshot(self, token):
@@ -169,10 +172,12 @@ class RepositoryStore:
                 can_manage=True
             except AccessDenied:
                 can_manage=False
-            rows = c.execute('''SELECT g.* FROM git_observations g WHERE g.room_id=? AND NOT EXISTS
+            rows = c.execute('''SELECT g.* FROM git_observations g JOIN tasks t ON t.id=g.task_id
+                WHERE g.room_id=? AND t.cancelled_at IS NULL AND t.owner_member_id IS NOT NULL
+                AND g.ownership_epoch=t.ownership_epoch AND NOT EXISTS
                 (SELECT 1 FROM git_observations n WHERE n.room_id=g.room_id AND n.member_id=g.member_id
-                 AND n.workspace_id=g.workspace_id AND (n.captured_at>g.captured_at OR
-                     (n.captured_at=g.captured_at AND n.id>g.id))) ORDER BY g.id DESC LIMIT 51''', (principal.room_id,)).fetchall()
+                 AND n.workspace_id=g.workspace_id AND n.task_id=g.task_id AND n.ownership_epoch=g.ownership_epoch
+                 AND (n.captured_at>g.captured_at OR (n.captured_at=g.captured_at AND n.id>g.id))) ORDER BY g.id DESC LIMIT 51''', (principal.room_id,)).fetchall()
             truncated=len(rows)>50
             workspaces = [self.observation_row(r) for r in reversed(rows[:50])]
             for item in workspaces:
@@ -191,7 +196,9 @@ class RepositoryStore:
                 item['paths_truncated']=len(item['paths'])<item['path_count']
             events = [self.observation_row(r) for r in c.execute(
                 'SELECT * FROM git_observations WHERE room_id=? ORDER BY id DESC LIMIT 50', (principal.room_id,))]
+            epochs = {r['id']:r['ownership_epoch'] for r in c.execute('SELECT id,ownership_epoch FROM tasks WHERE room_id=?',(principal.room_id,))}
             for item in events:
+                item['historical'] = item['ownership_epoch'] != epochs.get(item['task_id'])
                 item['path_count']=len(item.pop('paths'))
             return {'binding':dict(binding) if binding else None,'can_manage':can_manage,'workspaces':workspaces,
                     'overlaps':overlaps,'events':events,'deliveries':[],'workspaces_truncated':truncated}

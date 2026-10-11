@@ -25,6 +25,8 @@ jobs:
       - run: node --check src/static/accounts.js
       - run: node --check src/static/billing.js
       - run: node --check src/static/git.js
+      - run: node --check src/static/task_lifecycle.js
+      - run: node tests/task_lifecycle_ui_regression.js
       - run: node --check src/static/collaboration.js
       - run: node tests/collaboration_ui_regression.js
       - run: node tests/git_ui_regression.js

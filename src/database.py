@@ -207,6 +207,9 @@ class Database:
                 FOREIGN KEY(actor_member_id, room_id) REFERENCES members(id, room_id)
             )""")
 
+            from .task_lifecycle import initialize
+            initialize(connection)
+
     @contextmanager
     def connect(self, write=False):
         connection = sqlite3.connect(self.path, timeout=10, isolation_level=None)

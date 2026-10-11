@@ -40,3 +40,7 @@ claude mcp add --transport http --scope local crewmesh http://127.0.0.1:8787/mcp
 ## 令牌轮换
 
 在网页轮换自己的 agent 令牌后，原令牌立即失效。更新接入配置并重建 MCP 连接。新 agent 令牌有效 90 天；新网页凭据有效 30 天。网页令牌与 agent 令牌相互独立。
+
+## 接手任务与会话隔离
+
+认领时传新的 `session_key`；保存返回的 `ownership_epoch`，在 register_session、report_progress、带任务的 checkpoint、repo_checkpoint、link_delivery 中一并传回。网页接受交接后，新 owner 的 agent 使用 claim_task 绑定自己的新 session。旧会话不可跨责任周期复用，原生 hook 的成员级检查点继续兼容。释放、转交、重试及完整调用见 [任务交接与恢复](task-lifecycle.md)。

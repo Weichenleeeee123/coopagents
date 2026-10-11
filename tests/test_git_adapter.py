@@ -50,6 +50,21 @@ class AdapterTests(unittest.TestCase):
         self.assertEqual(next(data for path,data in calls if path=='/api/git/checkpoint'),original)
         self.assertTrue(all(status=='completed' for _,status in records()))
 
+    def test_offline_epochs_keep_original_session_payload_in_separate_queues(self):
+        root=Path('.local/test-evidence')/str(uuid4());repo=root/'repo';repo.mkdir(parents=True)
+        subprocess.run(['git','init',str(repo)],check=True,capture_output=True)
+        subprocess.run(['git','-C',str(repo),'remote','add','origin','https://github.com/acme/demo'],check=True,capture_output=True)
+        adapter=LocalAdapter(repo,'http://127.0.0.1:1','project','valid-token',state_root=root/'queue')
+        for session,epoch in [('old',1),('new',3)]:
+            with self.assertRaises(ValidationError):adapter.checkpoint(1,session_key=session,ownership_epoch=epoch)
+        queues=list((root/'queue').glob('*.sqlite3'))
+        self.assertEqual(len(queues),2,'retired queue must not block the new execution session')
+        payloads=[]
+        for path in queues:
+            with closing(sqlite3.connect(path)) as connection:
+                payloads += [json.loads(row[0]) for row in connection.execute('SELECT payload FROM checkpoints')]
+        self.assertEqual(sorted((p['session_key'],p['ownership_epoch']) for p in payloads),[('new',3),('old',1)])
+
     def test_concurrent_queue_returns_each_callers_observation(self):
         root=Path('.local/test-evidence')/str(uuid4());repo=root/'repo';repo.mkdir(parents=True)
         subprocess.run(['git','init',str(repo)],check=True,capture_output=True)
