@@ -21,7 +21,7 @@ function setView(view) {
   for(const key of Object.keys(views)) $('view-'+key).hidden = key !== view;
   document.querySelectorAll('[data-view]').forEach(b => { if(b.dataset.view === view) b.setAttribute('aria-current','page'); else b.removeAttribute('aria-current'); });
   [$('view-kicker').textContent,$('view-title').textContent,$('view-description').textContent] = views[view];
-  document.title=views[view][1]+' · Crewmesh';
+  if(!$('workspace').hidden)document.title=views[view][1]+' · Crewmesh';
 }
 document.querySelectorAll('[data-view]').forEach(b => b.addEventListener('click',() => setView(b.dataset.view)));
 const tabs = Array.from(document.querySelectorAll('[data-entry]'));
@@ -48,13 +48,13 @@ function logout(message='') {
   generation++; token=''; snapshot=null; sessionStorage.removeItem('crewmesh_web_token'); clearTimeout(pollTimer);
   projectRequests.forEach(controller=>controller.abort()); projectRequests.clear(); syncing=false;
   gitUI()?.clear(); $('git-connection')?.replaceChildren(); $('git-overlaps')?.replaceChildren();
-  renderSignature=''; closePrivate(); closeTaskDetail(); $('task-search').value=''; $('task-owner').value=''; $('workspace').hidden=true; $('login').hidden=false; $('login-error').textContent=message;
+  renderSignature=''; closePrivate(); closeTaskDetail(); $('task-search').value=''; $('task-owner').value=''; $('workspace').hidden=true; $('login').hidden=false; $('login-error').textContent=message;document.title='Crewmesh · 同频';
   $('board-empty').hidden=true;
   ['members','tasks','requests','contracts','overlaps','summary'].forEach(id => $(id).replaceChildren());
   ['room-name','room-repository','identity','network-error','action-error','board-count'].forEach(id=>$(id).textContent='');
   $('form-restore').reset(); $('form-join').reset(); $('form-create').reset(); $('task-form').reset();
 }
-function enter(credential) { generation++; renderSignature=''; token=credential; sessionStorage.setItem('crewmesh_web_token',credential); $('login').hidden=true; $('workspace').hidden=false; $('action-error').textContent=''; $('sync-time').textContent='正在同步…'; $('network-error').hidden=true; lastSuccess=null; clearTimeout(pollTimer); sync(); }
+function enter(credential) { generation++; renderSignature=''; token=credential; sessionStorage.setItem('crewmesh_web_token',credential); $('login').hidden=true; $('workspace').hidden=false;document.title=$('view-title').textContent+' · Crewmesh'; $('action-error').textContent=''; $('sync-time').textContent='正在同步…'; $('network-error').hidden=true; lastSuccess=null; clearTimeout(pollTimer); sync(); }
 for(const name of ['create','join','restore']) $('form-'+name).addEventListener('submit',async e => {
   e.preventDefault(); const form=e.currentTarget, b=form.querySelector('button[type=submit]'); b.disabled=true; $('login-error').textContent='';
   const epoch=generation;
@@ -163,8 +163,9 @@ function renderTaskDetail(){
   const focused=container.contains(document.activeElement)?document.activeElement.textContent:null;
   container.replaceChildren();
   const title=text('h2',t.title);title.id='task-detail-title';
-  add(container,text('p','CM-'+String(t.id).padStart(3,'0'),'eyebrow'),title,add(text('p','','detail-status'),badge(gitUI()?.state(t,p,snapshot.git)||p?.state||t.state),text('span',t.owner_member_id?memberName(t.owner_member_id):'等待 agent 认领')),text('p','声明范围','detail-label'),text('p',t.scope,'detail-value'),text('p','去重标识','detail-label'),text('p',t.intent_key,'detail-value'),text('p','创建 '+date(t.created_at)+(t.claimed_at?' · 认领 '+date(t.claimed_at):''),'meta'));
+  add(container,text('p','CM-'+String(t.id).padStart(3,'0'),'eyebrow'),title,add(text('p','','detail-status'),badge(gitUI()?.state(t,p,snapshot.git)||p?.state||t.state),text('span',t.owner_member_id?memberName(t.owner_member_id):'等待 agent 认领')),text('p','声明范围','detail-label'),text('p',t.scope,'detail-value'),text('p','创建 '+date(t.created_at)+(t.claimed_at?' · 认领 '+date(t.claimed_at):''),'meta'));
   if(p)add(container,text('p','最新进展','detail-label'),text('p',p.summary,'detail-value'),text('p','agent 自述 · '+memberName(p.member_id)+' · '+date(p.updated_at),'meta'),text('p','证据：'+(p.evidence||'未提供'),'detail-value'));
+  container.append(detail('技术标识', [text('p','去重标识：'+t.intent_key,'meta')]));
   gitUI()?.renderDetails(container,t,snapshot.git,gitContext());
   const related=snapshot.requests.filter(r=>r.task_id===t.id);
   add(container,text('p','关联技术请求','detail-label'));

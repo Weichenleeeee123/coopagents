@@ -19,7 +19,7 @@
       el('hub-nav-'+key).setAttribute('aria-current',key===view?'page':'false');
     }
     [el('hub-kicker').textContent,el('hub-title').textContent,el('hub-description').textContent]=hubViews[view];
-    el('billing-empty').hidden=!!teamId;
+    el('billing-empty').hidden=!!teamId;document.title=hubViews[view][1]+' · Crewmesh';
   }
   for(const key of Object.keys(hubViews))el('hub-nav-'+key).addEventListener('click',()=>setHubView(key));
   const pending = new Set();
@@ -37,7 +37,7 @@
     sessionStorage.removeItem('crewmesh_selected_project');
   }
   function loggedOut() {
-    invalidate();session=null;teams=[];teamId='';
+    invalidate();session=null;teams=[];teamId='';hubView='projects';document.title='Crewmesh · 同频';
     sessionStorage.removeItem('crewmesh_account_project');sessionStorage.removeItem('crewmesh_selected_team');
     el('account-hub').hidden=true;el('login').hidden=false;
     ['account-login','bootstrap-form','register-form','accept-form','password-form','claim-form','project-form','team-form','team-invite-form'].forEach(id=>el(id).reset());
@@ -113,15 +113,18 @@
       }box.append(row);
     }
   }
+  function loadBilling(mine,id) {
+    window.CrewmeshBilling?.load({teamId:id,role:teams.find(t=>t.team_id===id)?.role,
+      isCurrent:()=>mine===epoch && !!session && teamId===id,
+      request:(path,data)=>{if(mine!==epoch || !session || teamId!==id)return Promise.reject(stale());return request(path,data,{},true,60000);}});
+  }
   async function loadTeam(id) {
     const nextView=id===teamId?hubView:'projects';
     invalidate();teamId=id;sessionStorage.setItem('crewmesh_selected_team',id);showHub();renderTeams();setHubView(nextView);const mine=epoch;
     el('hub-loading').hidden=!id;el('hub-projects').setAttribute('aria-busy',String(!!id));
     if(!id){renderProjects();return;}
     try {
-    window.CrewmeshBilling?.load({teamId:id,role:teams.find(t=>t.team_id===id)?.role,
-      isCurrent:()=>mine===epoch && !!session && teamId===id,
-      request:(path,data)=>{if(mine!==epoch || !session || teamId!==id)return Promise.reject(stale());return request(path,data,{},true,60000);}});
+    loadBilling(mine,id);
     const base=routeTeam();projects=await request(base+'/projects');if(mine!==epoch)return;
     members=await request(base+'/members');if(mine!==epoch)return;
     managed=manager()?await request(base+'/managed-projects'):[];if(mine!==epoch)return;
@@ -162,8 +165,8 @@
     try{await request('/account/logout',{},csrf?{'X-Crewmesh-CSRF':csrf}:{});loggedOut();}
     catch(error){if(session){showHub();el('hub-error').textContent='退出未完成：'+error.message+'。请重试退出。';}throw error;}
   });});
-  for(const id of ['hub-team','workspace-team'])el(id).addEventListener('change',()=>{const value=el(id).value;act(el(id),()=>loadTeam(value));});
-  el('workspace-project').addEventListener('change',()=>{const value=el('workspace-project').value;act(el('workspace-project'),()=>selectProject(value));});
+  for(const id of ['hub-team','workspace-team'])el(id).addEventListener('change',()=>{const value=el(id).value;busy=false;act(el(id),()=>loadTeam(value));});
+  el('workspace-project').addEventListener('change',()=>{const value=el('workspace-project').value;busy=false;act(el('workspace-project'),()=>selectProject(value));});
   el('account-settings').addEventListener('click',()=>act(el('account-settings'),home));
   el('hub-refresh').addEventListener('click',()=>act(el('hub-refresh'),reload));
   async function start(){
@@ -181,6 +184,13 @@
     if(['#billing','#billing-return'].includes(window.location?.hash))setHubView('billing');
     if(wasManaged&&storedProject&&!['#billing','#billing-return'].includes(window.location?.hash)&&projects.some(p=>p.room_id===storedProject))await selectProject(storedProject);
   }
+  window.addEventListener('hashchange',async()=>{
+    const hash=window.location.hash,account=session,selectedTeam=teamId;
+    if(!account || !['#billing','#billing-return'].includes(hash))return;
+    if(el('account-hub').hidden)await home();
+    if(session!==account || selectedTeam!==teamId || window.location.hash!==hash || el('account-hub').hidden)return;
+    setHubView('billing');loadBilling(epoch,teamId);
+  });
   window.CrewmeshAccounts={home,denied};
   el('account-retry').addEventListener('click',()=>act(el('account-retry'),start));
   act(el('account-retry'),start);

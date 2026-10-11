@@ -21,9 +21,9 @@ function harness(hash=''){
     '/account/teams/t1/managed-projects':[{...p,has_access:true}],'/account/teams/t1/members':[{account_id:'a1',username:'alice',display_name:'Alice',role:'owner'}],
     '/account/projects/p1/select':{web_token:'scoped-private-token',room_id:'p1'},'/account/logout':{ok:true},
   };
-  const context=vm.createContext({window:{location:{hash},CrewmeshProject:{clear(){bridgeManaged=false;storage.delete('crewmesh_web_token');element('workspace').hidden=true;},enter(token){bridgeManaged=true;entered.push(token);storage.set('crewmesh_web_token',token);element('workspace').hidden=false;},managed:()=>bridgeManaged,private(){}}},document:{getElementById:element,querySelectorAll:()=>[],createElement:tag=>{const n=new N();n.tagName=tag.toUpperCase();return n;}},sessionStorage:{getItem:k=>storage.get(k),setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},AbortController,setTimeout:()=>1,clearTimeout(){},JSON,Error,FormData:class{constructor(form){this.form=form;}*[Symbol.iterator](){yield* Object.entries(this.form.fields);}},fetch:async(path,options)=>{calls.push({path,...options});const delay=delays.get(path);if(delay){delays.delete(path);return {status:delay.status||200,ok:!delay.status||delay.status===200,json:()=>delay.body.promise};}const reply=replies[path];return {status:reply===undefined?401:200,ok:reply!==undefined,json:async()=>reply===undefined?{message:'Permission denied'}:reply};}});
+  const context=vm.createContext({window:{listeners:{},addEventListener(type,cb){this.listeners[type]=cb;},location:{hash},CrewmeshProject:{clear(){bridgeManaged=false;storage.delete('crewmesh_web_token');element('workspace').hidden=true;},enter(token){bridgeManaged=true;entered.push(token);storage.set('crewmesh_web_token',token);element('workspace').hidden=false;},managed:()=>bridgeManaged,private(){}}},document:{getElementById:element,querySelectorAll:()=>[],createElement:tag=>{const n=new N();n.tagName=tag.toUpperCase();return n;}},sessionStorage:{getItem:k=>storage.get(k),setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},AbortController,setTimeout:()=>1,clearTimeout(){},JSON,Error,FormData:class{constructor(form){this.form=form;}*[Symbol.iterator](){yield* Object.entries(this.form.fields);}},fetch:async(path,options)=>{calls.push({path,...options});const delay=delays.get(path);if(delay){delays.delete(path);return {status:delay.status||200,ok:!delay.status||delay.status===200,json:()=>delay.body.promise};}const reply=replies[path];return {status:reply===undefined?401:200,ok:reply!==undefined,json:async()=>reply===undefined?{message:'Permission denied'}:reply};}});
   vm.runInContext(source,context);
-  return {element,storage,calls,delays,replies,info,entered,window:context.window,async submit(id,fields={}){const form=element(id);form.fields=fields;form.listeners.submit({preventDefault(){},currentTarget:form});await flush();}};
+  return {element,storage,calls,delays,replies,info,entered,window:context.window,document:context.document,async submit(id,fields={}){const form=element(id);form.fields=fields;form.listeners.submit({preventDefault(){},currentTarget:form});await flush();}};
 }
 (async()=>{
   // A delayed account JSON body must never restore the hub after explicit logout.
@@ -48,6 +48,7 @@ function harness(hash=''){
   assert.equal(views.element('hub-view-members').hidden,false);
   assert.equal(views.element('hub-view-projects').hidden,true);
   assert.equal(views.element('hub-nav-members')['aria-current'],'page');
+  assert.equal(views.document.title,'团队成员 · Crewmesh');
   views.element('hub-refresh').click();await flush();
   assert.equal(views.element('hub-view-members').hidden,false);
   views.replies['/account/teams'].push({team_id:'t2',name:'Second',role:'member'});
@@ -61,6 +62,23 @@ function harness(hash=''){
     assert.equal(billing.element('hub-view-billing').hidden,false);
     assert.equal(billing.element('hub-view-projects').hidden,true);
   }
+  const fragment=harness();await flush();fragment.window.location.hash='#billing-return';
+  assert.equal(typeof fragment.window.listeners.hashchange,'function');
+  await fragment.window.listeners.hashchange();await flush();
+  assert.equal(fragment.element('hub-view-billing').hidden,false);
+  assert.equal(fragment.element('hub-view-projects').hidden,true);
+  // Switching team during a delayed refresh must not silently ignore the user's choice.
+  const rapid=harness();await flush();
+  rapid.replies['/account/teams'].push({team_id:'t2',name:'Second',role:'member'});
+  rapid.replies['/account/teams/t2/projects']=[];rapid.replies['/account/teams/t2/members']=[];
+  const slowRefresh=deferred();rapid.delays.set('/account/teams',{body:slowRefresh});
+  rapid.element('hub-refresh').click();await flush();
+  rapid.element('hub-team').value='t2';rapid.element('hub-team').listeners.change();await flush();
+  assert.equal(rapid.element('hub-team').value,'t2');
+  assert.ok(rapid.calls.some(c=>c.path==='/account/teams/t2/projects'));
+  slowRefresh.release(rapid.replies['/account/teams']);await flush();
+  assert.equal(rapid.element('hub-team').value,'t2');
+  assert.equal(rapid.element('project-manager').hidden,true);
   // A delayed project load shows loading rather than an empty project state.
   const loading=harness();await flush();const loadingBody=deferred();
   loading.delays.set('/account/teams/t1/projects',{body:loadingBody});
