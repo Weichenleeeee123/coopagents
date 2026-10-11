@@ -71,7 +71,7 @@
   function renderDependency(container,dep,snapshot,context,taskKey){
     const key=taskKey+':dependency:'+dep.id,state=local(key),current=()=>context.isCurrent()&&states.get(key)===state;
     const me=snapshot.me.member_id,source=dep.source.owner_member_id===me,target=dep.target.owner_member_id===me;
-    const manageable=source||snapshot.lifecycle?.can_manage||(!dep.source.owner_member_id&&dep.creator_member_id===me);
+    const manageable=source||snapshot.lifecycle?.can_manage||(!dep.source.owner_member_id&&dep.source.creator_member_id===me);
     const row=node('article','','dependency-record'),status=node('p',state.status,'meta'),controls=[];
     add(row,node('h4','#'+dep.id+' · '+dep.need),node('p',dep.source.title+' → '+dep.target.title,'detail-value'),node('p',statusLabels[dep.status]+' · '+routeLabels[dep.routing_state]+' · '+(dep.target.owner_member_id?context.memberName(dep.target.owner_member_id):'待分派'),'meta'));
     if(dep.context)add(row,node('p',dep.context,'detail-value'));

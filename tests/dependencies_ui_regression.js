@@ -54,5 +54,10 @@ global.document={createElement:tag=>new Element(tag),activeElement:null};
   // Recipient gets a human reply entry, unrelated members get no mutation controls.
   snapshot.me={room_id:'room',member_id:'b'};render();assert.ok(control('发送答复'));assert.equal(control('确认依赖已满足'),undefined);
   snapshot.me={room_id:'room',member_id:'c'};render();assert.equal(control('发送答复'),undefined);assert.equal(control('撤销依赖'),undefined);
+  // An unclaimed source's creator retains cancellation permission even when
+  // another manager created the dependency; dependency creation is not ownership.
+  snapshot.dependencies=[{...dep,source:{...task,owner_member_id:null,creator_member_id:'c'},creator_member_id:'a'}];
+  render();assert.ok(control('撤销依赖'));assert.equal(control('确认依赖已满足'),undefined);
+  snapshot.me={room_id:'room',member_id:'a'};render();assert.equal(control('撤销依赖'),undefined);
   console.log('Dependency UI: explicit read/confirm, stale replies, drafts/history, scope ambiguity, safe DOM and project isolation passed');
 })().catch(error=>{console.error(error);process.exitCode=1;});

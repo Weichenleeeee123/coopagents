@@ -69,7 +69,7 @@ def _latest(db, dep):
 def project(db, dep, history=False):
     result=dict(dep)
     for prefix in ('source','target'):
-        task=db.execute('SELECT id,title,scope,owner_member_id,cancelled_at FROM tasks WHERE id=?',(dep[prefix+'_task_id'],)).fetchone()
+        task=db.execute('SELECT id,title,scope,owner_member_id,creator_member_id,cancelled_at FROM tasks WHERE id=?',(dep[prefix+'_task_id'],)).fetchone()
         result[prefix]=dict(task)
     result['latest_reply']=_latest(db,dep)
     result['blocked']=dep['status']=='active'
