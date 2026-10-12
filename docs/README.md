@@ -4,6 +4,7 @@
 
 | 文档 | 内容 |
 | --- | --- |
+| [Agent 承载空间设计](agent-hosted-spaces-design.md) | 无账号、无需部署网页的轻量协作方向；异地连接、实时事件及 L0–L4 阶段 |
 | [当前黑白工业前端](frontend-monochrome-validation.md) | 01 配色 × 05 布局的源码交付、真实指标、回归与浏览器验收 |
 | [黑白工业实施计划](frontend-monochrome-plan.md) | 用户确认方向的实施清单 |
 | [十套视觉方向](frontend-visual-directions.md) | 配色与布局探索、用户选定的组合 |
