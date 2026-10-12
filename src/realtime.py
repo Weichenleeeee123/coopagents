@@ -107,13 +107,15 @@ def events_route(service, *, base_url=None, public_url=None, poll_interval=.5,
         except (WebSocketDisconnect, OSError):
             pass
         finally:
-            if receiver:
-                receiver.cancel()
-                await asyncio.gather(receiver, return_exceptions=True)
+            # Release reservations before an await: repeated ASGI cancellation
+            # can interrupt receiver cleanup, but must never leak a slot.
             if registered:
                 identities[key] -= 1
                 if identities[key] == 0:
                     identities.pop(key)
             total -= 1
+            if receiver:
+                receiver.cancel()
+                await asyncio.gather(receiver, return_exceptions=True)
 
     return WebSocketRoute('/api/events', endpoint)

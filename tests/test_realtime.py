@@ -92,6 +92,49 @@ class RealtimeTests(unittest.TestCase):
         asyncio.run(run())
         self.assertEqual(sent[-1], {'type': 'websocket.close', 'code': 4408, 'reason': ''})
 
+    def test_cancelled_receive_cleanup_releases_connection_budget(self):
+        import asyncio
+        import json
+        from starlette.websockets import WebSocket
+        from crewmesh.realtime import events_route
+        route = events_route(self.service, base_url='http://localhost:8000', per_identity=1, max_connections=1)
+        scope = {'type':'websocket','scheme':'ws','server':('localhost',8000),'headers':[(b'host',b'localhost:8000')],'query_string':b''}
+
+        async def run():
+            ready, cleaning, release = asyncio.Event(), asyncio.Event(), asyncio.Event()
+            frames = asyncio.Queue()
+            for frame in ({'type':'websocket.connect'}, {'type':'websocket.receive','text':json.dumps({'token':self.room['agent_token'],'after_id':0})}):
+                frames.put_nowait(frame)
+            async def receive():
+                try:
+                    return await frames.get()
+                except asyncio.CancelledError:
+                    cleaning.set()
+                    await release.wait()
+                    raise
+            async def send(message):
+                if message['type']=='websocket.send' and json.loads(message['text'])['type']=='ready':
+                    ready.set()
+            first = asyncio.create_task(route.endpoint(WebSocket(scope, receive, send)))
+            await asyncio.wait_for(ready.wait(), 2)
+            await asyncio.sleep(.02)
+            first.cancel()
+            await asyncio.wait_for(cleaning.wait(), 2)
+            # A second cancellation interrupts the awaited receiver cleanup,
+            # as an ASGI cancellation scope may do on client disconnect.
+            first.cancel()
+            await asyncio.gather(first, return_exceptions=True)
+            release.set()
+            sent = []
+            second_frames = iter([{'type':'websocket.connect'}, {'type':'websocket.receive','text':json.dumps({'token':self.room['agent_token'],'after_id':0})}, {'type':'websocket.disconnect','code':1000}])
+            async def receive_again():
+                return next(second_frames)
+            async def send_again(message):
+                sent.append(message)
+            await asyncio.wait_for(route.endpoint(WebSocket(scope, receive_again, send_again)), 2)
+            self.assertTrue(any(m['type']=='websocket.send' and json.loads(m['text'])['type']=='ready' for m in sent), sent)
+        asyncio.run(run())
+
     def test_connection_limits_release_and_heartbeat(self):
         with self.client(per_identity=1, max_connections=2) as client:
             with client.websocket_connect('ws://localhost:8000/api/events') as first:
