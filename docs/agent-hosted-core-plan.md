@@ -18,12 +18,12 @@
 
 ## Task 1：先建立失败测试
 
-- [ ] 新增核心独立导入测试；从 `crewmesh.coordination` 导入 `CoordinationService`，未实现时必须失败。
-- [ ] 在 `.local/test-evidence/coordination-<uuid>/` 保留独立数据库，禁止自动删除。
-- [ ] 创建空间与成员，创建同一任务，两成员竞争认领；失败方必须得到原有 `Conflict`。
-- [ ] 验证个人身份、跨空间不可见、agent 不可执行管理操作，消息读取不等于处理完成。
-- [ ] 验证完整 `crewmesh.api.Service` 仍有账号/工作区接口，并使用共同核心类型与共同验证函数。
-- [ ] 使用独立 Python 子进程拦截导入，确认共同核心不导入 Starlette、MCP、账单、账号与 OAuth。
+- [x] 新增核心独立导入测试；从 `crewmesh.coordination` 导入 `CoordinationService`，未实现时必须失败。
+- [x] 在 `.local/test-evidence/coordination-<uuid>/` 保留独立数据库，禁止自动删除。
+- [x] 创建空间与成员，创建同一任务，两成员竞争认领；失败方必须得到原有 `Conflict`。
+- [x] 验证个人身份、跨空间不可见、agent 不可执行管理操作，消息读取不等于处理完成。
+- [x] 验证完整 `crewmesh.api.Service` 仍有账号/工作区接口，并使用共同核心类型与共同验证函数。
+- [x] 使用独立 Python 子进程拦截导入，确认共同核心不导入 Starlette、MCP、账单、账号与 OAuth。
 
 测试构造约定：
 
@@ -43,9 +43,9 @@ task = service.call('create_task', owner['web_token'],
 
 ## Task 2：提取共同模块并保持兼容
 
-- [ ] 将 `validate`、`fields` 按原逻辑提取至 `protocol.py`，不要改默认值、字典验证或整数/布尔类型判断。
-- [ ] 将完整协作类提取成 `CoordinationService`；移除其账号与工作区组合步骤，其余操作表、领域类型、调用与快照保持一致。
-- [ ] 在 `api.py` 中使用兼容组合：
+- [x] 将 `validate`、`fields` 按原逻辑提取至 `protocol.py`，不要改默认值、字典验证或整数/布尔类型判断。
+- [x] 将完整协作类提取成 `CoordinationService`；移除其账号与工作区组合步骤，其余操作表、领域类型、调用与快照保持一致。
+- [x] 在 `api.py` 中使用兼容组合：
 
 ```python
 from .coordination import CoordinationService
@@ -60,16 +60,16 @@ class Service(CoordinationService):
         self.workspaces = WorkspaceStore(self.accounts)
 ```
 
-- [ ] 保留 `crewmesh.api.Service`、`crewmesh.api.fields` 与 `crewmesh.api.validate` 的兼容访问，现有 MCP 和路由调用方无需变更。
-- [ ] 定向测试通过后运行完整 Python 回归；如初始化顺序暴露依赖，先查明领域关系再修复，不改变权限规则。
+- [x] 保留 `crewmesh.api.Service`、`crewmesh.api.fields` 与 `crewmesh.api.validate` 的兼容访问，现有 MCP 和路由调用方无需变更。
+- [x] 定向测试通过后运行完整 Python 回归；如初始化顺序暴露依赖，先查明领域关系再修复，不改变权限规则。
 
 ## Task 3：审查与阶段交付
 
-- [ ] 检查只存在一个共同操作表，未复制业务逻辑，核心无 HTTP 或商业功能依赖。
-- [ ] 执行 `git diff --check`，新增定向测试及完整 Python 回归。
-- [ ] 审查行为兼容性与设计一致性；修复问题后仅重跑相关失败和受影响回归。
-- [ ] 写入 `docs/agent-hosted-core-report.md`，记录真实测试结果及未实现的联网、实时事件、Skill 和看板阶段。
-- [ ] 更新任务状态，分阶段提交测试/源码/文档并推送 `feat/agent-hosted-spaces`。不自动合并。
+- [x] 检查只存在一个共同操作表，未复制业务逻辑，核心无 HTTP 或商业功能依赖。
+- [x] 执行 `git diff --check`，新增定向测试及完整 Python 回归。
+- [x] 审查行为兼容性与设计一致性；修复问题后仅重跑相关失败和受影响回归。
+- [x] 写入 `docs/agent-hosted-core-report.md`，记录真实测试结果及未实现的联网、实时事件、Skill 和看板阶段。
+- [x] 更新任务状态，分阶段提交测试/源码/文档并推送 `feat/agent-hosted-spaces`。不自动合并。
 
 ## 后续依赖
 
