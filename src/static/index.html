@@ -6,6 +6,7 @@
     <title>Crewmesh · 同频</title>
     <link rel="icon" type="image/png" href="/static/icon.png" />
     <link rel="stylesheet" href="/static/styles.css" />
+    <script src="/static/invitations.js" defer></script>
     <script src="/static/git.js" defer></script>
     <script src="/static/collaboration.js" defer></script>
     <script src="/static/task_lifecycle.js" defer></script>
@@ -15,6 +16,16 @@
     <script src="/static/accounts.js" defer></script>
   </head>
   <body>
+    <section id="invitation-panel" class="project-card" aria-labelledby="invitation-title" hidden>
+      <p class="eyebrow">TEAM INVITATION</p>
+      <h2 id="invitation-title">加入共同的项目</h2>
+      <p id="invitation-details"></p>
+      <p id="invitation-expiry" class="meta"></p>
+      <p id="invitation-status" role="status"></p>
+      <button id="invitation-accept" type="button" class="primary" hidden>接受邀请并进入项目 ↗</button>
+      <button id="invitation-refresh" type="button" hidden>我已完成登录 ↻</button>
+      <button id="invitation-dismiss" type="button">关闭邀请</button>
+    </section>
     <div id="login" class="entry">
       <section class="entry-story">
         <a class="brand" href="/"
@@ -406,7 +417,7 @@
           ><button data-view="repository"><span>05</span>仓库接入</button>
         </nav>
         <div class="sidebar-foot">
-          <button id="connection-button">接入自己的 agent ↗</button
+          <button id="connection-button">接入 agent ↗</button
           ><button id="invite-button" hidden>邀请成员 ↗</button>
           <p id="identity"></p>
           <button id="logout">退出当前标签页</button>
@@ -575,15 +586,19 @@
       </p>
       <div id="private-content"></div>
       <div id="connection-help">
+        <p>选择你的工具，生成一段接入指令并复制给自己的 agent。无需安装 Crewmesh 客户端。</p>
+        <label>接入工具<select id="connection-tool">
+          <option value="codex-desktop">Codex 桌面</option>
+          <option value="codex-cli">Codex CLI</option>
+          <option value="claude-code">Claude Code</option>
+        </select></label>
+        <button id="generate-connection">生成接入指令</button>
+        <a href="/skills/crewmesh-connect/SKILL.md" download="SKILL.md">下载公开 Skill</a>
+        <button id="copy-skill-preview">复制无凭据预览</button>
+        <details><summary>高级：手动配置与诊断</summary>
         <div id="collaboration-setup" class="collaboration-setup"></div>
         <label>MCP 地址<input id="mcp-url" readonly /></label
         ><button id="copy-url">复制地址</button
-        ><label
-          >接入工具<select id="connection-tool">
-            <option value="desktop">Codex 桌面 / 项目配置</option>
-            <option value="cli">Codex CLI</option>
-            <option value="claude">Claude Code</option>
-          </select></label
         ><label
           >配置模板<textarea
             id="config-template"
@@ -600,6 +615,7 @@
         <p class="muted">
           轮换后旧令牌立即失效，须更新配置。网页凭据不受影响。
         </p>
+        </details>
       </div>
       <p id="dialog-status" role="status"></p>
     </dialog>

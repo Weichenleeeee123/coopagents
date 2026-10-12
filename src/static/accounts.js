@@ -27,6 +27,17 @@
   const node = (tag, value, cls) => { const n=document.createElement(tag); n.textContent=value == null?'':String(value); if(cls)n.className=cls;return n; };
   const btn = (label, action, cls) => {const n=node('button',label,cls);n.type='button';n.addEventListener('click',()=>act(n,action));return n;};
   const routeTeam = () => '/account/teams/'+encodeURIComponent(teamId);
+  function invitationState(){window.CrewmeshInvitations?.update({session,config,request,accept:acceptInvitation,refresh:start});}
+  async function acceptInvitation(token,isCurrent=()=>true){
+    const mine=epoch,result=await request('/account/invites/accept',{invite_token:token});
+    if(mine!==epoch || !isCurrent())throw stale();await reload(result.team_id,isCurrent);
+    if(!isCurrent())throw stale();
+    if(result.project_ids?.length===1)await selectProject(result.project_ids[0],isCurrent);
+  }
+  async function createInvitation(projectIds,data={role:'member'}){
+    const mine=epoch,invite=await request(routeTeam()+'/invites',{...data,project_ids:projectIds});
+    if(mine===epoch)project.private('复制团队邀请链接',{invite_url:window.CrewmeshInvitations.link(invite),expires_at:invite.expires_at});
+  }
   function invalidate() {
     window.CrewmeshBilling?.clear();el('hub-loading').hidden=true;
     epoch++; for(const c of pending)c.abort(); pending.clear(); project.clear();
@@ -42,6 +53,7 @@
     el('account-hub').hidden=true;el('login').hidden=false;
     ['account-login','bootstrap-form','register-form','accept-form','password-form','claim-form','project-form','team-form','team-invite-form'].forEach(id=>el(id).reset());
     el('hub-team').replaceChildren();el('workspace-team').replaceChildren();el('workspace-project').replaceChildren();
+    invitationState();
   }
   async function request(path, data, headers = {}, check = true, timeout = 10000) {
     const mine=epoch, c=new AbortController();pending.add(c);
@@ -74,7 +86,7 @@
     for(const row of rows){const option=node('option',row.name);option.value=row[key];target.append(option);}target.value=value;
   }
   function manager(){return ['owner','admin'].includes(teams.find(t=>t.team_id===teamId)?.role);}
-  function showHub(){el('login').hidden=true;el('workspace').hidden=true;el('account-hub').hidden=false;el('hub-identity').textContent=session.account.display_name+' / '+(session.account.username || 'GitHub');}
+  function showHub(){el('login').hidden=true;el('workspace').hidden=true;el('account-hub').hidden=false;el('hub-identity').textContent=session.account.display_name+' / '+(session.account.username || 'GitHub');invitationState();}
   function renderTeams(){
     for(const id of ['hub-team','workspace-team'])options(el(id),teams,teamId,'team_id','选择团队');
     options(el('workspace-project'),projects,roomId,'room_id','选择项目');
@@ -84,7 +96,7 @@
   function renderProjects(){
     const box=el('hub-projects');box.replaceChildren();
     if(!projects.length)box.append(node('p',teamId?'当前没有获授权的项目。团队管理员可创建项目或授予访问。':'创建一个团队，或接受邀请后选择项目。','empty'));
-    for(const p of projects){const card=node('article','','project-card');card.append(node('p','PROJECT / 共享工作现场','eyebrow'),node('h3',p.name),node('p',p.repository || '未声明仓库','muted'),btn('进入项目 ↗',()=>selectProject(p.room_id)));box.append(card);}
+    for(const p of projects){const card=node('article','','project-card');card.append(node('p','PROJECT / 共享工作现场','eyebrow'),node('h3',p.name),node('p',p.repository || '未声明仓库','muted'),btn('进入项目 ↗',()=>selectProject(p.room_id)));if(manager())card.append(btn('邀请队友 ↗',()=>createInvitation([p.room_id])));box.append(card);}
     const roles=teams.find(t=>t.team_id===teamId)?.role==='owner'?['member','admin','owner']:['member'];
     el('invite-role').replaceChildren();for(const role of roles){const o=node('option',{member:'成员',admin:'管理员',owner:'所有者'}[role]);o.value=role;el('invite-role').append(o);}
     el('invite-scopes').replaceChildren();for(const p of managed){const label=node('label',p.name,'scope-option'),input=document.createElement('input');input.type='checkbox';input.value=p.room_id;label.prepend(input);el('invite-scopes').append(label);}
@@ -118,28 +130,29 @@
       isCurrent:()=>mine===epoch && !!session && teamId===id,
       request:(path,data)=>{if(mine!==epoch || !session || teamId!==id)return Promise.reject(stale());return request(path,data,{},true,60000);}});
   }
-  async function loadTeam(id) {
+  async function loadTeam(id,isCurrent=()=>true) {
+    if(!isCurrent())throw stale();
     const nextView=id===teamId?hubView:'projects';
     invalidate();teamId=id;sessionStorage.setItem('crewmesh_selected_team',id);showHub();renderTeams();setHubView(nextView);const mine=epoch;
     el('hub-loading').hidden=!id;el('hub-projects').setAttribute('aria-busy',String(!!id));
     if(!id){renderProjects();return;}
     try {
     loadBilling(mine,id);
-    const base=routeTeam();projects=await request(base+'/projects');if(mine!==epoch)return;
-    members=await request(base+'/members');if(mine!==epoch)return;
-    managed=manager()?await request(base+'/managed-projects'):[];if(mine!==epoch)return;
+    const base=routeTeam();const loadedProjects=await request(base+'/projects');if(mine!==epoch || !isCurrent())return;projects=loadedProjects;
+    const loadedMembers=await request(base+'/members');if(mine!==epoch || !isCurrent())return;members=loadedMembers;
+    const loadedManaged=manager()?await request(base+'/managed-projects'):[];if(mine!==epoch || !isCurrent())return;managed=loadedManaged;
     renderTeams();renderProjects();renderMembers();
     } finally {if(mine===epoch){el('hub-loading').hidden=true;el('hub-projects').setAttribute('aria-busy','false');}}
   }
-  async function reload(preferred=teamId) {
-    if(!session)return;const mine=epoch;const rows=await request('/account/teams');if(mine!==epoch)return;teams=rows;
-    await loadTeam(teams.some(t=>t.team_id===preferred)?preferred:teams[0]?.team_id || '');
+  async function reload(preferred=teamId,isCurrent=()=>true) {
+    if(!session || !isCurrent())return;const mine=epoch;const rows=await request('/account/teams');if(mine!==epoch || !isCurrent())return;teams=rows;
+    await loadTeam(teams.some(t=>t.team_id===preferred)?preferred:teams[0]?.team_id || '',isCurrent);
   }
   async function change(path,data){const mine=epoch;await request(path,data);if(mine===epoch)await reload();}
-  async function selectProject(id){
-    if(!session || !projects.some(p=>p.room_id===id))return;
+  async function selectProject(id,isCurrent=()=>true){
+    if(!session || !isCurrent() || !projects.some(p=>p.room_id===id))return;
     const selectedTeam=teamId, available=projects;invalidate();showHub();const mine=epoch;
-    const credential=await request('/account/projects/'+encodeURIComponent(id)+'/select',{});if(mine!==epoch || selectedTeam!==teamId)return;
+    const credential=await request('/account/projects/'+encodeURIComponent(id)+'/select',{});if(mine!==epoch || selectedTeam!==teamId || !isCurrent())return;
     projects=available;roomId=id;sessionStorage.setItem('crewmesh_selected_project',id);project.enter(credential.web_token);
     el('account-hub').hidden=true;el('account-switchers').hidden=false;el('logout').textContent='返回团队与项目';renderTeams();
   }
@@ -148,17 +161,18 @@
     try{await reload();}catch(error){if(session && error.message!=='访问已切换')el('hub-error').textContent=error.message;}
   }
   async function denied(){invalidate();showHub();try{await request('/account/session');await reload();el('hub-error').textContent='项目访问已失效，请重新选择获授权的项目。';}catch(error){if(error.status===401)loggedOut();else el('hub-error').textContent=error.message;}}
-  async function login(path,data,headers={}){
-    loggedOut();const mine=epoch;const info=await request(path,data,headers);if(mine!==epoch)return;session=info;el('legacy-entry').open=false;await reload();
+  async function login(path,data,headers={},isCurrent=()=>true){
+    loggedOut();const mine=epoch;const info=await request(path,data,headers);if(mine!==epoch || !isCurrent())return;session=info;el('legacy-entry').open=false;await reload(info.team_id,isCurrent);
+    if(path==='/account/invites/accept' && isCurrent()){if(info.project_ids?.length===1)await selectProject(info.project_ids[0],isCurrent);if(isCurrent())window.CrewmeshInvitations?.clear();}
   }
   bind('account-login',data=>login('/account/login',data));
   bind('bootstrap-form',data=>{const secret=data.bootstrap_secret;delete data.bootstrap_secret;if(!data.display_name)delete data.display_name;return login('/account/bootstrap',data,{'X-Crewmesh-Bootstrap':secret});});
-  bind('register-form',data=>{if(!data.display_name)delete data.display_name;return login('/account/invites/accept',data);});
+  bind('register-form',data=>{if(!data.display_name)delete data.display_name;return login('/account/invites/accept',window.CrewmeshInvitations?.registration(data)||data,{},window.CrewmeshInvitations?.guard()||(()=>true));});
   bind('team-form',async data=>{const mine=epoch,result=await request('/account/teams',data);if(mine===epoch)await reload(result.team_id);});
   bind('project-form',async data=>{await change(routeTeam()+'/projects',data);});
-  bind('accept-form',async data=>{const mine=epoch,result=await request('/account/invites/accept',{invite_token:data.invite_token});if(mine===epoch)await reload(result.team_id);});
+  bind('accept-form',async data=>{await acceptInvitation(data.invite_token);});
   bind('claim-form',async data=>{await change(routeTeam()+'/claim',data);});
-  bind('team-invite-form',async data=>{const mine=epoch;data.project_ids=Array.from(el('invite-scopes').querySelectorAll('input:checked')).map(n=>n.value);const invite=await request(routeTeam()+'/invites',data);if(mine===epoch)project.private('保存团队邀请令牌',invite);});
+  bind('team-invite-form',async data=>{await createInvitation(Array.from(el('invite-scopes').querySelectorAll('input:checked')).map(n=>n.value),data);});
   bind('password-form',async data=>{const mine=epoch;await request('/account/password',data);if(mine!==epoch)return;loggedOut();el('account-error').textContent='密码已修改，请重新登录。';});
   el('account-logout').addEventListener('click',()=>{busy=false;return act(el('account-logout'),async()=>{
     const csrf=session?.csrf_token;invalidate();el('account-hub').hidden=true;el('login').hidden=true;
@@ -175,6 +189,7 @@
     config=await request('/account/config',undefined,{},false);if(mine!==epoch)return;
     el('account-mode').textContent=config.local_login_enabled?'本地部署 · 使用本机服务的账号登录':config.github_oauth_enabled?'云端部署 · 使用 GitHub 账号登录':'云端部署尚未配置 GitHub 登录，请联系部署管理员。';
     el('account-login').hidden=!config.local_login_enabled;el('account-bootstrap').hidden=!config.bootstrap_enabled;el('account-register').hidden=!config.local_login_enabled;el('github-login').hidden=!config.github_oauth_enabled;
+    invitationState();
     for(const id of ['tab-create','tab-join','form-create','form-join'])el(id).hidden=!config.local_login_enabled;
     if(!config.local_login_enabled)el('tab-restore').click();
     let info;
@@ -182,7 +197,7 @@
     catch(error){if(mine!==epoch)return;if(error.status===401){if(wasManaged)loggedOut();return;}throw error;}
     if(mine!==epoch)return;session=info;await reload(storedTeam);
     if(['#billing','#billing-return'].includes(window.location?.hash))setHubView('billing');
-    if(wasManaged&&storedProject&&!['#billing','#billing-return'].includes(window.location?.hash)&&projects.some(p=>p.room_id===storedProject))await selectProject(storedProject);
+    if(wasManaged&&storedProject&&!window.CrewmeshInvitations?.pending()&&!['#billing','#billing-return'].includes(window.location?.hash)&&projects.some(p=>p.room_id===storedProject))await selectProject(storedProject);
   }
   window.addEventListener('hashchange',async()=>{
     const hash=window.location.hash,account=session,selectedTeam=teamId;

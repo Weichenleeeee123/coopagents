@@ -64,6 +64,28 @@ class AccountHTTPTests(unittest.TestCase):
         self.assertFalse(live.request('GET', '/account/config')[1]['local_login_enabled'])
         for path in ('login', 'bootstrap', 'password'):
             self.assertEqual(live.request('POST', '/account/' + path, data={}, headers={'Origin': live.url})[0], 401)
+
+    def test_invitation_body_preview_is_public_origin_checked_and_non_consuming(self):
+        self.bootstrap()
+        team = self.post('/account/teams', {'name': 'Preview Team'})[1]['team_id']
+        project = self.post(f'/account/teams/{team}/projects', {'name': 'Invited project'})[1]['room_id']
+        invite = self.post(f'/account/teams/{team}/invites', {'project_ids': [project]})[1]['invite_token']
+        data = {'invite_token': invite}
+        self.assertEqual(403, self.live.request('POST', '/account/invites/preview', data=data)[0])
+        for headers in ({'Origin': self.live.url}, {'Origin': self.live.url, 'Cookie': self.headers['Cookie']}):
+            status, preview, response_headers = self.post('/account/invites/preview', data, headers)
+            self.assertEqual(200, status, preview)
+            self.assertEqual('Preview Team', preview['team_name'])
+            self.assertEqual([{'room_id': project, 'name': 'Invited project'}], preview['projects'])
+            self.assertNotIn('invite_token', preview)
+            self.assertEqual('no-store', response_headers['Cache-Control'])
+        self.assertEqual(200, self.post('/account/invites/accept', {'invite_token': invite, 'username': 'preview-member', 'password': PASSWORD}, {'Origin': self.live.url})[0])
+        self.assertEqual(401, self.post('/account/invites/preview', data, {'Origin': self.live.url})[0])
+        self.assertNotEqual(200, self.live.request('GET', '/account/invites/preview', headers=self.headers)[0])
+        from urllib.request import urlopen
+        with urlopen(self.live.url + '/static/invitations.js') as response:
+            self.assertEqual(200, response.status)
+            self.assertIn(b'CrewmeshInvitations', response.read())
     def test_public_secure_cookie_and_cloud_legacy_disabled(self):
         from starlette.testclient import TestClient
         from pathlib import Path
