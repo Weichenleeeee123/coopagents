@@ -100,6 +100,7 @@ class Service:
             'join': (None, self.identity.join_invite, fields('invite_token display_name')),
             'invite': ('web', self.identity.create_invite, fields()),
             'rotate_agent': ('web', self.identity.rotate_agent, fields()),
+            'connect_agent': ('web', self.identity.connect_agent, fields()),
             'create_task': ('web', self.tasks.create_task, fields('intent_key title scope')),
             'claim_task': ('agent', self.tasks.claim_task, fields('task_id', {'session_key': None})),
             'register_session': ('agent', self.activity.register_session, fields('session_key tool repository branch', {'task_id': None, 'ownership_epoch': None})),
@@ -377,6 +378,12 @@ def create_app(database_path='.local/crewmesh.sqlite3', *, base_url=None, public
             token = None if public else bearer(request)
             if token:
                 service.identity.authenticate(token)
+            if operation == 'connect_agent':
+                # Account project bearers are tied to a validated cookie session.
+                origins = request.headers.getlist('origin')
+                expected = origin or base_url or str(request.base_url).rstrip('/')
+                if len(origins) != 1 or origins[0] != expected:
+                    return JSONResponse({'error': 'AccessDenied', 'message': 'Origin not accepted'}, status_code=403)
             if request.method == 'GET':
                 name = request.scope['read_name']
                 if name == 'me':
@@ -426,6 +433,14 @@ def create_app(database_path='.local/crewmesh.sqlite3', *, base_url=None, public
             return await endpoint(request)
         return Route(path, handle, methods=methods)
 
+    async def skill_asset(request):
+        resource = request.path_params['resource']
+        if resource not in ('SKILL.md', 'protocol.md'):
+            return Response(status_code=404)
+        return Response(files('crewmesh').joinpath('skills', 'crewmesh-connect', resource).read_bytes(),
+                        media_type='text/plain', headers={'X-Content-Type-Options':'nosniff',
+                        'Content-Security-Policy': WEB_CSP})
+
     async def web_asset(request):
         assets = {'/': ('index.html', 'text/html'),
                   '/static/styles.css': ('styles.css', 'text/css'),
@@ -448,7 +463,9 @@ def create_app(database_path='.local/crewmesh.sqlite3', *, base_url=None, public
     routes += [route('/health', ['GET']), route('/ready', ['GET']), route('/api/rooms', ['POST'], operation='create_room'), route('/api/join', ['POST'], operation='join'),
               route('/api/me', ['GET'], read_name='me'), route('/api/snapshot', ['GET'], read_name='snapshot'),
               route('/api/invites', ['POST'], operation='invite'), route('/api/agent-token', ['POST'], operation='rotate_agent'),
-              route('/api/inbox', ['GET'], read_name='inbox')]
+              route('/api/inbox', ['GET'], read_name='inbox'),
+              route('/api/agent-connect', ['POST'], operation='connect_agent'),
+              Route('/skills/crewmesh-connect/{resource}', skill_asset, methods=['GET'])]
     for name in ('tasks', 'sessions', 'progress', 'overlaps', 'requests', 'contracts', 'events', 'git'):
         routes.append(route('/api/' + name, ['GET'], read_name=name))
     routes.append(route('/api/git/binding',['GET'],read_name='git_binding'))

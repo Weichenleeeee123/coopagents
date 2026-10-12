@@ -6,7 +6,7 @@ import secrets
 from uuid import uuid4
 
 from .database import Database
-from .errors import AccessDenied, NotFound, ValidationError
+from .errors import AccessDenied, Conflict, NotFound, ValidationError
 
 
 @dataclass(frozen=True)
@@ -125,6 +125,21 @@ class IdentityStore:
             connection.execute('''UPDATE invitations SET used_at = ?, used_by_member_id = ?
                 WHERE token_hash = ?''', (now.isoformat(), result['member_id'], token_hash))
             return result
+
+    def connect_agent(self, web_token):
+        """Issue another personal credential without invalidating existing agents."""
+        with self.db.connect(write=True) as connection:
+            principal = self.resolve(connection, web_token, required_kind='web')
+            now = _utcnow()
+            active = connection.execute('''SELECT COUNT(*) FROM credentials
+                WHERE member_id=? AND kind='agent' AND revoked_at IS NULL
+                AND (expires_at IS NULL OR expires_at>?)''',
+                (principal.member_id, now.isoformat())).fetchone()[0]
+            if active >= 32:
+                raise Conflict('Personal agent credential limit reached; review existing connections')
+            token, expires_at = self._issue_credential(connection, principal.member_id, 'agent', now)
+            return {'agent_token': token, 'expires_at': expires_at,
+                    'room_id': principal.room_id, 'member_id': principal.member_id}
 
     def rotate_agent(self, web_token):
         with self.db.connect(write=True) as connection:

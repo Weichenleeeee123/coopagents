@@ -237,10 +237,18 @@ function renderContracts(){
 async function perform(b, operation){ b.disabled=true; $('action-error').textContent=''; const epoch=generation; try { await operation(); if(epoch===generation){ renderSignature=''; await sync(); } } catch(error){ if(epoch===generation) $('action-error').textContent=error.message; } finally{b.disabled=false;} }
 $('task-form').addEventListener('submit',e=>{e.preventDefault();const form=e.currentTarget,b=form.querySelector('button[type=submit]'),epoch=generation;perform(b,async()=>{await api('/api/tasks',Object.fromEntries(new FormData(form)));if(epoch===generation){form.reset();$('task-create').open=false;$('new-task').focus();}});});
 $('retry').addEventListener('click',sync); $('logout').addEventListener('click',()=>{if(accountManaged && typeof window!=='undefined')window.CrewmeshAccounts.home();else logout();});
-function configTemplate(){const url=location.origin+'/mcp'; const tool=$('connection-tool').value; $('config-template').value=tool==='desktop'?'[mcp_servers.crewmesh]\nurl = "'+url+'"\nhttp_headers = { Authorization = "Bearer TOKEN" }':tool==='cli'?"$env:CREWMESH_AGENT_TOKEN = 'TOKEN'\ncodex mcp add crewmesh --url "+url+' --bearer-token-env-var CREWMESH_AGENT_TOKEN':"claude mcp add --transport http --scope local crewmesh "+url+' --header "Authorization: Bearer TOKEN"';}
+function configTemplate(){const url=location.origin+'/mcp'; const tool=$('connection-tool').value; $('config-template').value=tool==='codex-desktop'?'[mcp_servers.crewmesh]\nurl = "'+url+'"\nhttp_headers = { Authorization = "Bearer TOKEN" }':tool==='codex-cli'?"$env:CREWMESH_AGENT_TOKEN = 'TOKEN'\ncodex mcp add crewmesh --url "+url+' --bearer-token-env-var CREWMESH_AGENT_TOKEN':"claude mcp add --transport http --scope local crewmesh "+url+' --header "Authorization: Bearer TOKEN"';}
 async function copy(value){try{await navigator.clipboard.writeText(value);$('dialog-status').textContent='已复制，请妥善保存。';}catch{$('dialog-status').textContent='复制不可用，请选择字段并手动复制。';}}
-let dialogOpener=null;
-function showPrivate(title, credentials={}) { $('private-content').replaceChildren(); $('private-title').textContent=title; $('dialog-status').textContent=''; $('connection-help').hidden=!!(credentials.invite_token||credentials.invite_url);
+let dialogOpener=null, privateEpoch=0;
+const skillUrl=()=>location.origin+'/skills/crewmesh-connect/SKILL.md';
+function connectionPrompt(project,tool,credential='') {
+  return '请读取并使用 Crewmesh 接入 Skill：'+skillUrl()+'\n协议参考：'+location.origin+'/skills/crewmesh-connect/protocol.md'+
+    '\n我授权你为当前工具配置这个项目的原生 MCP，并将 Skill 安装到受支持的个人 Skill 目录（已有文件不得覆盖或删除）。不要安装 Crewmesh 客户端。'+
+    '\n服务：'+location.origin+'\nMCP：'+location.origin+'/mcp\n项目：'+project+'\n工具：'+tool+
+    (credential?'\n个人 agent 凭据：'+credential:'\n这是无凭据预览；请在项目网页点击生成接入指令获取本人凭据。')+
+    '\n凭据仅用于私有配置和同源认证请求，不要回显、写入 URL 或提交 Git。验证 /api/me 项目身份，再配置 MCP；需要重启请明确说明。';
+}
+function showPrivate(title, credentials={}) { clearPrivate(); $('private-title').textContent=title; $('dialog-status').textContent=''; $('connection-help').hidden=!!(credentials.invite_token||credentials.invite_url);
   for(const [key,label,expiry] of [['invite_url','邀请链接',credentials.expires_at],['invite_token','邀请令牌',credentials.expires_at],['web_token','网页恢复凭据',credentials.web_expires_at],['agent_token','个人 agent 令牌',credentials.agent_expires_at||credentials.expires_at]]) if(credentials[key]) {
     const value=credentials[key],block=text('div','','secret'),l=text('label',label),input=document.createElement('input');input.type='password';input.readOnly=true;input.value=value;input.autocomplete='off';l.append(input);
     add(block,l,button('显示 / 隐藏',()=>{input.type=input.type==='password'?'text':'password';}),button('复制',()=>copy(input.value)),text('p','有效期至 '+date(expiry)+' · 关闭后不再展示','meta')); $('private-content').append(block);
@@ -248,11 +256,28 @@ function showPrivate(title, credentials={}) { $('private-content').replaceChildr
   $('mcp-url').value=location.origin+'/mcp'; configTemplate(); if(!$('private-dialog').open){dialogOpener=document.activeElement;$('private-dialog').showModal();}
   if(snapshot&&!credentials.invite_token&&!credentials.invite_url)collaborationUI()?.renderSetup($('collaboration-setup'),snapshot,gitContext());
 }
-function clearPrivate(){ $('private-content').replaceChildren(); $('dialog-status').textContent=''; $('config-template').value=''; $('collaboration-setup')?.replaceChildren(); }
+function clearPrivate(){ privateEpoch++; $('private-content').querySelectorAll?.('input,textarea').forEach(e=>{e.value='';});$('private-content').replaceChildren(); $('dialog-status').textContent=''; $('config-template').value=''; $('collaboration-setup')?.replaceChildren(); }
 function closePrivate(){if($('private-dialog').open)$('private-dialog').close();clearPrivate();}
 $('private-dialog').addEventListener('close',()=>{clearPrivate();if(dialogOpener?.isConnected)dialogOpener.focus();dialogOpener=null;});
-$('close-dialog').addEventListener('click',closePrivate); $('connection-button').addEventListener('click',()=>showPrivate('接入自己的 agent'));
-$('copy-url').addEventListener('click',()=>copy($('mcp-url').value)); $('connection-tool').addEventListener('change',configTemplate); $('copy-template').addEventListener('click',()=>copy($('config-template').value));
+$('close-dialog').addEventListener('click',closePrivate); $('connection-button').addEventListener('click',()=>showPrivate('接入 agent'));
+$('generate-connection').addEventListener('click',async e=>{
+  const epoch=generation, dialog=privateEpoch, project=snapshot?.me.room_id, tool=$('connection-tool').value, b=e.currentTarget;
+  if(!project)return;
+  b.disabled=true;$('dialog-status').textContent='正在生成本人项目接入指令…';
+  try{
+    const result=await api('/api/agent-connect',{},true,{Origin:location.origin});
+    if(epoch!==generation||dialog!==privateEpoch||!$('private-dialog').open)return;
+    if(result.room_id!==project||result.member_id!==snapshot.me.member_id)throw new Error('接入身份不匹配，请重新打开项目');
+    const block=text('div','','secret'),label=text('label','私有接入指令（包含个人凭据）'),input=document.createElement('textarea');
+    input.readOnly=true;input.rows=10;input.autocomplete='off';input.hidden=true;input.value=connectionPrompt(project,tool,result.agent_token);label.append(input);
+    $('private-content').querySelectorAll?.('input,textarea').forEach(e=>{e.value='';});$('private-content').replaceChildren();
+    add(block,label,button('显示 / 隐藏指令',()=>{input.hidden=!input.hidden;}),button('复制接入指令',()=>copy(input.value)),text('p','复制给自己的 agent，一次完成接入。有效期至 '+date(result.expires_at)+'。已有连接继续有效。','meta'));
+    $('private-content').append(block);$('dialog-status').textContent='指令已生成，请复制给自己的 agent；关闭后清空。';
+  }catch(error){if(epoch===generation&&dialog===privateEpoch&&$('private-dialog').open)$('dialog-status').textContent=error.message;}
+  finally{b.disabled=false;}
+});
+$('copy-skill-preview').addEventListener('click',()=>copy(connectionPrompt(snapshot?.me.room_id||'请选择项目',$('connection-tool').value)));
+$('copy-url').addEventListener('click',()=>copy($('mcp-url').value)); $('connection-tool').addEventListener('change',()=>{clearPrivate();configTemplate();}); $('copy-template').addEventListener('click',()=>copy($('config-template').value));
 $('invite-button').addEventListener('click',e=>{const epoch=generation;perform(e.currentTarget,async()=>{const result=await api('/api/invites',{});if(epoch===generation)showPrivate('邀请一位团队成员',result);});});
 $('rotate-agent').addEventListener('click',async e=>{ const b=e.currentTarget; b.disabled=true;const epoch=generation;try{const result=await api('/api/agent-token',{});if(epoch===generation){showPrivate('保存新的 agent 令牌',result);$('dialog-status').textContent='旧 agent 令牌已立即失效。请更新配置并重建连接。';}}catch(error){if(epoch===generation)$('dialog-status').textContent=error.message;}finally{b.disabled=false;} });
 setView('tasks');

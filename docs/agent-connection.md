@@ -2,6 +2,14 @@
 
 正式服务使用 Streamable HTTP MCP 和成员个人 agent 令牌。网页凭据只用于网页操作，不能作为 MCP 凭据。正式本机地址为 `http://127.0.0.1:8787/mcp`；已有实验服务 `8768` 是另一套数据。
 
+## 推荐：复制 Skill 接入指令
+
+进入项目后点击侧栏「接入 agent」，选择 Claude Code、Codex CLI 或 Codex 桌面，点击「生成接入指令」再「复制接入指令」，交给自己的 agent。指令包含公开 Skill 地址、项目与服务地址以及本人的个人 agent 凭据。agent 按 Skill 安装公开说明、配置原生 HTTP MCP，并验证身份与协作调用；不需要安装 Crewmesh 本地客户端或 Python 包。
+
+凭据仅在该私有弹窗中生成与展示，关闭或切换后清空，不写浏览器持久存储。生成指令不会轮换已有 agent 凭据。公开 Skill 与协议说明为 `/skills/crewmesh-connect/SKILL.md` 和相邻 `protocol.md`，不包含成员秘密；不要把私有接入指令保存到 Skill 文件或 Git。个人凭据有效 90 天，最多 32 个未过期凭据；需要统一撤销时使用现有个人令牌轮换。
+
+当前原生会话无法热加载配置时，agent 应明确提示启动新会话。HTTP 身份验证、原生 MCP 调用和原生自动检查点是不同证据，不能互相代替。下述手动配置与 Python hook 仅为高级已有安装环境的选项，不是 Skill 接入前置条件。
+
 ## Codex
 
 本机 `codex mcp add --help` 已确认支持 `--url` 和 `--bearer-token-env-var`。在启动 Codex CLI 的同一个 PowerShell 会话中设置环境变量，然后添加服务：
