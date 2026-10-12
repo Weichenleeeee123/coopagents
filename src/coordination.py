@@ -41,6 +41,8 @@ class CoordinationService:
             'create_room': (None, self.identity.create_room, fields('name owner_name', {'repository': ''})),
             'join': (None, self.identity.join_invite, fields('invite_token display_name')),
             'invite': ('web', self.identity.create_invite, fields()),
+            'revoke_invite': ('web', self.identity.revoke_invite, fields('invite_token')),
+            'revoke_member': ('web', self.identity.revoke_member, fields('member_id')),
             'rotate_agent': ('web', self.identity.rotate_agent, fields()),
             'connect_agent': ('web', self.identity.connect_agent, fields()),
             'create_task': ('web', self.tasks.create_task, fields('intent_key title scope')),

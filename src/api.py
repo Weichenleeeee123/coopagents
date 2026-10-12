@@ -374,6 +374,8 @@ def create_app(database_path='.local/crewmesh.sqlite3', *, base_url=None, public
     routes.extend(billing_routes(service, billing_runtime, origin=origin or base_url))
     from .realtime import events_route
     routes.append(events_route(service, base_url=base_url, public_url=origin))
+    from .coordination_http import coordination_routes
+    routes.extend(coordination_routes(service, base_url=base_url, public_url=origin))
     routes.append(Mount('/', app=authenticated_mcp))
     app = Starlette(routes=routes, lifespan=lifespan)
     app.state.service = service
