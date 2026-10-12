@@ -20,7 +20,8 @@ class LiveService:
         self.port = self.socket.getsockname()[1]
         self.url = f'http://127.0.0.1:{self.port}'
         self.app = create_app(self.database, base_url=self.url)
-        self.server = uvicorn.Server(uvicorn.Config(self.app, log_level='critical', access_log=False))
+        self.server = uvicorn.Server(uvicorn.Config(self.app, log_level='critical', access_log=False,
+            ws_max_size=4096, ws_max_queue=4, ws_ping_interval=15, ws_ping_timeout=15))
         self.thread = threading.Thread(target=lambda: self.server.run(sockets=[self.socket]), daemon=True)
         self.thread.start()
         deadline = time.monotonic() + 10

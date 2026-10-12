@@ -41,6 +41,7 @@ class Service(CoordinationService):
         from .workspaces import WorkspaceStore
         self.accounts = AccountStore(self.identity)
         self.workspaces = WorkspaceStore(self.accounts)
+        self.change_events.install_triggers()
 
 
 class LocalBoundary:
@@ -371,6 +372,8 @@ def create_app(database_path='.local/crewmesh.sqlite3', *, base_url=None, public
     from .git_routes import git_routes
     routes.extend(git_routes(service, service.github))
     routes.extend(billing_routes(service, billing_runtime, origin=origin or base_url))
+    from .realtime import events_route
+    routes.append(events_route(service, base_url=base_url, public_url=origin))
     routes.append(Mount('/', app=authenticated_mcp))
     app = Starlette(routes=routes, lifespan=lifespan)
     app.state.service = service

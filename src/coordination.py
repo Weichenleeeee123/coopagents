@@ -31,6 +31,8 @@ class CoordinationService:
         from .github_app import GitHubApp
         from .github_sync import GitHubSync
         self.github = GitHubSync(self.identity, self.repositories, github_app or GitHubApp())
+        from .events import EventStore
+        self.change_events = EventStore(self.identity)
         self.operations = {
             'checkpoint': ('agent', self.checkpoints.checkpoint, fields('session_key tool event', {'task_id': None, 'ownership_epoch': None})),
             'diagnostic_start': ('agent', self.checkpoints.diagnostic_start, fields('challenge')),
