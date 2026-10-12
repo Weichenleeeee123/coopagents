@@ -10,6 +10,8 @@
     // Clear even malformed fragments before a network request or any other UI work.
     window.history.replaceState(null,'',window.location.pathname+window.location.search);
     preview=null;failure='';revision++;loading=false;
+    const priorInput=el('register-form').querySelector('[name=invite_token]');
+    if(priorInput){priorInput.value='';const label=priorInput.closest('label');if(label)label.hidden=false;}
     el('invitation-accept').hidden=true;el('invitation-details').textContent='';el('invitation-expiry').textContent='';
     try{token=decodeURIComponent(hash.slice(8));}catch{token='';}
     if(!token || token.length>128){token='';el('invitation-panel').hidden=false;el('invitation-status').textContent='邀请链接无效，请向邀请人索取新链接。';return false;}
@@ -61,6 +63,7 @@
   capture();
   window.CrewmeshInvitations={
     update(next){hooks=next;render();return load();}, clear, pending:()=>!!token,
+    guard(){const mine=revision;return ()=>mine===revision;},
     registration(data){return token?{...data,invite_token:token}:data;},
     link(invite){return window.location.origin+'/#invite='+encodeURIComponent(invite.invite_token);}
   };

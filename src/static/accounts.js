@@ -161,13 +161,13 @@
     try{await reload();}catch(error){if(session && error.message!=='访问已切换')el('hub-error').textContent=error.message;}
   }
   async function denied(){invalidate();showHub();try{await request('/account/session');await reload();el('hub-error').textContent='项目访问已失效，请重新选择获授权的项目。';}catch(error){if(error.status===401)loggedOut();else el('hub-error').textContent=error.message;}}
-  async function login(path,data,headers={}){
-    loggedOut();const mine=epoch;const info=await request(path,data,headers);if(mine!==epoch)return;session=info;el('legacy-entry').open=false;await reload(info.team_id);
-    if(path==='/account/invites/accept'){window.CrewmeshInvitations?.clear();if(info.project_ids?.length===1)await selectProject(info.project_ids[0]);}
+  async function login(path,data,headers={},isCurrent=()=>true){
+    loggedOut();const mine=epoch;const info=await request(path,data,headers);if(mine!==epoch || !isCurrent())return;session=info;el('legacy-entry').open=false;await reload(info.team_id,isCurrent);
+    if(path==='/account/invites/accept' && isCurrent()){if(info.project_ids?.length===1)await selectProject(info.project_ids[0],isCurrent);if(isCurrent())window.CrewmeshInvitations?.clear();}
   }
   bind('account-login',data=>login('/account/login',data));
   bind('bootstrap-form',data=>{const secret=data.bootstrap_secret;delete data.bootstrap_secret;if(!data.display_name)delete data.display_name;return login('/account/bootstrap',data,{'X-Crewmesh-Bootstrap':secret});});
-  bind('register-form',data=>{if(!data.display_name)delete data.display_name;return login('/account/invites/accept',window.CrewmeshInvitations?.registration(data)||data);});
+  bind('register-form',data=>{if(!data.display_name)delete data.display_name;return login('/account/invites/accept',window.CrewmeshInvitations?.registration(data)||data,{},window.CrewmeshInvitations?.guard()||(()=>true));});
   bind('team-form',async data=>{const mine=epoch,result=await request('/account/teams',data);if(mine===epoch)await reload(result.team_id);});
   bind('project-form',async data=>{await change(routeTeam()+'/projects',data);});
   bind('accept-form',async data=>{await acceptInvitation(data.invite_token);});
