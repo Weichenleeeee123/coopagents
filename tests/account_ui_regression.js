@@ -33,6 +33,25 @@ function harness(hash='', invitation=false, anonymous=false, oauth=false){
   return {element,storage,calls,delays,replies,info,entered,privateViews,window:context.window,document:context.document,async submit(id,fields={}){const form=element(id);form.fields=fields;form.listeners.submit({preventDefault(){},currentTarget:form});await flush();}};
 }
 (async()=>{
+  // Signup must not consume replacement UI state or navigate after dismissal.
+  for(const replacement of [null,'new-signup']){
+    const signup=harness('#invite=old-signup',true,true);await flush();const late=deferred();
+    signup.delays.set('/account/invites/accept',{body:late});await signup.submit('register-form',{username:'new',password:'password'});
+    if(replacement){signup.window.location.hash='#invite='+replacement;await signup.window.listeners.hashchange();}
+    else signup.element('invitation-dismiss').click();
+    late.release(signup.replies['/account/invites/accept']);await flush();
+    assert.deepEqual(signup.entered,[]);
+    assert.equal(signup.window.CrewmeshInvitations.pending(),!!replacement);
+    assert.equal(signup.element('register-form-invite').value,replacement||'');
+  }
+  // Invalid replacement fragments cannot retain an earlier hidden token.
+  for(const replacement of ['%ZZ','', 'x'.repeat(129)]){
+    const bad=harness('#invite=previous-valid',true,true);await flush();
+    bad.window.location.hash='#invite='+replacement;await bad.window.listeners.hashchange();await flush();
+    assert.equal(bad.window.CrewmeshInvitations.pending(),false);
+    assert.equal(bad.element('register-form-invite').value,'');
+    assert.equal(bad.element('register-form-invite-label').hidden,false);
+  }
   // Dismissing a pending acceptance prevents its late success from loading a team or entering a project.
   const cancelled=harness('#invite=cancelled',true);await flush();const acceptedLate=deferred();
   cancelled.delays.set('/account/invites/accept',{body:acceptedLate});cancelled.element('invitation-accept').click();await flush();
