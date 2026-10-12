@@ -28,10 +28,11 @@
   const btn = (label, action, cls) => {const n=node('button',label,cls);n.type='button';n.addEventListener('click',()=>act(n,action));return n;};
   const routeTeam = () => '/account/teams/'+encodeURIComponent(teamId);
   function invitationState(){window.CrewmeshInvitations?.update({session,config,request,accept:acceptInvitation,refresh:start});}
-  async function acceptInvitation(token){
+  async function acceptInvitation(token,isCurrent=()=>true){
     const mine=epoch,result=await request('/account/invites/accept',{invite_token:token});
-    if(mine!==epoch)throw stale();await reload(result.team_id);
-    if(result.project_ids?.length===1)await selectProject(result.project_ids[0]);
+    if(mine!==epoch || !isCurrent())throw stale();await reload(result.team_id,isCurrent);
+    if(!isCurrent())throw stale();
+    if(result.project_ids?.length===1)await selectProject(result.project_ids[0],isCurrent);
   }
   async function createInvitation(projectIds,data={role:'member'}){
     const mine=epoch,invite=await request(routeTeam()+'/invites',{...data,project_ids:projectIds});
@@ -129,28 +130,29 @@
       isCurrent:()=>mine===epoch && !!session && teamId===id,
       request:(path,data)=>{if(mine!==epoch || !session || teamId!==id)return Promise.reject(stale());return request(path,data,{},true,60000);}});
   }
-  async function loadTeam(id) {
+  async function loadTeam(id,isCurrent=()=>true) {
+    if(!isCurrent())throw stale();
     const nextView=id===teamId?hubView:'projects';
     invalidate();teamId=id;sessionStorage.setItem('crewmesh_selected_team',id);showHub();renderTeams();setHubView(nextView);const mine=epoch;
     el('hub-loading').hidden=!id;el('hub-projects').setAttribute('aria-busy',String(!!id));
     if(!id){renderProjects();return;}
     try {
     loadBilling(mine,id);
-    const base=routeTeam();projects=await request(base+'/projects');if(mine!==epoch)return;
-    members=await request(base+'/members');if(mine!==epoch)return;
-    managed=manager()?await request(base+'/managed-projects'):[];if(mine!==epoch)return;
+    const base=routeTeam();const loadedProjects=await request(base+'/projects');if(mine!==epoch || !isCurrent())return;projects=loadedProjects;
+    const loadedMembers=await request(base+'/members');if(mine!==epoch || !isCurrent())return;members=loadedMembers;
+    const loadedManaged=manager()?await request(base+'/managed-projects'):[];if(mine!==epoch || !isCurrent())return;managed=loadedManaged;
     renderTeams();renderProjects();renderMembers();
     } finally {if(mine===epoch){el('hub-loading').hidden=true;el('hub-projects').setAttribute('aria-busy','false');}}
   }
-  async function reload(preferred=teamId) {
-    if(!session)return;const mine=epoch;const rows=await request('/account/teams');if(mine!==epoch)return;teams=rows;
-    await loadTeam(teams.some(t=>t.team_id===preferred)?preferred:teams[0]?.team_id || '');
+  async function reload(preferred=teamId,isCurrent=()=>true) {
+    if(!session || !isCurrent())return;const mine=epoch;const rows=await request('/account/teams');if(mine!==epoch || !isCurrent())return;teams=rows;
+    await loadTeam(teams.some(t=>t.team_id===preferred)?preferred:teams[0]?.team_id || '',isCurrent);
   }
   async function change(path,data){const mine=epoch;await request(path,data);if(mine===epoch)await reload();}
-  async function selectProject(id){
-    if(!session || !projects.some(p=>p.room_id===id))return;
+  async function selectProject(id,isCurrent=()=>true){
+    if(!session || !isCurrent() || !projects.some(p=>p.room_id===id))return;
     const selectedTeam=teamId, available=projects;invalidate();showHub();const mine=epoch;
-    const credential=await request('/account/projects/'+encodeURIComponent(id)+'/select',{});if(mine!==epoch || selectedTeam!==teamId)return;
+    const credential=await request('/account/projects/'+encodeURIComponent(id)+'/select',{});if(mine!==epoch || selectedTeam!==teamId || !isCurrent())return;
     projects=available;roomId=id;sessionStorage.setItem('crewmesh_selected_project',id);project.enter(credential.web_token);
     el('account-hub').hidden=true;el('account-switchers').hidden=false;el('logout').textContent='返回团队与项目';renderTeams();
   }

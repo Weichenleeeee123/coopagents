@@ -33,6 +33,34 @@ function harness(hash='', invitation=false, anonymous=false, oauth=false){
   return {element,storage,calls,delays,replies,info,entered,privateViews,window:context.window,document:context.document,async submit(id,fields={}){const form=element(id);form.fields=fields;form.listeners.submit({preventDefault(){},currentTarget:form});await flush();}};
 }
 (async()=>{
+  // Dismissing a pending acceptance prevents its late success from loading a team or entering a project.
+  const cancelled=harness('#invite=cancelled',true);await flush();const acceptedLate=deferred();
+  cancelled.delays.set('/account/invites/accept',{body:acceptedLate});cancelled.element('invitation-accept').click();await flush();
+  const teamReads=cancelled.calls.filter(c=>c.path==='/account/teams').length;
+  cancelled.element('invitation-dismiss').click();acceptedLate.release(cancelled.replies['/account/invites/accept']);await flush();
+  assert.deepEqual(cancelled.entered,[]);
+  assert.equal(cancelled.calls.filter(c=>c.path==='/account/teams').length,teamReads);
+  assert.equal(cancelled.element('invitation-panel').hidden,true);
+  // Replacing an invitation while acceptance is pending previews the new link immediately.
+  for(const status of [200,503]){
+    const replaced=harness('#invite=old',true);await flush();const oldResponse=deferred();
+    replaced.delays.set('/account/invites/accept',{body:oldResponse,status});replaced.element('invitation-accept').click();await flush();
+    replaced.window.location.hash='#invite=new';await replaced.window.listeners.hashchange();await flush();
+    assert.equal(JSON.parse(replaced.calls.filter(c=>c.path==='/account/invites/preview').at(-1).body).invite_token,'new');
+    assert.equal(replaced.element('invitation-accept').hidden,false);
+    oldResponse.release(status===200?replaced.replies['/account/invites/accept']:{message:'OLD response failure'});await flush();
+    assert.deepEqual(replaced.entered,[]);assert.equal(replaced.window.CrewmeshInvitations.pending(),true);
+    assert.doesNotMatch(replaced.element('invitation-status').textContent,/OLD response failure/);
+    assert.equal(replaced.element('register-form-invite').value,'new');
+    replaced.element('invitation-accept').click();await flush();assert.deepEqual(replaced.entered,['scoped-private-token']);
+  }
+  // A successful retry after temporary preview failure clears the obsolete error.
+  const retryInvite=harness('#invite=retry',true,true),failedPreview=deferred();
+  retryInvite.delays.set('/account/invites/preview',{body:failedPreview,status:503});await flush();
+  failedPreview.release({message:'Service busy'});await flush();assert.equal(retryInvite.element('invitation-accept').hidden,true);
+  await retryInvite.submit('account-login',{username:'alice',password:'password'});
+  assert.equal(retryInvite.element('invitation-accept').hidden,false);
+  assert.doesNotMatch(retryInvite.element('invitation-status').textContent,/Service busy/);
   // Landing immediately strips the fragment, previews without consuming, and waits for a person.
   const invite=harness('#invite=private%2Binvite',true);await flush();
   assert.equal(invite.window.location.hash,'');

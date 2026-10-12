@@ -9,7 +9,7 @@
     if(!hash.startsWith('#invite='))return false;
     // Clear even malformed fragments before a network request or any other UI work.
     window.history.replaceState(null,'',window.location.pathname+window.location.search);
-    preview=null;failure='';revision++;
+    preview=null;failure='';revision++;loading=false;
     el('invitation-accept').hidden=true;el('invitation-details').textContent='';el('invitation-expiry').textContent='';
     try{token=decodeURIComponent(hash.slice(8));}catch{token='';}
     if(!token || token.length>128){token='';el('invitation-panel').hidden=false;el('invitation-status').textContent='邀请链接无效，请向邀请人索取新链接。';return false;}
@@ -41,17 +41,17 @@
     const mine=revision;let retry=false;loading=true;render();
     try{
       const result=await hooks.request('/account/invites/preview',{invite_token:token});
-      if(mine!==revision)return;preview=result;render();
+      if(mine!==revision)return;preview=result;failure='';render();
     }catch(error){if(error.message==='访问已切换')retry=true;else if(mine===revision){failure=error.message;render();}}
-    finally{loading=false;el('invitation-accept').disabled=false;if(retry || mine!==revision)load();}
+    finally{if(mine===revision){loading=false;el('invitation-accept').disabled=false;if(retry)load();}}
   }
-  function clear(){token='';preview=null;revision++;el('invitation-panel').hidden=true;const input=el('register-form').querySelector('[name=invite_token]');if(input){input.value='';const label=input.closest('label');if(label)label.hidden=false;}el('github-login').target='';}
+  function clear(){token='';preview=null;revision++;loading=false;el('invitation-panel').hidden=true;const input=el('register-form').querySelector('[name=invite_token]');if(input){input.value='';const label=input.closest('label');if(label)label.hidden=false;}el('github-login').target='';}
   el('invitation-accept').addEventListener('click',async()=>{
     if(loading || !token || !preview || !hooks?.session)return;
-    const mine=revision;loading=true;el('invitation-accept').disabled=true;
-    try{await hooks.accept(token);if(mine===revision)clear();}
-    catch(error){el('invitation-status').textContent=error.message;}
-    finally{loading=false;el('invitation-accept').disabled=false;}
+    const mine=revision,current=()=>mine===revision;loading=true;el('invitation-accept').disabled=true;
+    try{await hooks.accept(token,current);if(current())clear();}
+    catch(error){if(current())el('invitation-status').textContent=error.message;}
+    finally{if(current()){loading=false;el('invitation-accept').disabled=false;}}
   });
   el('invitation-refresh').addEventListener('click',async()=>{
     try{await hooks?.refresh();}catch(error){el('invitation-status').textContent=error.message;}
