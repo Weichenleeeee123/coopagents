@@ -10,8 +10,8 @@ Skill 为发行包内公开、无凭据的 SKILL.md，网页提供下载和复�
 
 ## 实施阶段
 
-- [ ] 1. 邀请：workspaces.py/account_api.py 返回无副作用邀请预览与加入项目信息；accounts.js/app.js/index.html 生成 fragment 链接、读取/清除、预览、显式接受、新账号与已有账号流程；Python 和 Node 行为回归；阶段提交。
-- [ ] 2. Skill：新增本人项目接入凭据发行接口；公开 Skill 资源纳入 wheel；网页私有接入指令与 Skill 下载/复制入口；覆盖权限、CSRF、不轮换、异步隔离、无 token 日志；阶段提交。
-- [ ] 3. 独立规格与质量审查，修复发现；完整 Python/网页回归及发行资源检查；更新 docs/agent-connection.md 与验收报告；提交并推送分支并创建 PR。
+- [x] 1. 邀请：workspaces.py/account_api.py 返回无副作用邀请预览与加入项目信息；accounts.js/app.js/index.html 生成 fragment 链接、读取/清除、预览、显式接受、新账号与已有账号流程；Python 和 Node 行为回归；阶段提交。
+- [x] 2. Skill：新增本人项目接入凭据发行接口；公开 Skill 资源纳入 wheel；网页私有接入指令与 Skill 下载/复制入口；覆盖权限、CSRF、不轮换、异步隔离、无 token 日志；阶段提交。
+- [x] 3. 独立规格与质量审查，修复发现；完整 Python/网页回归及发行资源检查；更新 docs/agent-connection.md 与验收报告；提交并推送分支并创建 PR。
 
 验收命令：.venv/Scripts/python.exe -m unittest discover -s tests -v；node tests/account_ui_regression.js src/static/accounts.js；新增专项入口由阶段报告记录。所有原始证据放忽略的 .local/，不删除任何文件。
