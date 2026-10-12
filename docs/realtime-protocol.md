@@ -85,7 +85,8 @@ refresh. A concurrent write can appear in both the snapshot and a later event;
 coalescing invalidations handles this safely. Never replace the captured cursor
 with a later high-water value after refreshing, and never advance your persisted
 cursor merely because a `ready` frame announces a high-water mark.
-# 连接清理补充
+
+## 连接清理补充
 
 连接预算在取消接收任务之前同步释放，避免 ASGI 重复取消打断异步清理后留下占用。补充回归先复现重连被 `4429` 拒绝，再验证相同身份可重新连接；这是 Linux CI 揭示的问题，不能用本机一次通过替代。
 
