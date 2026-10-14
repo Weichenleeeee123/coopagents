@@ -405,8 +405,9 @@ class BillingWorkerHTTPTests(unittest.TestCase):
         calls = []
         def flaky(billing):
             if not calls:
-                calls.append(True)
                 billing.store.claim_job()
+                # Signal only after the claim commits; the test asserts on it immediately.
+                calls.append(True)
                 raise RuntimeError('sk_test_SECRET private payload')
             return original(billing)
         with patch.object(BillingService, 'process_next', flaky), self.assertLogs('crewmesh.billing_worker', level='ERROR') as logs:
