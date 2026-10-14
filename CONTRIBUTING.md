@@ -2,6 +2,8 @@
 
 正式 Python 源码直接放在 `src/`，网页资源在 `src/static/`，行为测试在 `tests/`，持续维护的文档在 `docs/`。原生接入实验在 `experiments/agent-integration/`，不与产品源码混用。
 
+本机 agent 承载空间和托管服务共用 `CoordinationService`、领域存储、HTTP/MCP 操作及 WebSocket 事件。入口差异集中在 `space_runtime.py` / `space_server.py` 和账号组合层；修改任务、消息、约定或权限时只修改共同领域实现。开发本机入口见 [本机空间运行](docs/agent-hosted-runtime.md) 和 [实施计划](docs/agent-hosted-implementation-plan.md)。
+
 ## 本地环境
 
 在仓库根目录使用 Python 3.11 或以上版本：

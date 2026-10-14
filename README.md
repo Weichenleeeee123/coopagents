@@ -13,7 +13,7 @@
 
 两个人实现同一个模块；接口改了，另一个 agent 还在用旧字段；为了一个技术问题，人得来回复制几段对话。
 
-**Crewmesh 把分工、进展和技术共识放在同一个工作现场。** 继续使用 Claude Code 或 Codex，在自己的电脑和分支上开发，通过 MCP 交换协作信息，通过一个网页看清全局。
+**Crewmesh 把分工、进展和技术共识放在同一个工作现场。** 继续使用 Claude Code 或 Codex，在自己的电脑和分支上开发，通过 MCP 交换协作信息。让 agent 创建空间、分享邀请、接入队友；网页用于可选的全局查看。
 
 ![Crewmesh 任务看板](docs/assets/kanban-demo.jpg)
 
@@ -44,6 +44,14 @@
 读取、处理、回应、解决是独立状态。收到消息不等于理解，回复问题不等于问题已经解决。
 
 ## 快速开始
+
+轻量协作从一条给 agent 的指令开始：
+
+> 安装并使用 [crewmesh-space Skill](src/skills/crewmesh-space/SKILL.md)，创建一个 Crewmesh 协作空间，生成给队友的加入邀请，并接入我当前的 agent。
+
+Skill 让 agent 安装已校验的发行包、启动本机空间并配置原生 MCP。发起人的电脑保存共享数据并保持在线，队友拿到单次邀请后让自己的 agent 加入。不需要 Crewmesh 账号，也不需要用户部署网页或手动操作单独客户端。异地连接可使用 agent 配置的 Cloudflare 临时隧道，或已有稳定 HTTPS 入口；Crewmesh 不运营中继。临时地址变化后，需要分享新的可信地址。详细过程见 [Skill 接入](docs/agent-hosted-skill.md)、[运行与恢复](docs/agent-hosted-runtime.md)。
+
+托管服务和本机空间复用同一套任务、消息、约定、权限与实时事件。下面的账号服务启动方式适合需要团队账号、多项目与部署管理的场景。
 
 需要 **Python 3.11+**。克隆仓库后，在项目根目录运行：
 
@@ -98,9 +106,11 @@ docker compose --env-file .env up -d --build
 
 ## 当前能做到哪里
 
+**0.5.0rc1 Agent 承载空间候选版**：Skill 创建和加入、本机持久空间、异地 HTTPS/MCP、实时 WebSocket、断线游标恢复，以及可选主机只读看板。实际 Claude Code 发布、Codex CLI 读取回复与单机公网双成员闭环已验证。发起人需要保持电脑和 agent 管理的后台进程在线；这不是无主机的点对点网络。真实异地双机验收、稳定公网部署和闲置模型自动唤醒仍未作为通过项，见 [发行验收](docs/agent-hosted-release-report.md)。
+
 **0.4.0rc1 C2 候选版**：完整 MIT 开源账号、团队、多项目与 Git 协作；可选官方 cloud 固定月付 Team 订阅、服务端付款核验、Free / Team 容量限制和账号中心 Plan & billing。自托管及未配置订阅的 cloud 都是 Unlimited；自托管无需 Stripe 或 GitHub 密钥，核心功能不依赖付款或许可服务。金额来自实际 Stripe Price，四项限额由部署者明确配置。当前是代码与测试候选版，真实 Stripe、账号 OAuth、公网部署及 C3 运维尚未验收，付费服务尚未上线。配置和恢复见 [C2 运维](docs/c2-operations.md)，完整候选版验证边界见 [C2 报告](docs/commercial-c2-report.md)。
 
-默认只监听本机；公网部署按 [部署说明](docs/deployment.md) 配置域名、管理员密钥和持久卷后启动。Claude 原生正式接入已验证，历史 Codex CLI 的 MCP 调用取消与真实双机 / 公网验收仍见 [P4 报告](docs/p4-release-report.md)。本轮本地 Git 适配器已通过真实克隆及官方 SDK 验证，没有把这些结果当成原生工具或真实 App 验收。网页五秒拉取数据，agent 在任务检查点读取消息；闲置会话不会自动唤醒。未接入 GitHub 的项目继续使用 agent 自述状态；接入后的远端证据独立标注。待验收列表示交付阶段，公共约定的批准是另一套明确的人工决定。
+完整账号服务默认只监听本机；公网部署按 [部署说明](docs/deployment.md) 配置域名、管理员密钥和持久卷后启动。本机空间的异地入口由 Skill 管理，步骤见 [运行说明](docs/agent-hosted-runtime.md)。网页通过实时通知刷新，并保留五秒轮询恢复；agent 在明确工具调用和任务检查点读取正文，闲置会话不会自动唤醒。未接入 GitHub 的项目继续使用 agent 自述状态；接入后的远端证据独立标注。待验收列表示交付阶段，公共约定的批准是另一套明确的人工决定。历史原生问题保留在 [P4 报告](docs/p4-release-report.md)，本轮接入结果独立记录。
 
 ## 小而清晰的技术栈
 

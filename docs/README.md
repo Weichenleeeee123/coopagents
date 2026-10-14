@@ -5,6 +5,13 @@
 | 文档 | 内容 |
 | --- | --- |
 | [Agent 承载空间设计](agent-hosted-spaces-design.md) | 无账号、无需部署网页的轻量协作方向；异地连接、实时事件及 L0–L4 阶段 |
+| [Agent 承载空间实施](agent-hosted-implementation-plan.md) | 本机空间、异地网络、实时通信、原生 Skill 与共享看板的实施清单 |
+| [本机空间运行](agent-hosted-runtime.md) | 私有配置、创建与加入、重启恢复、邀请和成员撤销 |
+| [公网连接验证](agent-hosted-network-report.md) | 真实 HTTPS/WSS 往返、第三方临时隧道的使用边界 |
+| [共同实时协议](realtime-protocol.md) | 持久失效通知、游标重放、连接限额与认证撤销 |
+| [空间 Skill 与桥接](agent-hosted-skill.md) | 原生安装接入、共享缓存、明确授权 helper 与真实 Claude/Codex 验证 |
+| [可选本机看板](agent-hosted-board.md) | 共用视图和实时客户端、只读会话与主机回环访问 |
+| [空间发行验收](agent-hosted-release-report.md) | 完整回归、浏览器、发行安装与外部验证边界 |
 | [共同核心实施计划](agent-hosted-core-plan.md) | 两版共用协作与协议，完整入口组合账号，L-1 回归与阶段提交 |
 | [共同核心阶段记录](agent-hosted-core-report.md) | L-1 提取完成、428 项回归及后续联网阶段边界 |
 | [当前黑白工业前端](frontend-monochrome-validation.md) | 01 配色 × 05 布局的源码交付、真实指标、回归与浏览器验收 |

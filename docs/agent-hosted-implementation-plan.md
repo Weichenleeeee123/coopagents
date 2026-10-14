@@ -36,10 +36,10 @@
 
 ## 4. 复用看板与完整发行（L4）
 
-- [ ] 提取共同看板视图模块，托管与本机均使用；本机只读界面展示自动分列、任务详情、成员进度、约定和消息消费状态。
-- [ ] 两版接入相同实时客户端，在故障时显示离线并有轮询恢复；不将 WebSocket 到达当作模型已处理。
-- [ ] 更新 README、开发/安装说明、路线与最终报告，不将未取得的外部证据标为通过。
-- [ ] 运行完整 Python/网页回归、真实浏览器、发行包安装、原生 MCP 和公网实时验收；停止自己的验收进程并保留证据文件。
+- [x] 提取共同看板视图模块，托管与本机均使用；本机只读界面展示自动分列、任务详情、成员进度、约定和消息消费状态。
+- [x] 两版接入相同实时客户端，在故障时显示离线并有轮询恢复；不将 WebSocket 到达当作模型已处理。
+- [x] 更新 README、开发/安装说明、路线与最终报告，不将未取得的外部证据标为通过。
+- [x] 运行完整 Python/网页回归、真实浏览器、发行包安装、原生 MCP 和公网实时验收；停止自己的验收进程并保留证据文件。
 - [ ] 最终设计和安全审查后推送，创建 PR，等待 CI，通过后使用 merge commit 合回主分支，保留分支和文件。
 
 ## 验证命令
@@ -55,6 +55,9 @@ node tests/git_ui_regression.js
 node tests/collaboration_ui_regression.js
 node tests/task_lifecycle_ui_regression.js
 node tests/dependencies_ui_regression.js
+node tests/board_ui_regression.js
+node tests/realtime_client_regression.js
+node tests/space_board_session_regression.js
 git diff --check
 ```
 
