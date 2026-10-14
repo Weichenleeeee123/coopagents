@@ -1,14 +1,20 @@
 """Peer-to-peer transport: real iroh endpoints on this computer, relay and discovery disabled."""
 import asyncio
 import json
+from pathlib import Path
 import socket
+import subprocess
+import sys
 import threading
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from unittest.mock import patch
+from uuid import uuid4
 
 from crewmesh import p2p
+from crewmesh import space_runtime as runtime
 from crewmesh.space_runtime import available_port
+from crewmesh.spaces import private_write, read_json, read_profile
 
 
 def start_echo():
@@ -189,6 +195,74 @@ class ProfileLinks(unittest.TestCase):
         with patch.dict('sys.modules', {'iroh': None}):
             with self.assertRaisesRegex(RuntimeError, 'space extra'):
                 p2p._iroh()
+
+
+class RuntimeP2P(unittest.TestCase):
+    """Real supervisor in p2p mode. The member runs on the host's computer, so its
+    link reuses the host's port; the cross-network path is verified separately."""
+
+    def setUp(self):
+        self.directory = Path('.local/runtime-tests') / uuid4().hex
+        self.directory.mkdir(parents=True)
+        self.profile_path = self.directory / 'owner' / 'profile.json'
+
+    def tearDown(self):
+        if self.profile_path.exists() and runtime.status(self.profile_path)['status'] == 'running':
+            runtime.stop(self.profile_path)
+
+    def test_create_invite_join_restart_keep_endpoint_identity(self):
+        created = runtime.create('P2P space', 'Owner', self.profile_path.parent)
+        host = read_json(self.profile_path.parent / 'host.json')
+        self.assertEqual(host['network'], 'p2p')
+        expected = p2p.endpoint_id(host['p2p_secret'])
+        self.assertNotIn(host['p2p_secret'], json.dumps(created))
+
+        owner_status = runtime.status(self.profile_path)
+        self.assertEqual(owner_status['status'], 'running')
+        self.assertEqual(owner_status['p2p']['endpoint_id'], expected)
+
+        invitation = runtime.invite(self.profile_path)
+        descriptor = read_json(invitation['invitation_file'])
+        self.assertEqual(descriptor['p2p'], {'endpoint_id': expected})
+        self.assertNotIn(host['p2p_secret'], json.dumps(descriptor))
+
+        joined = runtime.join(invitation['invitation_file'], 'Peer', self.directory / 'peer')
+        peer = read_profile(joined['profile'])
+        self.assertEqual(peer['p2p'], {'endpoint_id': expected})
+        self.assertEqual(peer['origin'], read_profile(self.profile_path)['origin'])
+        self.assertEqual(runtime.status(joined['profile'])['status'], 'reachable')
+        with self.assertRaises(ValueError):
+            runtime.reconnect(joined['profile'], peer['origin'], peer['room_id'])
+
+        runtime.stop(self.profile_path)
+        runtime.start(self.profile_path)
+        self.assertEqual(runtime.status(self.profile_path)['p2p']['endpoint_id'], expected)
+        self.assertEqual(runtime.status(joined['profile'])['status'], 'reachable')
+        result = subprocess.run([sys.executable, '-m', 'crewmesh.space_runtime', 'status',
+                                 '--profile', str(self.profile_path)], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0)
+        self.assertNotIn(host['p2p_secret'], result.stdout + result.stderr)
+
+    def test_profile_and_invitation_links_are_validated(self):
+        base = dict(schema_version=1, room_id='room', member_id='member', agent_token='agent')
+        good = {'endpoint_id': 'c' * 64}
+        path = self.directory / 'p2p.json'
+        private_write(path, base | {'origin': 'http://127.0.0.1:9001', 'p2p': good})
+        self.assertEqual(read_profile(path)['p2p'], good)
+        for name, profile in (('remote', base | {'origin': 'https://space.example.com', 'p2p': good}),
+                              ('malformed', base | {'origin': 'http://127.0.0.1:9001', 'p2p': {'endpoint_id': 'x'}})):
+            bad = self.directory / (name + '.json')
+            private_write(bad, profile)
+            with self.subTest(name=name), self.assertRaises(ValueError):
+                read_profile(bad)
+
+        invitation = self.directory / 'invitation.json'
+        private_write(invitation, dict(schema_version=1, origin='http://127.0.0.1:9001', room_id='room',
+                                       invite_token='token', expires_at='2999-01-01T00:00:00+00:00',
+                                       p2p={'endpoint_id': 'not-a-key'}))
+        with patch.object(runtime, 'request') as remote, self.assertRaises(ValueError):
+            runtime.join(invitation, 'Peer', self.directory / 'rejected')
+        remote.assert_not_called()
 
 
 if __name__ == '__main__':

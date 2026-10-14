@@ -66,7 +66,8 @@ def create_space_app(service, *, room_id, origin):
     return LocalBoundary(app, base, public)
 
 
-def create_control_app(control_origin, control_token, stop_event, room_id, ready_event=None, *, service=None, source_token=None):
+def create_control_app(control_origin, control_token, stop_event, room_id, ready_event=None, *, service=None, source_token=None,
+                       p2p=None):
     async def control(request):
         try:
             if request.client.host not in ('127.0.0.1', '::1'):
@@ -79,7 +80,10 @@ def create_control_app(control_origin, control_token, stop_event, room_id, ready
                     raise ValidationError('Expected empty control request')
                 stop_event.set()
             status = 'stopping' if stop_event.is_set() else 'starting' if ready_event and not ready_event.is_set() else 'running'
-            return JSONResponse({'status': status, 'room_id': room_id})
+            result = {'status': status, 'room_id': room_id}
+            if p2p is not None:
+                result['p2p'] = {'endpoint_id': p2p.endpoint_id, 'online': p2p.online, 'members': len(p2p.connections)}
+            return JSONResponse(result)
         except Exception as error:
             payload, status = error_payload(error)
             return JSONResponse(payload, status_code=status)
