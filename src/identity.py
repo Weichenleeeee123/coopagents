@@ -107,7 +107,7 @@ class IdentityStore:
                 (_token_hash(token), principal.room_id, principal.member_id, expires_at))
             return {'invite_token': token, 'expires_at': expires_at, 'room_id': principal.room_id}
 
-    def join_invite(self, invite_token, display_name):
+    def join_invite(self, invite_token, display_name, expected_room_id=None):
         display_name = _name(display_name)
         try:
             token_hash = _token_hash(invite_token)
@@ -118,13 +118,43 @@ class IdentityStore:
             invite = connection.execute('''SELECT room_id, expires_at FROM invitations
                 WHERE token_hash = ? AND used_at IS NULL''', (token_hash,)).fetchone()
             now = _utcnow()
-            if invite is None or _expired(invite['expires_at'], now):
+            if (invite is None or _expired(invite['expires_at'], now)
+                    or expected_room_id is not None and invite['room_id'] != expected_room_id):
                 raise AccessDenied('Invitation not accepted')
             self._require_unmanaged_room(connection, invite['room_id'])
             result = self._create_member(connection, invite['room_id'], display_name, 'member')
             connection.execute('''UPDATE invitations SET used_at = ?, used_by_member_id = ?
                 WHERE token_hash = ?''', (now.isoformat(), result['member_id'], token_hash))
             return result
+
+    def revoke_invite(self, web_token, invite_token):
+        with self.db.connect(write=True) as connection:
+            principal = self.resolve(connection, web_token, required_kind='web')
+            self._require_unmanaged_room(connection, principal.room_id)
+            if principal.role != 'owner':
+                raise AccessDenied('Owner credential required')
+            changed = connection.execute('''UPDATE invitations SET expires_at=?
+                WHERE token_hash=? AND room_id=?''',
+                (_utcnow().isoformat(), _token_hash(invite_token), principal.room_id)).rowcount
+            if not changed:
+                raise NotFound('Invitation not found')
+            return {'revoked': True}
+
+    def revoke_member(self, web_token, member_id):
+        with self.db.connect(write=True) as connection:
+            principal = self.resolve(connection, web_token, required_kind='web')
+            self._require_unmanaged_room(connection, principal.room_id)
+            if principal.role != 'owner':
+                raise AccessDenied('Owner credential required')
+            member = connection.execute('SELECT role FROM members WHERE id=? AND room_id=?',
+                                        (member_id, principal.room_id)).fetchone()
+            if member is None:
+                raise NotFound('Member not found')
+            if member['role'] == 'owner':
+                raise AccessDenied('Cannot revoke the space owner')
+            connection.execute('UPDATE credentials SET revoked_at=? WHERE member_id=? AND revoked_at IS NULL',
+                               (_utcnow().isoformat(), member_id))
+            return {'member_id': member_id, 'revoked': True}
 
     def connect_agent(self, web_token):
         """Issue another personal credential without invalidating existing agents."""

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "crewmesh"
-version = "0.4.0rc1"
+version = "0.5.0rc1"
 description = "Shared coordination for teammates using their own coding agents"
 readme = "README.md"
 license = {file = "LICENSE"}
@@ -13,11 +13,12 @@ dependencies = []
 
 [project.optional-dependencies]
 integration = ["mcp==2.3.0"]
-service = ["mcp==2.3.0", "starlette==1.7.0", "uvicorn==0.54.0", "PyJWT[crypto]==2.15.1"]
+space = ["mcp==2.3.0", "starlette==1.7.0", "uvicorn==0.54.0", "websockets==17.2"]
+service = ["mcp==2.3.0", "starlette==1.7.0", "uvicorn==0.54.0", "PyJWT[crypto]==2.15.1", "websockets==17.2"]
 
 [tool.setuptools]
 packages = ["crewmesh"]
 package-dir = { crewmesh = "src" }
 
 [tool.setuptools.package-data]
-crewmesh = ["static/*.html", "static/*.css", "static/*.js", "static/*.png", "skills/crewmesh-connect/*.md"]
+crewmesh = ["static/*.html", "static/*.css", "static/*.js", "static/*.png", "skills/crewmesh-connect/*.md", "skills/crewmesh-space/*.md", "skills/crewmesh-space/scripts/*.py"]

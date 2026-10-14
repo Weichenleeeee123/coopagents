@@ -1,0 +1,361 @@
+"""Agent-managed personal space CLI and an owned hidden supervisor."""
+import argparse
+import asyncio
+import json
+import os
+from pathlib import Path
+import secrets
+import socket
+import subprocess
+import sys
+import threading
+import time
+import urllib.error
+import urllib.request
+from urllib.parse import urlsplit
+from uuid import uuid4
+
+from .coordination import CoordinationService
+from .spaces import (checked_path, private_directory, private_write, read_json,
+                     read_profile, safe_profile, validate_origin)
+
+
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        raise ValueError('Credential requests must not redirect')
+
+
+def request(origin, path, *, token=None, data=None):
+    validate_origin(origin)
+    headers = {'Accept': 'application/json', 'Origin': origin}
+    if token:
+        headers['Authorization'] = 'Bearer ' + token
+    body = None
+    if data is not None:
+        headers['Content-Type'] = 'application/json'
+        body = json.dumps(data).encode()
+    req = urllib.request.Request(origin + path, data=body, headers=headers)
+    # Do not route loopback control through an environment configured proxy.
+    proxy = urllib.request.ProxyHandler({}) if urlsplit(origin).hostname in ('127.0.0.1', 'localhost') else urllib.request.ProxyHandler()
+    opener = urllib.request.build_opener(NoRedirect(), proxy)
+    with opener.open(req, timeout=5) as response:
+        raw = response.read(65537)
+    if len(raw) > 65536:
+        raise ValueError('Response exceeded limit')
+    return json.loads(raw)
+
+
+def available_port():
+    with socket.socket() as sock:
+        sock.bind(('127.0.0.1', 0))
+        return sock.getsockname()[1]
+
+
+def runtime_paths(profile_path):
+    profile_path = checked_path(profile_path)
+    return profile_path, profile_path.parent / 'host.json'
+
+
+def web_credential(profile):
+    if not profile.get('web_token'):
+        raise ValueError('Personal web credential required for this operation')
+    return profile['web_token']
+
+
+def status(profile_path):
+    profile = read_profile(profile_path)
+    result = safe_profile(profile, profile_path)
+    try:
+        if 'control_token' in profile:
+            health = request(profile['control_origin'], '/status', token=profile['control_token'])
+        else:
+            health = request(profile['origin'], '/api/me', token=profile['agent_token'])
+            health = {'room_id': health['me']['room_id'], 'status': 'reachable'}
+        if health['room_id'] != profile['room_id']:
+            raise ValueError('Unexpected space identity')
+        # Startup can atomically replace the origin while this control request
+        # waits. Return the current profile once readiness is authenticated.
+        result = safe_profile(read_profile(profile_path), profile_path)
+        result['status'] = health['status']
+    except (OSError, ValueError, KeyError):
+        result['status'] = 'unreachable'
+    return result
+
+
+def start(profile_path):
+    profile_path, host_path = runtime_paths(profile_path)
+    profile, host = read_profile(profile_path), read_json(host_path)
+    if not profile.get('control_token'):
+        raise ValueError('Owner host profile required')
+    if status(profile_path)['status'] != 'unreachable':
+        raise ValueError('Space runtime is already running')
+    # Child command contains state paths only; credentials stay in private files.
+    log_path = profile_path.parent / ('runtime-' + uuid4().hex + '.log')
+    with log_path.open('xb') as log:
+        from .spaces import protect
+        protect(log_path)
+        child = subprocess.Popen([sys.executable, '-m', 'crewmesh.space_runtime', '_serve',
+                                  '--profile', str(profile_path)], stdout=log, stderr=log,
+                                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
+    deadline = time.monotonic() + 60
+    while time.monotonic() < deadline:
+        if child.poll() is not None:
+            raise RuntimeError('Runtime startup failed; inspect private runtime log')
+        result = status(profile_path)
+        if result['status'] == 'running':
+            threading.Thread(target=child.wait, daemon=True).start()
+            return result
+        time.sleep(.2)
+    # A startup cancellation belongs only to this specific spawned child.
+    child.terminate()
+    child.wait(timeout=10)
+    raise RuntimeError('Runtime did not become ready')
+
+
+def create(name, owner, state_dir, network='quick', public_url=None, cloudflared=None):
+    state = private_directory(state_dir)
+    profile_path, host_path = runtime_paths(state / 'profile.json')
+    if profile_path.exists() or host_path.exists() or (state / 'space.sqlite3').exists():
+        raise FileExistsError('Space state already exists; use start to resume')
+    if network not in ('local', 'quick', 'external'):
+        raise ValueError('Unsupported network')
+    if network == 'external':
+        from .config import public_origin
+        public_url = public_origin(public_url)
+    elif public_url:
+        raise ValueError('Public URL is only accepted in external mode')
+    if network == 'quick' and not cloudflared:
+        raise ValueError('Quick mode requires a verified cloudflared path')
+    port, control_port = available_port(), available_port()
+    while control_port == port:
+        control_port = available_port()
+    local = 'http://127.0.0.1:' + str(port)
+    service = CoordinationService(state / 'space.sqlite3')
+    identity = service.identity.create_room(name, owner)
+    profile = dict(schema_version=1, origin=public_url or local,
+                   room_id=identity['room_id'], member_id=identity['member_id'],
+                   web_token=identity['web_token'], agent_token=identity['agent_token'],
+                   control_origin='http://127.0.0.1:' + str(control_port),
+                   control_token=secrets.token_urlsafe(32))
+    private_write(profile_path, profile)
+    private_write(host_path, dict(schema_version=1, network=network, local_origin=local,
+                                 cloudflared=str(checked_path(cloudflared)) if cloudflared else None))
+    return start(profile_path)
+
+
+def serve(profile_path):
+    import uvicorn
+    from .space_server import create_space_app, create_control_app
+    from .tunnels import QuickTunnel
+    profile_path, host_path = runtime_paths(profile_path)
+    profile, host = read_profile(profile_path), read_json(host_path)
+    service = CoordinationService(profile_path.parent / 'space.sqlite3')
+    principal = service.identity.authenticate(web_credential(profile), required_kind='web')
+    if principal.role != 'owner' or principal.room_id != profile['room_id']:
+        raise ValueError('Host profile identity does not match')
+    stop = threading.Event()
+    ready = threading.Event()
+    tunnel = None
+    servers, threads = [], []
+    # Reserve runtime ownership with an OS file lock retained for this worker's
+    # entire lifetime. No PID-based signalling or stale-file deletion is needed.
+    lock_path = profile_path.parent / 'runtime.lock'
+    with lock_path.open('a+b') as runtime_lock:
+        from .spaces import protect
+        protect(lock_path)
+        if runtime_lock.tell() == 0:
+            runtime_lock.write(b'1')
+            runtime_lock.flush()
+        runtime_lock.seek(0)
+        if os.name == 'nt':
+            import msvcrt
+            msvcrt.locking(runtime_lock.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(runtime_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        try:
+            if host['network'] == 'quick':
+                tunnel = QuickTunnel(host['cloudflared'], host['local_origin'])
+                if profile['origin'] != tunnel.origin:
+                    profile['origin'] = tunnel.origin
+                    private_write(profile_path, profile, update=True)
+            app = create_space_app(service, room_id=profile['room_id'], origin=profile['origin'])
+            control = create_control_app(profile['control_origin'], profile['control_token'], stop, profile['room_id'], ready,
+                                         service=service, source_token=profile['agent_token'])
+            for application, origin in ((app, host['local_origin']), (control, profile['control_origin'])):
+                config = uvicorn.Config(application, host='127.0.0.1', port=urlsplit(origin).port,
+                                        log_level='warning', access_log=False, proxy_headers=False,
+                                        ws_max_size=4096, ws_max_queue=4, ws_ping_interval=15,
+                                        ws_ping_timeout=15)
+                server = uvicorn.Server(config)
+                servers.append(server)
+                thread = threading.Thread(target=server.run, daemon=True)
+                threads.append(thread)
+                thread.start()
+            while not stop.wait(.2):
+                if all(server.started for server in servers):
+                    ready.set()
+                if any(not t.is_alive() for t in threads) or tunnel and tunnel.process.poll() is not None:
+                    break
+        finally:
+            for server in servers:
+                server.should_exit = True
+            for thread in threads:
+                thread.join(timeout=10)
+            if tunnel:
+                tunnel.close()
+
+
+def runtime_unlocked(profile_path):
+    """Probe ownership without changing a lock file or signalling any process."""
+    lock_path = checked_path(profile_path).parent / 'runtime.lock'
+    if not lock_path.exists():
+        return False  # A live owner must have created this durable lock file.
+    try:
+        with lock_path.open('r+b') as lock:
+            if os.name == 'nt':
+                import msvcrt
+                msvcrt.locking(lock.fileno(), msvcrt.LK_NBLCK, 1)
+                msvcrt.locking(lock.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                fcntl.flock(lock, fcntl.LOCK_UN)
+    except OSError:
+        return False
+    return True
+
+
+def stop(profile_path):
+    profile = read_profile(profile_path)
+    if not profile.get('control_token'):
+        raise ValueError('Owner host profile required')
+    result = request(profile['control_origin'], '/stop', token=profile['control_token'], data={})
+    if result.get('room_id') != profile['room_id']:
+        raise ValueError('Unexpected control space')
+    deadline = time.monotonic() + 40
+    while time.monotonic() < deadline:
+        if status(profile_path)['status'] == 'unreachable' and runtime_unlocked(profile_path):
+            return safe_profile(profile, profile_path) | {'status': 'stopped'}
+        time.sleep(.2)
+    raise RuntimeError('Graceful shutdown remains pending')
+
+
+def invite(profile_path, share=False):
+    profile = read_profile(profile_path)
+    invitation = request(profile['origin'], '/api/operations/invite', token=web_credential(profile), data={})
+    descriptor = dict(schema_version=1, origin=profile['origin'], **invitation)
+    path = checked_path(profile_path).parent / ('invitation-' + uuid4().hex + '.json')
+    private_write(path, descriptor)
+    result = safe_profile(profile, profile_path) | {'invitation_file': str(path), 'expires_at': invitation['expires_at']}
+    if share:
+        result['invitation'] = descriptor
+    return result
+
+
+def join(invitation_file, name, state_dir):
+    descriptor = read_json(invitation_file)
+    origin = validate_origin(descriptor['origin'])
+    from datetime import datetime, timezone
+    expiry = datetime.fromisoformat(descriptor['expires_at'])
+    if expiry.tzinfo is None or expiry <= datetime.now(timezone.utc):
+        raise ValueError('Invitation expired')
+    state = private_directory(state_dir)
+    path = state / 'profile.json'
+    if path.exists():
+        raise FileExistsError('Personal profile already exists')
+    identity = request(origin, '/api/join', data={'room_id': descriptor['room_id'],
+                                                'invite_token': descriptor['invite_token'], 'display_name': name})
+    if identity['room_id'] != descriptor['room_id']:
+        raise ValueError('Invitation space does not match')
+    profile = dict(schema_version=1, origin=origin,
+                   **{key: identity[key] for key in ('room_id', 'member_id', 'web_token', 'agent_token')})
+    private_write(path, profile)
+    return safe_profile(profile, path)
+
+
+def reconnect(profile_path, origin, room_id):
+    """User supplies the owner's newly trusted address; preserve member identity."""
+    profile = read_profile(profile_path)
+    origin = validate_origin(origin)
+    if room_id != profile['room_id']:
+        raise ValueError('Expected room does not match the personal profile')
+    health = request(origin, '/health')
+    if health.get('room_id') != room_id:
+        raise ValueError('Destination space does not match')
+    me = request(origin, '/api/me', token=profile['agent_token'])
+    if me['me']['room_id'] != room_id or me['me']['member_id'] != profile['member_id']:
+        raise ValueError('Destination personal identity does not match')
+    profile['origin'] = origin
+    private_write(profile_path, profile, update=True)
+    return safe_profile(profile, profile_path)
+
+
+def board(profile_path):
+    """Issue a one-use local viewing URL through the authenticated host control."""
+    profile = read_profile(profile_path)
+    if not profile.get('control_token'):
+        raise ValueError('Only the host owner can open its local board')
+    return request(profile['control_origin'], '/board/open', token=profile['control_token'], data={})
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description='Manage a private agent-hosted Crewmesh space')
+    commands = parser.add_subparsers(dest='command', required=True)
+    create_parser = commands.add_parser('create')
+    create_parser.add_argument('--name', required=True)
+    create_parser.add_argument('--owner', required=True)
+    create_parser.add_argument('--state-dir', required=True)
+    create_parser.add_argument('--network', choices=['local', 'quick', 'external'], default='quick')
+    create_parser.add_argument('--public-url')
+    create_parser.add_argument('--cloudflared')
+    for command in ('start', 'status', 'stop', 'board', 'invite', '_serve', 'revoke-invitation', 'revoke-member'):
+        sub = commands.add_parser(command)
+        sub.add_argument('--profile', required=True)
+        if command == 'invite':
+            sub.add_argument('--share', action='store_true')
+        if command == 'revoke-invitation':
+            sub.add_argument('--invitation-file', required=True)
+        if command == 'revoke-member':
+            sub.add_argument('--member-id', required=True)
+    sub = commands.add_parser('join')
+    sub.add_argument('--invitation-file', required=True)
+    sub.add_argument('--name', required=True)
+    sub.add_argument('--state-dir', required=True)
+    sub = commands.add_parser('reconnect')
+    sub.add_argument('--profile', required=True)
+    sub.add_argument('--origin', required=True)
+    sub.add_argument('--room-id', required=True)
+    args = vars(parser.parse_args(argv))
+    command = args.pop('command')
+    try:
+        if command == '_serve':
+            serve(args['profile'])
+            return 0
+        if command in ('revoke-invitation', 'revoke-member'):
+            profile = read_profile(args['profile'])
+            if command == 'revoke-invitation':
+                descriptor = read_json(args['invitation_file'])
+                data = {'invite_token': descriptor['invite_token']}
+                operation = 'revoke_invite'
+            else:
+                data, operation = {'member_id': args['member_id']}, 'revoke_member'
+            request(profile['origin'], '/api/operations/' + operation, token=web_credential(profile), data=data)
+            result = safe_profile(profile, args['profile']) | {'status': 'revoked'}
+        else:
+            handler = {'create': create, 'start': start, 'status': status, 'stop': stop, 'board': board,
+                       'invite': invite, 'join': join, 'reconnect': reconnect}[command]
+            if 'profile' in args:
+                args['profile_path'] = args.pop('profile')
+            result = handler(**args)
+        print(json.dumps(result))
+        return 0
+    except Exception as error:
+        # Exception messages from HTTP clients may contain URLs; never print
+        # bodies, headers, tracebacks or opaque credentials from remote errors.
+        print(json.dumps({'error': type(error).__name__, 'message': 'Space operation failed; check private state and runtime health'}), file=sys.stderr)
+        return 1
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

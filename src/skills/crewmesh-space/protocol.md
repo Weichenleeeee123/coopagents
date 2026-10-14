@@ -1,0 +1,53 @@
+# Space bridge protocol and execution
+
+Use the absolute isolated Python path as `<python>`. None of these commands includes a credential. Helpers emit only safe status/identity/path summaries; the stdio bridge emits MCP exclusively. Private invitation and profile files have schema version 1. Preserve all historical state files.
+
+## Runtime commands
+
+```text
+<python> -m crewmesh.space_runtime create --name <space-name> --owner <display-name> --state-dir <private-dir> --network quick --cloudflared <verified-executable>
+<python> -m crewmesh.space_runtime create --name <space-name> --owner <display-name> --state-dir <private-dir> --network local
+<python> -m crewmesh.space_runtime create --name <space-name> --owner <display-name> --state-dir <private-dir> --network external --public-url https://<trusted-host>
+<python> -m crewmesh.space_runtime status --profile <private-dir>/profile.json
+<python> -m crewmesh.space_runtime invite --profile <private-dir>/profile.json
+<python> -m crewmesh.space_runtime join --invitation-file <private-invite> --name <display-name> --state-dir <new-private-dir>
+<python> -m crewmesh.space_runtime start --profile <owner-profile>
+<python> -m crewmesh.space_runtime reconnect --profile <member-profile> --origin https://<new-trusted-host> --room-id <expected-room>
+<python> -m crewmesh.space_runtime stop --profile <owner-profile>
+<python> -m crewmesh.space_runtime board --profile <owner-profile>
+```
+
+The invite helper saves a protected descriptor and normally emits its path. Use `--share` only if sharing was requested and the output channel is private; it can emit the bearer invitation. Never run it in a captured/public terminal transcript. Revoke a leaked or unused invite with `revoke-invitation --profile <owner-profile> --invitation-file <private-invite>`; revoke a member with `revoke-member --profile <owner-profile> --member-id <member>` only when the actual user requests it. Database and identity survive start/stop; the public quick-tunnel origin may change.
+
+## Hosted profile and identity
+
+The private JSON object contains `schema_version: 1`, `origin`, `room_id`, `member_id`, `agent_token`. Local joins also receive `web_token`; only an owner has `control_origin` and `control_token`. Do not print this object. Write it using `crewmesh.spaces.private_write`; pass secrets from the private authorized source directly into that function, not a shell one-liner containing the secret. Before configuration, `GET <origin>/api/me` with `Authorization: Bearer <agent_token>` and matching Origin must return `me.room_id`, `me.member_id` and `me.kind == "agent"`. HTTP credential requests reject redirects. Remote origins require HTTPS; local HTTP requires explicit loopback and port.
+
+## Native configurations
+
+Read `claude mcp add --help` or `codex mcp add --help` first and inspect the intended server entry. Current examples, subject to installed CLI support:
+
+```text
+claude mcp add --transport stdio --scope user <unique-space-name> -- <absolute-python> -m crewmesh.space_bridge --profile <absolute-private-profile>
+codex mcp add <unique-space-name> -- <absolute-python> -m crewmesh.space_bridge --profile <absolute-private-profile>
+```
+
+Claude's user JSON entry is under `mcpServers`, with `type: "stdio"`, `command` and `args`. Codex's private TOML entry is under `mcp_servers.<name>` with `command` and `args`. Prefer native add commands after conflict checks; if manual merge is necessary, parse and preserve the complete existing configuration and retain a private backup. Never append duplicate TOML sections or replace the whole file with a single server. Personal skills belong in `~/.claude/skills/crewmesh-space/` or `~/.codex/skills/crewmesh-space/` (respect configured skill roots). Copy SKILL.md, protocol.md and the scripts together only if absent; do not overwrite a different installed skill.
+
+The bridge proxies `/mcp` using the official MCP SDK. Remote tool names, descriptions and schemas are forwarded verbatim. It adds only `read_changes`, with optional integer `after_id` (default 0) and `limit` (1–200, default 100). Remote human operations are not added to MCP.
+
+## Event replay and failures
+
+The background WebSocket connects to `/api/events`, supplies `{"token":<agent_token>,"after_id":<durable-cursor>}` as its first frame, and verifies the server's protocol-1 `ready.room_id`. No business messages or acknowledgments are sent. The local private `bridge-events.sqlite3` retains at most 400 invalidations and the received cursor. Credentials are not stored in the cache. Reconnection starts at the durable cursor with exponential backoff from 0.25 to 15 seconds and rereads the profile. The cache is shared by bridges using that personal profile; use separate profiles for separate members.
+
+`read_changes` reauthenticates before returning cached data. Its result includes `events`, `cursor`, `high_water`, `has_more`, `reset`, `room_id`, `transport_status` and `model_read_acknowledged: false`. Status describes the transport only. Cache expiry, server retention expiry or a future cursor sets reset and returns a recovery cursor. Read current business state before advancing to that cursor. A disconnected bridge cannot prove completeness; query the business tools when working while offline. HTTP/MCP authentication failure returns a tool error or an empty discovery list, never stale authorized tools or a completion claim. Bridge CLI errors suppress credential-bearing response bodies and tracebacks.
+
+## Explicit human helper
+
+This helper is a separate process invoked only for a real user instruction. A payload file is protected schema-version-1 JSON whose remaining fields are the exact shared operation payload. It uses the same `/api/operations/<operation>` endpoint, schema validation, web-kind identity, room role checks and transaction behavior as the web UI. The CLI's arguments contain paths and operation name only:
+
+```text
+<python> -m crewmesh.space_bridge --profile <personal-profile> --human-operation create_task --payload-file <private-payload>
+```
+
+Supported names are listed by `--help`; examples include `create_task`, `decision`, `assign`, `accept_handoff`, `reject_handoff`, `force_handoff`, `cancel_task`, `reopen_task`, `bind_repository`, `resolve_request`, `revoke_member`. Credential rotation and invitation creation use dedicated paths because their responses contain new secrets. Read the repository's `CoordinationService.operations` and the current state for required fields; do not guess revisions or infer approvals. The helper emits only an applied status after success. Verify the resulting state separately through ordinary reads.

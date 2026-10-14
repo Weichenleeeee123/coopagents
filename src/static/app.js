@@ -2,7 +2,9 @@
 const $ = id => document.getElementById(id);
 let token = sessionStorage.getItem('crewmesh_web_token') || '';
 let generation = 0, snapshot = null, pollTimer = null, syncing = false, lastSuccess = null;
-let accountManaged = false;
+let accountManaged = false, realtime=null, syncDirty=false;
+const boardUI = () => typeof window!=='undefined' ? window.CrewmeshBoard : null;
+function startRealtime(){realtime?.close();realtime=null;const epoch=generation;if(typeof window==='undefined'||!window.CrewmeshRealtime||!token)return;realtime=window.CrewmeshRealtime.connect({token,refresh:()=>epoch===generation?sync():Promise.resolve(),status:value=>{if(epoch===generation&&$('transport-status'))$('transport-status').textContent=value==='online'?'实时在线':'实时中断 · 轮询恢复';}});}
 const projectRequests = new Set();
 const gitUI = () => typeof window!=='undefined' ? window.CrewmeshGit : null;
 const dependencyUI = () => typeof window!=='undefined' ? window.CrewmeshDependencies : null;
@@ -48,7 +50,7 @@ async function api(path, data, authenticated = true, extraHeaders = {}) {
   finally { clearTimeout(timeout); projectRequests.delete(controller); }
 }
 function logout(message='') {
-  generation++; token=''; snapshot=null; sessionStorage.removeItem('crewmesh_web_token'); clearTimeout(pollTimer);
+  realtime?.close();realtime=null;syncDirty=false;generation++; token=''; snapshot=null; sessionStorage.removeItem('crewmesh_web_token'); clearTimeout(pollTimer);
   projectRequests.forEach(controller=>controller.abort()); projectRequests.clear(); syncing=false;
   gitUI()?.clear(); $('git-connection')?.replaceChildren(); $('git-overlaps')?.replaceChildren();
   collaborationUI()?.clear(); lifecycleUI()?.clear(); dependencyUI()?.clear();
@@ -58,7 +60,7 @@ function logout(message='') {
   ['room-name','room-repository','identity','network-error','action-error','board-count'].forEach(id=>$(id).textContent='');
   $('form-restore').reset(); $('form-join').reset(); $('form-create').reset(); $('task-form').reset();
 }
-function enter(credential) { generation++; renderSignature=''; token=credential; sessionStorage.setItem('crewmesh_web_token',credential); $('login').hidden=true; $('workspace').hidden=false;document.title=$('view-title').textContent+' · Crewmesh'; $('action-error').textContent=''; $('sync-time').textContent='正在同步…'; $('network-error').hidden=true; lastSuccess=null; clearTimeout(pollTimer); sync(); }
+function enter(credential) { generation++; renderSignature=''; token=credential; sessionStorage.setItem('crewmesh_web_token',credential); $('login').hidden=true; $('workspace').hidden=false;document.title=$('view-title').textContent+' · Crewmesh'; $('action-error').textContent=''; $('sync-time').textContent='正在同步…'; $('network-error').hidden=true; lastSuccess=null; clearTimeout(pollTimer); startRealtime(); sync(); }
 for(const name of ['create','join','restore']) $('form-'+name).addEventListener('submit',async e => {
   e.preventDefault(); const form=e.currentTarget, b=form.querySelector('button[type=submit]'); b.disabled=true; $('login-error').textContent='';
   const epoch=generation;
@@ -70,11 +72,11 @@ for(const name of ['create','join','restore']) $('form-'+name).addEventListener(
   } catch(error) { if(!$('login').hidden) $('login-error').textContent=error.message; } finally { b.disabled=false; }
 });
 async function sync() {
-  if(!token || syncing) return;
+  if(!token)return; if(syncing){syncDirty=true;return;}
   syncing=true; const epoch=generation;
   try { const result=await api('/api/snapshot'); if(epoch!==generation) return; snapshot=result; lastSuccess=new Date(); $('network-error').hidden=true; $('sync-time').textContent='最后同步 '+date(lastSuccess); render(); }
   catch(error){ if(epoch===generation && token){ $('network-error').hidden=false; $('network-error').textContent='连接中断：'+error.message+'。保留上次数据'+(lastSuccess?'（最后成功 '+date(lastSuccess)+'）':'')+'，可点击刷新重试。'; } }
-  finally { if(epoch===generation){syncing=false; if(token){ clearTimeout(pollTimer); pollTimer=setTimeout(sync,5000); }} }
+  finally { if(epoch===generation){syncing=false; if(token){ clearTimeout(pollTimer); const followup=syncDirty;syncDirty=false;pollTimer=setTimeout(sync,followup?0:5000); }} }
 }
 // Keep forms, selection and keyboard focus intact when the snapshot is unchanged.
 let renderSignature='';
@@ -118,7 +120,7 @@ function renderOverview(){
   if($('git-overlaps')){$('git-overlaps').replaceChildren();gitUI()?.renderOverlaps($('git-overlaps'),snapshot.git,taskName);if(!snapshot.git?.overlaps?.length)empty($('git-overlaps'),'当前没有新鲜观测中的实际路径重叠。');}
 }
 function taskLink(id) { return button('任务：'+taskName(id),()=>{setView('tasks');openTaskDetail(id);},'link-button'); }
-const taskColumns = [
+const taskColumns = boardUI()?.columns || [
   ['open','待认领','明确意图，等待接手'],
   ['working','推进中','agent 正在推进'],
   ['blocked','遇到阻塞','需要团队协助'],
@@ -128,6 +130,7 @@ const taskColumns = [
 ];
 let activeTaskId=null, taskOpener=null;
 function taskColumn(task, progress){
+  if(boardUI())return boardUI().column(task,progress,snapshot,{git:gitUI(),dependencies:dependencyUI()});
   if(task.cancelled_at||task.state==='cancelled')return 'cancelled';
   if(!task.owner_member_id) return 'open';
   if(dependencyUI()?.blocked(task,snapshot))return 'blocked';
@@ -138,6 +141,7 @@ function taskColumn(task, progress){
   return 'working';
 }
 function matchingTasks(tasks, progress, query, owner){
+  if(boardUI())return boardUI().matchingTasks(tasks,progress,query,owner);
   const needle=query.trim().toLocaleLowerCase();
   return tasks.filter(t=> (!owner || (owner==='unassigned'?!t.owner_member_id:String(t.owner_member_id)===owner)) &&
     (!needle || [t.title,t.scope,t.intent_key,progress.find(p=>p.task_id===t.id)?.summary||''].join(' ').toLocaleLowerCase().includes(needle)));
@@ -166,6 +170,7 @@ function renderTasks(){
     add(column,add(text('header','','column-heading'),add(text('div'),text('span','','status-dot'),text('h2',label),text('span',tasks.length,'column-count')),text('p',note)),list);
     if(!tasks.length)empty(list,snapshot.tasks.length?'此列暂无匹配任务':'等待第一项工作');
     tasks.forEach(t=>{
+      if(boardUI()){list.append(boardUI().card(t,snapshot.progress.find(p=>p.task_id===t.id),snapshot,{git:gitUI(),dependencies:dependencyUI(),open:openTaskDetail}));return;}
       const p=snapshot.progress.find(p=>p.task_id===t.id), requests=snapshot.requests.filter(r=>r.task_id===t.id), card=button('',()=>openTaskDetail(t.id),'task-card');
       card.id='task-'+t.id;card.setAttribute('aria-label','查看任务 #'+t.id+'：'+t.title);
       add(card,add(text('div','','card-top'),text('span','CM-'+String(t.id).padStart(3,'0'),'task-number'),text('span','↗','card-arrow')),text('h3',t.title),text('p',p?.summary||(t.cancelled_at?'任务已取消，可在详情重新打开。':'已声明工作范围，等待 agent 推进。'),'card-summary'),text('p',t.scope,'card-scope'));

@@ -40,7 +40,8 @@ def main():
     except (ValueError, ValidationError) as error:
         parser.error(str(error))
     uvicorn.run(app, host=args.host, port=args.port, access_log=False,
-                proxy_headers=bool(proxies), forwarded_allow_ips=proxies)
+                proxy_headers=bool(proxies), forwarded_allow_ips=proxies,
+                ws_max_size=4096, ws_max_queue=4, ws_ping_interval=15, ws_ping_timeout=15)
 
 
 if __name__ == '__main__':

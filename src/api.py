@@ -1,14 +1,11 @@
 """Local HTTP API; callers are always derived from opaque bearer credentials."""
 from contextlib import asynccontextmanager
-from dataclasses import asdict
-from datetime import datetime, timezone
 import json
 import asyncio
 import time
 import hmac
 import hashlib
 from importlib.resources import files
-from pathlib import Path
 from urllib.parse import urlsplit
 
 from starlette.applications import Starlette
@@ -16,12 +13,9 @@ from starlette.concurrency import run_in_threadpool
 from starlette.responses import JSONResponse, Response
 from starlette.routing import Route, Mount
 
-from .identity import IdentityStore
-from .tasks import TaskStore
-from .activity import ActivityStore
-from .messages import MessageStore
-from .contracts import ContractStore
 from .errors import AccessDenied, Conflict, NotFound, ValidationError
+from .coordination import CoordinationService
+from .protocol import fields, validate
 from .config import public_origin, validate_bootstrap_secret
 
 BODY_LIMIT = 65536
@@ -39,135 +33,15 @@ def error_payload(error):
     return {'error': 'InternalError', 'message': 'Operation failed'}, 500
 
 
-def validate(data, schema):
-    if not isinstance(data, dict) or any(key not in schema for key in data):
-        raise ValidationError('Expected an object containing only supported fields')
-    for key, (kind, required, default) in schema.items():
-        if key not in data:
-            if required:
-                raise ValidationError('Missing required field: ' + key)
-            data[key] = default
-        value = data[key]
-        if value is None and not required and default is None:
-            continue
-        if type(value) is not kind:
-            raise ValidationError('Invalid field type: ' + key)
-        if kind is str:
-            try:
-                value.encode('utf-8')
-            except UnicodeEncodeError:
-                raise ValidationError('Text must contain valid Unicode') from None
-    return data
-
-
-def fields(required='', optional=None):
-    result = {key: (int if key in {'source_task_id', 'target_task_id', 'dependency_id', 'reply_id', 'expected_revision', 'ownership_epoch', 'expected_version', 'context_version', 'version', 'request_id', 'contract_id', 'task_id', 'after_id', 'limit'} else str, True, None) for key in required.split()}
-    for key, default in (optional or {}).items():
-        result[key] = (int if key in {'before_id', 'ownership_epoch', 'source_request_id', 'task_id', 'after_id', 'limit'} else str, False, default)
-    return result
-
-
-class Service:
+class Service(CoordinationService):
+    """HTTP host composition of the shared collaboration core."""
     def __init__(self, database_path, github_app=None):
-        path = Path(database_path)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        self.identity = IdentityStore(path)
+        super().__init__(database_path, github_app)
         from .accounts import AccountStore
         from .workspaces import WorkspaceStore
         self.accounts = AccountStore(self.identity)
         self.workspaces = WorkspaceStore(self.accounts)
-        self.tasks = TaskStore(self.identity)
-        from .task_lifecycle import TaskLifecycleStore, ACTIONS
-        self.lifecycle = TaskLifecycleStore(self.identity)
-        from .dependencies import DependencyStore, schemas as dependency_schemas
-        self.dependencies = DependencyStore(self.identity)
-        self.activity = ActivityStore(self.identity)
-        self.messages = MessageStore(self.identity)
-        self.contracts = ContractStore(self.identity)
-        from .checkpoints import CheckpointStore
-        self.checkpoints = CheckpointStore(self.identity)
-        from .repositories import RepositoryStore
-        self.repositories = RepositoryStore(self.identity)
-        from .github_app import GitHubApp
-        from .github_sync import GitHubSync
-        self.github = GitHubSync(self.identity, self.repositories, github_app or GitHubApp())
-        self.operations = {
-            'checkpoint': ('agent', self.checkpoints.checkpoint, fields('session_key tool event', {'task_id': None, 'ownership_epoch': None})),
-            'diagnostic_start': ('agent', self.checkpoints.diagnostic_start, fields('challenge')),
-            'diagnostic_read': ('agent', self.checkpoints.diagnostic_read, fields('diagnostic_id')),
-            'diagnostic_complete': ('agent', self.checkpoints.diagnostic_complete, fields('diagnostic_id proof')),
-            'create_room': (None, self.identity.create_room, fields('name owner_name', {'repository': ''})),
-            'join': (None, self.identity.join_invite, fields('invite_token display_name')),
-            'invite': ('web', self.identity.create_invite, fields()),
-            'rotate_agent': ('web', self.identity.rotate_agent, fields()),
-            'connect_agent': ('web', self.identity.connect_agent, fields()),
-            'create_task': ('web', self.tasks.create_task, fields('intent_key title scope')),
-            'claim_task': ('agent', self.tasks.claim_task, fields('task_id', {'session_key': None})),
-            'register_session': ('agent', self.activity.register_session, fields('session_key tool repository branch', {'task_id': None, 'ownership_epoch': None})),
-            'report_progress': ('agent', self.activity.report_progress, fields('task_id state summary', {'evidence': '', 'session_key': None, 'ownership_epoch': None})),
-            'send_request': ('agent', self.messages.send_request, fields('request_key context_version body', {'receiver_member_id': None, 'task_id': None})),
-            'read_inbox': ('agent', self.messages.read_inbox, fields('', {'after_id': 0, 'limit': 50})),
-            'acknowledge': ('agent', self.messages.acknowledge, fields('request_id')),
-            'reply': ('agent', self.messages.reply, fields('request_id request_key context_version body', {'evidence': ''})),
-            'resolve_request': ('any', self.messages.resolve_request, fields('request_id context_version')),
-            'assign': ('web', self.messages.assign_receiver, fields('request_id receiver_member_id')),
-            'propose_contract': ('agent', self.contracts.propose, fields('contract_key expected_version title body', {'source_request_id': None, 'commit_ref': ''})),
-            'decision': ('web', self.contracts.decide, fields('contract_id version decision')),
-            'bind_repository': ('web', self.repositories.bind_repository, fields('repository')),
-            'observe_repository': ('agent', self.repositories.observe, {'task_id': (int, True, None), 'observation': (dict, True, None)}),
-            'repo_checkpoint': ('agent', self.repo_checkpoint, {'task_id': (int, True, None), 'observation': (dict, True, None)}),
-            'read_git_team': ('agent', lambda token: self.snapshot(token, web=False), fields()),
-            'link_delivery': ('any', self.github.associate, {'task_id': (int, True, None),
-                'branch': (str, False, ''), 'pr_number': (int, False, None), 'commit_sha': (str, False, '')}),
-        }
-        for name, schema in dependency_schemas(fields).items():
-            self.operations[name] = ('any', getattr(self.dependencies, name), schema)
-        for action in ACTIONS:
-            optional = {'session_key': None, 'ownership_epoch': None} if action in ('release_task', 'propose_handoff') else {}
-            required = 'task_id expected_revision request_key summary'
-            if action in ('propose_handoff', 'force_handoff'):
-                required += ' target_member_id'
-            self.operations[action] = ('any' if action in ('release_task', 'propose_handoff') else 'web',
-                                       getattr(self.lifecycle, action), fields(required, optional))
-        self.operations['read_task_history'] = ('any', self.lifecycle.read_task_history, fields('task_id', {'before_id':None,'limit':20}))
-        for name in ('observe_repository', 'repo_checkpoint', 'link_delivery'):
-            self.operations[name][2].update(fields('', {'session_key': None, 'ownership_epoch': None}))
-        self.reads = {'tasks': self.tasks.list_tasks, 'sessions': self.activity.list_sessions,
-                      'progress': self.activity.list_progress, 'overlaps': self.activity.overlaps,
-                      'requests': self.messages.list_requests, 'contracts': self.contracts.list_contracts,
-                      'events': self.contracts.list_events, 'members': self.identity.list_members}
-        self.reads['git'] = self.git_snapshot
-        self.reads['collaboration'] = self.checkpoints.snapshot
-        self.reads['lifecycle'] = self.lifecycle.snapshot
-        self.reads['dependencies'] = self.dependencies.snapshot
-
-    def git_snapshot(self, token):
-        result = self.repositories.snapshot(token)
-        result.update(self.github.snapshot(token))
-        result['github_configured'] = self.github.app.enabled
-        return result
-
-    def repo_checkpoint(self, token, task_id, observation, session_key=None, ownership_epoch=None):
-        observed = self.repositories.observe(token, task_id, observation, session_key, ownership_epoch)
-        return {'observation': observed, 'team': self.snapshot(token, web=False),
-                'inbox': self.messages.read_inbox(token)}
-
-    def me(self, token):
-        return {'me': asdict(self.identity.authenticate(token)), 'room': self.identity.room_info(token)}
-
-    def snapshot(self, token, *, web=True):
-        self.identity.authenticate(token, required_kind='web' if web else 'agent')
-        result = self.me(token)
-        result.update({name: read(token) for name, read in self.reads.items()})
-        result['server_time'] = datetime.now(timezone.utc).isoformat()
-        return result
-
-    def call(self, operation, token, data):
-        kind, method, schema = self.operations[operation]
-        if kind:
-            self.identity.authenticate(token, required_kind=None if kind == 'any' else kind)
-        data = validate(dict(data) if isinstance(data, dict) else data, schema)
-        return method(token, **data) if kind else method(**data)
+        self.change_events.install_triggers()
 
 
 class LocalBoundary:
@@ -498,6 +372,10 @@ def create_app(database_path='.local/crewmesh.sqlite3', *, base_url=None, public
     from .git_routes import git_routes
     routes.extend(git_routes(service, service.github))
     routes.extend(billing_routes(service, billing_runtime, origin=origin or base_url))
+    from .realtime import events_route
+    routes.append(events_route(service, base_url=base_url, public_url=origin))
+    from .coordination_http import coordination_routes
+    routes.extend(coordination_routes(service, base_url=base_url, public_url=origin))
     routes.append(Mount('/', app=authenticated_mcp))
     app = Starlette(routes=routes, lifespan=lifespan)
     app.state.service = service

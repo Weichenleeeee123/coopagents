@@ -395,6 +395,13 @@ details[open] > summary {
   font-weight: 600;
 }
 /* Shared workbench */
+.local-board main { min-width: 0; padding: 24px 32px; width: 100%; }
+.local-board main > section { margin-top: 24px; }
+.local-board main > section[aria-label="任务筛选"] { display: flex; flex-wrap: wrap; align-items: end; gap: 16px; }
+.local-board #task-search { min-width: 240px; }
+.local-board .member-row { display: block; }
+.local-board .member-row h3 { margin-bottom: 12px; }
+@media (max-width: 640px) { .local-board main { padding: 16px; } }
 .workspace,
 .account-hub {
   display: grid;
