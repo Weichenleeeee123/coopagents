@@ -33,7 +33,10 @@ class CoordinationService:
         self.github = GitHubSync(self.identity, self.repositories, github_app or GitHubApp())
         from .events import EventStore
         self.change_events = EventStore(self.identity)
+        from .wake_digest import WakeDigest
+        self.wake = WakeDigest(self.identity)
         self.operations = {
+            'wake_digest': ('agent', self.wake.digest, fields()),
             'checkpoint': ('agent', self.checkpoints.checkpoint, fields('session_key tool event', {'task_id': None, 'ownership_epoch': None})),
             'diagnostic_start': ('agent', self.checkpoints.diagnostic_start, fields('challenge')),
             'diagnostic_read': ('agent', self.checkpoints.diagnostic_read, fields('diagnostic_id')),

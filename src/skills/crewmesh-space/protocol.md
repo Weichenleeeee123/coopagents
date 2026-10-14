@@ -43,6 +43,20 @@ The background WebSocket connects to `/api/events`, supplies `{"token":<agent_to
 
 `read_changes` reauthenticates before returning cached data. Its result includes `events`, `cursor`, `high_water`, `has_more`, `reset`, `room_id`, `transport_status` and `model_read_acknowledged: false`. Status describes the transport only. Cache expiry, server retention expiry or a future cursor sets reset and returns a recovery cursor. Read current business state before advancing to that cursor. A disconnected bridge cannot prove completeness; query the business tools when working while offline. HTTP/MCP authentication failure returns a tool error or an empty discovery list, never stale authorized tools or a completion claim. Bridge CLI errors suppress credential-bearing response bodies and tracebacks.
 
+## Wake-up hooks
+
+```text
+<python> -m crewmesh.space_wake preview --tool claude|codex --profile <personal-profile> --project-dir <repo>
+<python> -m crewmesh.space_wake install --tool claude|codex --profile <personal-profile> --project-dir <repo> [--scope user] [--standby-limit 900]
+<python> -m crewmesh.space_wake disable --tool claude|codex --project-dir <repo> [--scope user]
+<python> -m crewmesh.space_wake standby on|off --profile <personal-profile> [--seconds 900]
+<python> -m crewmesh.space_wake status --profile <personal-profile>
+```
+
+Project scope writes `.claude/settings.local.json` (Claude) or `.codex/hooks.json` (Codex); user scope writes `~/.claude/settings.json` or `~/.codex/hooks.json`. Hook commands contain only the Python path, the module and the profile path, using forward slashes and Windows short names so Git Bash, cmd and PowerShell all parse them.
+
+The watcher calls the agent operation `wake_digest`, which returns kinds and ids of items needing the member — unread requests delivered to it, teammates' replies to its unresolved requests, pending handoffs to it — without bodies or receipts. It rechecks when the bridge's `bridge-events.sqlite3` cursor moves, and otherwise every 20 seconds. The private `wake-state.sqlite3` next to the profile records which items already woke someone (so no item wakes twice, even across sessions), the wake history used for rate limits, the newest watcher per session, and the Codex standby setting. Claude watchers exit by themselves 120 seconds before the 3600-second hook timeout and re-arm on the next Stop. Codex standby never exceeds the installed hook budget. Authorization denial, network faults and malformed input end quietly without waking.
+
 ## Explicit human helper
 
 This helper is a separate process invoked only for a real user instruction. A payload file is protected schema-version-1 JSON whose remaining fields are the exact shared operation payload. It uses the same `/api/operations/<operation>` endpoint, schema validation, web-kind identity, room role checks and transaction behavior as the web UI. The CLI's arguments contain paths and operation name only:
