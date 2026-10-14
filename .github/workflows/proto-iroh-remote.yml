@@ -1,0 +1,33 @@
+name: Prototype iroh remote member
+on:
+  push:
+    branches: [proto/iroh-remote]
+permissions:
+  contents: read
+jobs:
+  remote-member:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CREWMESH_REDACT: "1"
+      TCP_HOST: f7631924bb5ab64519fd360b6c99ace1ddc2328e7da2ec6a221edea4a3f94b82
+      WS_HOST: 326b7b87a071d5f8af0cc1e05c3df26fc6c97ed59e5749edae6f96899c69b879
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install "iroh==1.1.0" "websockets==17.2"
+      - name: Dial the host by endpoint id and probe through forwarded ports
+        run: |
+          mkdir -p out/tcp out/ws
+          python prototypes/iroh/iroh_forward.py client out/tcp id:$TCP_HOST 48001 > out/tcp/client.out 2>&1 &
+          python prototypes/iroh/iroh_forward.py client out/ws id:$WS_HOST 48002 > out/ws/client.out 2>&1 &
+          sleep 20
+          for i in 1 2 3 4 5 6; do python prototypes/iroh/targets.py probe out 48001 48002 || true; sleep 25; done
+          cat out/tcp/client.out out/ws/client.out
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: iroh-remote-evidence
+          path: out/
