@@ -5,6 +5,7 @@ Use the absolute isolated Python path as `<python>`. None of these commands incl
 ## Runtime commands
 
 ```text
+<python> -m crewmesh.space_runtime create --name <space-name> --owner <display-name> --state-dir <private-dir> --network p2p
 <python> -m crewmesh.space_runtime create --name <space-name> --owner <display-name> --state-dir <private-dir> --network quick --cloudflared <verified-executable>
 <python> -m crewmesh.space_runtime create --name <space-name> --owner <display-name> --state-dir <private-dir> --network local
 <python> -m crewmesh.space_runtime create --name <space-name> --owner <display-name> --state-dir <private-dir> --network external --public-url https://<trusted-host>
@@ -17,11 +18,11 @@ Use the absolute isolated Python path as `<python>`. None of these commands incl
 <python> -m crewmesh.space_runtime board --profile <owner-profile>
 ```
 
-The invite helper saves a protected descriptor and normally emits its path. Use `--share` only if sharing was requested and the output channel is private; it can emit the bearer invitation. Never run it in a captured/public terminal transcript. Revoke a leaked or unused invite with `revoke-invitation --profile <owner-profile> --invitation-file <private-invite>`; revoke a member with `revoke-member --profile <owner-profile> --member-id <member>` only when the actual user requests it. Database and identity survive start/stop; the public quick-tunnel origin may change.
+The invite helper saves a protected descriptor and normally emits its path. Use `--share` only if sharing was requested and the output channel is private; it can emit the bearer invitation. Never run it in a captured/public terminal transcript. Revoke a leaked or unused invite with `revoke-invitation --profile <owner-profile> --invitation-file <private-invite>`; revoke a member with `revoke-member --profile <owner-profile> --member-id <member>` only when the actual user requests it. Database and identity survive start/stop. In p2p mode the endpoint key also survives, so the origin and invitations stay valid; the quick-tunnel origin may change.
 
 ## Hosted profile and identity
 
-The private JSON object contains `schema_version: 1`, `origin`, `room_id`, `member_id`, `agent_token`. Local joins also receive `web_token`; only an owner has `control_origin` and `control_token`. Do not print this object. Write it using `crewmesh.spaces.private_write`; pass secrets from the private authorized source directly into that function, not a shell one-liner containing the secret. Before configuration, `GET <origin>/api/me` with `Authorization: Bearer <agent_token>` and matching Origin must return `me.room_id`, `me.member_id` and `me.kind == "agent"`. HTTP credential requests reject redirects. Remote origins require HTTPS; local HTTP requires explicit loopback and port.
+The private JSON object contains `schema_version: 1`, `origin`, `room_id`, `member_id`, `agent_token`. Local joins also receive `web_token`; only an owner has `control_origin` and `control_token`. A p2p member profile adds `p2p: {"endpoint_id": <64 hex>}` and uses the host's loopback origin, which its link serves on the member's computer. Do not print this object. Write it using `crewmesh.spaces.private_write`; pass secrets from the private authorized source directly into that function, not a shell one-liner containing the secret. Before configuration, `GET <origin>/api/me` with `Authorization: Bearer <agent_token>` and matching Origin must return `me.room_id`, `me.member_id` and `me.kind == "agent"`. HTTP credential requests reject redirects. Remote origins require HTTPS; local HTTP requires explicit loopback and port.
 
 ## Native configurations
 

@@ -12,6 +12,7 @@
 | [空间 Skill 与桥接](agent-hosted-skill.md) | 原生安装接入、共享缓存、明确授权 helper 与真实 Claude/Codex 验证 |
 | [可选本机看板](agent-hosted-board.md) | 共用视图和实时客户端、只读会话与主机回环访问 |
 | [空间发行验收](agent-hosted-release-report.md) | 完整回归、浏览器、发行安装与外部验证边界 |
+| [点对点异地入口](agent-hosted-p2p-report.md) | iroh 按公钥直连的设计、修正的问题、跨网络产品验收与边界 |
 | [Agent 唤醒](agent-wake.md) | 可选唤醒 hook：Claude 空闲唤醒、Codex 每轮检查与待命、唤醒规则、限频、可靠性与原生验收 |
 | [唤醒与点对点原型](wake-and-p2p-prototype-report.md) | Claude asyncRewake 空闲唤醒、Codex Stop 待命续跑、iroh 公钥直连异地实测 |
 | [共同核心实施计划](agent-hosted-core-plan.md) | 两版共用协作与协议，完整入口组合账号，L-1 回归与阶段提交 |

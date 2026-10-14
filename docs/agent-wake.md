@@ -50,6 +50,7 @@ python -m crewmesh.space_wake disable --tool claude|codex --project-dir <repo>
 - **Codex 待命不超过安装时写入的 hook 预算**。
 - **授权被拒、网络故障、输入异常时都静默结束**，不唤醒，也不影响原会话。
 - **监听平时每 20 秒查一次**；本机桥接的事件缓存游标变化时立即检查。
+- **p2p 成员的监听只用桥接已经持有的本机链路，自己从不打开链路**：监听生命周期短，它若占住端口，复用这条链路的桥接会在监听退出时断线。桥接没起来时，这次检查失败，之后重试。
 - **状态文件 `wake-state.sqlite3` 存在 profile 旁边**，不含凭据。`status` 会把已被杀掉的监听标为 `gone`。
 - **hook 命令只含 Python 路径、模块名和 profile 路径**：可执行文件用 Windows 短路径，profile 保留原路径，含空格时加引号。已验证 cmd、PowerShell、Git Bash 都能正确执行。
 
@@ -83,4 +84,4 @@ python -m crewmesh.space_wake disable --tool claude|codex --project-dir <repo>
 - **终端关闭后不会唤醒**；没有常驻进程替你开会话。
 - **Claude Code 交互模式下的第一条提示可能早于 MCP 连接完成**，用 crewmesh 工具的指令可能失败；唤醒发生在之后，不受影响。
 - **验收会话里模型多次说“用户发了 `.`”**，即使在被唤醒之前也出现过。记录显示并没有这样的输入，判断是测试环境叠加用户全局指令所致，未进一步定位。
-- **验收只用了一台电脑**；跨电脑时唤醒走的是同一套 HTTP 接口，但未单独验收。
+- **验收只用了一台电脑**；跨电脑（含 p2p 成员）时唤醒走的是同一套 HTTP 接口和桥接链路，但未单独验收。

@@ -9,7 +9,7 @@ to decide which person may perform each operation.
 From the repository's installed Python environment:
 
 ```powershell
-python -m crewmesh.space_runtime create --name "Team" --owner "Alice" --state-dir .local/spaces/team --network quick --cloudflared C:\verified\cloudflared.exe
+python -m crewmesh.space_runtime create --name "Team" --owner "Alice" --state-dir .local/spaces/team
 python -m crewmesh.space_runtime status --profile .local/spaces/team/profile.json
 python -m crewmesh.space_runtime invite --profile .local/spaces/team/profile.json
 python -m crewmesh.space_runtime join --invitation-file C:\private\invitation.json --name "Bob" --state-dir .local/spaces/bob
@@ -17,7 +17,22 @@ python -m crewmesh.space_runtime stop --profile .local/spaces/team/profile.json
 python -m crewmesh.space_runtime start --profile .local/spaces/team/profile.json
 ```
 
-Quick mode is the default and requires an explicitly verified cloudflared
+Peer-to-peer mode (`--network p2p`) is the default. The host keeps a private
+iroh endpoint key in `host.json`; its public endpoint id goes into invitations
+and member profiles and stays the same across restarts. Each member's link
+binds the host's loopback port number on the member's computer and carries
+every TCP connection as one QUIC stream to the host, which forwards it to its
+public loopback port. HTTP Host and Origin therefore match local access, and
+the shared boundary, MCP and WebSocket checks are unchanged. Connections are
+encrypted end to end and authenticated by the host key; iroh connects directly
+when the networks allow and otherwise relays through n0's public relays, which
+see only encrypted bytes. The owner's control `/status` reports the endpoint id
+and whether it is online; a member's `status` reports a direct or relayed path.
+If another program already uses the space's port on a member computer, the
+link refuses to start rather than pick another port. Details and measurements:
+[p2p report](agent-hosted-p2p-report.md).
+
+Quick mode is the fallback and requires an explicitly verified cloudflared
 executable. The adapter checks its version output, uses automatic transport
 selection, and waits for a registered tunnel connection. Installation and
 executable provenance verification belong to the calling setup workflow. The

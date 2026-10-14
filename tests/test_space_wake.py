@@ -256,6 +256,21 @@ class HookEntryTests(unittest.TestCase):
         with WakeState(self.profile).connect() as c:
             self.assertIsNone(c.execute("SELECT 1 FROM watchers WHERE session='abc'").fetchone())
 
+    def test_p2p_member_watcher_never_opens_a_link(self):
+        from unittest.mock import patch
+        import crewmesh.p2p as p2p
+        member = evidence('p2p') / 'profile.json'
+        private_write(member, dict(schema_version=1, origin='http://127.0.0.1:9', room_id='r', member_id='m',
+                                   agent_token='t', p2p={'endpoint_id': 'a' * 64}))
+        opened = []
+        with patch.object(p2p, 'MemberLink', side_effect=lambda *a: opened.append(a)), \
+             patch.object(p2p, 'member_link', side_effect=lambda *a: opened.append(a)):
+            stdin = io.BytesIO(json.dumps({'session_id': 'p2p', 'hook_event_name': 'Stop'}).encode())
+            self.assertEqual(watch(member, 'codex', stdin, io.StringIO(), io.StringIO()), 0)
+        self.assertEqual(opened, [], 'A short-lived watcher must not hold the member link')
+        with WakeState(member).connect() as c:
+            self.assertEqual(c.execute("SELECT status FROM watchers WHERE session='p2p'").fetchone()[0], 'deadline')
+
     def test_malformed_input_is_quiet(self):
         stdin = io.BytesIO(b'not json')
         self.assertEqual(watch(self.profile, 'claude', stdin, io.StringIO(), io.StringIO()), 0)

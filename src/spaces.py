@@ -125,6 +125,11 @@ def read_profile(value):
     if 'web_token' in result and (not isinstance(result['web_token'], str) or not result['web_token']):
         raise ValueError('Invalid optional web credential')
     validate_origin(result['origin'])
+    if 'p2p' in result:
+        from .p2p import validate_link
+        validate_link(result['p2p'])
+        if urlsplit(result['origin']).hostname != '127.0.0.1':
+            raise ValueError('Peer-to-peer profiles use a loopback origin')
     if 'control_origin' in result or 'control_token' in result:
         validate_origin(result.get('control_origin'))
         if urlsplit(result['control_origin']).hostname not in ('127.0.0.1', 'localhost') or not result.get('control_token'):

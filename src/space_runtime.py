@@ -16,6 +16,7 @@ from urllib.parse import urlsplit
 from uuid import uuid4
 
 from .coordination import CoordinationService
+from .p2p import member_link, validate_link
 from .spaces import (checked_path, private_directory, private_write, read_json,
                      read_profile, safe_profile, validate_origin)
 
@@ -69,15 +70,20 @@ def status(profile_path):
         if 'control_token' in profile:
             health = request(profile['control_origin'], '/status', token=profile['control_token'])
         else:
-            health = request(profile['origin'], '/api/me', token=profile['agent_token'])
-            health = {'room_id': health['me']['room_id'], 'status': 'reachable'}
+            with member_link(profile) as link:
+                me = request(profile['origin'], '/api/me', token=profile['agent_token'])
+                health = {'room_id': me['me']['room_id'], 'status': 'reachable'}
+                if link is not None:
+                    health['p2p'] = link.path()
         if health['room_id'] != profile['room_id']:
             raise ValueError('Unexpected space identity')
         # Startup can atomically replace the origin while this control request
         # waits. Return the current profile once readiness is authenticated.
         result = safe_profile(read_profile(profile_path), profile_path)
         result['status'] = health['status']
-    except (OSError, ValueError, KeyError):
+        if 'p2p' in health:
+            result['p2p'] = health['p2p']
+    except (OSError, ValueError, KeyError, RuntimeError):
         result['status'] = 'unreachable'
     return result
 
@@ -112,12 +118,12 @@ def start(profile_path):
     raise RuntimeError('Runtime did not become ready')
 
 
-def create(name, owner, state_dir, network='quick', public_url=None, cloudflared=None):
+def create(name, owner, state_dir, network='p2p', public_url=None, cloudflared=None):
     state = private_directory(state_dir)
     profile_path, host_path = runtime_paths(state / 'profile.json')
     if profile_path.exists() or host_path.exists() or (state / 'space.sqlite3').exists():
         raise FileExistsError('Space state already exists; use start to resume')
-    if network not in ('local', 'quick', 'external'):
+    if network not in ('p2p', 'local', 'quick', 'external'):
         raise ValueError('Unsupported network')
     if network == 'external':
         from .config import public_origin
@@ -138,8 +144,13 @@ def create(name, owner, state_dir, network='quick', public_url=None, cloudflared
                    control_origin='http://127.0.0.1:' + str(control_port),
                    control_token=secrets.token_urlsafe(32))
     private_write(profile_path, profile)
-    private_write(host_path, dict(schema_version=1, network=network, local_origin=local,
-                                 cloudflared=str(checked_path(cloudflared)) if cloudflared else None))
+    host = dict(schema_version=1, network=network, local_origin=local,
+                cloudflared=str(checked_path(cloudflared)) if cloudflared else None)
+    if network == 'p2p':
+        from .p2p import new_secret
+        # The endpoint key is the space's stable network identity across restarts.
+        host['p2p_secret'] = new_secret()
+    private_write(host_path, host)
     return start(profile_path)
 
 
@@ -156,6 +167,7 @@ def serve(profile_path):
     stop = threading.Event()
     ready = threading.Event()
     tunnel = None
+    link = None
     servers, threads = [], []
     # Reserve runtime ownership with an OS file lock retained for this worker's
     # entire lifetime. No PID-based signalling or stale-file deletion is needed.
@@ -179,9 +191,12 @@ def serve(profile_path):
                 if profile['origin'] != tunnel.origin:
                     profile['origin'] = tunnel.origin
                     private_write(profile_path, profile, update=True)
+            elif host['network'] == 'p2p':
+                from .p2p import HostLink
+                link = HostLink(host['p2p_secret'], urlsplit(host['local_origin']).port)
             app = create_space_app(service, room_id=profile['room_id'], origin=profile['origin'])
             control = create_control_app(profile['control_origin'], profile['control_token'], stop, profile['room_id'], ready,
-                                         service=service, source_token=profile['agent_token'])
+                                         service=service, source_token=profile['agent_token'], p2p=link)
             for application, origin in ((app, host['local_origin']), (control, profile['control_origin'])):
                 config = uvicorn.Config(application, host='127.0.0.1', port=urlsplit(origin).port,
                                         log_level='warning', access_log=False, proxy_headers=False,
@@ -204,6 +219,8 @@ def serve(profile_path):
                 thread.join(timeout=10)
             if tunnel:
                 tunnel.close()
+            if link:
+                link.close()
 
 
 def runtime_unlocked(profile_path):
@@ -241,10 +258,27 @@ def stop(profile_path):
     raise RuntimeError('Graceful shutdown remains pending')
 
 
+def space_link(profile_path, profile):
+    """Peer-to-peer link for invitations: the member's own, or the host's key."""
+    if profile.get('p2p'):
+        return profile['p2p']
+    host_path = runtime_paths(profile_path)[1]
+    if profile.get('control_token') and host_path.exists():
+        host = read_json(host_path)
+        if host.get('network') == 'p2p':
+            from .p2p import endpoint_id
+            return {'endpoint_id': endpoint_id(host['p2p_secret'])}
+    return None
+
+
 def invite(profile_path, share=False):
     profile = read_profile(profile_path)
-    invitation = request(profile['origin'], '/api/operations/invite', token=web_credential(profile), data={})
+    with member_link(profile):
+        invitation = request(profile['origin'], '/api/operations/invite', token=web_credential(profile), data={})
     descriptor = dict(schema_version=1, origin=profile['origin'], **invitation)
+    link = space_link(profile_path, profile)
+    if link:
+        descriptor['p2p'] = link
     path = checked_path(profile_path).parent / ('invitation-' + uuid4().hex + '.json')
     private_write(path, descriptor)
     result = safe_profile(profile, profile_path) | {'invitation_file': str(path), 'expires_at': invitation['expires_at']}
@@ -260,16 +294,21 @@ def join(invitation_file, name, state_dir):
     expiry = datetime.fromisoformat(descriptor['expires_at'])
     if expiry.tzinfo is None or expiry <= datetime.now(timezone.utc):
         raise ValueError('Invitation expired')
+    link = validate_link(descriptor['p2p']) if 'p2p' in descriptor else None
     state = private_directory(state_dir)
     path = state / 'profile.json'
     if path.exists():
         raise FileExistsError('Personal profile already exists')
-    identity = request(origin, '/api/join', data={'room_id': descriptor['room_id'],
-                                                'invite_token': descriptor['invite_token'], 'display_name': name})
+    target = {'origin': origin, 'room_id': descriptor['room_id']} | ({'p2p': link} if link else {})
+    with member_link(target):
+        identity = request(origin, '/api/join', data={'room_id': descriptor['room_id'],
+                                                    'invite_token': descriptor['invite_token'], 'display_name': name})
     if identity['room_id'] != descriptor['room_id']:
         raise ValueError('Invitation space does not match')
     profile = dict(schema_version=1, origin=origin,
                    **{key: identity[key] for key in ('room_id', 'member_id', 'web_token', 'agent_token')})
+    if link:
+        profile['p2p'] = link
     private_write(path, profile)
     return safe_profile(profile, path)
 
@@ -277,6 +316,8 @@ def join(invitation_file, name, state_dir):
 def reconnect(profile_path, origin, room_id):
     """User supplies the owner's newly trusted address; preserve member identity."""
     profile = read_profile(profile_path)
+    if profile.get('p2p'):
+        raise ValueError('Peer-to-peer profiles follow the host key; no address change is needed')
     origin = validate_origin(origin)
     if room_id != profile['room_id']:
         raise ValueError('Expected room does not match the personal profile')
@@ -306,7 +347,7 @@ def main(argv=None):
     create_parser.add_argument('--name', required=True)
     create_parser.add_argument('--owner', required=True)
     create_parser.add_argument('--state-dir', required=True)
-    create_parser.add_argument('--network', choices=['local', 'quick', 'external'], default='quick')
+    create_parser.add_argument('--network', choices=['p2p', 'local', 'quick', 'external'], default='p2p')
     create_parser.add_argument('--public-url')
     create_parser.add_argument('--cloudflared')
     for command in ('start', 'status', 'stop', 'board', 'invite', '_serve', 'revoke-invitation', 'revoke-member'):
@@ -340,7 +381,8 @@ def main(argv=None):
                 operation = 'revoke_invite'
             else:
                 data, operation = {'member_id': args['member_id']}, 'revoke_member'
-            request(profile['origin'], '/api/operations/' + operation, token=web_credential(profile), data=data)
+            with member_link(profile):
+                request(profile['origin'], '/api/operations/' + operation, token=web_credential(profile), data=data)
             result = safe_profile(profile, args['profile']) | {'status': 'revoked'}
         else:
             handler = {'create': create, 'start': start, 'status': status, 'stop': stop, 'board': board,
