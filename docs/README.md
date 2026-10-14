@@ -4,6 +4,7 @@
 
 | 文档 | 内容 |
 | --- | --- |
+| [自托管团队服务](self-hosted-service.md) | 原首页的账号服务启动、Docker 部署、Git/GitHub 接入与各候选版状态（首页改版时迁出） |
 | [Agent 承载空间设计](agent-hosted-spaces-design.md) | 无账号、无需部署网页的轻量协作方向；异地连接、实时事件及 L0–L4 阶段 |
 | [Agent 承载空间实施](agent-hosted-implementation-plan.md) | 本机空间、异地网络、实时通信、原生 Skill 与共享看板的实施清单 |
 | [本机空间运行](agent-hosted-runtime.md) | 私有配置、创建与加入、重启恢复、邀请和成员撤销 |
