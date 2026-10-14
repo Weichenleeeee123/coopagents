@@ -4,7 +4,7 @@
 
 ## 当前产品方向：Agent 承载空间
 
-轻量开源使用由发起人的电脑承载协作空间，Skill 指导 agent 创建、邀请与接入；无需网页注册或专门部署网站。异地入口使用经校验的第三方临时隧道或用户自己的稳定 HTTPS，维护者不运营公共中继。两版共用协作领域、HTTP/MCP 与持久 WebSocket 事件。L-1、L0/L1、L2、L3 已实现并按阶段审查；本机空间重启恢复、邀请及成员撤销、桥接游标与并发缓存均已验证。真实 Claude 发布、Codex CLI 读取并回复通过；公网 HTTP/WSS/MCP 往返通过，但仍为单机证据。L4 可选共享看板与完整发行已验收，容器 smoke 与真实异地双机仍未执行，见 [发行验收](agent-hosted-release-report.md)，详细状态见 [实施计划](agent-hosted-implementation-plan.md)、[运行说明](agent-hosted-runtime.md) 和 [Skill 验证](agent-hosted-skill.md)。
+轻量开源使用由发起人的电脑承载协作空间，Skill 指导 agent 创建、邀请与接入；无需网页注册或专门部署网站。异地入口默认按主机公钥经 iroh 点对点连接（直连优先、加密中继兜底），保留经校验的第三方临时隧道或用户自己的稳定 HTTPS 作为备选，维护者不运营公共中继；跨网络产品验收已通过，见 [p2p 报告](agent-hosted-p2p-report.md)。两版共用协作领域、HTTP/MCP 与持久 WebSocket 事件。L-1、L0/L1、L2、L3 已实现并按阶段审查；本机空间重启恢复、邀请及成员撤销、桥接游标与并发缓存均已验证。真实 Claude 发布、Codex CLI 读取并回复通过；公网 HTTP/WSS/MCP 往返通过，但仍为单机证据。L4 可选共享看板与完整发行已验收，容器 smoke 与真实异地双机仍未执行，见 [发行验收](agent-hosted-release-report.md)，详细状态见 [实施计划](agent-hosted-implementation-plan.md)、[运行说明](agent-hosted-runtime.md) 和 [Skill 验证](agent-hosted-skill.md)。
 
 ## 早期接入依据（历史）
 

@@ -230,14 +230,18 @@ class Bridge:
 
     async def run(self):
         from mcp.server.stdio import stdio_server
-        task = asyncio.create_task(self.watch())
-        try:
-            server = self.server()
-            async with stdio_server() as (reader, writer):
-                await server.run(reader, writer, server.create_initialization_options())
-        finally:
-            task.cancel()
-            await asyncio.gather(task, return_exceptions=True)
+        from .p2p import member_link
+        # A peer-to-peer profile reaches its host through a link held for the
+        # bridge's lifetime; short CLI helpers reuse it on the same port.
+        with member_link(read_profile(self.profile_path)):
+            task = asyncio.create_task(self.watch())
+            try:
+                server = self.server()
+                async with stdio_server() as (reader, writer):
+                    await server.run(reader, writer, server.create_initialization_options())
+            finally:
+                task.cancel()
+                await asyncio.gather(task, return_exceptions=True)
 
 
 # A separate CLI path, deliberately absent from ordinary agent MCP discovery.
@@ -253,6 +257,12 @@ def human_operation(profile_path, operation, payload_path):
     profile = read_profile(profile_path)
     if not profile.get('web_token'):
         raise ValueError('This profile has no human credential; use the service web interface')
+    from .p2p import member_link
+    with member_link(profile):
+        return _human_operation(profile, operation, payload_path)
+
+
+def _human_operation(profile, operation, payload_path):
     identity = request(profile['origin'], '/api/me', token=profile['web_token'])['me']
     if (identity['room_id'], identity['member_id'], identity['kind']) != (profile['room_id'], profile['member_id'], 'web'):
         raise ValueError('Human profile identity mismatch')
