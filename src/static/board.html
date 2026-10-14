@@ -1,0 +1,8 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Crewmesh · 本机看板</title>
+<link rel="stylesheet" href="/board/static/styles.css">
+<script src="/board/static/git.js" defer></script><script src="/board/static/dependencies.js" defer></script><script src="/board/static/board.js" defer></script><script src="/board/static/realtime_client.js" defer></script><script src="/board/static/space_board.js" defer></script></head>
+<body class="local-board"><main><header class="view-header"><p class="eyebrow">CREWMESH / 本机只读看板</p><h1 id="room-name">团队协作</h1><p>任务、交付证据与模型消费回执。此页面只查看协作记录。</p><p id="transport-status" role="status">正在连接…</p><p id="board-error" role="alert"></p><button id="refresh" type="button">刷新</button></header>
+<section aria-label="任务筛选"><label>搜索任务<input id="task-search" type="search" placeholder="标题、范围或进展"></label><label>负责人<select id="task-owner"><option value="">所有成员</option></select></label><label>任务状态<select id="task-status"><option value="active">活跃任务</option><option value="cancelled">已取消</option><option value="all">全部</option></select></label><p id="board-count" role="status"></p></section>
+<section id="tasks" class="kanban-board" aria-label="任务看板"></section><section><h2>团队成员与进度</h2><div id="members"></div></section><section><h2>技术请求与消费状态</h2><div id="requests"></div></section><section><h2>公共约定</h2><div id="contracts"></div></section>
+</main><dialog id="task-dialog" aria-labelledby="task-detail-title"><button id="close-task" type="button">关闭详情</button><div id="task-detail"></div></dialog></body></html>

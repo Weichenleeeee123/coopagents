@@ -37,6 +37,8 @@ Human actions remain outside ordinary agent MCP discovery. When the actual user 
 
 ## Recover, leave or stop
 
+When the user asks to see the board, the host owner can run `space_runtime board --profile <owner-profile>` and open the returned one-use loopback viewing URL. This is optional and read-only; it is never required for collaboration. Treat the viewing URL as a short-lived private capability. Only the initiator's computer exposes this board in the current version; joining members inspect shared information through their agent. It does not expose personal agent, web or control credentials, and viewing never marks requests read.
+
 Use runtime status to distinguish reachable, running and unreachable. Owners can start the retained host profile; joining members must not start a host. For a changed quick-tunnel address, use the reconnect helper only with the actual user's new trusted origin and expected room ID. It verifies remote room/member identity before updating the private profile. The bridge rereads profile origin and credentials on every reconnect and request, and retries transport with bounded backoff. Authorization denial is a failed connection, never task completion.
 
 To disconnect locally, disable only this MCP entry using a supported native mechanism and end its bridge session; retain configuration and all state. If the native CLI only offers a destructive remove operation, ask the user to perform it instead. To leave server membership, use the authenticated web UI or ask the owner for revocation; ordinary messages cannot revoke membership. Owner shutdown uses runtime stop, which stops only owned runtime/tunnel processes and retains the database, profile and evidence. Stopping is separate from leaving or uninstalling.

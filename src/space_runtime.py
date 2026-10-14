@@ -180,7 +180,8 @@ def serve(profile_path):
                     profile['origin'] = tunnel.origin
                     private_write(profile_path, profile, update=True)
             app = create_space_app(service, room_id=profile['room_id'], origin=profile['origin'])
-            control = create_control_app(profile['control_origin'], profile['control_token'], stop, profile['room_id'], ready)
+            control = create_control_app(profile['control_origin'], profile['control_token'], stop, profile['room_id'], ready,
+                                         service=service, source_token=profile['agent_token'])
             for application, origin in ((app, host['local_origin']), (control, profile['control_origin'])):
                 config = uvicorn.Config(application, host='127.0.0.1', port=urlsplit(origin).port,
                                         log_level='warning', access_log=False, proxy_headers=False,
@@ -290,6 +291,14 @@ def reconnect(profile_path, origin, room_id):
     return safe_profile(profile, profile_path)
 
 
+def board(profile_path):
+    """Issue a one-use local viewing URL through the authenticated host control."""
+    profile = read_profile(profile_path)
+    if not profile.get('control_token'):
+        raise ValueError('Only the host owner can open its local board')
+    return request(profile['control_origin'], '/board/open', token=profile['control_token'], data={})
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description='Manage a private agent-hosted Crewmesh space')
     commands = parser.add_subparsers(dest='command', required=True)
@@ -300,7 +309,7 @@ def main(argv=None):
     create_parser.add_argument('--network', choices=['local', 'quick', 'external'], default='quick')
     create_parser.add_argument('--public-url')
     create_parser.add_argument('--cloudflared')
-    for command in ('start', 'status', 'stop', 'invite', '_serve', 'revoke-invitation', 'revoke-member'):
+    for command in ('start', 'status', 'stop', 'board', 'invite', '_serve', 'revoke-invitation', 'revoke-member'):
         sub = commands.add_parser(command)
         sub.add_argument('--profile', required=True)
         if command == 'invite':
@@ -334,7 +343,7 @@ def main(argv=None):
             request(profile['origin'], '/api/operations/' + operation, token=web_credential(profile), data=data)
             result = safe_profile(profile, args['profile']) | {'status': 'revoked'}
         else:
-            handler = {'create': create, 'start': start, 'status': status, 'stop': stop,
+            handler = {'create': create, 'start': start, 'status': status, 'stop': stop, 'board': board,
                        'invite': invite, 'join': join, 'reconnect': reconnect}[command]
             if 'profile' in args:
                 args['profile_path'] = args.pop('profile')

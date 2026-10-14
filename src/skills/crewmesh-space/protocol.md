@@ -14,6 +14,7 @@ Use the absolute isolated Python path as `<python>`. None of these commands incl
 <python> -m crewmesh.space_runtime start --profile <owner-profile>
 <python> -m crewmesh.space_runtime reconnect --profile <member-profile> --origin https://<new-trusted-host> --room-id <expected-room>
 <python> -m crewmesh.space_runtime stop --profile <owner-profile>
+<python> -m crewmesh.space_runtime board --profile <owner-profile>
 ```
 
 The invite helper saves a protected descriptor and normally emits its path. Use `--share` only if sharing was requested and the output channel is private; it can emit the bearer invitation. Never run it in a captured/public terminal transcript. Revoke a leaked or unused invite with `revoke-invitation --profile <owner-profile> --invitation-file <private-invite>`; revoke a member with `revoke-member --profile <owner-profile> --member-id <member>` only when the actual user requests it. Database and identity survive start/stop; the public quick-tunnel origin may change.

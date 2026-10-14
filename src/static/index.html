@@ -11,6 +11,8 @@
     <script src="/static/collaboration.js" defer></script>
     <script src="/static/task_lifecycle.js" defer></script>
     <script src="/static/dependencies.js" defer></script>
+    <script src="/static/board.js" defer></script>
+    <script src="/static/realtime_client.js" defer></script>
     <script src="/static/app.js" defer></script>
     <script src="/static/billing.js" defer></script>
     <script src="/static/accounts.js" defer></script>
@@ -428,7 +430,8 @@
           <span>项目 / 团队工作台</span>
           <div>
             <span id="sync-time" aria-live="polite">正在同步…</span
-            ><button id="retry">刷新 ↻</button>
+            >
+            <span id="transport-status" role="status">实时连接准备中</span><button id="retry">刷新 ↻</button>
           </div>
         </header>
         <div id="network-error" role="status" class="notice" hidden></div>

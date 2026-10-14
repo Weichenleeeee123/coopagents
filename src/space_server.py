@@ -66,7 +66,7 @@ def create_space_app(service, *, room_id, origin):
     return LocalBoundary(app, base, public)
 
 
-def create_control_app(control_origin, control_token, stop_event, room_id, ready_event=None):
+def create_control_app(control_origin, control_token, stop_event, room_id, ready_event=None, *, service=None, source_token=None):
     async def control(request):
         try:
             if request.client.host not in ('127.0.0.1', '::1'):
@@ -83,5 +83,9 @@ def create_control_app(control_origin, control_token, stop_event, room_id, ready
         except Exception as error:
             payload, status = error_payload(error)
             return JSONResponse(payload, status_code=status)
-    return LocalBoundary(Starlette(routes=[Route('/status', control), Route('/stop', control, methods=['POST'])]),
+    routes = [Route('/status', control), Route('/stop', control, methods=['POST'])]
+    if service is not None and source_token is not None:
+        from .space_board import board_routes
+        routes += board_routes(service, source_token, control_origin, control_token, room_id)
+    return LocalBoundary(Starlette(routes=routes),
                          base_url=control_origin)
