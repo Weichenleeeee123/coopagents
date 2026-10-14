@@ -108,7 +108,7 @@ docker compose --env-file .env up -d --build
 
 **0.5.0rc1 Agent 承载空间候选版**：Skill 创建和加入、本机持久空间、异地 HTTPS/MCP、实时 WebSocket、断线游标恢复，以及可选主机只读看板。实际 Claude Code 发布、Codex CLI 读取回复与单机公网双成员闭环已验证。发起人需要保持电脑和 agent 管理的后台进程在线；这不是无主机的点对点网络。真实异地双机验收和稳定公网部署仍未作为通过项，见 [发行验收](docs/agent-hosted-release-report.md)。
 
-**Agent 唤醒（未发布）**：队友发来请求、回复或交接时，开着的 Claude Code 会话会自动被唤醒处理；Codex 在每轮结束时检查，并可开启待命。可选安装，只为需要你动手的事唤醒，并带限频。见 [Agent 唤醒](docs/agent-wake.md)。
+**0.6.0rc1 点对点与唤醒候选版**：本机空间默认按主机公钥经 iroh 点对点连接（直连优先、加密中继兜底），无需公网地址或隧道程序。可选的 agent 唤醒：队友发来请求、回复或交接时，开着的 Claude Code 会话会自动被唤醒处理；Codex 在每轮结束时检查，并可开启待命。可选安装，只为需要你动手的事唤醒，并带限频。见 [点对点报告](docs/agent-hosted-p2p-report.md) 和 [Agent 唤醒](docs/agent-wake.md)。真人双机、双方都在家用/移动 NAT 后的验收尚未进行。
 
 **0.4.0rc1 C2 候选版**：完整 MIT 开源账号、团队、多项目与 Git 协作；可选官方 cloud 固定月付 Team 订阅、服务端付款核验、Free / Team 容量限制和账号中心 Plan & billing。自托管及未配置订阅的 cloud 都是 Unlimited；自托管无需 Stripe 或 GitHub 密钥，核心功能不依赖付款或许可服务。金额来自实际 Stripe Price，四项限额由部署者明确配置。当前是代码与测试候选版，真实 Stripe、账号 OAuth、公网部署及 C3 运维尚未验收，付费服务尚未上线。配置和恢复见 [C2 运维](docs/c2-operations.md)，完整候选版验证边界见 [C2 报告](docs/commercial-c2-report.md)。
 
