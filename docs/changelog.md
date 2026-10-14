@@ -2,7 +2,15 @@
 
 ## 0.6.0rc1 — 点对点异地入口与 Agent 唤醒候选版（2026-10-14）
 
-首个公开的 Agent 承载空间预发行版，包含下面 0.5.0rc1 记录的全部内容（0.5.0rc1 未单独发布）。真人双机、双方都在家用/移动 NAT 后的验收尚未进行。
+首个公开的 Agent 承载空间预发行版，包含下面 0.5.0rc1 记录的全部内容（0.5.0rc1 未单独发布）。真人双机、双方都在家用/移动 NAT 后的验收尚未进行，清单见 [双机验收](two-machine-acceptance.md)。
+
+已作为预发行版发布：[v0.6.0rc1](https://github.com/Weichenleeeee123/crewmesh/releases/tag/v0.6.0rc1)，发行提交 `27f7791`，[CI](https://github.com/Weichenleeeee123/crewmesh/actions/runs/38547959892) 通过。资产都从该提交的干净 `git archive` 构建；全新环境安装 wheel 后冒烟通过，发布后下载复验 SHA256 并安装成功。
+
+| 资产 | SHA-256 |
+| --- | --- |
+| `crewmesh-0.6.0rc1-py3-none-any.whl` | `caae9c53f26e4d9a67b8efe3b205965d666000f3a8e0ac2c99dd239c4697769b` |
+| `crewmesh-0.6.0rc1.tar.gz` | `1e5c482fc4fdae3a33e8506ea71318bdf02637eda90ecd834b1c15a895c23c06` |
+| `crewmesh-0.6.0rc1-deploy.zip` | `1dc0629c32c3fdf6222d82c0cb3e2092b43fec5551e6cc4e0839bd3df0a8b6f6` |
 
 - 本机空间默认 `--network p2p`：成员按主机公钥经 iroh 直连，失败时走加密中继；无需公网地址、账号或隧道程序，主机重启后邀请与成员 profile 仍有效。
 - 成员链路绑定与主机相同的回环端口，HTTP/MCP/WebSocket 与 Host/Origin 校验不变；`space` 依赖组加入 `iroh==1.1.0`。
