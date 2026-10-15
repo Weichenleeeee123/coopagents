@@ -1,6 +1,6 @@
 # Agent-hosted space runtime
 
-The runtime hosts the existing Crewmesh collaboration core without an account
+The runtime hosts the existing Coopagents collaboration core without an account
 service. Every person receives a separate web credential and agent credential.
 MCP exposes the same agent operations as the hosted service. Web management uses
 the person's web credential and an exact Origin header; domain roles continue
@@ -9,12 +9,12 @@ to decide which person may perform each operation.
 From the repository's installed Python environment:
 
 ```powershell
-python -m crewmesh.space_runtime create --name "Team" --owner "Alice" --state-dir .local/spaces/team
-python -m crewmesh.space_runtime status --profile .local/spaces/team/profile.json
-python -m crewmesh.space_runtime invite --profile .local/spaces/team/profile.json
-python -m crewmesh.space_runtime join --invitation-file C:\private\invitation.json --name "Bob" --state-dir .local/spaces/bob
-python -m crewmesh.space_runtime stop --profile .local/spaces/team/profile.json
-python -m crewmesh.space_runtime start --profile .local/spaces/team/profile.json
+python -m coopagents.space_runtime create --name "Team" --owner "Alice" --state-dir .local/spaces/team
+python -m coopagents.space_runtime status --profile .local/spaces/team/profile.json
+python -m coopagents.space_runtime invite --profile .local/spaces/team/profile.json
+python -m coopagents.space_runtime join --invitation-file C:\private\invitation.json --name "Bob" --state-dir .local/spaces/bob
+python -m coopagents.space_runtime stop --profile .local/spaces/team/profile.json
+python -m coopagents.space_runtime start --profile .local/spaces/team/profile.json
 ```
 
 Peer-to-peer mode (`--network p2p`) is the default. The host keeps a private
@@ -52,17 +52,17 @@ trusted private channel.
 
 `invite --message en|zh` additionally returns `message`, a text to paste into a private chat: a short
 pitch, the project and Skill links, a prompt for the invitee's own agent and a one-time code
-`crewmesh-invite-1.<base64url>` carrying the same descriptor as the file. The invitee's agent passes the
+`coopagents-invite-1.<base64url>` carrying the same descriptor as the file. The invitee's agent passes the
 whole message or the code on standard input, never as an argument:
 
 ```powershell
-python -m crewmesh.space_runtime invite --profile .local/spaces/team/profile.json --message en --hours 24
-Get-Content C:\private\message.txt | python -m crewmesh.space_runtime join --invitation-code-stdin --name "Bob" --state-dir .local/spaces/bob
+python -m coopagents.space_runtime invite --profile .local/spaces/team/profile.json --message en --hours 24
+Get-Content C:\private\message.txt | python -m coopagents.space_runtime join --invitation-code-stdin --name "Bob" --state-dir .local/spaces/bob
 ```
 
 ```powershell
-python -m crewmesh.space_runtime revoke-invitation --profile .local/spaces/team/profile.json --invitation-file .local/spaces/team/invitation-EXAMPLE.json
-python -m crewmesh.space_runtime revoke-member --profile .local/spaces/team/profile.json --member-id MEMBER_ID
+python -m coopagents.space_runtime revoke-invitation --profile .local/spaces/team/profile.json --invitation-file .local/spaces/team/invitation-EXAMPLE.json
+python -m coopagents.space_runtime revoke-member --profile .local/spaces/team/profile.json --member-id MEMBER_ID
 ```
 
 The owner controls invitation and member revocation. Revoking a member revokes
@@ -101,7 +101,7 @@ reissued using the new origin, and other members reconnect using the new
 address supplied by the owner:
 
 ```powershell
-python -m crewmesh.space_runtime reconnect --profile .local/spaces/bob/profile.json --origin https://NEW.trycloudflare.com --room-id ROOM_ID
+python -m coopagents.space_runtime reconnect --profile .local/spaces/bob/profile.json --origin https://NEW.trycloudflare.com --room-id ROOM_ID
 ```
 
 Reconnect verifies the expected room before sending the personal credential,

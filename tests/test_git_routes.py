@@ -3,9 +3,9 @@ import unittest
 from uuid import uuid4
 from starlette.applications import Starlette
 from starlette.testclient import TestClient
-from crewmesh.api import Service
-from crewmesh.github_sync import GitHubSync
-from crewmesh.git_routes import git_routes
+from coopagents.api import Service
+from coopagents.github_sync import GitHubSync
+from coopagents.git_routes import git_routes
 from test_github_sync import FakeProvider
 
 

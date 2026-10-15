@@ -3,8 +3,8 @@ import unittest
 from pathlib import Path
 from uuid import uuid4
 from starlette.testclient import TestClient
-from crewmesh.coordination import CoordinationService
-from crewmesh.space_server import create_control_app
+from coopagents.coordination import CoordinationService
+from coopagents.space_server import create_control_app
 
 
 class BoardTests(unittest.TestCase):
@@ -64,12 +64,12 @@ class BoardTests(unittest.TestCase):
         self.assertEqual(self.client.get('/board/snapshot', headers=headers).status_code, 401)
 
     def test_expiry_and_maps_are_bounded(self):
-        from crewmesh.space_board import BoardAccess
+        from coopagents.space_board import BoardAccess
         clock = [1.0]
         access = BoardAccess(self.service, self.owner['agent_token'], clock=lambda: clock[0], limit=2)
         old = access.issue()
         clock[0] += 61
-        from crewmesh.errors import AccessDenied
+        from coopagents.errors import AccessDenied
         with self.assertRaises(AccessDenied):
             access.consume(old)
         one, two, three = access.issue(), access.issue(), access.issue()
@@ -92,14 +92,14 @@ class BoardTests(unittest.TestCase):
         for token in ('', self.owner['agent_token'], self.owner['web_token']):
             self.assertEqual(self.client.post('/board/open', json={}, headers={'Authorization': 'Bearer '+token}).status_code, 401)
         self.assertEqual(self.client.get('/board', headers={'Host': 'evil.test'}).status_code, 400)
-        from crewmesh.space_server import create_space_app
+        from coopagents.space_server import create_space_app
         public = TestClient(create_space_app(self.service, room_id=self.owner['room_id'], origin=self.origin), base_url=self.origin)
         self.assertIn(public.get('/board').status_code, (401, 404))
         self.assertIn(public.post('/board/open', json={}).status_code, (401, 404))
 
     def test_non_owner_source_is_rejected(self):
-        from crewmesh.space_board import BoardAccess
-        from crewmesh.errors import AccessDenied
+        from coopagents.space_board import BoardAccess
+        from coopagents.errors import AccessDenied
         invitation = self.service.identity.create_invite(self.owner['web_token'])
         member = self.service.identity.join_invite(invitation['invite_token'], 'Member')
         with self.assertRaises(AccessDenied):

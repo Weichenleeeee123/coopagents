@@ -7,14 +7,14 @@ import textwrap
 import unittest
 from uuid import uuid4
 
-from crewmesh.errors import AccessDenied, Conflict, NotFound, ValidationError
+from coopagents.errors import AccessDenied, Conflict, NotFound, ValidationError
 
 
 class CoordinationCoreTests(unittest.TestCase):
     def setUp(self):
-        self.assertIsNotNone(importlib.util.find_spec('crewmesh.coordination'),
+        self.assertIsNotNone(importlib.util.find_spec('coopagents.coordination'),
                              'Shared coordination module must exist')
-        from crewmesh.coordination import CoordinationService
+        from coopagents.coordination import CoordinationService
         self.path = Path('.local/test-evidence') / ('coordination-' + str(uuid4()) + '.sqlite3')
         self.service = CoordinationService(self.path)
         self.owner = self.service.call('create_room', None, {'name': 'Team', 'owner_name': 'Owner'})
@@ -34,12 +34,12 @@ class CoordinationCoreTests(unittest.TestCase):
             class BlockHostImports(importlib.abc.MetaPathFinder):
                 def find_spec(self, fullname, path=None, target=None):
                     if fullname.split('.')[0] in {'starlette', 'mcp'} or fullname in {
-                        'crewmesh.api', 'crewmesh.accounts', 'crewmesh.workspaces', 'crewmesh.oauth'
-                    } or fullname.startswith(('crewmesh.billing', 'crewmesh.stripe_billing')):
+                        'coopagents.api', 'coopagents.accounts', 'coopagents.workspaces', 'coopagents.oauth'
+                    } or fullname.startswith(('coopagents.billing', 'coopagents.stripe_billing')):
                         raise AssertionError('Host dependency imported: ' + fullname)
             sys.meta_path.insert(0, BlockHostImports())
-            from crewmesh.coordination import CoordinationService
-            from crewmesh.protocol import fields, validate
+            from coopagents.coordination import CoordinationService
+            from coopagents.protocol import fields, validate
             service = CoordinationService(sys.argv[1])
             assert not hasattr(service, 'accounts')
             assert not hasattr(service, 'workspaces')
@@ -100,11 +100,11 @@ class CoordinationCoreTests(unittest.TestCase):
         self.assertEqual(read['replies'], [])
 
     def test_api_composes_shared_core_and_preserves_function_identity(self):
-        from crewmesh.api import Service, fields, validate
-        from crewmesh.coordination import CoordinationService
-        from crewmesh.protocol import fields as core_fields, validate as core_validate
-        from crewmesh.accounts import AccountStore
-        from crewmesh.workspaces import WorkspaceStore
+        from coopagents.api import Service, fields, validate
+        from coopagents.coordination import CoordinationService
+        from coopagents.protocol import fields as core_fields, validate as core_validate
+        from coopagents.accounts import AccountStore
+        from coopagents.workspaces import WorkspaceStore
         hosted = Service(self.path.with_name('hosted-' + str(uuid4()) + '.sqlite3'))
         self.assertIsInstance(hosted, CoordinationService)
         self.assertIsInstance(hosted.accounts, AccountStore)
@@ -124,7 +124,7 @@ class CoordinationCoreTests(unittest.TestCase):
         self.assertEqual(view['git'], self.service.snapshot(self.owner['web_token'])['git'])
 
     def test_shared_validation_retains_strict_types_defaults_and_unicode(self):
-        from crewmesh.protocol import fields, validate
+        from coopagents.protocol import fields, validate
         schema = fields('task_id title', {'ownership_epoch': None, 'evidence': ''})
         self.assertEqual(validate({'task_id': 1, 'title': 'T'}, schema),
                          {'task_id': 1, 'title': 'T', 'ownership_epoch': None, 'evidence': ''})

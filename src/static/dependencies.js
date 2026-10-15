@@ -139,5 +139,5 @@
   }
   const exported={clear,blocked,pending,renderDetails,renderOverview};
   if(typeof module!=='undefined')module.exports=exported;
-  if(typeof window!=='undefined')window.CrewmeshDependencies=exported;
+  if(typeof window!=='undefined')window.CoopagentsDependencies=exported;
 })();

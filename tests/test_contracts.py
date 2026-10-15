@@ -7,11 +7,11 @@ import unittest
 from uuid import uuid4
 from unittest.mock import patch
 
-from crewmesh.identity import IdentityStore
-from crewmesh.messages import MessageStore
-from crewmesh.errors import AccessDenied, Conflict, NotFound, ValidationError
+from coopagents.identity import IdentityStore
+from coopagents.messages import MessageStore
+from coopagents.errors import AccessDenied, Conflict, NotFound, ValidationError
 try:
-    from crewmesh.contracts import ContractStore
+    from coopagents.contracts import ContractStore
 except ModuleNotFoundError:
     ContractStore = None
 

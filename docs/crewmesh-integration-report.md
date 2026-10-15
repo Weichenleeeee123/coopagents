@@ -1,4 +1,4 @@
-# Crewmesh · 同频：接入验证记录
+# Coopagents · 同频：接入验证记录
 
 日期：2026-10-10（Asia/Taipei）
 
@@ -45,7 +45,7 @@
 
 ## 开发与 Git
 
-工作分支：`feat/crewmesh-integration`。
+工作分支：`feat/coopagents-integration`。
 
 - `59d3b06`：确认产品设计、名称、分阶段路线和实验计划。
 - `8ec7165`：持久化 MCP 消息服务与 10 项测试。
@@ -68,7 +68,7 @@
 
 实验目录：`C:/Users/Weichen Li/Documents/Codex/2026-10-10/wo-zhe/experiments/agent-integration`。在仓库根目录运行 `.venv/Scripts/python.exe experiments/agent-integration/probe_server.py`，再通过原有 Claude Code 与 Codex 桌面入口打开此项目，完成工具自身的项目/MCP/hook 信任检查。项目级配置已准备；本机全局配置未改变。
 
-最新复现步骤见 [实验运行说明](integration-lab.md)。`../experiments/agent-integration/archive/crewmesh-integration-lab-source.zip` 是首次接入实验的历史快照；最新源码以仓库为准。新目录需按运行说明创建环境并生成本机配置。原生验收需要两边实际调用同一消息源的工具、处理后留下确认记录，以及对应会话的 hook 事件和上下文消费证据。仅生成配置或 shell 模拟 hook 不计为完成。原生接入验证完成后，再实施经过身份验证的共享服务与用户网页。
+最新复现步骤见 [实验运行说明](integration-lab.md)。`../experiments/agent-integration/archive/coopagents-integration-lab-source.zip` 是首次接入实验的历史快照；最新源码以仓库为准。新目录需按运行说明创建环境并生成本机配置。原生验收需要两边实际调用同一消息源的工具、处理后留下确认记录，以及对应会话的 hook 事件和上下文消费证据。仅生成配置或 shell 模拟 hook 不计为完成。原生接入验证完成后，再实施经过身份验证的共享服务与用户网页。
 
 当前普通入口已完成消息 2 的发布、读取与处理确认。下一步聚焦全新消息和新接收会话的普通任务检查点，用户提示不再要求调用收件箱；必须与本轮显式工具任务分开验收。详细证据见 [原生消息链记录](native-cli-validation.md)。
 

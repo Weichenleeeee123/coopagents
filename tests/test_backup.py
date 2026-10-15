@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from uuid import uuid4
 
-from crewmesh.backup import backup_database, restore_database
+from coopagents.backup import backup_database, restore_database
 
 
 class BackupTests(unittest.TestCase):

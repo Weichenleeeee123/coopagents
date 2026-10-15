@@ -72,9 +72,9 @@ class HTTPTests(unittest.TestCase):
         rotated = self.call('POST', '/api/agent-token', web, {})
         self.assertEqual(self.live.request('GET', '/api/me', agent)[0], 401)
         self.assertEqual(self.call('GET', '/api/me', rotated['agent_token'])['me']['kind'], 'agent')
-        with patch('crewmesh.identity._utcnow', return_value=datetime.now(timezone.utc) + timedelta(days=100)):
+        with patch('coopagents.identity._utcnow', return_value=datetime.now(timezone.utc) + timedelta(days=100)):
             self.assertEqual(self.live.request('GET', '/api/me', rotated['agent_token'])[0], 401)
-        with patch('crewmesh.tasks.TaskStore.list_tasks', side_effect=RuntimeError('secret-token')):
+        with patch('coopagents.tasks.TaskStore.list_tasks', side_effect=RuntimeError('secret-token')):
             # Bound method is already stored; patch it directly in the registered service.
             with patch.dict(self.live.app.app.state.service.reads, {'tasks': lambda token: (_ for _ in ()).throw(RuntimeError('secret-token'))}):
                 status, body, _ = self.live.request('GET', '/api/tasks', web)

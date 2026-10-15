@@ -30,7 +30,7 @@ function harness(status, formValues=[['title','fixture']]) {
   });
   vm.runInContext(source, context);
   const run = code => vm.runInContext(code, context);
-  const switchSession = () => run("generation++; token='new-session'; sessionStorage.setItem('crewmesh_web_token',token)");
+  const switchSession = () => run("generation++; token='new-session'; sessionStorage.setItem('coopagents_web_token',token)");
   return {element, run, switchSession, started, releaseBody, storage, request:()=>request};
 }
 
@@ -40,7 +40,7 @@ function harness(status, formValues=[['title','fixture']]) {
     const form=h.element('form-'+name);
     const completion=form.listeners.submit({preventDefault(){},currentTarget:form});
     await h.started;
-    assert.equal(h.request().headers['X-Crewmesh-Bootstrap'], name==='create'?'private-bootstrap':undefined);
+    assert.equal(h.request().headers['X-Coopagents-Bootstrap'], name==='create'?'private-bootstrap':undefined);
     assert.equal(JSON.parse(h.request().body).bootstrap_secret, undefined);
     h.switchSession(); h.releaseBody({web_token:'old-token'}); await completion;
     assert.equal(h.storage.has('bootstrap_secret'),false);
@@ -56,7 +56,7 @@ function harness(status, formValues=[['title','fixture']]) {
     h.releaseBody({message:'expired', me:{room_id:'old-room'}});
     assert.equal(await result, '访问已切换');
     assert.equal(h.run('token'), 'new-session');
-    assert.equal(h.storage.get('crewmesh_web_token'), 'new-session');
+    assert.equal(h.storage.get('coopagents_web_token'), 'new-session');
   }
   for (const name of ['create','join']) {
     const h = harness(200), form = h.element('form-'+name);
@@ -76,7 +76,7 @@ function harness(status, formValues=[['title','fixture']]) {
     api = async (...args) => {
       const result = await originalApi(...args);
       generation++; token='new-session';
-      sessionStorage.setItem('crewmesh_web_token', token);
+      sessionStorage.setItem('coopagents_web_token', token);
       return result;
     };`);
   const restoreForm = restore.element('form-restore');
@@ -85,7 +85,7 @@ function harness(status, formValues=[['title','fixture']]) {
   restore.releaseBody({me:{room_id:'old-room'}});
   await restored;
   assert.equal(restore.run('token'), 'new-session');
-  assert.equal(restore.storage.get('crewmesh_web_token'), 'new-session');
+  assert.equal(restore.storage.get('coopagents_web_token'), 'new-session');
   assert.equal(restoreForm.resetCount, 0);
   const h = harness(200), form = h.element('task-form');
   h.run("token='old-session'");
@@ -134,7 +134,7 @@ function harness(status, formValues=[['title','fixture']]) {
   // Keep the collaboration picker mounted while a fresh snapshot arrives.
   const collaboration=harness(200);
   collaboration.run(`let panelRenderCount=0;
-    window={getSelection:()=>({isCollapsed:true}),CrewmeshCollaboration:{renderPanel:()=>panelRenderCount++}};
+    window={getSelection:()=>({isCollapsed:true}),CoopagentsCollaboration:{renderPanel:()=>panelRenderCount++}};
     const focusedPicker={tagName:'SELECT',value:'claude-code',closest:()=>null};
     document.activeElement=focusedPicker;
     for(const id of ['requests','contracts','tasks','task-detail','git-connection'])document.getElementById(id).contains=()=>false;

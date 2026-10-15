@@ -6,18 +6,18 @@
 
 `create_app(..., billing_config=None)` 不读取环境变量。self-hosted 和未配置 billing 的 cloud 显示 `unlimited`，限额为 `null`，不构造 Stripe client、不启动支付 worker、不挂载 webhook。self-hosted 即使传入 enabled typed config 也保持此行为。
 
-`python -m crewmesh.server` 在 cloud 模式加载完整配置：
+`python -m coopagents.server` 在 cloud 模式加载完整配置：
 
 | 环境变量 | 含义 |
 | --- | --- |
-| `CREWMESH_MODE` | `cloud` |
-| `CREWMESH_PUBLIC_URL` | 无路径、查询或片段的规范 HTTPS origin |
-| `CREWMESH_BILLING_MODE` | 明确的 `test` 或 `live` |
-| `CREWMESH_TEAM_MONTHLY_PRICE_ID` | 固定 Stripe monthly Price ID |
-| `CREWMESH_FREE_MEMBERS` / `CREWMESH_FREE_PROJECTS` | Free 正整数限额 |
-| `CREWMESH_TEAM_MEMBERS` / `CREWMESH_TEAM_PROJECTS` | Team 正整数限额，覆盖 Free 限额 |
-| `CREWMESH_STRIPE_SECRET_KEY_FILE` | 受保护 secret key 文件，mode 必须匹配 |
-| `CREWMESH_STRIPE_WEBHOOK_SECRET_FILE` | 受保护 signing secret 文件 |
+| `COOPAGENTS_MODE` | `cloud` |
+| `COOPAGENTS_PUBLIC_URL` | 无路径、查询或片段的规范 HTTPS origin |
+| `COOPAGENTS_BILLING_MODE` | 明确的 `test` 或 `live` |
+| `COOPAGENTS_TEAM_MONTHLY_PRICE_ID` | 固定 Stripe monthly Price ID |
+| `COOPAGENTS_FREE_MEMBERS` / `COOPAGENTS_FREE_PROJECTS` | Free 正整数限额 |
+| `COOPAGENTS_TEAM_MEMBERS` / `COOPAGENTS_TEAM_PROJECTS` | Team 正整数限额，覆盖 Free 限额 |
+| `COOPAGENTS_STRIPE_SECRET_KEY_FILE` | 受保护 secret key 文件，mode 必须匹配 |
+| `COOPAGENTS_STRIPE_WEBHOOK_SECRET_FILE` | 受保护 signing secret 文件 |
 
 Secret 也支持对应的无 `_FILE` 环境变量；每项只允许一种来源。凭据不进入命令参数、Git 或日志。cloud 部分配置缺项即启动失败；self-hosted 不读取 billing secret 文件。启动没有 Price 网络请求，Price 在请求期间验证。
 
@@ -31,7 +31,7 @@ Secret 也支持对应的无 `_FILE` 环境变量；每项只允许一种来源�
 | `POST /account/teams/{team_id}/billing/sync` | owner，严格空 JSON `{}`；规范同步并返回账本摘要。 |
 | `POST /billing/stripe/webhook` | 仅 configured cloud 存在；验证原始签名，持久化最小事件后 `200 {"received":true}`。 |
 
-账号接口要求唯一 `crewmesh_account` cookie；Bearer 不能替代账号。POST 还要求唯一且精确匹配的 Origin 与 X-Crewmesh-CSRF，Content-Type 为 application/json。未知字段、客户端 Price/Customer/Subscription ID 和返回地址不接受。权限拒绝为 401，不清除仍有效的 cookie；disabled owner POST 为 409，非 owner/其他团队仍先拒绝权限。provider 失败为安全的 `503 BillingUnavailable`，容量满为 `503 Busy`。没有付款修改调试接口。
+账号接口要求唯一 `coopagents_account` cookie；Bearer 不能替代账号。POST 还要求唯一且精确匹配的 Origin 与 X-Coopagents-CSRF，Content-Type 为 application/json。未知字段、客户端 Price/Customer/Subscription ID 和返回地址不接受。权限拒绝为 401，不清除仍有效的 cookie；disabled owner POST 为 409，非 owner/其他团队仍先拒绝权限。provider 失败为安全的 `503 BillingUnavailable`，容量满为 `503 Busy`。没有付款修改调试接口。
 
 仅精确 enabled webhook POST 路径跳过全局 JSON 预解析，先验证签名再解析。Host、存在的 Origin、禁止 query 和实际 body 64 KiB 限制仍生效，重复 Stripe-Signature 被拒绝。webhook 不需要 cookie、Origin 或 CSRF；若带 Origin 仍需被边界接受。有效未知事件及未绑定团队的规范 customer 持久入队后 ignored；重复事件不重复应用付费状态。
 
@@ -50,8 +50,8 @@ CLI 只打开已有、具有 C2 所需表和列、已存在相同 catalog 与 pr
 设置上述受保护环境后执行：
 
 ```powershell
-& .\.venv\Scripts\python.exe -m crewmesh.billing_admin --database .local/crewmesh.sqlite3 retry --max-jobs 25
-& .\.venv\Scripts\python.exe -m crewmesh.billing_admin --database .local/crewmesh.sqlite3 reconcile --max-teams 100
+& .\.venv\Scripts\python.exe -m coopagents.billing_admin --database .local/coopagents.sqlite3 retry --max-jobs 25
+& .\.venv\Scripts\python.exe -m coopagents.billing_admin --database .local/coopagents.sqlite3 reconcile --max-teams 100
 ```
 
 上限只能为 `1..1000`。retry 只执行到期 durable jobs，失败后停止本次运行，不忙循环未来 retry；再次运行沿用 backoff。并发 worker 可能抢先领取 lease，维护尝试因此无进展时计为失败。reconcile 按 team ID keyset 分页，受整个运行 max-teams 上限约束，只使用已有 server customer binding，不创建 customer、Checkout 或 Portal。仅当账本保存的竞争 Checkout 通过规范验证且仍 open 时，可将其 expire，避免重复付费。CLI 不接受 provider ID、任意 team ID、付款状态或 secret 参数。

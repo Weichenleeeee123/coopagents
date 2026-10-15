@@ -13,8 +13,8 @@ from uuid import uuid4
 
 class StripeAdapterTests(unittest.TestCase):
     def setUp(self):
-        self.assertIsNotNone(importlib.util.find_spec('crewmesh.stripe_billing'), 'Stripe adapter must exist')
-        self.s = importlib.import_module('crewmesh.stripe_billing')
+        self.assertIsNotNone(importlib.util.find_spec('coopagents.stripe_billing'), 'Stripe adapter must exist')
+        self.s = importlib.import_module('coopagents.stripe_billing')
 
     def signed(self, body, stamp=None, secret='whsec_fixture'):
         stamp = int(time.time()) if stamp is None else stamp
@@ -132,12 +132,12 @@ class StripeAdapterTests(unittest.TestCase):
             return 200,json.dumps(obj).encode()
         client=self.s.StripeClient('sk_test_fixture','test',transport=transport,max_requests=1)
         with self.assertRaises(self.s.StripeError) as error:
-            client.create_checkout('cus_fixture','price_fixture','persistent_key','attempt','https://crewmesh.example')
+            client.create_checkout('cus_fixture','price_fixture','persistent_key','attempt','https://coopagents.example')
         self.assertEqual('operation_budget',error.exception.code)
         self.assertEqual(['GET'],[call[0] for call in calls])
         calls.clear();client=self.s.StripeClient('sk_test_fixture','test',transport=transport)
         with client.operation(lambda:guards.append('checked')):
-            client.create_checkout('cus_fixture','price_fixture','persistent_key','attempt','https://crewmesh.example')
+            client.create_checkout('cus_fixture','price_fixture','persistent_key','attempt','https://coopagents.example')
         self.assertEqual(['GET','POST'],[call[0] for call in calls]);self.assertEqual(2,len(guards))
         self.assertIn(b'currency=usd',calls[1][2]);self.assertIn(b'adaptive_pricing%5Benabled%5D=false',calls[1][2])
 
@@ -216,7 +216,7 @@ class StripeAdapterTests(unittest.TestCase):
         self.assertEqual(['response','connection'],closed)
 
     def test_owner_guard_rechecked_after_connection_delay_before_wire_request(self):
-        from crewmesh.errors import AccessDenied
+        from coopagents.errors import AccessDenied
         stages=[]
         class Connection:
             def __init__(self,*args,**kwargs):self.sock=None
@@ -238,21 +238,21 @@ class StripeAdapterTests(unittest.TestCase):
 
 class BillingConfigurationTests(unittest.TestCase):
     def setUp(self):
-        self.assertIsNotNone(importlib.util.find_spec('crewmesh.billing_config'), 'Configuration module must exist')
-        self.c = importlib.import_module('crewmesh.billing_config')
+        self.assertIsNotNone(importlib.util.find_spec('coopagents.billing_config'), 'Configuration module must exist')
+        self.c = importlib.import_module('coopagents.billing_config')
 
     def environment(self):
-        return dict(CREWMESH_BILLING_MODE='test',CREWMESH_STRIPE_SECRET_KEY='sk_test_fixture',
-                    CREWMESH_STRIPE_WEBHOOK_SECRET='whsec_fixture',CREWMESH_TEAM_MONTHLY_PRICE_ID='price_fixture',
-                    CREWMESH_FREE_MEMBERS='2',CREWMESH_FREE_PROJECTS='1',
-                    CREWMESH_TEAM_MEMBERS='20',CREWMESH_TEAM_PROJECTS='10')
+        return dict(COOPAGENTS_BILLING_MODE='test',COOPAGENTS_STRIPE_SECRET_KEY='sk_test_fixture',
+                    COOPAGENTS_STRIPE_WEBHOOK_SECRET='whsec_fixture',COOPAGENTS_TEAM_MONTHLY_PRICE_ID='price_fixture',
+                    COOPAGENTS_FREE_MEMBERS='2',COOPAGENTS_FREE_PROJECTS='1',
+                    COOPAGENTS_TEAM_MEMBERS='20',COOPAGENTS_TEAM_PROJECTS='10')
 
     def test_complete_absence_disabled_partial_invalid_and_selfhost_unlimited(self):
         self.assertFalse(self.c.load_billing_config('cloud',{}).enabled)
         self.assertFalse(self.c.load_billing_config('self-hosted',self.environment()).enabled)
-        for env in [dict(CREWMESH_BILLING_MODE='test'), self.environment() | {'CREWMESH_FREE_MEMBERS':'0'},
-                    self.environment() | {'CREWMESH_STRIPE_SECRET_KEY':'sk_live_wrong'},
-                    self.environment() | {'CREWMESH_BILLING_MODE':'Test'}]:
+        for env in [dict(COOPAGENTS_BILLING_MODE='test'), self.environment() | {'COOPAGENTS_FREE_MEMBERS':'0'},
+                    self.environment() | {'COOPAGENTS_STRIPE_SECRET_KEY':'sk_live_wrong'},
+                    self.environment() | {'COOPAGENTS_BILLING_MODE':'Test'}]:
             with self.assertRaises(ValueError):
                 self.c.load_billing_config('cloud',env)
         config=self.c.load_billing_config('cloud',self.environment())
@@ -264,12 +264,12 @@ class BillingConfigurationTests(unittest.TestCase):
     def test_secrets_from_bounded_files_mutually_exclusive(self):
         root=Path('.local/c2-stripe-tests');root.mkdir(parents=True,exist_ok=True)
         path=root/(str(uuid4())+'.secret');path.write_bytes(b'sk_test_fixture\n')
-        env=self.environment();env.pop('CREWMESH_STRIPE_SECRET_KEY')
-        env['CREWMESH_STRIPE_SECRET_KEY_FILE']=str(path)
+        env=self.environment();env.pop('COOPAGENTS_STRIPE_SECRET_KEY')
+        env['COOPAGENTS_STRIPE_SECRET_KEY_FILE']=str(path)
         self.assertTrue(self.c.load_billing_config('cloud',env).enabled)
-        env['CREWMESH_STRIPE_SECRET_KEY']='sk_test_fixture'
+        env['COOPAGENTS_STRIPE_SECRET_KEY']='sk_test_fixture'
         with self.assertRaises(ValueError):self.c.load_billing_config('cloud',env)
-        env.pop('CREWMESH_STRIPE_SECRET_KEY');path.write_bytes(b'a'*4097)
+        env.pop('COOPAGENTS_STRIPE_SECRET_KEY');path.write_bytes(b'a'*4097)
         with self.assertRaises(ValueError):self.c.load_billing_config('cloud',env)
 
 

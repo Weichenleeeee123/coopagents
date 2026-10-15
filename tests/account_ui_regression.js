@@ -27,7 +27,7 @@ function harness(hash='', invitation=false, anonymous=false, oauth=false){
   replies['/account/invites/preview']={team_id:'t1',team_name:'Team',role:'member',projects:[{room_id:'p1',name:'Project'}],expires_at:'2099-01-01'};
   replies['/account/invites/accept']={...info,team_id:'t1',project_ids:['p1']};replies['/account/login']=info;
   const location={hash,origin:'https://crew.example',pathname:'/',search:''};
-  const context=vm.createContext({window:{listeners:{},addEventListener(type,cb){const prior=this.listeners[type];this.listeners[type]=async(...args)=>{await prior?.(...args);return cb(...args);};},location,history:{replaceState(){location.hash='';}},CrewmeshProject:{clear(){bridgeManaged=false;storage.delete('crewmesh_web_token');element('workspace').hidden=true;},enter(token){bridgeManaged=true;entered.push(token);storage.set('crewmesh_web_token',token);element('workspace').hidden=false;},managed:()=>bridgeManaged,private(...args){privateViews.push(args);}}},document:{getElementById:element,querySelectorAll:()=>[],createElement:tag=>{const n=new N();n.tagName=tag.toUpperCase();return n;}},sessionStorage:{getItem:k=>storage.get(k),setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},AbortController,setTimeout:()=>1,clearTimeout(){},JSON,Error,FormData:class{constructor(form){this.form=form;}*[Symbol.iterator](){yield* Object.entries(this.form.fields);}},fetch:async(path,options)=>{calls.push({path,...options});const delay=delays.get(path);if(delay){delays.delete(path);return {status:delay.status||200,ok:!delay.status||delay.status===200,json:()=>delay.body.promise};}const reply=replies[path];return {status:reply===undefined?401:200,ok:reply!==undefined,json:async()=>reply===undefined?{message:'Permission denied'}:reply};}});
+  const context=vm.createContext({window:{listeners:{},addEventListener(type,cb){const prior=this.listeners[type];this.listeners[type]=async(...args)=>{await prior?.(...args);return cb(...args);};},location,history:{replaceState(){location.hash='';}},CoopagentsProject:{clear(){bridgeManaged=false;storage.delete('coopagents_web_token');element('workspace').hidden=true;},enter(token){bridgeManaged=true;entered.push(token);storage.set('coopagents_web_token',token);element('workspace').hidden=false;},managed:()=>bridgeManaged,private(...args){privateViews.push(args);}}},document:{getElementById:element,querySelectorAll:()=>[],createElement:tag=>{const n=new N();n.tagName=tag.toUpperCase();return n;}},sessionStorage:{getItem:k=>storage.get(k),setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},AbortController,setTimeout:()=>1,clearTimeout(){},JSON,Error,FormData:class{constructor(form){this.form=form;}*[Symbol.iterator](){yield* Object.entries(this.form.fields);}},fetch:async(path,options)=>{calls.push({path,...options});const delay=delays.get(path);if(delay){delays.delete(path);return {status:delay.status||200,ok:!delay.status||delay.status===200,json:()=>delay.body.promise};}const reply=replies[path];return {status:reply===undefined?401:200,ok:reply!==undefined,json:async()=>reply===undefined?{message:'Permission denied'}:reply};}});
   if(invitation)vm.runInContext(fs.readFileSync('src/static/invitations.js','utf8'),context);
   vm.runInContext(source,context);
   return {element,storage,calls,delays,replies,info,entered,privateViews,window:context.window,document:context.document,async submit(id,fields={}){const form=element(id);form.fields=fields;form.listeners.submit({preventDefault(){},currentTarget:form});await flush();}};
@@ -41,14 +41,14 @@ function harness(hash='', invitation=false, anonymous=false, oauth=false){
     else signup.element('invitation-dismiss').click();
     late.release(signup.replies['/account/invites/accept']);await flush();
     assert.deepEqual(signup.entered,[]);
-    assert.equal(signup.window.CrewmeshInvitations.pending(),!!replacement);
+    assert.equal(signup.window.CoopagentsInvitations.pending(),!!replacement);
     assert.equal(signup.element('register-form-invite').value,replacement||'');
   }
   // Invalid replacement fragments cannot retain an earlier hidden token.
   for(const replacement of ['%ZZ','', 'x'.repeat(129)]){
     const bad=harness('#invite=previous-valid',true,true);await flush();
     bad.window.location.hash='#invite='+replacement;await bad.window.listeners.hashchange();await flush();
-    assert.equal(bad.window.CrewmeshInvitations.pending(),false);
+    assert.equal(bad.window.CoopagentsInvitations.pending(),false);
     assert.equal(bad.element('register-form-invite').value,'');
     assert.equal(bad.element('register-form-invite-label').hidden,false);
   }
@@ -68,7 +68,7 @@ function harness(hash='', invitation=false, anonymous=false, oauth=false){
     assert.equal(JSON.parse(replaced.calls.filter(c=>c.path==='/account/invites/preview').at(-1).body).invite_token,'new');
     assert.equal(replaced.element('invitation-accept').hidden,false);
     oldResponse.release(status===200?replaced.replies['/account/invites/accept']:{message:'OLD response failure'});await flush();
-    assert.deepEqual(replaced.entered,[]);assert.equal(replaced.window.CrewmeshInvitations.pending(),true);
+    assert.deepEqual(replaced.entered,[]);assert.equal(replaced.window.CoopagentsInvitations.pending(),true);
     assert.doesNotMatch(replaced.element('invitation-status').textContent,/OLD response failure/);
     assert.equal(replaced.element('register-form-invite').value,'new');
     replaced.element('invitation-accept').click();await flush();assert.deepEqual(replaced.entered,['scoped-private-token']);
@@ -88,7 +88,7 @@ function harness(hash='', invitation=false, anonymous=false, oauth=false){
   assert.equal(invite.element('invitation-accept').hidden,false);
   assert.equal(invite.element('register-form-invite').value,'private+invite');
   assert.equal(invite.element('register-form-invite-label').hidden,true);
-  assert.equal(invite.window.CrewmeshInvitations.link({invite_token:'a+b'}),'https://crew.example/#invite=a%2Bb');
+  assert.equal(invite.window.CoopagentsInvitations.link({invite_token:'a+b'}),'https://crew.example/#invite=a%2Bb');
   invite.element('invitation-accept').click();await flush();
   assert.equal(invite.calls.filter(c=>c.path==='/account/invites/accept').length,1);
   assert.deepEqual(invite.entered,['scoped-private-token']);
@@ -141,17 +141,17 @@ function harness(hash='', invitation=false, anonymous=false, oauth=false){
   // A delayed account JSON body must never restore the hub after explicit logout.
   const a=harness(),body=deferred();a.delays.set('/account/session',{body});await flush();a.element('account-logout').click();await flush();body.release(a.info);await flush();assert.equal(a.element('account-hub').hidden,true);assert.equal(a.element('login').hidden,false);
   // Selecting a project returns a scoped token only after the current generation check.
-  const b=harness();await flush();const select=deferred();b.delays.set('/account/projects/p1/select',{body:select});b.element('hub-projects').children[0].children[3].click();await flush();b.element('account-logout').click();await flush();select.release({web_token:'stale-project-token'});await flush();assert.deepEqual(b.entered,[]);assert.equal(b.storage.has('crewmesh_web_token'),false);assert.equal(b.element('account-hub').hidden,true);
+  const b=harness();await flush();const select=deferred();b.delays.set('/account/projects/p1/select',{body:select});b.element('hub-projects').children[0].children[3].click();await flush();b.element('account-logout').click();await flush();select.release({web_token:'stale-project-token'});await flush();assert.deepEqual(b.entered,[]);assert.equal(b.storage.has('coopagents_web_token'),false);assert.equal(b.element('account-hub').hidden,true);
   // An old team response body cannot repaint a replacement hub generation.
-  const c=harness();await flush();const team=deferred();c.delays.set('/account/teams/t1/projects',{body:team});const old=c.window.CrewmeshAccounts.home().catch(()=>{});await flush();c.replies['/account/teams']=[];await c.window.CrewmeshAccounts.home();team.release([{room_id:'old',name:'PRIVATE OLD PROJECT'}]);await old;await flush();assert.equal(c.element('hub-projects').children.some(n=>n.children.some?.(v=>v.textContent==='PRIVATE OLD PROJECT')),false);
+  const c=harness();await flush();const team=deferred();c.delays.set('/account/teams/t1/projects',{body:team});const old=c.window.CoopagentsAccounts.home().catch(()=>{});await flush();c.replies['/account/teams']=[];await c.window.CoopagentsAccounts.home();team.release([{room_id:'old',name:'PRIVATE OLD PROJECT'}]);await old;await flush();assert.equal(c.element('hub-projects').children.some(n=>n.children.some?.(v=>v.textContent==='PRIVATE OLD PROJECT')),false);
   // Permission 401 validates the session rather than logging out a valid account.
   const d=harness();await flush();await d.submit('team-invite-form',{role:'member'});assert.equal(d.element('account-hub').hidden,false);assert.equal(d.element('hub-error').textContent,'Permission denied');assert.equal(d.calls.filter(c=>c.path==='/account/session').length,2);
-  const write=d.calls.find(c=>c.path.endsWith('/invites'));assert.equal(write.credentials,'same-origin');assert.equal(write.headers['X-Crewmesh-CSRF'],'csrf-memory-only');assert.deepEqual(JSON.parse(write.body),{role:'member',project_ids:[]});
+  const write=d.calls.find(c=>c.path.endsWith('/invites'));assert.equal(write.credentials,'same-origin');assert.equal(write.headers['X-Coopagents-CSRF'],'csrf-memory-only');assert.deepEqual(JSON.parse(write.body),{role:'member',project_ids:[]});
   for(const [key,value]of d.storage){assert.ok(!/csrf|password|invite|cookie|account_token/i.test(key));assert.ok(!/csrf-memory-only/.test(value));}
   // Project exit is invoked without an awaiting form handler: a failed reload must be caught and displayed.
-  const failed=harness();await flush();delete failed.replies['/account/teams'];await assert.doesNotReject(()=>failed.window.CrewmeshAccounts.home());assert.equal(failed.element('hub-error').textContent,'Permission denied');assert.equal(failed.element('account-hub').hidden,false);
+  const failed=harness();await flush();delete failed.replies['/account/teams'];await assert.doesNotReject(()=>failed.window.CoopagentsAccounts.home());assert.equal(failed.element('hub-error').textContent,'Permission denied');assert.equal(failed.element('account-hub').hidden,false);
   // Successful project selection uses the bridge; logout revokes with CSRF then clears it.
-  const e=harness();await flush();e.element('hub-projects').children[0].children[3].click();await flush();assert.deepEqual(e.entered,['scoped-private-token']);assert.equal(e.element('workspace-project').value,'p1');e.element('account-logout').click();await flush();assert.equal(e.storage.has('crewmesh_web_token'),false);const revoke=e.calls.find(c=>c.path==='/account/logout');assert.equal(revoke.headers['X-Crewmesh-CSRF'],'csrf-memory-only');
+  const e=harness();await flush();e.element('hub-projects').children[0].children[3].click();await flush();assert.deepEqual(e.entered,['scoped-private-token']);assert.equal(e.element('workspace-project').value,'p1');e.element('account-logout').click();await flush();assert.equal(e.storage.has('coopagents_web_token'),false);const revoke=e.calls.find(c=>c.path==='/account/logout');assert.equal(revoke.headers['X-Coopagents-CSRF'],'csrf-memory-only');
   // Hub navigation exposes one view; same-team refresh keeps it, team changes reset it.
   const views=harness();await flush();
   assert.equal(views.element('hub-view-projects').hidden,false);
@@ -160,7 +160,7 @@ function harness(hash='', invitation=false, anonymous=false, oauth=false){
   assert.equal(views.element('hub-view-members').hidden,false);
   assert.equal(views.element('hub-view-projects').hidden,true);
   assert.equal(views.element('hub-nav-members')['aria-current'],'page');
-  assert.equal(views.document.title,'团队成员 · Crewmesh');
+  assert.equal(views.document.title,'团队成员 · Coopagents');
   views.element('hub-refresh').click();await flush();
   assert.equal(views.element('hub-view-members').hidden,false);
   views.replies['/account/teams'].push({team_id:'t2',name:'Second',role:'member'});
@@ -194,7 +194,7 @@ function harness(hash='', invitation=false, anonymous=false, oauth=false){
   // A delayed project load shows loading rather than an empty project state.
   const loading=harness();await flush();const loadingBody=deferred();
   loading.delays.set('/account/teams/t1/projects',{body:loadingBody});
-  const loadingHome=loading.window.CrewmeshAccounts.home();await flush();
+  const loadingHome=loading.window.CoopagentsAccounts.home();await flush();
   assert.equal(loading.element('hub-loading').hidden,false);
   loadingBody.release([]);await loadingHome;await flush();
   assert.equal(loading.element('hub-loading').hidden,true);

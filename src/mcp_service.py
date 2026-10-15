@@ -39,7 +39,7 @@ def create_mcp_app(service, *, origin=None):
                     return tool_error(error)
         return await call_next(ctx)
 
-    server = MCPServer('Crewmesh', instructions=(
+    server = MCPServer('Coopagents', instructions=(
         'Call checkpoint(session_key,tool,event) at startup, blocker and completion using those event names. '
         'Checkpoint peeks at collaboration context without marking messages read. Read and process messages explicitly. '
         'Claim with a fresh session_key and pass its ownership_epoch on every task report. '

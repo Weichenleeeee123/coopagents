@@ -22,14 +22,14 @@
 
 | 未提交 `.env` 配置 | 覆盖文件传给服务的配置 |
 | --- | --- |
-| `CREWMESH_GITHUB_CLIENT_ID` | 同名账号 OAuth client ID |
-| `CREWMESH_GITHUB_CLIENT_SECRET_PATH` | 挂载后 `CREWMESH_GITHUB_CLIENT_SECRET_FILE` |
-| `CREWMESH_BILLING_MODE` | 明确 `test` 或 `live` |
-| `CREWMESH_STRIPE_SECRET_KEY_PATH` | 挂载后 `CREWMESH_STRIPE_SECRET_KEY_FILE` |
-| `CREWMESH_STRIPE_WEBHOOK_SECRET_PATH` | 挂载后 `CREWMESH_STRIPE_WEBHOOK_SECRET_FILE` |
-| `CREWMESH_TEAM_MONTHLY_PRICE_ID` | 匹配模式的实际 `price_` ID |
-| `CREWMESH_FREE_MEMBERS` / `CREWMESH_FREE_PROJECTS` | Free 活跃账号成员 / 绑定项目上限 |
-| `CREWMESH_TEAM_MEMBERS` / `CREWMESH_TEAM_PROJECTS` | Team 活跃账号成员 / 绑定项目上限 |
+| `COOPAGENTS_GITHUB_CLIENT_ID` | 同名账号 OAuth client ID |
+| `COOPAGENTS_GITHUB_CLIENT_SECRET_PATH` | 挂载后 `COOPAGENTS_GITHUB_CLIENT_SECRET_FILE` |
+| `COOPAGENTS_BILLING_MODE` | 明确 `test` 或 `live` |
+| `COOPAGENTS_STRIPE_SECRET_KEY_PATH` | 挂载后 `COOPAGENTS_STRIPE_SECRET_KEY_FILE` |
+| `COOPAGENTS_STRIPE_WEBHOOK_SECRET_PATH` | 挂载后 `COOPAGENTS_STRIPE_WEBHOOK_SECRET_FILE` |
+| `COOPAGENTS_TEAM_MONTHLY_PRICE_ID` | 匹配模式的实际 `price_` ID |
+| `COOPAGENTS_FREE_MEMBERS` / `COOPAGENTS_FREE_PROJECTS` | Free 活跃账号成员 / 绑定项目上限 |
+| `COOPAGENTS_TEAM_MEMBERS` / `COOPAGENTS_TEAM_PROJECTS` | Team 活跃账号成员 / 绑定项目上限 |
 
 四项容量必须为 `1..1000000000` 正整数，Team 每项至少覆盖对应 Free 项，无默认数值。服务支持每项 secret 的直接环境变量或 `_FILE` 二选一；覆盖文件只使用 `_FILE`，不能同时添加直接值。Stripe key 前缀须对应 `sk_test_` / `sk_live_`；endpoint signing secret 为 `whsec_`，须来自对应模式、对应 endpoint。每个 secret 文件最多 4096 ASCII bytes，可带末尾换行。任何 secret 都不能进入 YAML 值、命令参数、URL、聊天、Git 或公开日志。
 
@@ -81,8 +81,8 @@ worker 每次领取一个 durable event，lease 为 120 秒；失败 backoff 从
 维护 CLI 只连接已有 C2 数据库，验证已有 schema/catalog/provider mode；验证阶段不写 SQL，每次连接使用 SQLite `mode=rw`，错误路径或文件随后消失不会新建数据库。不开初始化/迁移/reset。使用完整部署参数和独立保留容器名称执行：
 
 ```bash
-docker compose --env-file .env -f compose.yaml -f deploy/compose.cloud-billing.yaml run --no-deps --name crewmesh-billing-retry-20261011-01 app python -m crewmesh.billing_admin --database /data/crewmesh.sqlite3 retry --max-jobs 25
-docker compose --env-file .env -f compose.yaml -f deploy/compose.cloud-billing.yaml run --no-deps --name crewmesh-billing-reconcile-20261011-01 app python -m crewmesh.billing_admin --database /data/crewmesh.sqlite3 reconcile --max-teams 100
+docker compose --env-file .env -f compose.yaml -f deploy/compose.cloud-billing.yaml run --no-deps --name coopagents-billing-retry-20261011-01 app python -m coopagents.billing_admin --database /data/coopagents.sqlite3 retry --max-jobs 25
+docker compose --env-file .env -f compose.yaml -f deploy/compose.cloud-billing.yaml run --no-deps --name coopagents-billing-reconcile-20261011-01 app python -m coopagents.billing_admin --database /data/coopagents.sqlite3 reconcile --max-teams 100
 ```
 
 每次选新名称，保留维护容器。上限必须为 `1..1000`。retry 只处理到期工作，失败停止本轮，不忙循环未来 backoff；reconcile 按 team ID keyset、全局上限遍历已有 customer bindings，只做规范读取并可 expire 本地保存、已验证 open 的竞争 Checkout，不创建 customer/Checkout/Portal。原始事件与 outbound key 保留。

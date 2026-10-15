@@ -5,25 +5,25 @@
 services:
   app:
     environment:
-      CREWMESH_MODE: cloud
-      CREWMESH_GITHUB_CLIENT_ID: ${CREWMESH_GITHUB_CLIENT_ID:?Set account GitHub OAuth client ID}
-      CREWMESH_GITHUB_CLIENT_SECRET_FILE: /run/secrets/github_account_oauth
-      CREWMESH_BILLING_MODE: ${CREWMESH_BILLING_MODE:?Set test or live explicitly}
-      CREWMESH_STRIPE_SECRET_KEY_FILE: /run/secrets/stripe_secret_key
-      CREWMESH_STRIPE_WEBHOOK_SECRET_FILE: /run/secrets/stripe_webhook_secret
-      CREWMESH_TEAM_MONTHLY_PRICE_ID: ${CREWMESH_TEAM_MONTHLY_PRICE_ID:?Set matching-mode fixed monthly Price ID}
-      CREWMESH_FREE_MEMBERS: ${CREWMESH_FREE_MEMBERS:?Set Free active account member cap}
-      CREWMESH_FREE_PROJECTS: ${CREWMESH_FREE_PROJECTS:?Set Free bound project cap}
-      CREWMESH_TEAM_MEMBERS: ${CREWMESH_TEAM_MEMBERS:?Set Team active account member cap}
-      CREWMESH_TEAM_PROJECTS: ${CREWMESH_TEAM_PROJECTS:?Set Team bound project cap}
+      COOPAGENTS_MODE: cloud
+      COOPAGENTS_GITHUB_CLIENT_ID: ${COOPAGENTS_GITHUB_CLIENT_ID:?Set account GitHub OAuth client ID}
+      COOPAGENTS_GITHUB_CLIENT_SECRET_FILE: /run/secrets/github_account_oauth
+      COOPAGENTS_BILLING_MODE: ${COOPAGENTS_BILLING_MODE:?Set test or live explicitly}
+      COOPAGENTS_STRIPE_SECRET_KEY_FILE: /run/secrets/stripe_secret_key
+      COOPAGENTS_STRIPE_WEBHOOK_SECRET_FILE: /run/secrets/stripe_webhook_secret
+      COOPAGENTS_TEAM_MONTHLY_PRICE_ID: ${COOPAGENTS_TEAM_MONTHLY_PRICE_ID:?Set matching-mode fixed monthly Price ID}
+      COOPAGENTS_FREE_MEMBERS: ${COOPAGENTS_FREE_MEMBERS:?Set Free active account member cap}
+      COOPAGENTS_FREE_PROJECTS: ${COOPAGENTS_FREE_PROJECTS:?Set Free bound project cap}
+      COOPAGENTS_TEAM_MEMBERS: ${COOPAGENTS_TEAM_MEMBERS:?Set Team active account member cap}
+      COOPAGENTS_TEAM_PROJECTS: ${COOPAGENTS_TEAM_PROJECTS:?Set Team bound project cap}
     secrets:
       - github_account_oauth
       - stripe_secret_key
       - stripe_webhook_secret
 secrets:
   github_account_oauth:
-    file: ${CREWMESH_GITHUB_CLIENT_SECRET_PATH:?Set protected account OAuth secret file path}
+    file: ${COOPAGENTS_GITHUB_CLIENT_SECRET_PATH:?Set protected account OAuth secret file path}
   stripe_secret_key:
-    file: ${CREWMESH_STRIPE_SECRET_KEY_PATH:?Set protected matching-mode Stripe key file path}
+    file: ${COOPAGENTS_STRIPE_SECRET_KEY_PATH:?Set protected matching-mode Stripe key file path}
   stripe_webhook_secret:
-    file: ${CREWMESH_STRIPE_WEBHOOK_SECRET_PATH:?Set protected endpoint signing secret file path}
+    file: ${COOPAGENTS_STRIPE_WEBHOOK_SECRET_PATH:?Set protected endpoint signing secret file path}

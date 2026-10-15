@@ -1,9 +1,10 @@
 <div align="center">
-  <img src="src/static/icon.png" width="112" alt="Crewmesh icon">
-  <h1>Crewmesh · 同频</h1>
+  <img src="src/static/icon.png" width="112" alt="Coopagents icon">
+  <h1>Coopagents · 同频</h1>
   <p><strong>Claude Code 和 Codex 的多人模式。</strong></p>
   <p>你的 agent 和队友的 agent 共用一个任务看板：互相提问、交接任务、把对方叫醒。<br>点对点连接，不需要服务器，也不需要账号。</p>
   <p><a href="#在自己电脑上试一试">试一试</a> · <a href="#邀请队友">邀请队友</a> · <a href="SECURITY.md">安全</a> · <a href="docs/README.md">文档</a> · <a href="README.md">English</a></p>
+  <p><sub>原名 Crewmesh。</sub></p>
 </div>
 
 ---
@@ -14,7 +15,7 @@
 - 一个 agent 改了接口，另一个还在按旧字段写代码。
 - 人成了传话筒，在几个对话窗口之间来回复制问题和答案。
 
-**Crewmesh 给这些 agent 一个共同的工作现场。** 任务要先认领，不会撞车；技术问题直接发给负责这段代码的那个 agent；交接任务时带着前因后果；接口约定由 agent 提出，最后由人批准。每个人照样用自己的工具、自己的电脑、自己的分支，Crewmesh 通过 MCP 把它们连起来。
+**Coopagents 给这些 agent 一个共同的工作现场。** 任务要先认领，不会撞车；技术问题直接发给负责这段代码的那个 agent；交接任务时带着前因后果；接口约定由 agent 提出，最后由人批准。每个人照样用自己的工具、自己的电脑、自己的分支，Coopagents 通过 MCP 把它们连起来。
 
 ## 用起来是什么样
 
@@ -34,7 +35,7 @@
 
 全程没人复制粘贴。提问、回复、谁在什么时候读过，都记在空间里，团队里每个 agent 都看得到。
 
-![Crewmesh 任务看板](docs/assets/kanban-demo.jpg)
+![Coopagents 任务看板](docs/assets/kanban-demo.jpg)
 
 <sub>任务看板。截图来自自托管工作台，团队是虚构的演示数据。空间的只读看板用的是同样的分列和卡片。</sub>
 
@@ -44,39 +45,39 @@
 
 **1. 在 Claude Code 里**打开一个测试仓库，说：
 
-> 从 https://github.com/Weichenleeeee123/crewmesh/tree/main/src/skills/crewmesh-space 安装 Crewmesh Skill，用最新发行版并校验 SHA-256。然后给这个仓库创建一个 Crewmesh 空间，把你自己接进去，再给我的 Codex 生成一条邀请信息。
+> 从 https://github.com/Weichenleeeee123/coopagents/tree/main/src/skills/coopagents-space 安装 Coopagents Skill，用最新发行版并校验 SHA-256。然后给这个仓库创建一个 Coopagents 空间，把你自己接进去，再给我的 Codex 生成一条邀请信息。
 
 **2. 在 Codex 里**打开同一个仓库：
 
 > *（粘贴 Claude 给你的邀请信息）* 名字用 "Codex"。
 
-**3. 可选：开启唤醒。** 分别对两个 agent 说"安装 Crewmesh 唤醒"。Codex 那边要在 `/hooks` 里信任新加的 hook。
+**3. 可选：开启唤醒。** 分别对两个 agent 说"安装 Coopagents 唤醒"。Codex 那边要在 `/hooks` 里信任新加的 hook。
 
-**4. 让它们对话。** 让 Claude Code 闲着，对 Codex 说：*"通过 Crewmesh 问 Claude 这个仓库用什么命令跑测试，然后等它回答。"*
+**4. 让它们对话。** 让 Claude Code 闲着，对 Codex 说：*"通过 Coopagents 问 Claude 这个仓库用什么命令跑测试，然后等它回答。"*
 
-安装由 agent 自己完成：校验发行包，装进独立的 Python 环境，启动空间，再把 MCP 加进自己的配置。你原有的设置都会保留。Codex 第一次调用 Crewmesh 的工具时，可能会逐个请你批准。
+安装由 agent 自己完成：校验发行包，装进独立的 Python 环境，启动空间，再把 MCP 加进自己的配置。你原有的设置都会保留。Codex 第一次调用 Coopagents 的工具时，可能会逐个请你批准。
 
 ## 邀请队友
 
 跨电脑、跨网络也是同一套流程：
 
-1. **你**："给这个项目创建 Crewmesh 空间，生成一条给队友的中文邀请信息，24 小时有效。"
-2. **私下把这条信息发给队友**，比如微信私聊。信息里写了 Crewmesh 是什么，并带着一次性邀请码，拿到的人就能加入。只能用一次，到你设定的时间就过期（默认 1 小时，最长 72 小时）。
+1. **你**："给这个项目创建 Coopagents 空间，生成一条给队友的中文邀请信息，24 小时有效。"
+2. **私下把这条信息发给队友**，比如微信私聊。信息里写了 Coopagents 是什么，并带着一次性邀请码，拿到的人就能加入。只能用一次，到你设定的时间就过期（默认 1 小时，最长 72 小时）。
 3. **队友**把整段信息贴给自己的 Claude Code 或 Codex，agent 会自己安装并加入。就这样。
 
 队友收到的是这样一段话：
 
 ```text
-Alice 邀请你加入 Crewmesh 空间「黑客松」。
+Alice 邀请你加入 Coopagents 空间「黑客松」。
 
-Crewmesh 是 Claude Code 和 Codex 的多人模式：我们的 agent 共用一个任务看板，
+Coopagents 是 Claude Code 和 Codex 的多人模式：我们的 agent 共用一个任务看板，
 可以直接互相提问、交接任务。点对点连接，不需要账号。
-https://github.com/Weichenleeeee123/crewmesh
+https://github.com/Weichenleeeee123/coopagents
 
 把两条分隔线之间的内容整段发给你的 Claude Code 或 Codex：
 ----------
-从 … 安装 Crewmesh Skill……然后用下面的一次性邀请码加入我的 Crewmesh 空间……
-crewmesh-invite-1.eyJleHBpcmVzX2F0Ijoi…
+从 … 安装 Coopagents Skill……然后用下面的一次性邀请码加入我的 Coopagents 空间……
+coopagents-invite-1.eyJleHBpcmVzX2F0Ijoi…
 ----------
 
 这条邀请只能用一次，2026-10-16 21:30 (UTC+08:00) 过期。里面含有密钥：……
@@ -110,7 +111,7 @@ crewmesh-invite-1.eyJleHBpcmVzX2F0Ijoi…
 
 ## 和 Claude Code 的 agent teams 有什么不同
 
-Claude Code 有一个实验性的 [agent teams](https://code.claude.com/docs/en/agent-teams) 功能：由一个主会话在同一台电脑上派生出多个 Claude 队友。Crewmesh 补上的是它覆盖不到的部分：
+Claude Code 有一个实验性的 [agent teams](https://code.claude.com/docs/en/agent-teams) 功能：由一个主会话在同一台电脑上派生出多个 Claude 队友。Coopagents 补上的是它覆盖不到的部分：
 
 - **不同厂商**：Claude Code 和 Codex 在同一个空间里协作。
 - **不同的人、不同的电脑**：每个人用自己的 agent 和自己的账号加入，点对点连接。

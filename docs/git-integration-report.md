@@ -16,7 +16,7 @@
 
 适配器由成员在原有 Claude Code / Codex 的 MCP 配置中接入，服务地址必须由本机明确指定，个人令牌来自环境变量。Git 进程不执行 shell、hook 或 fsmonitor，不 fetch/push，不读取源码正文，不上传绝对路径或带凭据的 remote URL。默认只上报已跟踪文件的工作区变更。
 
-同仓库项目采用 `.crewmesh/project.json` 的版本化公共标识；服务地址、令牌、agent 私有配置和原始数据不能提交。`repo_checkpoint(task_id)` 返回团队上下文、共享约定和收件箱；`link_delivery` 供任务负责人 agent 明确关联分支、PR 或完整不可变提交。
+同仓库项目采用 `.coopagents/project.json` 的版本化公共标识；服务地址、令牌、agent 私有配置和原始数据不能提交。`repo_checkpoint(task_id)` 返回团队上下文、共享约定和收件箱；`link_delivery` 供任务负责人 agent 明确关联分支、PR 或完整不可变提交。
 
 本地 SQLite 队列在网络校验前提交观测，保留请求键并幂等重放。非法任务 ID、无效 Unicode、超限路径和观测在入队前拒绝。并发调用只返回各自的检查点结果。快照保留有限工作区及路径预览；完整单条记录可按项目授权读取。观测超过五分钟不参与活动重叠提示。
 
@@ -48,7 +48,7 @@
 
 当前没有真实 GitHub App 配置及部署目标。尚不能确认实际安装与组织批准、公网 HTTPS callback/webhook、实际检查事件、在线限流和权限移除恢复。新本地 Git 适配器的 Claude / Codex 原生入口及真实跨电脑验收也尚未完成；官方 SDK、同机双克隆及历史入口截图不能替代它们。
 
-本机 Docker daemon 未运行，未声称本机构建容器。代码提交 `fafb06b` 的 [GitHub CI](https://github.com/Weichenleeeee123/crewmesh/actions/runs/38124665616) 已于 2026-10-11 完成并全部通过：Python 3.11/3.13、245 项测试、21 项实验回归、三组网页回归、源码包/Wheel、实际 Docker 构建、容器启动及 deployment smoke。这里的 smoke 仍不包含真实 App 与公网验收。
+本机 Docker daemon 未运行，未声称本机构建容器。代码提交 `fafb06b` 的 [GitHub CI](https://github.com/Weichenleeeee123/coopagents/actions/runs/38124665616) 已于 2026-10-11 完成并全部通过：Python 3.11/3.13、245 项测试、21 项实验回归、三组网页回归、源码包/Wheel、实际 Docker 构建、容器启动及 deployment smoke。这里的 smoke 仍不包含真实 App 与公网验收。
 
 部署步骤见 [本地 Git 接入](git-local-setup.md)、[GitHub App 配置](git-github-setup.md) 和 [部署运维](deployment.md)。回调与 finish 需落到同一服务进程；本轮没有跨进程用户授权 token 共享。
 
@@ -56,7 +56,7 @@
 
 基于已提交的 `176bb50`（含主线账单领域 `fe5b431`）在 `feat/git-repository-integration` 隔离实现。初次发布前远端 main 为 `fe5b431`，主工作区的支付模块仍未提交。发布期间商业化对话将 `b57c72d` 推送 main；本分支用 Git 合并为 `658aaf8`，文档索引自动合并且完整 319 项回归通过。其仍未提交的 API 测试和报告没有被复制、暂存或覆盖。本 PR 相对 main 只包含 Git 集成变化；后续共同 API 或页面改动继续通过 Git 汇合。
 
-公开交付：[PR #1](https://github.com/Weichenleeeee123/crewmesh/pull/1)。主工作区和隔离工作树及所有原始证据均保留。
+公开交付：[PR #1](https://github.com/Weichenleeeee123/coopagents/pull/1)。主工作区和隔离工作树及所有原始证据均保留。
 
 ### 合并前的商业化 API 兼容验收
 

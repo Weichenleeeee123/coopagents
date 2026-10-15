@@ -10,8 +10,8 @@ import urllib.request
 import os
 from unittest.mock import patch
 
-from crewmesh.spaces import private_write, read_profile, validate_origin
-from crewmesh import space_runtime as runtime
+from coopagents.spaces import private_write, read_profile, validate_origin
+from coopagents import space_runtime as runtime
 
 
 class Profiles(unittest.TestCase):
@@ -59,7 +59,7 @@ class Profiles(unittest.TestCase):
             read_profile(path)
 
     def test_state_refuses_repository_and_links(self):
-        from crewmesh.spaces import private_directory
+        from coopagents.spaces import private_directory
         with self.assertRaises(ValueError):
             private_directory(Path('tests/private-state'))
         with self.assertRaises(ValueError):
@@ -76,7 +76,7 @@ class Profiles(unittest.TestCase):
 
     @unittest.skipUnless(os.name == 'nt', 'Windows reparse point regression')
     def test_junction_is_refused_without_pathlib_junction_support(self):
-        from crewmesh.spaces import checked_path
+        from coopagents.spaces import checked_path
         target = (self.directory / 'target').absolute()
         target.mkdir()
         junction = (self.directory / 'junction').absolute()
@@ -178,7 +178,7 @@ class Runtime(unittest.TestCase):
         snapshot = runtime.request(peer['origin'], '/api/snapshot', token=peer['agent_token'])
         self.assertEqual(len(snapshot['tasks']), 1)
         self.assertEqual(len(snapshot['members']), 2)
-        result = subprocess.run([sys.executable, '-m', 'crewmesh.space_runtime', 'status',
+        result = subprocess.run([sys.executable, '-m', 'coopagents.space_runtime', 'status',
                                  '--profile', str(self.profile_path)], capture_output=True, text=True)
         self.assertEqual(result.returncode, 0)
         self.assertNotIn(owner['web_token'], result.stdout + result.stderr)
@@ -191,13 +191,13 @@ class Runtime(unittest.TestCase):
         for hours in (0, 73):
             with self.subTest(hours=hours), self.assertRaises(urllib.error.HTTPError):
                 runtime.invite(self.profile_path, hours=hours)
-        result = subprocess.run([sys.executable, '-m', 'crewmesh.space_runtime', 'invite', '--profile',
+        result = subprocess.run([sys.executable, '-m', 'coopagents.space_runtime', 'invite', '--profile',
                                  str(self.profile_path), '--message', 'zh', '--hours', '24'],
                                 capture_output=True, text=True, encoding='utf-8')
         self.assertEqual(result.returncode, 0, result.stderr)
         invited = json.loads(result.stdout)
         message = invited['message']
-        self.assertTrue(message.startswith('Alice 邀请你加入 Crewmesh 空间「Hack night」。'))
+        self.assertTrue(message.startswith('Alice 邀请你加入 Coopagents 空间「Hack night」。'))
         self.assertTrue(invited['local_only'])
         self.assertNotIn('invitation', invited)
         for secret in (owner['web_token'], owner['agent_token'], owner['control_token']):
@@ -206,10 +206,10 @@ class Runtime(unittest.TestCase):
         self.assertLess(abs(expires - datetime.now(timezone.utc) - timedelta(hours=24)), timedelta(minutes=5))
 
         def join(name, text):
-            return subprocess.run([sys.executable, '-m', 'crewmesh.space_runtime', 'join', '--invitation-code-stdin',
+            return subprocess.run([sys.executable, '-m', 'coopagents.space_runtime', 'join', '--invitation-code-stdin',
                                    '--name', name, '--state-dir', str(self.directory / name)],
                                   input=text.encode('utf-8'), capture_output=True)
-        damaged = join('damaged', message.replace('crewmesh-invite-1.', 'crewmesh-invite-1.%'))
+        damaged = join('damaged', message.replace('coopagents-invite-1.', 'coopagents-invite-1.%'))
         self.assertEqual(damaged.returncode, 1)
         self.assertIn(b'Invitation code', damaged.stderr)
         joined = join('peer', message)

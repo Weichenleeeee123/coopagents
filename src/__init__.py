@@ -1,1 +1,1 @@
-"""Local CrewMesh collaboration primitives."""
+"""Local Coopagents collaboration primitives."""

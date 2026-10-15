@@ -18,11 +18,11 @@
 
 ## Task 1：先建立失败测试
 
-- [x] 新增核心独立导入测试；从 `crewmesh.coordination` 导入 `CoordinationService`，未实现时必须失败。
+- [x] 新增核心独立导入测试；从 `coopagents.coordination` 导入 `CoordinationService`，未实现时必须失败。
 - [x] 在 `.local/test-evidence/coordination-<uuid>/` 保留独立数据库，禁止自动删除。
 - [x] 创建空间与成员，创建同一任务，两成员竞争认领；失败方必须得到原有 `Conflict`。
 - [x] 验证个人身份、跨空间不可见、agent 不可执行管理操作，消息读取不等于处理完成。
-- [x] 验证完整 `crewmesh.api.Service` 仍有账号/工作区接口，并使用共同核心类型与共同验证函数。
+- [x] 验证完整 `coopagents.api.Service` 仍有账号/工作区接口，并使用共同核心类型与共同验证函数。
 - [x] 使用独立 Python 子进程拦截导入，确认共同核心不导入 Starlette、MCP、账单、账号与 OAuth。
 
 测试构造约定：
@@ -30,7 +30,7 @@
 ```python
 from pathlib import Path
 from uuid import uuid4
-from crewmesh.coordination import CoordinationService
+from coopagents.coordination import CoordinationService
 
 path = Path('.local/test-evidence') / ('coordination-' + uuid4().hex) / 'room.sqlite3'
 service = CoordinationService(path)
@@ -60,7 +60,7 @@ class Service(CoordinationService):
         self.workspaces = WorkspaceStore(self.accounts)
 ```
 
-- [x] 保留 `crewmesh.api.Service`、`crewmesh.api.fields` 与 `crewmesh.api.validate` 的兼容访问，现有 MCP 和路由调用方无需变更。
+- [x] 保留 `coopagents.api.Service`、`coopagents.api.fields` 与 `coopagents.api.validate` 的兼容访问，现有 MCP 和路由调用方无需变更。
 - [x] 定向测试通过后运行完整 Python 回归；如初始化顺序暴露依赖，先查明领域关系再修复，不改变权限规则。
 
 ## Task 3：审查与阶段交付

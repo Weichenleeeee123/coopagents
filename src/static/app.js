@@ -1,15 +1,15 @@
 'use strict';
 const $ = id => document.getElementById(id);
-let token = sessionStorage.getItem('crewmesh_web_token') || '';
+let token = sessionStorage.getItem('coopagents_web_token') || '';
 let generation = 0, snapshot = null, pollTimer = null, syncing = false, lastSuccess = null;
 let accountManaged = false, realtime=null, syncDirty=false;
-const boardUI = () => typeof window!=='undefined' ? window.CrewmeshBoard : null;
-function startRealtime(){realtime?.close();realtime=null;const epoch=generation;if(typeof window==='undefined'||!window.CrewmeshRealtime||!token)return;realtime=window.CrewmeshRealtime.connect({token,refresh:()=>epoch===generation?sync():Promise.resolve(),status:value=>{if(epoch===generation&&$('transport-status'))$('transport-status').textContent=value==='online'?'实时在线':'实时中断 · 轮询恢复';}});}
+const boardUI = () => typeof window!=='undefined' ? window.CoopagentsBoard : null;
+function startRealtime(){realtime?.close();realtime=null;const epoch=generation;if(typeof window==='undefined'||!window.CoopagentsRealtime||!token)return;realtime=window.CoopagentsRealtime.connect({token,refresh:()=>epoch===generation?sync():Promise.resolve(),status:value=>{if(epoch===generation&&$('transport-status'))$('transport-status').textContent=value==='online'?'实时在线':'实时中断 · 轮询恢复';}});}
 const projectRequests = new Set();
-const gitUI = () => typeof window!=='undefined' ? window.CrewmeshGit : null;
-const dependencyUI = () => typeof window!=='undefined' ? window.CrewmeshDependencies : null;
-const lifecycleUI = () => typeof window!=='undefined' ? window.CrewmeshTaskLifecycle : null;
-const collaborationUI = () => typeof window!=='undefined' ? window.CrewmeshCollaboration : null;
+const gitUI = () => typeof window!=='undefined' ? window.CoopagentsGit : null;
+const dependencyUI = () => typeof window!=='undefined' ? window.CoopagentsDependencies : null;
+const lifecycleUI = () => typeof window!=='undefined' ? window.CoopagentsTaskLifecycle : null;
+const collaborationUI = () => typeof window!=='undefined' ? window.CoopagentsCollaboration : null;
 function gitContext(){const epoch=generation;return {api,sync,me:snapshot.me,memberName,origin:location.origin,isCurrent:()=>epoch===generation};}
 const states = {cancelled:'已取消',open:'待认领', claimed:'已认领', working:'推进中', blocked:'受阻', local_done:'本地完成', pushed:'已推送', pr_open:'PR 已打开', merged:'已合并', approved:'已批准', rejected:'已拒绝'};
 const views = {overview:['01 / TEAM FIELD','团队现场','理解每个人正在推进的工作。'],tasks:['TEAM OPERATIONS / 任务协作','任务看板','每一项工作，都有清晰的去向。'],requests:['03 / TECHNICAL REQUESTS','技术请求','让依赖有去处，让答复有记录。'],contracts:['04 / SHARED AGREEMENTS','公共约定','把技术共识变成明确生效的版本。'],repository:['05 / REPOSITORY','仓库接入','让实际开发和远端交付成为可追溯的协作证据。']};
@@ -26,7 +26,7 @@ function setView(view) {
   for(const key of Object.keys(views)) $('view-'+key).hidden = key !== view;
   document.querySelectorAll('[data-view]').forEach(b => { if(b.dataset.view === view) b.setAttribute('aria-current','page'); else b.removeAttribute('aria-current'); });
   [$('view-kicker').textContent,$('view-title').textContent,$('view-description').textContent] = views[view];
-  if(!$('workspace').hidden)document.title=views[view][1]+' · Crewmesh';
+  if(!$('workspace').hidden)document.title=views[view][1]+' · Coopagents';
 }
 document.querySelectorAll('[data-view]').forEach(b => b.addEventListener('click',() => setView(b.dataset.view)));
 const tabs = Array.from(document.querySelectorAll('[data-entry]'));
@@ -43,31 +43,31 @@ async function api(path, data, authenticated = true, extraHeaders = {}) {
     if(epoch!==generation) throw new Error('访问已切换');
     let result; try { result=await response.json(); } catch { throw new Error('服务返回了无法读取的响应'); }
     if(epoch!==generation) throw new Error('访问已切换');
-    if(response.status===401){ if(authenticated){if(accountManaged && typeof window!=='undefined')window.CrewmeshAccounts.denied();else logout('网页凭据已失效，请恢复访问或重新加入。');} throw new Error(authenticated?'网页凭据已失效':(result.message || '邀请或凭据不可用')); }
+    if(response.status===401){ if(authenticated){if(accountManaged && typeof window!=='undefined')window.CoopagentsAccounts.denied();else logout('网页凭据已失效，请恢复访问或重新加入。');} throw new Error(authenticated?'网页凭据已失效':(result.message || '邀请或凭据不可用')); }
     if(!response.ok) throw new Error(result.message || '操作未完成');
     return result;
   } catch(error) { if(error.name==='AbortError') throw new Error('连接超时，请重试'); throw error; }
   finally { clearTimeout(timeout); projectRequests.delete(controller); }
 }
 function logout(message='') {
-  realtime?.close();realtime=null;syncDirty=false;generation++; token=''; snapshot=null; sessionStorage.removeItem('crewmesh_web_token'); clearTimeout(pollTimer);
+  realtime?.close();realtime=null;syncDirty=false;generation++; token=''; snapshot=null; sessionStorage.removeItem('coopagents_web_token'); clearTimeout(pollTimer);
   projectRequests.forEach(controller=>controller.abort()); projectRequests.clear(); syncing=false;
   gitUI()?.clear(); $('git-connection')?.replaceChildren(); $('git-overlaps')?.replaceChildren();
   collaborationUI()?.clear(); lifecycleUI()?.clear(); dependencyUI()?.clear();
-  renderSignature=''; closePrivate(); closeTaskDetail(); $('task-search').value=''; $('task-owner').value=''; if($('task-status'))$('task-status').value='active'; $('workspace').hidden=true; $('login').hidden=false; $('login-error').textContent=message;document.title='Crewmesh · 同频';
+  renderSignature=''; closePrivate(); closeTaskDetail(); $('task-search').value=''; $('task-owner').value=''; if($('task-status'))$('task-status').value='active'; $('workspace').hidden=true; $('login').hidden=false; $('login-error').textContent=message;document.title='Coopagents · 同频';
   $('board-empty').hidden=true;
   ['members','tasks','requests','contracts','overlaps','summary','board-summary'].forEach(id => $(id).replaceChildren());
   ['room-name','room-repository','identity','network-error','action-error','board-count'].forEach(id=>$(id).textContent='');
   $('form-restore').reset(); $('form-join').reset(); $('form-create').reset(); $('task-form').reset();
 }
-function enter(credential) { generation++; renderSignature=''; token=credential; sessionStorage.setItem('crewmesh_web_token',credential); $('login').hidden=true; $('workspace').hidden=false;document.title=$('view-title').textContent+' · Crewmesh'; $('action-error').textContent=''; $('sync-time').textContent='正在同步…'; $('network-error').hidden=true; lastSuccess=null; clearTimeout(pollTimer); startRealtime(); sync(); }
+function enter(credential) { generation++; renderSignature=''; token=credential; sessionStorage.setItem('coopagents_web_token',credential); $('login').hidden=true; $('workspace').hidden=false;document.title=$('view-title').textContent+' · Coopagents'; $('action-error').textContent=''; $('sync-time').textContent='正在同步…'; $('network-error').hidden=true; lastSuccess=null; clearTimeout(pollTimer); startRealtime(); sync(); }
 for(const name of ['create','join','restore']) $('form-'+name).addEventListener('submit',async e => {
   e.preventDefault(); const form=e.currentTarget, b=form.querySelector('button[type=submit]'); b.disabled=true; $('login-error').textContent='';
   const epoch=generation;
   try { const data=Object.fromEntries(new FormData(form));
     const bootstrap=data.bootstrap_secret; delete data.bootstrap_secret;
     if(name==='restore'){ const credential=data.web_token.trim(); generation++; const restoreEpoch=generation; token=credential; await api('/api/snapshot'); if(restoreEpoch!==generation)return; enter(credential); }
-    else { const result=await api(name==='create'?'/api/rooms':'/api/join',data,false,name==='create'&&bootstrap?{'X-Crewmesh-Bootstrap':bootstrap}:{}); if(epoch!==generation)return; enter(result.web_token); showPrivate('保存个人接入凭据',result); }
+    else { const result=await api(name==='create'?'/api/rooms':'/api/join',data,false,name==='create'&&bootstrap?{'X-Coopagents-Bootstrap':bootstrap}:{}); if(epoch!==generation)return; enter(result.web_token); showPrivate('保存个人接入凭据',result); }
     form.reset();
   } catch(error) { if(!$('login').hidden) $('login-error').textContent=error.message; } finally { b.disabled=false; }
 });
@@ -241,14 +241,14 @@ function renderContracts(){
 }
 async function perform(b, operation){ b.disabled=true; $('action-error').textContent=''; const epoch=generation; try { await operation(); if(epoch===generation){ renderSignature=''; await sync(); } } catch(error){ if(epoch===generation) $('action-error').textContent=error.message; } finally{b.disabled=false;} }
 $('task-form').addEventListener('submit',e=>{e.preventDefault();const form=e.currentTarget,b=form.querySelector('button[type=submit]'),epoch=generation;perform(b,async()=>{await api('/api/tasks',Object.fromEntries(new FormData(form)));if(epoch===generation){form.reset();$('task-create').open=false;$('new-task').focus();}});});
-$('retry').addEventListener('click',sync); $('logout').addEventListener('click',()=>{if(accountManaged && typeof window!=='undefined')window.CrewmeshAccounts.home();else logout();});
-function configTemplate(){const url=location.origin+'/mcp'; const tool=$('connection-tool').value; $('config-template').value=tool==='codex-desktop'?'[mcp_servers.crewmesh]\nurl = "'+url+'"\nhttp_headers = { Authorization = "Bearer TOKEN" }':tool==='codex-cli'?"$env:CREWMESH_AGENT_TOKEN = 'TOKEN'\ncodex mcp add crewmesh --url "+url+' --bearer-token-env-var CREWMESH_AGENT_TOKEN':"claude mcp add --transport http --scope local crewmesh "+url+' --header "Authorization: Bearer TOKEN"';}
+$('retry').addEventListener('click',sync); $('logout').addEventListener('click',()=>{if(accountManaged && typeof window!=='undefined')window.CoopagentsAccounts.home();else logout();});
+function configTemplate(){const url=location.origin+'/mcp'; const tool=$('connection-tool').value; $('config-template').value=tool==='codex-desktop'?'[mcp_servers.coopagents]\nurl = "'+url+'"\nhttp_headers = { Authorization = "Bearer TOKEN" }':tool==='codex-cli'?"$env:COOPAGENTS_AGENT_TOKEN = 'TOKEN'\ncodex mcp add coopagents --url "+url+' --bearer-token-env-var COOPAGENTS_AGENT_TOKEN':"claude mcp add --transport http --scope local coopagents "+url+' --header "Authorization: Bearer TOKEN"';}
 async function copy(value){try{await navigator.clipboard.writeText(value);$('dialog-status').textContent='已复制，请妥善保存。';}catch{$('dialog-status').textContent='复制不可用，请选择字段并手动复制。';}}
 let dialogOpener=null, privateEpoch=0;
-const skillUrl=()=>location.origin+'/skills/crewmesh-connect/SKILL.md';
+const skillUrl=()=>location.origin+'/skills/coopagents-connect/SKILL.md';
 function connectionPrompt(project,tool,credential='') {
-  return '请读取并使用 Crewmesh 接入 Skill：'+skillUrl()+'\n协议参考：'+location.origin+'/skills/crewmesh-connect/protocol.md'+
-    '\n我授权你为当前工具配置这个项目的原生 MCP，并将 Skill 安装到受支持的个人 Skill 目录（已有文件不得覆盖或删除）。不要安装 Crewmesh 客户端。'+
+  return '请读取并使用 Coopagents 接入 Skill：'+skillUrl()+'\n协议参考：'+location.origin+'/skills/coopagents-connect/protocol.md'+
+    '\n我授权你为当前工具配置这个项目的原生 MCP，并将 Skill 安装到受支持的个人 Skill 目录（已有文件不得覆盖或删除）。不要安装 Coopagents 客户端。'+
     '\n服务：'+location.origin+'\nMCP：'+location.origin+'/mcp\n项目：'+project+'\n工具：'+tool+
     (credential?'\n个人 agent 凭据：'+credential:'\n这是无凭据预览；请在项目网页点击生成接入指令获取本人凭据。')+
     '\n凭据仅用于私有配置和同源认证请求，不要回显、写入 URL 或提交 Git。验证 /api/me 项目身份，再配置 MCP；需要重启请明确说明。';
@@ -286,11 +286,11 @@ $('copy-url').addEventListener('click',()=>copy($('mcp-url').value)); $('connect
 $('invite-button').addEventListener('click',e=>{const epoch=generation;perform(e.currentTarget,async()=>{const result=await api('/api/invites',{});if(epoch===generation)showPrivate('邀请一位团队成员',result);});});
 $('rotate-agent').addEventListener('click',async e=>{ const b=e.currentTarget; b.disabled=true;const epoch=generation;try{const result=await api('/api/agent-token',{});if(epoch===generation){showPrivate('保存新的 agent 令牌',result);$('dialog-status').textContent='旧 agent 令牌已立即失效。请更新配置并重建连接。';}}catch(error){if(epoch===generation)$('dialog-status').textContent=error.message;}finally{b.disabled=false;} });
 setView('tasks');
-if(typeof window!=='undefined') window.CrewmeshProject={
-  enter(credential){logout();accountManaged=true;sessionStorage.setItem('crewmesh_account_project','1');enter(credential);},
+if(typeof window!=='undefined') window.CoopagentsProject={
+  enter(credential){logout();accountManaged=true;sessionStorage.setItem('coopagents_account_project','1');enter(credential);},
   clear(){logout();accountManaged=false;},
   private:showPrivate,
   managed(){return accountManaged;}
 };
 // Account-managed project credentials are reissued only after validating the cookie.
-if(token && !sessionStorage.getItem('crewmesh_account_project')) enter(token);
+if(token && !sessionStorage.getItem('coopagents_account_project')) enter(token);

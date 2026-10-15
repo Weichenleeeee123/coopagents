@@ -5,10 +5,10 @@ COPY pyproject.toml README.md LICENSE ./
 COPY src ./src
 COPY deploy/constraints.txt ./constraints.txt
 RUN pip install --no-cache-dir -c constraints.txt '.[service]' \
-    && groupadd --gid 10001 crewmesh \
-    && useradd --uid 10001 --gid crewmesh --no-create-home crewmesh \
-    && mkdir /data && chown crewmesh:crewmesh /data
+    && groupadd --gid 10001 coopagents \
+    && useradd --uid 10001 --gid coopagents --no-create-home coopagents \
+    && mkdir /data && chown coopagents:coopagents /data
 USER 10001:10001
-ENV CREWMESH_DATABASE=/data/crewmesh.sqlite3
+ENV COOPAGENTS_DATABASE=/data/coopagents.sqlite3
 EXPOSE 8787
-CMD ["python", "-m", "crewmesh.server"]
+CMD ["python", "-m", "coopagents.server"]

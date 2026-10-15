@@ -2,8 +2,8 @@ import base64
 import json
 import unittest
 
-from crewmesh import invite_message
-from crewmesh.invite_message import InvitationCodeError
+from coopagents import invite_message
+from coopagents.invite_message import InvitationCodeError
 
 
 DESCRIPTOR = dict(schema_version=1, origin='http://127.0.0.1:8765', room_id='room-1',
@@ -26,6 +26,10 @@ class Codes(unittest.TestCase):
                 message = invite_message.compose(P2P, 'Alice', 'Hack', lang)
                 self.assertEqual(invite_message.decode(message), P2P)
                 self.assertEqual(invite_message.decode('\r\n  ' + message + '\n\n'), P2P)
+
+    def test_codes_made_before_the_rename_still_decode(self):
+        legacy = invite_message.encode(P2P).replace(invite_message.CODE_PREFIX, 'crewmesh-invite-1.')
+        self.assertEqual(invite_message.decode('Join me:\n' + legacy + '\n'), P2P)
 
     def test_same_code_pasted_twice_is_accepted_but_two_codes_are_not(self):
         code = invite_message.encode(DESCRIPTOR)
@@ -59,7 +63,7 @@ class Messages(unittest.TestCase):
     def test_message_has_pitch_skill_prompt_code_and_warning(self):
         message = invite_message.compose(P2P, 'Alice', 'Hack night', 'en')
         lines = message.splitlines()
-        self.assertEqual(lines[0], 'Alice invited you to the Crewmesh space "Hack night".')
+        self.assertEqual(lines[0], 'Alice invited you to the Coopagents space "Hack night".')
         self.assertIn(invite_message.PROJECT_URL, lines)
         self.assertIn(invite_message.SKILL_URL, message)
         self.assertIn('--invitation-code-stdin', message)
@@ -72,7 +76,7 @@ class Messages(unittest.TestCase):
 
     def test_chinese_message_and_local_only_note(self):
         message = invite_message.compose(DESCRIPTOR, '围城', '黑客松', 'zh')
-        self.assertTrue(message.startswith('围城 邀请你加入 Crewmesh 空间「黑客松」。'))
+        self.assertTrue(message.startswith('围城 邀请你加入 Coopagents 空间「黑客松」。'))
         self.assertIn('只有那台电脑上的 agent 能加入', message)
         self.assertIn('只能用一次', message)
         self.assertTrue(invite_message.local_only(DESCRIPTOR))

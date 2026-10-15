@@ -3,8 +3,8 @@ from pathlib import Path
 import unittest
 from uuid import uuid4
 
-from crewmesh.coordination import CoordinationService
-from crewmesh.errors import AccessDenied, ValidationError
+from coopagents.coordination import CoordinationService
+from coopagents.errors import AccessDenied, ValidationError
 
 
 class EventsTests(unittest.TestCase):

@@ -1,6 +1,6 @@
 """Real Docker/Caddy TLS acceptance. Retains containers, volumes and evidence.
 
-Run from repository root: python scripts/deployment_smoke.py --image crewmesh:0.6.0rc2
+Run from repository root: python scripts/deployment_smoke.py --image coopagents:0.6.0rc2
 Requires Docker Engine and the pinned Caddy image. No external DNS or CA needed.
 """
 import argparse
@@ -21,17 +21,17 @@ CADDY = 'caddy:2.11.2-alpine@sha256:834468128c7696cec0ceea6172f7d692daf645ae5198
 class LoopbackTLS(http.client.HTTPSConnection):
     def connect(self):
         connection = socket.create_connection(('127.0.0.1', self.port), self.timeout)
-        self.sock = self._context.wrap_socket(connection, server_hostname='crewmesh.localhost')
+        self.sock = self._context.wrap_socket(connection, server_hostname='coopagents.localhost')
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--image', default='crewmesh:0.6.0rc2')
+    parser.add_argument('--image', default='coopagents:0.6.0rc2')
     parser.add_argument('--docker', default=shutil.which('docker'))
     args = parser.parse_args()
     if not args.docker:
         parser.error('Docker executable is required')
-    identifier = 'crewmesh-p4-' + uuid4().hex[:12]
+    identifier = 'coopagents-p4-' + uuid4().hex[:12]
     evidence = Path('.local/deployment-smoke') / identifier
     evidence.mkdir(parents=True)
     evidence = evidence.resolve()
@@ -56,19 +56,19 @@ def main():
         docker('volume', 'create', identifier + '-data')
         # Private CA used only by this test. Production uses deploy/Caddyfile ACME.
         config = evidence / 'Caddyfile'
-        config.write_text('{\n servers {\n strict_sni_host on\n }\n}\ncrewmesh.localhost {\n tls internal\n reverse_proxy app:8787\n}\n', encoding='utf-8')
+        config.write_text('{\n servers {\n strict_sni_host on\n }\n}\ncoopagents.localhost {\n tls internal\n reverse_proxy app:8787\n}\n', encoding='utf-8')
         docker('run', '-d', '--name', proxy, '--network', identifier,
                '-p', '127.0.0.1::443', '--mount', f'type=bind,source={config},target=/etc/caddy/Caddyfile,readonly', CADDY)
         started.append(proxy)
         details = json.loads(docker('inspect', proxy))[0]
         port = int(details['NetworkSettings']['Ports']['443/tcp'][0]['HostPort'])
         proxy_ip = details['NetworkSettings']['Networks'][identifier]['IPAddress']
-        origin = f'https://crewmesh.localhost:{port}'
+        origin = f'https://coopagents.localhost:{port}'
         bootstrap = secrets.token_urlsafe(32)
         environment = evidence / 'app.env'
         environment.write_text('\n'.join((
-            'CREWMESH_MODE=self-hosted', 'CREWMESH_HOST=0.0.0.0', 'CREWMESH_PUBLIC_URL=' + origin,
-            'CREWMESH_TRUSTED_PROXIES=' + proxy_ip, 'CREWMESH_BOOTSTRAP_SECRET=' + bootstrap)) + '\n', encoding='utf-8')
+            'COOPAGENTS_MODE=self-hosted', 'COOPAGENTS_HOST=0.0.0.0', 'COOPAGENTS_PUBLIC_URL=' + origin,
+            'COOPAGENTS_TRUSTED_PROXIES=' + proxy_ip, 'COOPAGENTS_BOOTSTRAP_SECRET=' + bootstrap)) + '\n', encoding='utf-8')
         docker('run', '-d', '--name', app, '--network', identifier, '--network-alias', 'app',
                '--read-only', '--tmpfs', '/tmp', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges:true',
                '--mount', f'type=volume,source={identifier}-data,target=/data', '--env-file', str(environment), args.image)
@@ -86,8 +86,8 @@ def main():
         context = ssl.create_default_context(cafile=str(ca))
 
         def request(path, data=None, token=None, headers=None, include_headers=False, raw_response=False):
-            connection = LoopbackTLS('crewmesh.localhost', port, timeout=10, context=context)
-            merged = {'Host': f'crewmesh.localhost:{port}', **(headers or {})}
+            connection = LoopbackTLS('coopagents.localhost', port, timeout=10, context=context)
+            merged = {'Host': f'coopagents.localhost:{port}', **(headers or {})}
             if token:
                 merged['Authorization'] = 'Bearer ' + token
             body = json.dumps(data).encode() if data is not None else None
@@ -124,11 +124,11 @@ def main():
         check('cross-site Origin rejected', request('/health', headers={'Origin': 'https://evil.example'})[0] == 403)
         status, account, response_headers = request('/account/bootstrap',
             {'username': 'tls-owner', 'password': secrets.token_urlsafe(24)},
-            headers={'X-Crewmesh-Bootstrap': bootstrap, 'Origin': origin}, include_headers=True)
+            headers={'X-Coopagents-Bootstrap': bootstrap, 'Origin': origin}, include_headers=True)
         check('HTTPS local account bootstrap', status == 200)
         cookie = response_headers.get('set-cookie', response_headers.get('Set-Cookie', ''))
         check('account cookie is Secure HttpOnly SameSite=Lax', all(flag.lower() in cookie.lower() for flag in ('Secure', 'HttpOnly', 'SameSite=Lax')))
-        account_headers = {'Origin': origin, 'Cookie': cookie.split(';', 1)[0], 'X-Crewmesh-CSRF': account['csrf_token']}
+        account_headers = {'Origin': origin, 'Cookie': cookie.split(';', 1)[0], 'X-Coopagents-CSRF': account['csrf_token']}
         check('account cookie restores session through TLS', request('/account/session', headers=account_headers)[0] == 200)
         check('account write requires CSRF', request('/account/teams', {'name': 'denied'}, headers={'Origin': origin, 'Cookie': account_headers['Cookie']})[0] == 401)
         status, team = request('/account/teams', {'name': 'C1 TLS team'}, headers=account_headers)
@@ -172,7 +172,7 @@ def main():
                   and 'unsafe-inline' not in policy)
         room = {'name': 'P4 deployment test', 'owner_name': 'Owner'}
         check('public anonymous room creation rejected', request('/api/rooms', room)[0] == 401)
-        status, owner = request('/api/rooms', room, headers={'X-Crewmesh-Bootstrap': bootstrap, 'Origin': origin})
+        status, owner = request('/api/rooms', room, headers={'X-Coopagents-Bootstrap': bootstrap, 'Origin': origin})
         check('HTTPS bootstrap room creation', status == 200)
         check('project agent bearer cannot read account billing', request(billing_path, token=owner['agent_token'])[0] == 401)
         # Unmounted paths first pass the catch-all MCP authentication boundary.
@@ -184,12 +184,12 @@ def main():
         rpc = {'jsonrpc': '2.0', 'id': 1, 'method': 'initialize', 'params': {
             'protocolVersion': '2025-11-25', 'capabilities': {}, 'clientInfo': {'name': 'P4 TLS smoke', 'version': '1'}}}
         status, initialized = request('/mcp', rpc, owner['agent_token'], {'Origin': origin, 'Accept': 'application/json, text/event-stream'})
-        check('authenticated MCP initialization over verified TLS', status == 200 and initialized['result']['serverInfo']['name'] == 'Crewmesh')
+        check('authenticated MCP initialization over verified TLS', status == 200 and initialized['result']['serverInfo']['name'] == 'Coopagents')
         check('web credential refused by MCP', request('/mcp', rpc, owner['web_token'], {'Accept': 'application/json, text/event-stream'})[0] == 401)
-        docker('exec', app, 'python', '-m', 'crewmesh.backup', 'backup', '/data/crewmesh.sqlite3', '/data/backup.sqlite3')
-        docker('exec', app, 'python', '-m', 'crewmesh.backup', 'restore', '/data/backup.sqlite3', '/data/restored.sqlite3')
+        docker('exec', app, 'python', '-m', 'coopagents.backup', 'backup', '/data/coopagents.sqlite3', '/data/backup.sqlite3')
+        docker('exec', app, 'python', '-m', 'coopagents.backup', 'restore', '/data/backup.sqlite3', '/data/restored.sqlite3')
         check('container online backup and restore', True)
-        restored_check = "from crewmesh.identity import IdentityStore; from crewmesh.accounts import AccountStore; from crewmesh.workspaces import WorkspaceStore; i=IdentityStore('/data/restored.sqlite3'); a=AccountStore(i); w=WorkspaceStore(a); c=i.db.connect(); db=c.__enter__(); assert db.execute('SELECT count(*) FROM accounts WHERE username=?', ('tls-owner',)).fetchone()[0]==1; assert db.execute('SELECT count(*) FROM teams WHERE name=?', ('C1 TLS team',)).fetchone()[0]==1; assert db.execute('SELECT count(*) FROM tasks WHERE intent_key=?', ('account-persist',)).fetchone()[0]==1; assert db.execute('SELECT count(*) FROM session_project_credentials p JOIN account_sessions s ON s.token_hash=p.session_hash WHERE s.revoked_at IS NULL').fetchone()[0]>=1; c.__exit__(None,None,None)"
+        restored_check = "from coopagents.identity import IdentityStore; from coopagents.accounts import AccountStore; from coopagents.workspaces import WorkspaceStore; i=IdentityStore('/data/restored.sqlite3'); a=AccountStore(i); w=WorkspaceStore(a); c=i.db.connect(); db=c.__enter__(); assert db.execute('SELECT count(*) FROM accounts WHERE username=?', ('tls-owner',)).fetchone()[0]==1; assert db.execute('SELECT count(*) FROM teams WHERE name=?', ('C1 TLS team',)).fetchone()[0]==1; assert db.execute('SELECT count(*) FROM tasks WHERE intent_key=?', ('account-persist',)).fetchone()[0]==1; assert db.execute('SELECT count(*) FROM session_project_credentials p JOIN account_sessions s ON s.token_hash=p.session_hash WHERE s.revoked_at IS NULL').fetchone()[0]>=1; c.__exit__(None,None,None)"
         docker('exec', app, 'python', '-c', restored_check)
         check('restored DB retains account workspace task and session project mapping', True)
         docker('restart', app)
@@ -219,10 +219,10 @@ def main():
         docker('run', '-d', '--name', restored_app, '--network', identifier, '--network-alias', 'restored-app',
                '--read-only', '--tmpfs', '/tmp', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges:true',
                '--mount', f'type=volume,source={identifier}-data,target=/data', '--env-file', str(environment),
-               '--env', 'CREWMESH_DATABASE=/data/restored.sqlite3', args.image)
+               '--env', 'COOPAGENTS_DATABASE=/data/restored.sqlite3', args.image)
         started.append(restored_app)
         restored_config = evidence / 'Caddyfile-restored'
-        restored_config.write_text('{\n servers {\n strict_sni_host on\n }\n}\ncrewmesh.localhost {\n tls internal\n reverse_proxy restored-app:8787\n}\n', encoding='utf-8')
+        restored_config.write_text('{\n servers {\n strict_sni_host on\n }\n}\ncoopagents.localhost {\n tls internal\n reverse_proxy restored-app:8787\n}\n', encoding='utf-8')
         docker('cp', str(restored_config), proxy + ':/tmp/Caddyfile-restored')
         docker('exec', proxy, 'caddy', 'reload', '--config', '/tmp/Caddyfile-restored', '--adapter', 'caddyfile')
         deadline = time.monotonic() + 30

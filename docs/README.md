@@ -1,4 +1,6 @@
-# Crewmesh 文档索引
+# Coopagents 文档索引
+
+项目在 0.6.0rc2 之后由 Crewmesh 改名为 Coopagents；历史验收记录里已发布资产的文件名保持原样。
 
 持续维护的文档统一放在本目录，并与对应实现一起提交 Git。仓库根目录 README 负责导航，实验代码目录保留源码和依赖声明。
 
@@ -65,8 +67,8 @@
 | [共享服务计划](shared-service-plan.md) | 当前身份基础与任务认领的具体实施步骤 |
 | [共享服务报告](shared-service-report.md) | P2 已实现能力和验证结果 |
 | [产品设计](agent-team-room-design.md) | 使用场景、协作机制、网页范围与权限边界 |
-| [接入实施计划](crewmesh-implementation-plan.md) | 分阶段任务及验收标准 |
-| [接入验证报告](crewmesh-integration-report.md) | 已取得的证据、版本、限制和 Git 提交 |
+| [接入实施计划](coopagents-implementation-plan.md) | 分阶段任务及验收标准 |
+| [接入验证报告](coopagents-integration-report.md) | 已取得的证据、版本、限制和 Git 提交 |
 | [实验运行说明](integration-lab.md) | 环境准备、配置生成、服务运行和原生入口验证 |
 | [原生 CLI 实验](native-cli-validation.md) | 真实启动、hook 事件、组织策略和配置兼容性阻塞 |
 

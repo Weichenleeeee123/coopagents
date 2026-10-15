@@ -10,8 +10,8 @@ import unittest
 from unittest.mock import patch
 from uuid import uuid4
 
-from crewmesh.identity import IdentityStore
-from crewmesh.errors import AccessDenied, ValidationError
+from coopagents.identity import IdentityStore
+from coopagents.errors import AccessDenied, ValidationError
 
 
 class AccessTests(unittest.TestCase):
@@ -20,7 +20,7 @@ class AccessTests(unittest.TestCase):
         root.mkdir(parents=True, exist_ok=True)
         self.path = root / f'access-{uuid4()}.sqlite3'
         self.now = datetime(2030, 1, 1, tzinfo=timezone.utc)
-        self.clock = patch('crewmesh.identity._utcnow', return_value=self.now, create=True)
+        self.clock = patch('coopagents.identity._utcnow', return_value=self.now, create=True)
         self.clock.start()
         self.addCleanup(self.clock.stop)
         self.store = IdentityStore(self.path)
@@ -51,7 +51,7 @@ class AccessTests(unittest.TestCase):
                 self.store.join_invite(token, 'Bob')
             self.assertEqual(str(caught.exception), 'Invitation not accepted')
         fresh = self.store.create_invite(self.owner['web_token'])
-        with patch('crewmesh.identity._utcnow', return_value=self.now + timedelta(hours=1)):
+        with patch('coopagents.identity._utcnow', return_value=self.now + timedelta(hours=1)):
             with self.assertRaises(AccessDenied) as caught:
                 self.store.join_invite(fresh['invite_token'], 'Bob')
             self.assertEqual(str(caught.exception), 'Invitation not accepted')
@@ -87,9 +87,9 @@ class AccessTests(unittest.TestCase):
             days = 30 if row['kind'] == 'web' else 90
             expiry = self.now + timedelta(days=days)
             self.assertEqual(row['expires_at'], expiry.isoformat())
-            with patch('crewmesh.identity._utcnow', return_value=expiry - timedelta(microseconds=1)):
+            with patch('coopagents.identity._utcnow', return_value=expiry - timedelta(microseconds=1)):
                 self.store.authenticate(self.owner[f"{row['kind']}_token"])
-            with patch('crewmesh.identity._utcnow', return_value=expiry):
+            with patch('coopagents.identity._utcnow', return_value=expiry):
                 with self.assertRaises(AccessDenied):
                     self.store.authenticate(self.owner[f"{row['kind']}_token"])
 
@@ -103,7 +103,7 @@ class AccessTests(unittest.TestCase):
             connection.execute("INSERT INTO members VALUES ('member', 'room', 'Owner', 'owner')")
             connection.execute("INSERT INTO credentials(token_hash, member_id, kind) VALUES (?, 'member', 'web')", (hashlib.sha256(b'legacy-token').hexdigest(),))
         upgraded = IdentityStore(legacy)
-        with patch('crewmesh.identity._utcnow', return_value=self.now + timedelta(days=10000)):
+        with patch('coopagents.identity._utcnow', return_value=self.now + timedelta(days=10000)):
             self.assertEqual(upgraded.authenticate('legacy-token').member_id, 'member')
         self.assertEqual(upgraded.room_info('legacy-token')['repository'], '')
         with upgraded.db.connect() as connection:

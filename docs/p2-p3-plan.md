@@ -1,4 +1,4 @@
-# Crewmesh P2 / P3 Implementation Plan
+# Coopagents P2 / P3 Implementation Plan
 
 > **For agentic workers:** Use subagent-driven-development task by task, with specification review before quality review. Never delete files. Commit each verified stage separately.
 
@@ -64,7 +64,7 @@ HTTP 路由：`/api/rooms` 创建房间，`/api/join` 兑换邀请，`/api/me` �
 
 MCP 使用官方 streamable HTTP 和 SDK 认证上下文，工具内部再次用原始凭据解析身份，防止撤销与写入竞争。stateless 请求不跨用户复用会话身份。agent 不能使用邀请、凭据管理和批准工具；提供自查身份、任务认领、会话、进展、消息与提案工具。消息为数据，不提升为用户指令；收件箱拉取不承诺唤醒闲置会话。
 
-服务器支持 `python -m crewmesh.server`，默认 `127.0.0.1:8787`，数据库 `.local/crewmesh.sqlite3`。HTTP 默认同源，禁止跨站写入与宽泛 CORS；限制正文大小与 JSON 类型。凭据不通过 URL 传递。运行说明记录启动、停止、到期与备份路径。
+服务器支持 `python -m coopagents.server`，默认 `127.0.0.1:8787`，数据库 `.local/coopagents.sqlite3`。HTTP 默认同源，禁止跨站写入与宽泛 CORS；限制正文大小与 JSON 类型。凭据不通过 URL 传递。运行说明记录启动、停止、到期与备份路径。
 
 - [x] 邀请/到期/轮换测试先红后绿，覆盖竞争、摘要、过期、撤销与旧库升级。
 - [x] 实现 HTTP/MCP；用实际回环 HTTP 和两个认证成员完成工具调用、请求/回复/确认及越权/撤销检查，保留证据。

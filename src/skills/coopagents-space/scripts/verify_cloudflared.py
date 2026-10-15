@@ -16,7 +16,7 @@ def install(tag, asset_name, destination):
     if target.exists():
         raise FileExistsError('Destination already exists; choose a new path')
     api = 'https://api.github.com/repos/cloudflare/cloudflared/releases/tags/' + tag
-    req = urllib.request.Request(api, headers={'Accept':'application/vnd.github+json','User-Agent':'crewmesh-space'})
+    req = urllib.request.Request(api, headers={'Accept':'application/vnd.github+json','User-Agent':'coopagents-space'})
     with urllib.request.urlopen(req, timeout=15) as response:
         release = json.loads(response.read(2_000_000))
     asset = next(a for a in release['assets'] if a['name'] == asset_name)
@@ -32,7 +32,7 @@ def install(tag, asset_name, destination):
         binary = response.read(100_000_001)
     if len(binary) > 100_000_000 or hashlib.sha256(binary).hexdigest() != digest[7:]:
         raise ValueError('Cloudflare asset checksum mismatch')
-    from crewmesh.spaces import checked_path, private_directory, protect
+    from coopagents.spaces import checked_path, private_directory, protect
     target = checked_path(target)
     private_directory(target.parent)
     with target.open('xb') as stream:

@@ -7,11 +7,11 @@ import unittest
 from unittest.mock import patch
 from uuid import uuid4
 
-from crewmesh.errors import ValidationError
+from coopagents.errors import ValidationError
 
 
 def api():
-    from crewmesh.git_workspace import GitWorkspace, load_project, normalize_repository
+    from coopagents.git_workspace import GitWorkspace, load_project, normalize_repository
     return GitWorkspace, load_project, normalize_repository
 
 
@@ -193,7 +193,7 @@ class GitWorkspaceTests(unittest.TestCase):
         self.assertFalse(marker.exists())
 
     def test_subprocess_output_and_time_are_bounded(self):
-        module = __import__('crewmesh.git_workspace', fromlist=['GitWorkspace'])
+        module = __import__('coopagents.git_workspace', fromlist=['GitWorkspace'])
         with patch.object(module, 'MAX_GIT_OUTPUT', 8):
             with self.assertRaises(ValidationError):
                 self.inspect()
@@ -205,8 +205,8 @@ class GitWorkspaceTests(unittest.TestCase):
 class ProjectConfigTests(unittest.TestCase):
     def setUp(self):
         self.root = Path('.local/test-evidence/git-project') / str(uuid4())
-        (self.root / '.crewmesh').mkdir(parents=True)
-        self.config = self.root / '.crewmesh' / 'project.json'
+        (self.root / '.coopagents').mkdir(parents=True)
+        self.config = self.root / '.coopagents' / 'project.json'
         self.valid = {'schema_version': 1, 'project_ref': str(uuid4()),
                       'repository': 'github.com/owner/repo'}
 
@@ -248,4 +248,4 @@ class ProjectConfigTests(unittest.TestCase):
 
 class GitWorkspaceAvailabilityTests(unittest.TestCase):
     def test_local_git_workspace_inspector_is_available(self):
-        self.assertIsNotNone(importlib.util.find_spec('crewmesh.git_workspace'))
+        self.assertIsNotNone(importlib.util.find_spec('coopagents.git_workspace'))

@@ -4,14 +4,14 @@ F1 在服务收到个人 agent 的调用时记录协作检查点，并返回当�
 
 ## 一次接入
 
-在已安装 Crewmesh 的 Python 环境内，设置启动原生 agent 时会继承的三个环境变量。使用个人 **agent** 令牌；网页令牌不能调用检查点或诊断。
+在已安装 Coopagents 的 Python 环境内，设置启动原生 agent 时会继承的三个环境变量。使用个人 **agent** 令牌；网页令牌不能调用检查点或诊断。
 
 ```powershell
-$env:CREWMESH_SERVICE_URL = 'http://127.0.0.1:8787'
-$env:CREWMESH_PROJECT_ID = 'YOUR_PROJECT_ID'
-$env:CREWMESH_AGENT_TOKEN = 'YOUR_PERSONAL_AGENT_TOKEN'
-python -I -m crewmesh.checkpoint_hook --tool codex-cli --config-preview
-python -I -m crewmesh.checkpoint_hook --tool codex-cli --doctor
+$env:COOPAGENTS_SERVICE_URL = 'http://127.0.0.1:8787'
+$env:COOPAGENTS_PROJECT_ID = 'YOUR_PROJECT_ID'
+$env:COOPAGENTS_AGENT_TOKEN = 'YOUR_PERSONAL_AGENT_TOKEN'
+python -I -m coopagents.checkpoint_hook --tool codex-cli --config-preview
+python -I -m coopagents.checkpoint_hook --tool codex-cli --doctor
 ```
 
 `--tool` 支持 `claude-code`、`codex-cli`、`codex-desktop`。每种模板都有 `SessionStart`、`UserPromptSubmit`、`PostToolUse` 三个 command hook。模板使用生成时的 `sys.executable`；Python `-I` 避免工作目录中的同名模块覆盖已安装入口。Windows 使用带正确单引号的 PowerShell 命令，经 UTF-16LE `EncodedCommand` 传递，因此带空格的 Python 路径不会拆开。编码内容仅为固定 Python 入口及工具名，不含令牌或用户输入。
@@ -44,12 +44,12 @@ Codex 模板单独设置文档支持的 `additionalContextLimit: 9000`（近似 
 ## 数据与执行边界
 
 - 入口仅从 stdin 使用 `session_id`、`hook_event_name`。不转发 prompt、cwd、transcript 路径/正文、tool 输入或输出，不读取这些字段指向的文件。输入超过 64 KiB 时跳过并警告。
-- 服务地址只能来自显式 `CREWMESH_SERVICE_URL`，支持 HTTPS 或 loopback HTTP origin，禁止重定向。每个 HTTP 响应最多 64 KiB，每请求默认 2 秒、可设 0.05–3 秒；hook 的网络与节流操作整体 8 秒截止，生成配置 timeout 为 10 秒。独立 doctor 整体 12 秒截止。
+- 服务地址只能来自显式 `COOPAGENTS_SERVICE_URL`，支持 HTTPS 或 loopback HTTP origin，禁止重定向。每个 HTTP 响应最多 64 KiB，每请求默认 2 秒、可设 0.05–3 秒；hook 的网络与节流操作整体 8 秒截止，生成配置 timeout 为 10 秒。独立 doctor 整体 12 秒截止。
 - 摘要最多 10 项本人任务、6 条相关待解决请求、每请求 2 条回复、4 份最新已批准版本。请求正文 400 字符，回复 300 字符，证据 150 字符，约定正文 800 字符；服务序列化摘要最多 16,000 UTF-8 字节。字段/列表截断标记 `excerpted` / `truncated`，明确要求用 `read_team` 或显式 `read_inbox` 查看完整数据。
 - Hook 成品 `additionalContext` 含完整外部数据边界不超过 9,000 ASCII 字符，低于 Claude 的 10,000 字符落盘阈值。超限时先移除列表末尾记录、尽量保留每类至少一项，再缩短长正文/范围；始终保留完整可解析 JSON、`truncated` 与显式读取提示。Unicode 和控制字符先做 JSON 转义再计数，Python 与原生 UTF-16 计数一致，完整 stdout JSON 仍低于 30,000 字节。不在字节中间截断正文或数据边界。
 - 自动检查点只 peek，不写入已读、处理、回复或解决状态。显式 `read_inbox` 等工具维持原有语义。本地 Git `repo_checkpoint` 是独立既有操作，不作为自动 hook 的入口。
 - `PostToolUse` 按服务、项目、鉴权成员、会话、工具节流 30 秒；每次仍先校验身份，过期或撤销令牌不能凭节流缓存继续被视作有效。`SessionStart` 和 `UserPromptSubmit` 强制检查。跨进程 SQLite 事务协调节流，只有服务成功才更新成功时间。
-- 节流数据库放在操作系统用户状态目录的 `Crewmesh/hook-state/`，只持久化键哈希和成功时间，不保存令牌、prompt 或 brief。不会删除状态文件。服务数据库以新增表升级，保留已有任务、消息及账户数据。
+- 节流数据库放在操作系统用户状态目录的 `Coopagents/hook-state/`，只持久化键哈希和成功时间，不保存令牌、prompt 或 brief。不会删除状态文件。服务数据库以新增表升级，保留已有任务、消息及账户数据。
 - 网页使用文本 DOM，退出或切换项目即清理接入上下文；不保存个人 agent 令牌。项目网页读取成功与 agent 的真实报告分开显示。
 
 ## 本阶段证据（2026-10-11）
@@ -62,8 +62,8 @@ Codex 模板单独设置文档支持的 `additionalContextLimit: 9000`（近似 
 - 新增用例覆盖真实 HTTP + hook 子进程、错误项目/令牌、跨项目隔离、不同成员及会话、无自动已读回执、挑战完整顺序、300 秒边界、超时/重定向/响应大小、prompt 不泄漏、跨进程节流、配置保留、旧数据库升级。
 - 网页：`collaboration_ui_regression.js`、`web_session_regression.js`、`git_ui_regression.js`、`account_ui_regression.js`、`billing_ui_regression.js` 均通过；包括过期状态、诊断不冒充 hook、安全文本渲染、切换项目后的异步结果和工具选择保留。新增网页测试已加入 CI。
 - 真实浏览器验收确认仓库接入页显示自动协作面板，390px 宽度无横向溢出；未发现新增脚本错误。步骤展开和工具选择在刷新时保留，退出/切换项目重置。
-- Windows 含空格的真实 `sys.executable` 命令完成本机 shell 执行。另从含同名 `crewmesh.py` 的工作目录执行，确认生成入口使用已安装包。
-- 质量审查补充首次接入：网页和文档的 preview/doctor 命令统一使用 `python -I -m`。从包含同名 `crewmesh.py` 的目录实际执行文档中的两条命令，验证其不会先执行仓库模块；hook 专项 15 项通过。网页回归确认接入工具选框聚焦时快照不重建面板，离开焦点后正常补绘并保留选项。
+- Windows 含空格的真实 `sys.executable` 命令完成本机 shell 执行。另从含同名 `coopagents.py` 的工作目录执行，确认生成入口使用已安装包。
+- 质量审查补充首次接入：网页和文档的 preview/doctor 命令统一使用 `python -I -m`。从包含同名 `coopagents.py` 的目录实际执行文档中的两条命令，验证其不会先执行仓库模块；hook 专项 15 项通过。网页回归确认接入工具选框聚焦时快照不重建面板，离开焦点后正常补绘并保留选项。
 - 实际 Claude 新会话触发了 `SessionStart` 与 `UserPromptSubmit`；客户端调试日志确认接受带 `additionalContext` 的 JSON。但模型未复述只存在于上下文的随机标识。极小 literal-context 对照同样未复述，因此**模型消费验收未通过**，不能声称完成端到端上下文注入。
 - 隔离 Codex CLI 项目尚未产生原生 hook 记录；没有修改用户个人配置或绕过 `/hooks` 信任。Codex 桌面尚未独立验收。
 

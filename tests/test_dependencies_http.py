@@ -5,7 +5,7 @@ from unittest.mock import patch
 import httpx2
 from mcp import Client
 from mcp.client.streamable_http import streamable_http_client
-from crewmesh.git_adapter import LocalAdapter, create_local_mcp
+from coopagents.git_adapter import LocalAdapter, create_local_mcp
 from transport_support import LiveService
 
 

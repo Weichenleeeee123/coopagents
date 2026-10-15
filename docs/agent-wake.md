@@ -16,15 +16,15 @@
 ## 安装与管理
 
 ```text
-python -m crewmesh.space_wake install --tool claude --profile <profile> --project-dir <repo>
-python -m crewmesh.space_wake install --tool codex  --profile <profile> --project-dir <repo>
-python -m crewmesh.space_wake standby on|off --profile <profile> [--seconds 900]
-python -m crewmesh.space_wake status --profile <profile>
-python -m crewmesh.space_wake disable --tool claude|codex --project-dir <repo>
+python -m coopagents.space_wake install --tool claude --profile <profile> --project-dir <repo>
+python -m coopagents.space_wake install --tool codex  --profile <profile> --project-dir <repo>
+python -m coopagents.space_wake standby on|off --profile <profile> [--seconds 900]
+python -m coopagents.space_wake status --profile <profile>
+python -m coopagents.space_wake disable --tool claude|codex --project-dir <repo>
 ```
 
 - 项目范围写入 `.claude/settings.local.json` 或 `.codex/hooks.json`，`--scope user` 写入用户级配置。
-- 已有配置合并保留，修改前的文件另存为 `.crewmesh-<时间>.bak`。`disable` 只移除 Crewmesh 的 hook。
+- 已有配置合并保留，修改前的文件另存为 `.coopagents-<时间>.bak`。`disable` 只移除 Coopagents 的 hook。
 - Codex 新增的 hook 需要用户在 `/hooks` 里审阅信任，Skill 不会绕过。
 
 ## 唤醒规则
@@ -82,6 +82,6 @@ python -m crewmesh.space_wake disable --tool claude|codex --project-dir <repo>
 
 - **Codex 待命会占住会话**；Esc 中断和待命中输入的行为没有实测。
 - **终端关闭后不会唤醒**；没有常驻进程替你开会话。
-- **Claude Code 交互模式下的第一条提示可能早于 MCP 连接完成**，用 crewmesh 工具的指令可能失败；唤醒发生在之后，不受影响。
+- **Claude Code 交互模式下的第一条提示可能早于 MCP 连接完成**，用 coopagents 工具的指令可能失败；唤醒发生在之后，不受影响。
 - **验收会话里模型多次说“用户发了 `.`”**，即使在被唤醒之前也出现过。记录显示并没有这样的输入，判断是测试环境叠加用户全局指令所致，未进一步定位。
 - **验收只用了一台电脑**；跨电脑（含 p2p 成员）时唤醒走的是同一套 HTTP 接口和桥接链路，但未单独验收。

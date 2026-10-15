@@ -7,7 +7,7 @@ from uuid import uuid4
 
 from starlette.testclient import TestClient
 
-from crewmesh.api import create_app
+from coopagents.api import create_app
 from test_billing_api import CONFIG, ORIGIN
 from test_billing_service import FixtureTransport
 from test_github_sync import FakeProvider
@@ -46,7 +46,7 @@ class GitBillingIntegrationTests(unittest.TestCase):
                 self.assertTrue(git_entered.wait(5))
                 self.assertTrue(billing_entered.wait(5))
                 billing = client.get('/account/teams/' + team + '/billing',
-                                     headers={'Cookie': 'crewmesh_account=' + token})
+                                     headers={'Cookie': 'coopagents_account=' + token})
                 self.assertEqual(billing.status_code, 200, billing.text)
                 self.assertTrue(billing.json()['checkout_available'])
                 headers = {'Authorization': 'Bearer ' + credential['web_token']}

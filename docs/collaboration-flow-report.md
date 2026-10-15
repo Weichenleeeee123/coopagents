@@ -6,7 +6,7 @@
 
 已实现成员个人凭据诊断、检查点、会话来源与陈旧时间、网页接入片段和失败提示。服务记录收到事件的时间；只有实际 hook 上报才称为 hook 观测。检查点只预览协作信息，不自动写消息阅读/处理/解决证据。
 
-独立规格和质量审查通过，阶段提交 09bb1b7、6e73d0d、83958e1 已推送；[CI 38128638038](https://github.com/Weichenleeeee123/crewmesh/actions/runs/38128638038) 通过。真实浏览器已验证 390px 布局、接入选择保留，以及异步更新时焦点不被轮询吞掉。
+独立规格和质量审查通过，阶段提交 09bb1b7、6e73d0d、83958e1 已推送；[CI 38128638038](https://github.com/Weichenleeeee123/coopagents/actions/runs/38128638038) 通过。真实浏览器已验证 390px 布局、接入选择保留，以及异步更新时焦点不被轮询吞掉。
 
 原生边界：真实 Claude Code 启动后服务记录 SessionStart / UserPromptSubmit，客户端接受包含随机标记的 773 字符 additionalContext，但模型没有报告该标记。简单固定上下文对照也未报告标记，不猜测原因。真实 Codex CLI exec 正常退出，但未记录 hook 事件。桌面 hook 未额外验收。本轮 **原生模型自动消费上下文未通过**；不自动修改信任、原生配置或权限，不声称即时推送或闲置会话唤醒。
 
@@ -14,7 +14,7 @@
 
 已实现释放、提出/接受/拒绝转交、管理员明确转交、取消与重新打开。任务版本和 request_key 防竞态/重试；会话与 ownership_epoch 隔离同成员的 agent。旧进度、Git 证据与会话保留在历史，旧周期不能继续驱动当前交付状态。
 
-阶段提交 6f7c635、733863b 已完成独立规格/质量审查并推送；[CI 38130103147](https://github.com/Weichenleeeee123/crewmesh/actions/runs/38130103147) 通过。实现阶段完整 Python 394 项通过；之后权限兼容和历史交互修复做了定向回归。
+阶段提交 6f7c635、733863b 已完成独立规格/质量审查并推送；[CI 38130103147](https://github.com/Weichenleeeee123/coopagents/actions/runs/38130103147) 通过。实现阶段完整 Python 394 项通过；之后权限兼容和历史交互修复做了定向回归。
 
 Controller 在真实 HTTP 与官方 MCP SDK 中使用旧 F1 数据库升级，验证 legacy 会话退休后不能跨周期复用，新会话能接手，旧记录保留。真实 Chromium 验证转交、取消、恢复、手机宽度，并在打开完整历史证据、聚焦记录摘要时触发真实 HTTP 更新：轮询后展开、证据、焦点均保留。
 
@@ -34,6 +34,6 @@ F3 阶段提交 a0bf495 已通过独立规格和质量审查。质量审查发�
 
 已合入同期主线的 0.4.0rc1 / C2 改动（9bcac3b），并重新 fetch 确认没有遗漏新主线提交。集成完整回归 **412 项 Python 测试通过**（154.312 秒），实验 **21 项通过**，七组网页回归及所有静态 JavaScript 语法检查通过。上述网页权限小修后补跑了 13 项依赖测试和网页行为回归。sdist 与 wheel 构建成功，产物保留在忽略的 `.local/`。
 
-已发布 [PR #2](https://github.com/Weichenleeeee123/crewmesh/pull/2)，包含全部阶段提交。推送与 PR 分别触发 [GitHub CI](https://github.com/Weichenleeeee123/crewmesh/actions/runs/38136403975) 和 [PR CI](https://github.com/Weichenleeeee123/crewmesh/actions/runs/38136429658)，记录此段时仍在执行；最终状态以 PR Checks 为准。构建后的 wheel 另经检查，包含全部协作模块与静态资源，未包含 `.local/` 或实验数据库。
+已发布 [PR #2](https://github.com/Weichenleeeee123/coopagents/pull/2)，包含全部阶段提交。推送与 PR 分别触发 [GitHub CI](https://github.com/Weichenleeeee123/coopagents/actions/runs/38136403975) 和 [PR CI](https://github.com/Weichenleeeee123/coopagents/actions/runs/38136429658)，记录此段时仍在执行；最终状态以 PR Checks 为准。构建后的 wheel 另经检查，包含全部协作模块与静态资源，未包含 `.local/` 或实验数据库。
 
 此前 C1/C2/C3、GitHub App 和公网部署验收边界保持原记录。

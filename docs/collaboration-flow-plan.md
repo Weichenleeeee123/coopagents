@@ -18,7 +18,7 @@
 
 - [x] 新增 src/checkpoints.py：agent-only checkpoint(session_key, tool, event, task_id=None)，会话开始、提示提交、工具后及手动阶段合法枚举。返回当前成员任务、相关待处理请求/回复、已批准约定、后续阶段的交接与依赖摘要；记录服务端收到时间。返回消息只作为不可信协作数据，不自动确认处理、回复或解决。
 - [x] 新增独立诊断发送/回读记录（随机 challenge，绑定成员与项目，有限输入）；检测凭据、项目匹配和确实回读，不能拿网页轮询或本地配置存在声称 agent 已接入。快照提供成员/会话最后检查点及诊断状态。超过五分钟明确陈旧。
-- [x] src/checkpoint_hook.py 使用明确的环境变量 CREWMESH_SERVICE_URL、CREWMESH_PROJECT_ID、CREWMESH_AGENT_TOKEN；从 stdin 只提取事件/session_id，不上传 prompt、transcript 或工具正文。固定可信 origin、禁止跳转、限时、限体积，失败返回简明可见警告而不阻止工作；工具后检查节流，开始/新提示强制刷新。输出兼容两客户端的 hookSpecificOutput.additionalContext，外部内容清楚包裹为数据并限制长度；不返回 allow/deny，不自动解决请求。
+- [x] src/checkpoint_hook.py 使用明确的环境变量 COOPAGENTS_SERVICE_URL、COOPAGENTS_PROJECT_ID、COOPAGENTS_AGENT_TOKEN；从 stdin 只提取事件/session_id，不上传 prompt、transcript 或工具正文。固定可信 origin、禁止跳转、限时、限体积，失败返回简明可见警告而不阻止工作；工具后检查节流，开始/新提示强制刷新。输出兼容两客户端的 hookSpecificOutput.additionalContext，外部内容清楚包裹为数据并限制长度；不返回 allow/deny，不自动解决请求。
 - [x] 提供配置预览与 doctor 命令，Claude 的 settings.local.json 与 Codex 的 hooks.json 只提供可合并片段/新文件导出，保留既有配置和信任。SessionStart/UserPromptSubmit/PostToolUse 触发；缺少支持或信任时显示尚未观察到 hook，保留 MCP 手动检查点。官方来源：https://code.claude.com/docs/en/hooks 与 https://learn.chatgpt.com/docs/hooks（2026-10-11）。
 - [x] HTTP/MCP、本地 Git 适配器接入新检查点；网页增加接入向导、诊断与会话检查点状态。使用新模块 src/static/collaboration.js，避免继续向 app.js 塞入整套业务逻辑；轻量桥接生命周期、详情和总览。
 - [x] tests/test_checkpoints.py、test_checkpoint_hook.py、test_collaboration_http.py 和网页回归：真实 HTTP 诊断、错误项目/令牌、轮换、隔离、hook subprocess 输入输出、节流/断网、隐私、消息不自动确认、旧数据库升级。先验证新行为失败，再实现、回归、提交。

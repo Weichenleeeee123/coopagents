@@ -1,10 +1,10 @@
 import unittest
 from pathlib import Path
 from uuid import uuid4
-from crewmesh.identity import IdentityStore
-from crewmesh.accounts import AccountStore
-from crewmesh.workspaces import WorkspaceStore
-from crewmesh.errors import AccessDenied
+from coopagents.identity import IdentityStore
+from coopagents.accounts import AccountStore
+from coopagents.workspaces import WorkspaceStore
+from coopagents.errors import AccessDenied
 
 
 class WorkspaceTests(unittest.TestCase):
@@ -68,7 +68,7 @@ class WorkspaceTests(unittest.TestCase):
             with self.subTest(state=state):
                 _, admin = self.join('issuer-' + state, 'admin')
                 invite = self.workspaces.create_invite(admin, self.team)
-                from crewmesh.identity import _token_hash
+                from coopagents.identity import _token_hash
                 with self.accounts.db.connect(write=True) as c:
                     if state == 'expired': c.execute("UPDATE team_invitations SET expires_at='2000-01-01T00:00:00+00:00' WHERE token_hash=?", (_token_hash(invite['invite_token']),))
                     if state == 'revoked': c.execute("UPDATE team_invitations SET revoked_at='revoked' WHERE token_hash=?", (_token_hash(invite['invite_token']),))

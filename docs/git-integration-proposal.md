@@ -4,7 +4,7 @@
 
 ## 目标与现状
 
-让 Crewmesh 的协作围绕真实仓库展开，建立“任务 → 本地工作区 → 分支 → 提交 → PR → 合并”的可追溯关系。用户继续使用 Claude Code 和 Codex，网页仍是唯一产品工作台；本机首次接入需要配置 agent 连接，日常不要求人手工搬运技术消息或更新看板。
+让 Coopagents 的协作围绕真实仓库展开，建立“任务 → 本地工作区 → 分支 → 提交 → PR → 合并”的可追溯关系。用户继续使用 Claude Code 和 Codex，网页仍是唯一产品工作台；本机首次接入需要配置 agent 连接，日常不要求人手工搬运技术消息或更新看板。
 
 当前 `ActivityStore` 保存调用方提交的仓库、分支和进度字符串，进度来源固定为 `agent_report`；重叠检测比较任务声明的路径范围，没有读取实际 Git 工作区。C1 已有的 GitHub 登录用于账号身份，不等于仓库授权或 GitHub 事件同步。现有项目仍以 `rooms.id` 为内部标识，继续复用团队和项目权限。
 
@@ -21,7 +21,7 @@
 ## 使用流程
 
 1. 项目管理员在网页绑定仓库。首次接入时，本地适配器核对实际仓库与项目绑定；仓库里的配置文件本身不授予项目访问权限。
-2. 团队可将不含凭据的 `.crewmesh/project.json` 和 `.crewmesh/rules.md` 纳入版本控制。配置保存格式版本、项目引用和预期仓库；规则记录任务认领、技术约定同步等协作要求。服务地址、令牌、绝对路径、设备标识和同步游标留在本机。
+2. 团队可将不含凭据的 `.coopagents/project.json` 和 `.coopagents/rules.md` 纳入版本控制。配置保存格式版本、项目引用和预期仓库；规则记录任务认领、技术约定同步等协作要求。服务地址、令牌、绝对路径、设备标识和同步游标留在本机。
 3. 成员在现有 Claude Code 或 Codex 中打开仓库。经过一次接入配置，agent 在任务检查点读取共享约定、待处理消息和其他成员的工作范围。
 4. agent 认领任务后，将已有工作区和分支关联到任务。本地适配器采集当前分支、HEAD、变更路径及采集时间；网页显示谁在什么分支处理哪个任务。
 5. 两个任务同时涉及同一路径时，显示具体路径和采集时间，提示相关 agent 协商。路径重叠只是风险证据，不直接断言代码冲突或重复实现。
@@ -48,17 +48,17 @@
 
 开发状态与交付状态分别保存。合并一个相关 PR 不自动证明整个任务已验收；检查通过不等于代码已合并；旧 HEAD 上的检查不能证明新提交通过。关联对象须带仓库标识、分支或 PR 标识及完整提交 SHA，不能仅凭分支同名关联。
 
-任务可关联多个工作区或交付对象，但只能在权限范围内由任务负责人或项目管理者建立关联。缺少明确任务关系的 PR 放入待关联列表，不靠标题猜测后自动认领任务。GitHub Issue 关联可后续增加；本轮不把 Issue 和 Crewmesh 任务做双向复制。
+任务可关联多个工作区或交付对象，但只能在权限范围内由任务负责人或项目管理者建立关联。缺少明确任务关系的 PR 放入待关联列表，不靠标题猜测后自动认领任务。GitHub Issue 关联可后续增加；本轮不把 Issue 和 Coopagents 任务做双向复制。
 
 看板继续按真实进展自动分列、点击详情。保留“阻塞”和“待人工确认”的业务含义；Git 证据丰富任务详情及进度推导，不覆盖人工验收决定。
 
 ## GitHub 接入
 
-使用独立的 GitHub App 为选定仓库授予所需的只读权限；沿用现有账号登录机制。绑定时同时验证 Crewmesh 项目管理权限和该安装的仓库访问范围，使用 GitHub 稳定仓库 ID，不以可改名的 URL 作为唯一身份。GitHub 官方文档支持按仓库选择及细粒度权限，适合持续集成服务。[GitHub App 选型依据](https://docs.github.com/en/apps/creating-github-apps/about-creating-github-apps/deciding-when-to-build-a-github-app)
+使用独立的 GitHub App 为选定仓库授予所需的只读权限；沿用现有账号登录机制。绑定时同时验证 Coopagents 项目管理权限和该安装的仓库访问范围，使用 GitHub 稳定仓库 ID，不以可改名的 URL 作为唯一身份。GitHub 官方文档支持按仓库选择及细粒度权限，适合持续集成服务。[GitHub App 选型依据](https://docs.github.com/en/apps/creating-github-apps/about-creating-github-apps/deciding-when-to-build-a-github-app)
 
 处理 PR、push、检查等所需事件，验证 webhook 签名，以 delivery ID 幂等记录，持久化接收后异步处理。收到事件后按需核对当前远端状态，并提供补偿同步，处理乱序、重送、漏收及安装权限撤销。只把鉴权通过并完成校验的数据标为 GitHub 证据。[GitHub webhook 最佳实践](https://docs.github.com/en/webhooks/using-webhooks/best-practices-for-using-webhooks)
 
-初版不自动创建 PR、改代码、提交、推送或合并。用户原有 agent 仍按用户授权执行这些操作，Crewmesh 负责共享上下文与收集证据。
+初版不自动创建 PR、改代码、提交、推送或合并。用户原有 agent 仍按用户授权执行这些操作，Coopagents 负责共享上下文与收集证据。
 
 ## 分阶段交付与验收
 

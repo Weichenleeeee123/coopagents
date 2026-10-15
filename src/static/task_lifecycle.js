@@ -142,5 +142,5 @@
   }
   const exported={renderDetails,matches,clear};
   if(typeof module!=='undefined')module.exports=exported;
-  if(typeof window!=='undefined')window.CrewmeshTaskLifecycle=exported;
+  if(typeof window!=='undefined')window.CoopagentsTaskLifecycle=exported;
 })();

@@ -4,9 +4,9 @@
 
 ## 推荐：复制 Skill 接入指令
 
-进入项目后点击侧栏「接入 agent」，选择 Claude Code、Codex CLI 或 Codex 桌面，点击「生成接入指令」再「复制接入指令」，交给自己的 agent。指令包含公开 Skill 地址、项目与服务地址以及本人的个人 agent 凭据。agent 按 Skill 安装公开说明、配置原生 HTTP MCP，并验证身份与协作调用；不需要安装 Crewmesh 本地客户端或 Python 包。
+进入项目后点击侧栏「接入 agent」，选择 Claude Code、Codex CLI 或 Codex 桌面，点击「生成接入指令」再「复制接入指令」，交给自己的 agent。指令包含公开 Skill 地址、项目与服务地址以及本人的个人 agent 凭据。agent 按 Skill 安装公开说明、配置原生 HTTP MCP，并验证身份与协作调用；不需要安装 Coopagents 本地客户端或 Python 包。
 
-凭据仅在该私有弹窗中生成与展示，关闭或切换后清空，不写浏览器持久存储。生成指令不会轮换已有 agent 凭据。公开 Skill 与协议说明为 `/skills/crewmesh-connect/SKILL.md` 和相邻 `protocol.md`，不包含成员秘密；不要把私有接入指令保存到 Skill 文件或 Git。个人凭据有效 90 天，最多 32 个未过期凭据；需要统一撤销时使用现有个人令牌轮换。
+凭据仅在该私有弹窗中生成与展示，关闭或切换后清空，不写浏览器持久存储。生成指令不会轮换已有 agent 凭据。公开 Skill 与协议说明为 `/skills/coopagents-connect/SKILL.md` 和相邻 `protocol.md`，不包含成员秘密；不要把私有接入指令保存到 Skill 文件或 Git。个人凭据有效 90 天，最多 32 个未过期凭据；需要统一撤销时使用现有个人令牌轮换。
 
 当前原生会话无法热加载配置时，agent 应明确提示启动新会话。HTTP 身份验证、原生 MCP 调用和原生自动检查点是不同证据，不能互相代替。下述手动配置与 Python hook 仅为高级已有安装环境的选项，不是 Skill 接入前置条件。
 
@@ -15,14 +15,14 @@
 本机 `codex mcp add --help` 已确认支持 `--url` 和 `--bearer-token-env-var`。在启动 Codex CLI 的同一个 PowerShell 会话中设置环境变量，然后添加服务：
 
 ```powershell
-$env:CREWMESH_AGENT_TOKEN = '在此填写自己的 agent 令牌'
-codex mcp add crewmesh --url http://127.0.0.1:8787/mcp --bearer-token-env-var CREWMESH_AGENT_TOKEN
+$env:COOPAGENTS_AGENT_TOKEN = '在此填写自己的 agent 令牌'
+codex mcp add coopagents --url http://127.0.0.1:8787/mcp --bearer-token-env-var COOPAGENTS_AGENT_TOKEN
 ```
 
 环境变量必须能被实际启动的 Codex 进程读取。已经启动的桌面应用不会继承另一个终端后来设置的变量。桌面用户可在 MCP 设置里配置地址与 Authorization 头；也可在受信任项目的 `.codex/config.toml` 中配置：
 
 ```toml
-[mcp_servers.crewmesh]
+[mcp_servers.coopagents]
 url = "http://127.0.0.1:8787/mcp"
 http_headers = { Authorization = "Bearer 在此填写自己的 agent 令牌" }
 ```
@@ -34,7 +34,7 @@ http_headers = { Authorization = "Bearer 在此填写自己的 agent 令牌" }
 本机 `claude mcp add --help` 已确认支持 HTTP、local 范围及 Authorization 头。可在项目目录执行：
 
 ```powershell
-claude mcp add --transport http --scope local crewmesh http://127.0.0.1:8787/mcp --header "Authorization: Bearer 在此填写自己的 agent 令牌"
+claude mcp add --transport http --scope local coopagents http://127.0.0.1:8787/mcp --header "Authorization: Bearer 在此填写自己的 agent 令牌"
 ```
 
 输入自己的令牌后重新建立连接。这是一次性接入配置，平时仍按原来的方式启动 Claude Code。令牌不放到聊天提示词或 Git 提交中。

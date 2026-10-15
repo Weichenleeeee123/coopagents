@@ -8,7 +8,7 @@
 
 - Claude Code 原生可执行文件：`2.1.282`。
 - Codex CLI 原生可执行文件：`0.146.0`。
-- 独立启动正式 `crewmesh.server`，绑定随机 loopback 端口；独立 SQLite 数据库，不使用实验 probe 服务。
+- 独立启动正式 `coopagents.server`，绑定随机 loopback 端口；独立 SQLite 数据库，不使用实验 probe 服务。
 - 通过正式 HTTP 创建 owner、邀请、第二位成员及两个任务。原生 agent 操作没有由 harness 代写。
 - 从同一 Git 仓库克隆两个独立目录，真实检出不同 `p4/claude-<运行标识>`、`p4/codex-<运行标识>` 分支。
 - 每次 CLI 最多 120 秒。此次 Claude 运行 5.9 秒，Codex 运行 38.3 秒，均未超时。
@@ -18,10 +18,10 @@
 
 Claude 退出码 `1`，首次模型请求返回 HTTP `403`，错误码 `oauth_not_allowed_for_organization`。原始错误说明组织已禁用 Claude Code 的订阅访问，需要组织管理员启用，或使用组织允许的 Anthropic API 凭据。本次未更换认证来源或绕过策略。
 
-Codex 退出码 `0`，但首个 Crewmesh MCP `whoami` 调用的结构化结果为：
+Codex 退出码 `0`，但首个 Coopagents MCP `whoami` 调用的结构化结果为：
 
 ```json
-{"type":"mcp_tool_call","server":"crewmesh","tool":"whoami","status":"failed","error":{"message":"user cancelled MCP tool call"}}
+{"type":"mcp_tool_call","server":"coopagents","tool":"whoami","status":"failed","error":{"message":"user cancelled MCP tool call"}}
 ```
 
 随后 Codex 明确停止，没有执行后续动作。此条证据只证明原生调用被取消，不能据此断言具体审批配置或人工取消来源。stderr 另有模型缓存缺少 `base_instructions`、PowerShell shell snapshot 不支持的警告；这两条不是业务验收成功证据，也没有证明为取消的原因。

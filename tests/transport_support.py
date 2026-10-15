@@ -9,7 +9,7 @@ from urllib.request import Request, urlopen
 from uuid import uuid4
 
 import uvicorn
-from crewmesh.api import create_app
+from coopagents.api import create_app
 
 
 class LiveService:

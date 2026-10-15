@@ -11,10 +11,10 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from unittest.mock import patch
 from uuid import uuid4
 
-from crewmesh import p2p
-from crewmesh import space_runtime as runtime
-from crewmesh.space_runtime import available_port
-from crewmesh.spaces import private_write, read_json, read_profile
+from coopagents import p2p
+from coopagents import space_runtime as runtime
+from coopagents.space_runtime import available_port
+from coopagents.spaces import private_write, read_json, read_profile
 
 
 def start_echo():
@@ -238,7 +238,7 @@ class RuntimeP2P(unittest.TestCase):
         runtime.start(self.profile_path)
         self.assertEqual(runtime.status(self.profile_path)['p2p']['endpoint_id'], expected)
         self.assertEqual(runtime.status(joined['profile'])['status'], 'reachable')
-        result = subprocess.run([sys.executable, '-m', 'crewmesh.space_runtime', 'status',
+        result = subprocess.run([sys.executable, '-m', 'coopagents.space_runtime', 'status',
                                  '--profile', str(self.profile_path)], capture_output=True, text=True)
         self.assertEqual(result.returncode, 0)
         self.assertNotIn(host['p2p_secret'], result.stdout + result.stderr)

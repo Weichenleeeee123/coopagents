@@ -158,5 +158,5 @@
       if (current() && ['#billing', '#billing-return'].includes(window.location.hash)) panel.scrollIntoView({block: 'start'});
     }
   }
-  window.CrewmeshBilling = {clear, load};
+  window.CoopagentsBilling = {clear, load};
 })();

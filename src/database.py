@@ -1,4 +1,4 @@
-"""Short-lived SQLite connections shared by CrewMesh stores."""
+"""Short-lived SQLite connections shared by Coopagents stores."""
 from contextlib import contextmanager
 import sqlite3
 

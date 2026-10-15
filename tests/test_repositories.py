@@ -4,10 +4,10 @@ import unittest
 import json
 from uuid import uuid4
 
-from crewmesh.identity import IdentityStore
-from crewmesh.tasks import TaskStore
-from crewmesh.errors import AccessDenied, Conflict, NotFound, ValidationError
-from crewmesh.repositories import RepositoryStore
+from coopagents.identity import IdentityStore
+from coopagents.tasks import TaskStore
+from coopagents.errors import AccessDenied, Conflict, NotFound, ValidationError
+from coopagents.repositories import RepositoryStore
 
 
 class RepositoryTests(unittest.TestCase):

@@ -6,7 +6,7 @@ from starlette.applications import Starlette
 from starlette.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 from httpx2 import Headers
-from crewmesh.coordination import CoordinationService
+from coopagents.coordination import CoordinationService
 
 
 class RealtimeTests(unittest.TestCase):
@@ -15,7 +15,7 @@ class RealtimeTests(unittest.TestCase):
         self.room = self.service.identity.create_room('room', 'owner')
 
     def client(self, **options):
-        from crewmesh.realtime import events_route
+        from coopagents.realtime import events_route
         return TestClient(Starlette(routes=[events_route(self.service, base_url='http://localhost:8000', poll_interval=.01, heartbeat_interval=.03, **options)]), base_url='http://localhost:8000')
 
     def test_auth_replay_and_revocation(self):
@@ -77,7 +77,7 @@ class RealtimeTests(unittest.TestCase):
     def test_slow_server_send_has_bounded_backpressure(self):
         import asyncio
         import json
-        from crewmesh.realtime import events_route
+        from coopagents.realtime import events_route
         app = Starlette(routes=[events_route(self.service, base_url='http://localhost:8000', send_timeout=.02)])
         messages = iter([{'type': 'websocket.connect'}, {'type': 'websocket.receive', 'text': json.dumps({'token': self.room['web_token'], 'after_id': 0})}])
         sent = []
@@ -96,7 +96,7 @@ class RealtimeTests(unittest.TestCase):
         import asyncio
         import json
         from starlette.websockets import WebSocket
-        from crewmesh.realtime import events_route
+        from coopagents.realtime import events_route
         route = events_route(self.service, base_url='http://localhost:8000', per_identity=1, max_connections=1)
         scope = {'type':'websocket','scheme':'ws','server':('localhost',8000),'headers':[(b'host',b'localhost:8000')],'query_string':b''}
 
@@ -158,14 +158,14 @@ class RealtimeTests(unittest.TestCase):
                         pass
 
     def test_hosted_route_before_mcp_and_public_origin(self):
-        from crewmesh.api import create_app
+        from coopagents.api import create_app
         app = create_app(Path('.local/realtime-tests') / (str(uuid4()) + '.sqlite3'), base_url='http://localhost:8000')
         room = app.state.service.identity.create_room('hosted', 'owner')
         with TestClient(app, base_url='http://localhost:8000') as client:
             with client.websocket_connect('ws://localhost:8000/api/events') as ws:
                 ws.send_json({'token': room['web_token'], 'after_id': 0})
                 self.assertEqual(ws.receive_json()['type'], 'ready')
-        from crewmesh.realtime import events_route
+        from coopagents.realtime import events_route
         public_app = Starlette(routes=[events_route(self.service, public_url='https://crew.example')])
         with TestClient(public_app) as client:
             with client.websocket_connect('wss://crew.example/api/events', headers={'origin': 'https://crew.example'}) as ws:
@@ -176,14 +176,14 @@ class RealtimeTests(unittest.TestCase):
                     pass
 
     def test_hosted_account_session_revoked_during_idle_stream(self):
-        from crewmesh.api import Service
+        from coopagents.api import Service
         service = Service(Path('.local/realtime-tests') / (str(uuid4()) + '.sqlite3'))
         service.accounts.bootstrap('owner', 'long password 123')
         session = service.accounts.login('owner', 'long password 123')['session_token']
         team = service.workspaces.create_team(session, 'Team')['team_id']
         room = service.workspaces.create_project(session, team, 'Project')['room_id']
         credential = service.workspaces.project_credential(session, room)['web_token']
-        from crewmesh.realtime import events_route
+        from coopagents.realtime import events_route
         app = Starlette(routes=[events_route(service, base_url='http://localhost:8000', poll_interval=.01)])
         with TestClient(app) as client:
             with client.websocket_connect('ws://localhost:8000/api/events') as ws:

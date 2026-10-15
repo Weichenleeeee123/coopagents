@@ -23,11 +23,11 @@
 | 实际浏览器 | owner 初始化并创建 Alpha/Beta；Alpha 任务切换到 Beta 为零任务且旧对话框清除；邀请新成员只授权 Alpha、无管理控件；刷新恢复 Cookie 与 Alpha 权限；退出清除项目 |
 | 实际移动浏览器 | 390px，120 字符项目名与 493 字符仓库标识，修正后页面宽度保持 390px；截图及 DB 保留于上述忽略目录 |
 | 已提交 Task 3 CI | `6ed0a55` 的 run `38111340621` 三个作业通过，包括历史 12 项 Docker / TLS smoke；这不是扩展 C1 smoke 的最终通过证据 |
-| 扩展 C1 TLS smoke | 最终 CI 实际通过 25 项：可信 TLS、账号初始化、Secure/HttpOnly Cookie、CSRF 拒绝、团队/项目创建选择、备份恢复内容和重启持久化等。证据 ID `crewmesh-p4-1822660808ab`；本机 Docker 引擎仍不可用，未宣称本机运行通过 |
+| 扩展 C1 TLS smoke | 最终 CI 实际通过 25 项：可信 TLS、账号初始化、Secure/HttpOnly Cookie、CSRF 拒绝、团队/项目创建选择、备份恢复内容和重启持久化等。证据 ID `coopagents-p4-1822660808ab`；本机 Docker 引擎仍不可用，未宣称本机运行通过 |
 | 候选版打包安装 | 最终 0.3.0rc1 wheel/sdist 构建成功，独立 venv 按 constraints 安装 wheel[service]，仓库外导入全部账号模块与 recovery、检查账号资源、禁止明文回退代码及版本通过；最终恢复源码与 wheel 内容匹配。证据 `.local/c1-build/005bb932c94246778e63750b1b0ff273/`，早期包另行保留 |
 | Compose 配置 | 根执行者运行 `docker compose --env-file .env.example config --quiet` 通过，无需 Docker 引擎启动 |
 | 独立审查 | 每阶段规格与质量审查通过；最终账号 / 工作区 / OAuth / UI 全量审查未发现高或中级缺陷，独立工作区回归 17/17 通过；Task 4 规格与质量审查均通过 |
-| 最终候选版 CI | [run 38111779942](https://github.com/Weichenleeeee123/crewmesh/actions/runs/38111779942)，代码提交 `61a323b`，Python 3.11 / 3.13 与 container 三个作业全通过；两套 Python 各 134 项、实验各 21 项，以及 JS、包构建与 25 项 TLS smoke 全通过 |
+| 最终候选版 CI | [run 38111779942](https://github.com/Weichenleeeee123/coopagents/actions/runs/38111779942)，代码提交 `61a323b`，Python 3.11 / 3.13 与 container 三个作业全通过；两套 Python 各 134 项、实验各 21 项，以及 JS、包构建与 25 项 TLS smoke 全通过 |
 
 所有数据库、截图和原始日志保留在 `.local/`，不提交 Git，不自动删除文件、容器或卷。最终完整回归已包含禁止明文输入回退的新增恢复测试。
 

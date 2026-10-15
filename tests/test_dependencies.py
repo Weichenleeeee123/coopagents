@@ -3,8 +3,8 @@ from pathlib import Path
 from uuid import uuid4
 import unittest
 
-from crewmesh.api import Service
-from crewmesh.errors import AccessDenied, Conflict, NotFound, ValidationError
+from coopagents.api import Service
+from coopagents.errors import AccessDenied, Conflict, NotFound, ValidationError
 
 
 class DependencyTests(unittest.TestCase):

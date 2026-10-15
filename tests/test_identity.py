@@ -6,8 +6,8 @@ import unittest
 from uuid import UUID, uuid4
 
 try:
-    from crewmesh.identity import IdentityStore, Principal
-    from crewmesh.errors import AccessDenied, NotFound, ValidationError
+    from coopagents.identity import IdentityStore, Principal
+    from coopagents.errors import AccessDenied, NotFound, ValidationError
 except ModuleNotFoundError:
     IdentityStore = None
 

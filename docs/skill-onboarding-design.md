@@ -2,7 +2,7 @@
 
 ## 已批准的体验
 
-项目管理员复制邀请链接，队友打开网页完成登录/注册并明确加入指定项目。加入后网页直接提供 Crewmesh 接入 Skill 的下载与无秘密引导文本；用户交给已有 Claude Code 或 Codex，由 agent 配置原生 MCP。没有独立 Crewmesh 本地客户端、安装器或常驻进程。
+项目管理员复制邀请链接，队友打开网页完成登录/注册并明确加入指定项目。加入后网页直接提供 Coopagents 接入 Skill 的下载与无秘密引导文本；用户交给已有 Claude Code 或 Codex，由 agent 配置原生 MCP。没有独立 Coopagents 本地客户端、安装器或常驻进程。
 
 ## 邀请
 

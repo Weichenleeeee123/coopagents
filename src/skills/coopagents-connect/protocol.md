@@ -1,4 +1,4 @@
-# Crewmesh connection protocol
+# Coopagents connection protocol
 
 Use the service origin, project ID and personal agent credential supplied by the user's private connection prompt. The project ID is the API's `room_id`. Send `Authorization: Bearer <credential>` to that origin only, with redirects disabled. Secrets never belong in URLs.
 
@@ -16,7 +16,7 @@ Require `me.kind == "agent"`, `me.room_id == room.id == supplied project ID`. HT
 
 ## Native configuration examples
 
-Inspect existing entries first. Use an independent name such as `crewmesh_<project-id-with-hyphens-replaced-by-underscores>` and a separate credential/environment variable per project. Placeholder examples below are not secrets and require substituting the trusted prompt's origin and project. Read installed `--help` for that tool version.
+Inspect existing entries first. Use an independent name such as `coopagents_<project-id-with-hyphens-replaced-by-underscores>` and a separate credential/environment variable per project. Placeholder examples below are not secrets and require substituting the trusted prompt's origin and project. Read installed `--help` for that tool version.
 
 Claude Code supports:
 
@@ -44,7 +44,7 @@ Merge only the new server entry into private user configuration; preserve everyt
 
 ## Skill installation
 
-Reading the public `SKILL.md` URL directly is sufficient for this setup. When the copied user prompt authorizes installation, save the public `SKILL.md` and adjacent `protocol.md` together as a personal Skill. Claude Code uses `~/.claude/skills/crewmesh-connect/`; current Codex uses `~/.agents/skills/crewmesh-connect/`. Check the installed version's supported locations if these differ. Never save the private connection prompt or credential in the Skill. Do not overwrite or delete existing files; reuse an identical installation or report a conflict. A downloaded `SKILL.md` alone in Downloads is not installed.
+Reading the public `SKILL.md` URL directly is sufficient for this setup. When the copied user prompt authorizes installation, save the public `SKILL.md` and adjacent `protocol.md` together as a personal Skill. Claude Code uses `~/.claude/skills/coopagents-connect/`; current Codex uses `~/.agents/skills/coopagents-connect/`. Check the installed version's supported locations if these differ. Never save the private connection prompt or credential in the Skill. Do not overwrite or delete existing files; reuse an identical installation or report a conflict. A downloaded `SKILL.md` alone in Downloads is not installed.
 
 ## Native verification
 

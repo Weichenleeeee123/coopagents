@@ -8,13 +8,13 @@ import unittest
 from uuid import uuid4
 from datetime import timedelta
 
-from crewmesh.identity import IdentityStore
-from crewmesh.repositories import RepositoryStore
-from crewmesh.tasks import TaskStore
-from crewmesh.errors import AccessDenied, Conflict, NotFound, ValidationError
-from crewmesh.github_app import GitHubError
-from crewmesh.github_sync import GitHubSync
-from crewmesh.repositories import now,timestamp
+from coopagents.identity import IdentityStore
+from coopagents.repositories import RepositoryStore
+from coopagents.tasks import TaskStore
+from coopagents.errors import AccessDenied, Conflict, NotFound, ValidationError
+from coopagents.github_app import GitHubError
+from coopagents.github_sync import GitHubSync
+from coopagents.repositories import now,timestamp
 
 
 class FakeProvider:

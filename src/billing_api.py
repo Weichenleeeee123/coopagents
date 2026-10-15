@@ -41,9 +41,9 @@ def billing_catalog(mode, config, origin):
 class BillingRuntime:
     """Separate provider, webhook, and worker pools; never queue unbounded HTTP work."""
     def __init__(self):
-        self.providers = ThreadPoolExecutor(max_workers=2, thread_name_prefix='crewmesh-billing-http')
-        self.ingestion = ThreadPoolExecutor(max_workers=2, thread_name_prefix='crewmesh-billing-ingest')
-        self.worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix='crewmesh-billing-worker')
+        self.providers = ThreadPoolExecutor(max_workers=2, thread_name_prefix='coopagents-billing-http')
+        self.ingestion = ThreadPoolExecutor(max_workers=2, thread_name_prefix='coopagents-billing-ingest')
+        self.worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix='coopagents-billing-worker')
         self.provider_slots = threading.BoundedSemaphore(2)
         self.ingestion_slots = threading.BoundedSemaphore(2)
         self.closed = False
@@ -110,7 +110,7 @@ def billing_routes(service, runtime, *, origin):
                 expected = origin or str(request.base_url).rstrip('/')
                 if request.headers.getlist('origin') != [expected]:
                     return JSONResponse({'error': 'AccessDenied', 'message': 'Origin not accepted'}, status_code=403)
-                csrf = request.headers.getlist('x-crewmesh-csrf')
+                csrf = request.headers.getlist('x-coopagents-csrf')
                 if len(csrf) != 1:
                     raise AccessDenied('CSRF credential required')
                 if request.headers.get('content-type', '').split(';')[0].strip().lower() != 'application/json':

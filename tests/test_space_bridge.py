@@ -18,8 +18,8 @@ from mcp.client.stdio import StdioServerParameters
 import httpx2
 from mcp.client.streamable_http import streamable_http_client
 
-from crewmesh.spaces import private_write
-from crewmesh.space_bridge import EventCache, Bridge, human_operation
+from coopagents.spaces import private_write
+from coopagents.space_bridge import EventCache, Bridge, human_operation
 from transport_support import LiveService
 
 
@@ -92,7 +92,7 @@ class SpaceBridgeTests(unittest.TestCase):
 
     def test_real_stdio_forwards_exact_schemas_identity_and_changes(self):
         async def run():
-            params = StdioServerParameters(command=sys.executable, args=['-m', 'crewmesh.space_bridge', '--profile', str(self.path.absolute())])
+            params = StdioServerParameters(command=sys.executable, args=['-m', 'coopagents.space_bridge', '--profile', str(self.path.absolute())])
             async with Client(params, cache=None) as bridge:
                 async with httpx2.AsyncClient(headers={'Authorization':'Bearer '+self.owner['agent_token']}) as http:
                     async with Client(streamable_http_client(self.live.url+'/mcp', http_client=http), cache=None) as remote:
@@ -174,7 +174,7 @@ class SpaceBridgeTests(unittest.TestCase):
         profile.pop('web_token')
         private_write(self.path,profile,update=True)
         async def run():
-            params = StdioServerParameters(command=sys.executable,args=['-m','crewmesh.space_bridge','--profile',str(self.path.absolute())])
+            params = StdioServerParameters(command=sys.executable,args=['-m','coopagents.space_bridge','--profile',str(self.path.absolute())])
             async with Client(params,cache=None) as bridge:
                 self.assertTrue((await bridge.list_tools()).tools)
                 status, _, _ = self.live.request('POST','/api/operations/revoke_member',self.owner['web_token'],{'member_id':self.member['member_id']},headers={'Origin':self.live.url})
@@ -190,7 +190,7 @@ class SpaceBridgeTests(unittest.TestCase):
         private_write(self.path,profile,update=True)
         payload=self.path.parent/'bad-payload.json'
         private_write(payload,dict(schema_version=1,unexpected='wrong'))
-        result=subprocess.run([sys.executable,'-m','crewmesh.space_bridge','--profile',str(self.path.absolute()),
+        result=subprocess.run([sys.executable,'-m','coopagents.space_bridge','--profile',str(self.path.absolute()),
                                '--human-operation','create_task','--payload-file',str(payload.absolute())],capture_output=True,text=True,timeout=10)
         self.assertEqual(result.returncode,1)
         self.assertEqual(result.stdout,'')
@@ -198,7 +198,7 @@ class SpaceBridgeTests(unittest.TestCase):
             self.assertNotIn(secret,result.stdout+result.stderr)
 
     def test_cloudflare_official_digest_and_mismatch(self):
-        source=Path(__file__).resolve().parents[1]/'src/skills/crewmesh-space/scripts/verify_cloudflared.py'
+        source=Path(__file__).resolve().parents[1]/'src/skills/coopagents-space/scripts/verify_cloudflared.py'
         spec=importlib.util.spec_from_file_location('cloudflare_verifier',source)
         helper=importlib.util.module_from_spec(spec)
         spec.loader.exec_module(helper)

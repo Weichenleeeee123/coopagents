@@ -15,7 +15,7 @@ class BillingWorker:
 
     def start(self):
         if self.billing.store.enabled:
-            self.task = asyncio.create_task(self.run(), name='crewmesh-billing-events')
+            self.task = asyncio.create_task(self.run(), name='coopagents-billing-events')
 
     async def run(self):
         while not self.stop.is_set():

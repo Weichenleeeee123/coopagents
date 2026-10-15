@@ -6,13 +6,16 @@ import re
 from datetime import datetime
 from urllib.parse import urlsplit
 
-PROJECT_URL = 'https://github.com/Weichenleeeee123/crewmesh'
-SKILL_URL = PROJECT_URL + '/tree/main/src/skills/crewmesh-space'
-CODE_PREFIX = 'crewmesh-invite-1.'
+PROJECT_URL = 'https://github.com/Weichenleeeee123/coopagents'
+SKILL_URL = PROJECT_URL + '/tree/main/src/skills/coopagents-space'
+CODE_PREFIX = 'coopagents-invite-1.'
+# Codes made before the rename (0.6.0rc2 shipped as Crewmesh) are still accepted.
+LEGACY_CODE_PREFIXES = ('crewmesh-invite-1.',)
 MAX_CODE_LENGTH = 4096
 DESCRIPTOR_FIELDS = ('schema_version', 'origin', 'room_id', 'invite_token', 'expires_at')
 # A code is one unbroken base64url run, so surrounding text and separator lines never join it.
-CODE_PATTERN = re.compile(re.escape(CODE_PREFIX) + r'([A-Za-z0-9_-]+)')
+CODE_PATTERN = re.compile('(?:' + '|'.join(re.escape(p) for p in (CODE_PREFIX,) + LEGACY_CODE_PREFIXES)
+                          + r')([A-Za-z0-9_-]+)')
 
 
 class InvitationCodeError(ValueError):
@@ -64,24 +67,24 @@ def _expiry(expires_at):
 
 TEXT = {
     'en': {
-        'invited': '{inviter} invited you to the Crewmesh space "{space}".',
-        'pitch': ('Crewmesh is multiplayer mode for Claude Code and Codex: our agents share one task board, '
+        'invited': '{inviter} invited you to the Coopagents space "{space}".',
+        'pitch': ('Coopagents is multiplayer mode for Claude Code and Codex: our agents share one task board, '
                   'ask each other questions and hand off work directly. Peer-to-peer, no account.'),
         'local': 'Note: this space is only open on the inviting computer, so only agents on that computer can join.',
         'paste': 'Paste everything between the two lines into your Claude Code or Codex:',
-        'prompt': ('Install the Crewmesh skill from {skill} (latest release, verify its SHA-256). '
-                   'Then join my Crewmesh space with the one-time invitation code below. Pass the code to '
+        'prompt': ('Install the Coopagents skill from {skill} (latest release, verify its SHA-256). '
+                   'Then join my Coopagents space with the one-time invitation code below. Pass the code to '
                    '`space_runtime join --invitation-code-stdin` on standard input, never as a command argument. '
                    'If you do not know which display name to join with, ask me.'),
         'warning': ('This invitation works once and expires at {expires}. It contains a key: send it only to the '
                     'person you are inviting, never to a group chat or anywhere public.'),
     },
     'zh': {
-        'invited': '{inviter} 邀请你加入 Crewmesh 空间「{space}」。',
-        'pitch': 'Crewmesh 是 Claude Code 和 Codex 的多人模式：我们的 agent 共用一个任务看板，可以直接互相提问、交接任务。点对点连接，不需要账号。',
+        'invited': '{inviter} 邀请你加入 Coopagents 空间「{space}」。',
+        'pitch': 'Coopagents 是 Claude Code 和 Codex 的多人模式：我们的 agent 共用一个任务看板，可以直接互相提问、交接任务。点对点连接，不需要账号。',
         'local': '注意：这个空间只在发起人的电脑上开放，只有那台电脑上的 agent 能加入。',
         'paste': '把两条分隔线之间的内容整段发给你的 Claude Code 或 Codex：',
-        'prompt': ('从 {skill} 安装 Crewmesh Skill（使用最新发行版并校验 SHA-256）。然后用下面的一次性邀请码加入我的 Crewmesh 空间：'
+        'prompt': ('从 {skill} 安装 Coopagents Skill（使用最新发行版并校验 SHA-256）。然后用下面的一次性邀请码加入我的 Coopagents 空间：'
                    '通过标准输入把邀请码交给 `space_runtime join --invitation-code-stdin`，不要放进命令参数。'
                    '如果不知道该用什么名字加入，先问我。'),
         'warning': '这条邀请只能用一次，{expires} 过期。里面含有密钥：只发给你要邀请的人，不要发到群里或任何公开的地方。',

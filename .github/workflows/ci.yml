@@ -47,19 +47,19 @@ jobs:
       - run: python -m build
       - uses: actions/upload-artifact@v4
         with:
-          name: crewmesh-python-${{ matrix.python }}
+          name: coopagents-python-${{ matrix.python }}
           path: dist/*
   container:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: docker build -t crewmesh:ci .
+      - run: docker build -t coopagents:ci .
       - run: |
-          docker run -d --name crewmesh-ci crewmesh:ci
+          docker run -d --name coopagents-ci coopagents:ci
           for attempt in $(seq 1 30); do
-            if docker exec crewmesh-ci python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8787/ready', timeout=2).read()"; then exit 0; fi
+            if docker exec coopagents-ci python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8787/ready', timeout=2).read()"; then exit 0; fi
             sleep 1
           done
-          docker logs crewmesh-ci
+          docker logs coopagents-ci
           exit 1
-      - run: python scripts/deployment_smoke.py --image crewmesh:ci
+      - run: python scripts/deployment_smoke.py --image coopagents:ci

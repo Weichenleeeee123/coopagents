@@ -18,6 +18,7 @@ import threading
 import urllib.request
 from urllib.parse import urlsplit
 
+# Wire identifier from before the rename to Coopagents; kept so 0.6 hosts and members still connect.
 ALPN = b'crewmesh/space/1'
 CHUNK = 65536
 MAX_CONNECTIONS = 64
@@ -60,7 +61,7 @@ def _background_loop():
                 ready.set()
                 loop.run_forever()
 
-            threading.Thread(target=run, name='crewmesh-p2p', daemon=True).start()
+            threading.Thread(target=run, name='coopagents-p2p', daemon=True).start()
             ready.wait()
             _loop = loop
         return _loop
