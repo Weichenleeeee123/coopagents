@@ -1,4 +1,4 @@
-# 真人双机验收清单（0.6.0rc2）
+# 真人双机验收清单（0.7.0rc1）
 
 目的：验证此前单机测试无法证明的三件事。
 
@@ -10,8 +10,8 @@
 
 ## 准备
 
-1. 双方都从 [0.6.0rc2 发行页](https://github.com/Weichenleeeee123/coopagents/releases/tag/v0.6.0rc2) 下载 wheel 和 `SHA256SUMS.txt`。
-2. 把下面这句话交给自己的 Claude Code 或 Codex，让 agent 按 `coopagents-space` Skill 去做：“安装 Coopagents 0.6.0rc2（校验 SHA256），把 coopagents-space Skill 装到我的 agent 里。”
+1. 双方都从 [0.7.0rc1 发行页](https://github.com/Weichenleeeee123/coopagents/releases/tag/v0.7.0rc1) 下载 wheel 和 `SHA256SUMS.txt`。
+2. 把下面这句话交给自己的 Claude Code 或 Codex，让 agent 按 `coopagents-space` Skill 去做：“安装 Coopagents 0.7.0rc1（校验 SHA256），把 coopagents-space Skill 装到我的 agent 里。”
 3. 用一个不重要的仓库做测试，两边的 agent 都在这个仓库里工作。
 
 ## 步骤与记录

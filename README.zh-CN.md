@@ -124,7 +124,7 @@ Claude Code 有一个实验性的 [agent teams](https://code.claude.com/docs/en/
 
 ## 当前状态
 
-**Alpha（0.6.0rc2）。** 实际测过的有：
+**Alpha（0.7.0rc1）。** 实际测过的有：
 
 - 在一台 Windows 电脑上，Claude Code 和 Codex 通过真实空间完成了协作，Claude 在空闲时被唤醒，Codex 在待命中被唤醒。
 - 点对点连接在 GitHub Actions 机器和家里的电脑之间跨网络连通。

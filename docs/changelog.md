@@ -1,6 +1,8 @@
 # 版本记录
 
-## 未发布 — 改名为 Coopagents
+## 0.7.0rc1 — 改名为 Coopagents 候选版（2026-10-15）
+
+在 0.6.0rc2 之上只做改名，并新增 PyPI 发布工作流（`.github/workflows/publish.yml`，Trusted Publishing，上传的就是发行页附带并经 SHA256SUMS 校验的文件）。真人双机验收仍未进行。
 
 项目由 Crewmesh 改名为 Coopagents：Python 包与导入名 `coopagents`，Skill 目录 `coopagents-space` / `coopagents-connect`，环境变量前缀 `COOPAGENTS_`，网页的请求头与本地存储键同步改名。兼容处理：
 

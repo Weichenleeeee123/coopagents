@@ -1,7 +1,7 @@
 name: coopagents
 services:
   app:
-    image: coopagents:${COOPAGENTS_VERSION:-0.6.0rc2}
+    image: coopagents:${COOPAGENTS_VERSION:-0.7.0rc1}
     build: .
     restart: unless-stopped
     environment:

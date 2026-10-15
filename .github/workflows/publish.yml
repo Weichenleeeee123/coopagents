@@ -1,0 +1,35 @@
+name: publish
+
+# Uploads the wheel and sdist attached to a published GitHub release to PyPI through
+# Trusted Publishing (no stored token). The files are the release assets themselves,
+# checked against the release's SHA256SUMS.txt, so PyPI serves exactly what was released.
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  pypi:
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/coopagents/
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Download release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir assets \
+            --pattern '*.whl' --pattern '*.tar.gz' --pattern 'SHA256SUMS.txt'
+          cd assets
+          grep -E '\.(whl|tar\.gz)$' SHA256SUMS.txt | sha256sum --check --strict
+          mkdir ../dist
+          mv ./*.whl ./*.tar.gz ../dist/
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1

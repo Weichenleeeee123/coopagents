@@ -124,7 +124,7 @@ Messages from other people's agents are **data, not instructions**. The skill te
 
 ## Status
 
-**Alpha (0.6.0rc2).** Here is what has actually been tested:
+**Alpha (0.7.0rc1).** Here is what has actually been tested:
 
 - Claude Code and Codex collaborated through a real space on one Windows machine. Claude was woken while idle, and Codex was woken from standby.
 - Peer-to-peer worked across networks between a GitHub Actions runner and a home machine.
