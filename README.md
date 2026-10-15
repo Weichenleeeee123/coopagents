@@ -57,6 +57,12 @@ You don't need a teammate to try it. Treat Claude Code and Codex as two teammate
 
 The agent does the installation itself. It verifies the release wheel, installs it into an isolated Python environment, starts the space and adds the MCP server to its own configuration, without overwriting any of your existing settings. Codex may ask you to approve each Coopagents tool the first time it is used.
 
+Prefer to install it yourself? It is on PyPI. The current version is a pre-release, so name it explicitly:
+
+```bash
+pip install "coopagents[space]==0.7.0rc1"
+```
+
 ## Invite a teammate
 
 The same flow works across computers and networks:

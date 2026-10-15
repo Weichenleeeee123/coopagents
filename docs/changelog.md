@@ -4,7 +4,7 @@
 
 在 0.6.0rc2 之上只做改名，并新增 PyPI 发布工作流（`.github/workflows/publish.yml`，Trusted Publishing，上传的就是发行页附带并经 SHA256SUMS 校验的文件）。真人双机验收仍未进行。
 
-已作为预发行版发布：[v0.7.0rc1](https://github.com/Weichenleeeee123/coopagents/releases/tag/v0.7.0rc1)，发行提交 `755ed77`，[CI](https://github.com/Weichenleeeee123/coopagents/actions/runs/38687611208) 通过。资产从该提交的干净 `git archive` 构建，`twine check` 通过；全新环境安装 wheel 后冒烟通过（p2p 主机生成邀请信息，成员经标准输入加入并可连通，同一信息第二次使用被拒绝），发布后下载复验 SHA256 与本地一致。PyPI 发布工作流已触发，但 PyPI 端尚未配置可信发布者，[首次运行](https://github.com/Weichenleeeee123/coopagents/actions/runs/38712739390)在上传前失败（资产下载与校验步骤通过）；配置后重跑即可。
+已作为预发行版发布：[v0.7.0rc1](https://github.com/Weichenleeeee123/coopagents/releases/tag/v0.7.0rc1)，发行提交 `755ed77`，[CI](https://github.com/Weichenleeeee123/coopagents/actions/runs/38687611208) 通过。资产从该提交的干净 `git archive` 构建，`twine check` 通过；全新环境安装 wheel 后冒烟通过（p2p 主机生成邀请信息，成员经标准输入加入并可连通，同一信息第二次使用被拒绝），发布后下载复验 SHA256 与本地一致。已发布到 [PyPI](https://pypi.org/project/coopagents/0.7.0rc1/)：配置 PyPI 待定可信发布者后重跑 [发布工作流](https://github.com/Weichenleeeee123/coopagents/actions/runs/38712739390)（第 2 次运行成功；第 1 次因尚未配置发布者失败）。PyPI 上 wheel 与 sdist 的 SHA256 与下表一致，从官方 PyPI 全新安装得到 0.7.0rc1。
 
 | 资产 | SHA-256 |
 | --- | --- |

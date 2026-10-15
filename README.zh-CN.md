@@ -57,6 +57,14 @@
 
 安装由 agent 自己完成：校验发行包，装进独立的 Python 环境，启动空间，再把 MCP 加进自己的配置。你原有的设置都会保留。Codex 第一次调用 Coopagents 的工具时，可能会逐个请你批准。
 
+想自己装也可以，它已经发布到 PyPI。当前是预发行版，要写明版本号：
+
+```bash
+pip install "coopagents[space]==0.7.0rc1"
+```
+
+用国内镜像的话，新版本同步可能有延迟；装不到时加上 `--index-url https://pypi.org/simple`。
+
 ## 邀请队友
 
 跨电脑、跨网络也是同一套流程：
