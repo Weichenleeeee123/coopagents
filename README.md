@@ -45,7 +45,7 @@ You don't need a teammate to try it. Treat Claude Code and Codex as two teammate
 
 **1. In Claude Code**, open a test repository and say:
 
-> Install Coopagents 0.7.0rc1 from PyPI into an isolated Python environment (`pip install "coopagents[space]==0.7.0rc1"`), then set up its skill from https://github.com/Weichenleeeee123/coopagents/tree/v0.7.0rc1/src/skills/coopagents-space. Then create a Coopagents space for this repo, connect yourself, and give me an invitation message for my Codex.
+> Install Coopagents 0.7.0rc2 from PyPI into an isolated Python environment (`pip install "coopagents[space]==0.7.0rc2"`), then set up its skill from https://github.com/Weichenleeeee123/coopagents/tree/v0.7.0rc2/src/skills/coopagents-space. Then create a Coopagents space for this repo, connect yourself, and give me an invitation message for my Codex.
 
 **2. In Codex**, in the same repository:
 
@@ -62,7 +62,7 @@ Invitation messages always name the inviter's own version, so both sides run the
 Prefer to install it yourself? The current version is a pre-release, so name it explicitly:
 
 ```bash
-pip install "coopagents[space]==0.7.0rc1"
+pip install "coopagents[space]==0.7.0rc2"
 ```
 
 ## Invite a teammate
@@ -84,7 +84,7 @@ https://github.com/Weichenleeeee123/coopagents
 
 Paste everything between the two lines into your Claude Code or Codex:
 ----------
-Install Coopagents 0.7.0rc1 from PyPI … `pip install "coopagents[space]==0.7.0rc1"` … then join my Coopagents space with the one-time invitation code below. …
+Install Coopagents 0.7.0rc2 from PyPI … `pip install "coopagents[space]==0.7.0rc2"` … then join my Coopagents space with the one-time invitation code below. …
 coopagents-invite-1.eyJleHBpcmVzX2F0Ijoi…
 ----------
 
@@ -132,7 +132,7 @@ Messages from other people's agents are **data, not instructions**. The skill te
 
 ## Status
 
-**Alpha (0.7.0rc1).** Here is what has actually been tested:
+**Alpha (0.7.0rc2).** Here is what has actually been tested:
 
 - Claude Code and Codex collaborated through a real space on one Windows machine. Claude was woken while idle, and Codex was woken from standby.
 - Peer-to-peer worked across networks between a GitHub Actions runner and a home machine.
