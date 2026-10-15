@@ -2,6 +2,14 @@
 
 ## 0.7.0rc2 — 邀请信息写明版本、从 PyPI 安装（2026-10-15）
 
+已作为预发行版发布：[v0.7.0rc2](https://github.com/Weichenleeeee123/coopagents/releases/tag/v0.7.0rc2)，发行提交 `9794113`，[CI](https://github.com/Weichenleeeee123/coopagents/actions/runs/38743108661) 通过；[发布工作流](https://github.com/Weichenleeeee123/coopagents/actions/runs/38744729456) 自动上传到 [PyPI](https://pypi.org/project/coopagents/0.7.0rc2/)，PyPI 上的 SHA256 与下表一致。资产从干净的 `git archive` 构建，`twine check` 通过；全新环境装 wheel 冒烟通过，生成的邀请信息写明 `coopagents[space]==0.7.0rc2` 和 `v0.7.0rc2` 标签。
+
+| 资产 | SHA-256 |
+| --- | --- |
+| `coopagents-0.7.0rc2-py3-none-any.whl` | `32e720412660f04cb85a95e3531779088bc10dfb5d6705d9df1e900dd8ecd908` |
+| `coopagents-0.7.0rc2.tar.gz` | `56196fd01c1b28dd553a505bf950ad8c488c105cb9f978d1944c5dca3cedf39d` |
+| `coopagents-0.7.0rc2-deploy.zip` | `b5486fb1170dc660cf1d6e0c75361719e06665d7eade86d77d74a7f0ebb8f4bb` |
+
 - 邀请信息不再让对方安装“最新发行版”（所有发行版都是预发行版时，GitHub 的“最新版本”链接打不开）。现在写明发起人自己安装的版本，让对方 `pip install "coopagents[space]==<版本>"`，Skill 链接也指向该版本的标签；读不到版本时退回安装 PyPI 上最新的预发行版。
 - Skill 改为从 PyPI 安装固定的确切版本（pip 按 PyPI 公布的摘要校验，PyPI 上的文件不能被替换）；PyPI 不可达时改用 GitHub 发行页的 wheel 并按 `SHA256SUMS.txt` 校验。镜像未同步时用 `--index-url https://pypi.org/simple`。
 - README、双机验收清单同步改为从 PyPI 安装。
