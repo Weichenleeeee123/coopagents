@@ -4,10 +4,10 @@ import binascii
 import json
 import re
 from datetime import datetime
+from importlib import metadata
 from urllib.parse import urlsplit
 
 PROJECT_URL = 'https://github.com/Weichenleeeee123/coopagents'
-SKILL_URL = PROJECT_URL + '/tree/main/src/skills/coopagents-space'
 CODE_PREFIX = 'coopagents-invite-1.'
 # Codes made before the rename (0.6.0rc2 shipped as Crewmesh) are still accepted.
 LEGACY_CODE_PREFIXES = ('crewmesh-invite-1.',)
@@ -72,7 +72,13 @@ TEXT = {
                   'ask each other questions and hand off work directly. Peer-to-peer, no account.'),
         'local': 'Note: this space is only open on the inviting computer, so only agents on that computer can join.',
         'paste': 'Paste everything between the two lines into your Claude Code or Codex:',
-        'prompt': ('Install the Coopagents skill from {skill} (latest release, verify its SHA-256). '
+        'install': ('Install Coopagents {version} from PyPI into an isolated Python environment: `{command}` '
+                    '(if a package mirror does not have it yet, add `--index-url https://pypi.org/simple`). '
+                    'Then set up its Coopagents skill from {skill}.'),
+        'install_any': ('Install the newest Coopagents from PyPI into an isolated Python environment: `{command}` '
+                        '(if a package mirror does not have it yet, add `--index-url https://pypi.org/simple`). '
+                        'Then set up its Coopagents skill from {skill}.'),
+        'prompt': ('{install} '
                    'Then join my Coopagents space with the one-time invitation code below. Pass the code to '
                    '`space_runtime join --invitation-code-stdin` on standard input, never as a command argument. '
                    'If you do not know which display name to join with, ask me.'),
@@ -84,7 +90,11 @@ TEXT = {
         'pitch': 'Coopagents 是 Claude Code 和 Codex 的多人模式：我们的 agent 共用一个任务看板，可以直接互相提问、交接任务。点对点连接，不需要账号。',
         'local': '注意：这个空间只在发起人的电脑上开放，只有那台电脑上的 agent 能加入。',
         'paste': '把两条分隔线之间的内容整段发给你的 Claude Code 或 Codex：',
-        'prompt': ('从 {skill} 安装 Coopagents Skill（使用最新发行版并校验 SHA-256）。然后用下面的一次性邀请码加入我的 Coopagents 空间：'
+        'install': ('从 PyPI 把 Coopagents {version} 装进独立的 Python 环境：`{command}`'
+                    '（如果包镜像还没同步到，加上 `--index-url https://pypi.org/simple`），再按 {skill} 配置它的 Coopagents Skill。'),
+        'install_any': ('从 PyPI 把最新的 Coopagents 装进独立的 Python 环境：`{command}`'
+                        '（如果包镜像还没同步到，加上 `--index-url https://pypi.org/simple`），再按 {skill} 配置它的 Coopagents Skill。'),
+        'prompt': ('{install}然后用下面的一次性邀请码加入我的 Coopagents 空间：'
                    '通过标准输入把邀请码交给 `space_runtime join --invitation-code-stdin`，不要放进命令参数。'
                    '如果不知道该用什么名字加入，先问我。'),
         'warning': '这条邀请只能用一次，{expires} 过期。里面含有密钥：只发给你要邀请的人，不要发到群里或任何公开的地方。',
@@ -92,13 +102,38 @@ TEXT = {
 }
 
 
-def compose(descriptor, inviter, space, lang='en'):
+def installed_version():
+    """The inviter's own Coopagents version, so the invitee installs the same one."""
+    try:
+        return metadata.version('coopagents')
+    except metadata.PackageNotFoundError:
+        return None
+
+
+def skill_url(version):
+    return f'{PROJECT_URL}/tree/{"v" + version if version else "main"}/src/skills/coopagents-space'
+
+
+def install_command(version):
+    if version:
+        return f'pip install "coopagents[space]=={version}"'
+    return 'pip install --pre "coopagents[space]"'
+
+
+_INSTALLED = object()
+
+
+def compose(descriptor, inviter, space, lang='en', version=_INSTALLED):
     if lang not in TEXT:
         raise ValueError('Unsupported language')
+    if version is _INSTALLED:
+        version = installed_version()
     text = TEXT[lang]
+    install = text['install' if version else 'install_any'].format(
+        version=version, command=install_command(version), skill=skill_url(version))
     lines = [text['invited'].format(inviter=inviter, space=space), '', text['pitch'], PROJECT_URL]
     if local_only(descriptor):
         lines += ['', text['local']]
-    lines += ['', text['paste'], '----------', text['prompt'].format(skill=SKILL_URL), encode(descriptor),
+    lines += ['', text['paste'], '----------', text['prompt'].format(install=install), encode(descriptor),
               '----------', '', text['warning'].format(expires=_expiry(descriptor['expires_at']))]
     return '\n'.join(lines)

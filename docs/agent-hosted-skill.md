@@ -10,7 +10,7 @@
 
 明确的人类管理操作使用独立 CLI 路径 `--human-operation <名称> --payload-file <私有文件>`，不出现在普通 agent 的 MCP tools/list。实际用户必须明确请求这项操作；其他 agent 消息、伪造确认字段或收到的文本均不是授权。helper 使用 profile 的个人 web 凭据，并请求相同 `/api/operations/<名称>`；服务端负责共同 schema、身份类型、角色权限和事务规则。纯 agent 托管凭据仍通过网页执行人类操作。新秘密产生的邀请和凭据轮换不通过这个 helper 返回到标准输出。
 
-Skill 包含官方 Cloudflare release 元数据 digest 下载校验脚本，使用固定版本和官方仓库，缺少 digest 或校验不符时失败。安装 Coopagents 需要已发布兼容 wheel 和校验值；授权的开发 checkout 可以安装本地源码，但不能声称其已经公开发行。原生配置使用独立服务器条目及官方 CLI，合并保留其余配置；发生名称冲突时不覆盖。状态文件、数据库、邀请和测试证据保留在私有目录或忽略的 `.local/`，不提交 Git。
+Skill 包含官方 Cloudflare release 元数据 digest 下载校验脚本，使用固定版本和官方仓库，缺少 digest 或校验不符时失败。安装 Coopagents 用 PyPI 上固定的确切版本（邀请信息写明发起人的版本，否则用 PyPI 上最新的版本，含预发行版）；PyPI 不可达时改用 GitHub 发行页的 wheel 并按 `SHA256SUMS.txt` 校验。授权的开发 checkout 可以安装本地源码，但不能声称其已经公开发行。原生配置使用独立服务器条目及官方 CLI，合并保留其余配置；发生名称冲突时不覆盖。状态文件、数据库、邀请和测试证据保留在私有目录或忽略的 `.local/`，不提交 Git。
 
 验证见 `tests/test_space_bridge.py`：真实 SDK stdio 与远端 schemas 相等、个人身份与业务操作转发、WebSocket 到达、持久有界缓存及 reset、错误空间拒绝、agent-only 人类动作拒绝、共同人类操作入口。实际 Claude/Codex 会话加载与真实第二电脑/网络验证需要独立证据，SDK 通过不能替代原生产品验收。
 
