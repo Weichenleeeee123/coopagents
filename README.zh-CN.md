@@ -45,7 +45,7 @@
 
 **1. 在 Claude Code 里**打开一个测试仓库，说：
 
-> 从 https://github.com/Weichenleeeee123/coopagents/tree/main/src/skills/coopagents-space 安装 Coopagents Skill，用最新发行版并校验 SHA-256。然后给这个仓库创建一个 Coopagents 空间，把你自己接进去，再给我的 Codex 生成一条邀请信息。
+> 从 PyPI 把 Coopagents 0.7.0rc1 装进独立的 Python 环境（`pip install "coopagents[space]==0.7.0rc1"`），再按 https://github.com/Weichenleeeee123/coopagents/tree/v0.7.0rc1/src/skills/coopagents-space 配置它的 Skill。然后给这个仓库创建一个 Coopagents 空间，把你自己接进去，再给我的 Codex 生成一条邀请信息。
 
 **2. 在 Codex 里**打开同一个仓库：
 
@@ -55,9 +55,11 @@
 
 **4. 让它们对话。** 让 Claude Code 闲着，对 Codex 说：*"通过 Coopagents 问 Claude 这个仓库用什么命令跑测试，然后等它回答。"*
 
-安装由 agent 自己完成：校验发行包，装进独立的 Python 环境，启动空间，再把 MCP 加进自己的配置。你原有的设置都会保留。Codex 第一次调用 Coopagents 的工具时，可能会逐个请你批准。
+安装由 agent 自己完成：从 PyPI 装这个确切版本到独立的 Python 环境，启动空间，再把 MCP 加进自己的配置。你原有的设置都会保留。Codex 第一次调用 Coopagents 的工具时，可能会逐个请你批准。
 
-想自己装也可以，它已经发布到 PyPI。当前是预发行版，要写明版本号：
+邀请信息总是写明发起人自己的版本号，双方装的是同一个版本。
+
+想自己装也可以。当前是预发行版，要写明版本号：
 
 ```bash
 pip install "coopagents[space]==0.7.0rc1"
@@ -84,7 +86,7 @@ https://github.com/Weichenleeeee123/coopagents
 
 把两条分隔线之间的内容整段发给你的 Claude Code 或 Codex：
 ----------
-从 … 安装 Coopagents Skill……然后用下面的一次性邀请码加入我的 Coopagents 空间……
+从 PyPI 把 Coopagents 0.7.0rc1 装进独立的 Python 环境：`pip install "coopagents[space]==0.7.0rc1"`……然后用下面的一次性邀请码加入我的 Coopagents 空间……
 coopagents-invite-1.eyJleHBpcmVzX2F0Ijoi…
 ----------
 

@@ -1,5 +1,11 @@
 # 版本记录
 
+## 未发布 — 邀请信息写明版本、从 PyPI 安装
+
+- 邀请信息不再让对方安装“最新发行版”（所有发行版都是预发行版时，GitHub 的“最新版本”链接打不开）。现在写明发起人自己安装的版本，让对方 `pip install "coopagents[space]==<版本>"`，Skill 链接也指向该版本的标签；读不到版本时退回安装 PyPI 上最新的预发行版。
+- Skill 改为从 PyPI 安装固定的确切版本（pip 按 PyPI 公布的摘要校验，PyPI 上的文件不能被替换）；PyPI 不可达时改用 GitHub 发行页的 wheel 并按 `SHA256SUMS.txt` 校验。镜像未同步时用 `--index-url https://pypi.org/simple`。
+- README、双机验收清单同步改为从 PyPI 安装。
+
 ## 0.7.0rc1 — 改名为 Coopagents 候选版（2026-10-15）
 
 在 0.6.0rc2 之上只做改名，并新增 PyPI 发布工作流（`.github/workflows/publish.yml`，Trusted Publishing，上传的就是发行页附带并经 SHA256SUMS 校验的文件）。真人双机验收仍未进行。

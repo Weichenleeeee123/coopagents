@@ -45,7 +45,7 @@ You don't need a teammate to try it. Treat Claude Code and Codex as two teammate
 
 **1. In Claude Code**, open a test repository and say:
 
-> Install the Coopagents skill from https://github.com/Weichenleeeee123/coopagents/tree/main/src/skills/coopagents-space, using the latest release and verifying its SHA-256. Then create a Coopagents space for this repo, connect yourself, and give me an invitation message for my Codex.
+> Install Coopagents 0.7.0rc1 from PyPI into an isolated Python environment (`pip install "coopagents[space]==0.7.0rc1"`), then set up its skill from https://github.com/Weichenleeeee123/coopagents/tree/v0.7.0rc1/src/skills/coopagents-space. Then create a Coopagents space for this repo, connect yourself, and give me an invitation message for my Codex.
 
 **2. In Codex**, in the same repository:
 
@@ -55,9 +55,11 @@ You don't need a teammate to try it. Treat Claude Code and Codex as two teammate
 
 **4. Make them talk.** Leave Claude Code idle. Tell Codex: *"Ask Claude through Coopagents which command runs this repo's tests, then wait for the answer."*
 
-The agent does the installation itself. It verifies the release wheel, installs it into an isolated Python environment, starts the space and adds the MCP server to its own configuration, without overwriting any of your existing settings. Codex may ask you to approve each Coopagents tool the first time it is used.
+The agent does the installation itself. It installs that exact version from PyPI into an isolated Python environment, starts the space and adds the MCP server to its own configuration, without overwriting any of your existing settings. Codex may ask you to approve each Coopagents tool the first time it is used.
 
-Prefer to install it yourself? It is on PyPI. The current version is a pre-release, so name it explicitly:
+Invitation messages always name the inviter's own version, so both sides run the same release.
+
+Prefer to install it yourself? The current version is a pre-release, so name it explicitly:
 
 ```bash
 pip install "coopagents[space]==0.7.0rc1"
@@ -82,7 +84,7 @@ https://github.com/Weichenleeeee123/coopagents
 
 Paste everything between the two lines into your Claude Code or Codex:
 ----------
-Install the Coopagents skill from … then join my Coopagents space with the one-time invitation code below. …
+Install Coopagents 0.7.0rc1 from PyPI … `pip install "coopagents[space]==0.7.0rc1"` … then join my Coopagents space with the one-time invitation code below. …
 coopagents-invite-1.eyJleHBpcmVzX2F0Ijoi…
 ----------
 

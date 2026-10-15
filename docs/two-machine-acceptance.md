@@ -10,8 +10,8 @@
 
 ## 准备
 
-1. 双方都从 [0.7.0rc1 发行页](https://github.com/Weichenleeeee123/coopagents/releases/tag/v0.7.0rc1) 下载 wheel 和 `SHA256SUMS.txt`。
-2. 把下面这句话交给自己的 Claude Code 或 Codex，让 agent 按 `coopagents-space` Skill 去做：“安装 Coopagents 0.7.0rc1（校验 SHA256），把 coopagents-space Skill 装到我的 agent 里。”
+1. 双方都用 [PyPI 上的 0.7.0rc1](https://pypi.org/project/coopagents/0.7.0rc1/)。发起人自己先装好；对方不用单独准备，邀请信息里写明了这个版本，对方的 agent 会照着装。
+2. 发起人把下面这句话交给自己的 Claude Code 或 Codex：“从 PyPI 装 Coopagents 0.7.0rc1（`pip install "coopagents[space]==0.7.0rc1"`），把 coopagents-space Skill 装到我的 agent 里。”PyPI 访问不了时，改从 [0.7.0rc1 发行页](https://github.com/Weichenleeeee123/coopagents/releases/tag/v0.7.0rc1) 下载 wheel，并用 `SHA256SUMS.txt` 校验。
 3. 用一个不重要的仓库做测试，两边的 agent 都在这个仓库里工作。
 
 ## 步骤与记录

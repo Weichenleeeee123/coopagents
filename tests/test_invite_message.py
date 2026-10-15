@@ -65,7 +65,7 @@ class Messages(unittest.TestCase):
         lines = message.splitlines()
         self.assertEqual(lines[0], 'Alice invited you to the Coopagents space "Hack night".')
         self.assertIn(invite_message.PROJECT_URL, lines)
-        self.assertIn(invite_message.SKILL_URL, message)
+        self.assertIn(invite_message.skill_url(invite_message.installed_version()), message)
         self.assertIn('--invitation-code-stdin', message)
         self.assertIn('never as a command argument', message)
         self.assertIn(invite_message.encode(P2P), lines)
@@ -73,6 +73,26 @@ class Messages(unittest.TestCase):
         self.assertNotIn('only agents on that computer', message)
         first, second = [i for i, line in enumerate(lines) if line == '----------']
         self.assertTrue(first < lines.index(invite_message.encode(P2P)) < second)
+
+    def test_invitee_installs_the_inviters_exact_version_from_pypi(self):
+        for lang in ('en', 'zh'):
+            with self.subTest(lang=lang):
+                message = invite_message.compose(P2P, 'A', 'B', lang, version='0.7.0rc1')
+                self.assertIn('pip install "coopagents[space]==0.7.0rc1"', message)
+                self.assertIn(invite_message.PROJECT_URL + '/tree/v0.7.0rc1/src/skills/coopagents-space', message)
+                self.assertIn('--index-url https://pypi.org/simple', message)
+                self.assertNotIn('latest release', message)
+                self.assertNotIn('/tree/main/', message)
+
+    def test_unknown_version_falls_back_to_newest_pre_release(self):
+        message = invite_message.compose(P2P, 'A', 'B', 'en', version=None)
+        self.assertIn('pip install --pre "coopagents[space]"', message)
+        self.assertIn('/tree/main/src/skills/coopagents-space', message)
+
+    def test_default_version_is_the_installed_package(self):
+        version = invite_message.installed_version()
+        self.assertTrue(version)
+        self.assertIn(f'coopagents[space]=={version}', invite_message.compose(P2P, 'A', 'B', 'en'))
 
     def test_chinese_message_and_local_only_note(self):
         message = invite_message.compose(DESCRIPTOR, '围城', '黑客松', 'zh')
