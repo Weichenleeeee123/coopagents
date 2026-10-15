@@ -4,6 +4,14 @@
 
 在 0.6.0rc1 之上加入一次粘贴就能加入的邀请信息。真人双机验收仍未进行，清单已改为用邀请信息加入，见 [双机验收](two-machine-acceptance.md)。
 
+已作为预发行版发布：[v0.6.0rc2](https://github.com/Weichenleeeee123/crewmesh/releases/tag/v0.6.0rc2)，发行提交 `bc8f1eb`，[CI](https://github.com/Weichenleeeee123/crewmesh/actions/runs/38683997616) 通过。资产都从该提交的干净 `git archive` 构建；全新环境安装 wheel 后冒烟通过（p2p 主机生成中文邀请信息，成员把整段信息经标准输入加入并可连通，同一信息第二次使用被拒绝），发布后下载复验 SHA256 与本地构建一致。用真实 agent 按邀请信息完成安装加入的验收，需要在本版发布后进行，尚未执行。
+
+| 资产 | SHA-256 |
+| --- | --- |
+| `crewmesh-0.6.0rc2-py3-none-any.whl` | `feedaa97c4744b32293b68367f113f4db3f3b9e8c2e4d027eb03e210530b7e37` |
+| `crewmesh-0.6.0rc2.tar.gz` | `16531a53f3deb92c5cb02b77710e8b0f910f18588f610be405dee8111fcd3fb0` |
+| `crewmesh-0.6.0rc2-deploy.zip` | `f9c16bd0a2d01b78ecfe008b17f70d0fe4d2331e98abfdad6ce88d39f85a8ff9` |
+
 - 邀请信息：`space_runtime invite --message en|zh` 生成一段可直接转发的文字，包含一句话介绍、项目与 Skill 链接、给对方 agent 的指令和一次性邀请码 `crewmesh-invite-1.…`。对方把整段贴给自己的 agent，由 `join --invitation-code-stdin` 从标准输入读取并加入；邀请码不进命令参数，解析失败只返回固定的、不含输入内容的原因。
 - 邀请有效期可设：`--hours 1-72`，默认仍为 1 小时；领域操作 `invite` 新增可选整数字段 `hours` 并校验范围。
 - 首页按"Claude Code 和 Codex 的多人模式"重写（英文为主，另有中文版），新增 SECURITY.md，账号服务内容迁至 [自托管服务](self-hosted-service.md)。
