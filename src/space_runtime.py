@@ -271,10 +271,16 @@ def space_link(profile_path, profile):
     return None
 
 
-def invite(profile_path, share=False):
+def invite(profile_path, share=False, message=None, hours=1):
+    """Write a private invitation file; `message` (a language) also returns a shareable text with a one-time code."""
+    from . import invite_message
+    if message is not None and message not in invite_message.TEXT:
+        raise ValueError('Unsupported message language')
     profile = read_profile(profile_path)
     with member_link(profile):
-        invitation = request(profile['origin'], '/api/operations/invite', token=web_credential(profile), data={})
+        invitation = request(profile['origin'], '/api/operations/invite', token=web_credential(profile),
+                             data={'hours': hours})
+        me = request(profile['origin'], '/api/me', token=web_credential(profile)) if message else None
     descriptor = dict(schema_version=1, origin=profile['origin'], **invitation)
     link = space_link(profile_path, profile)
     if link:
@@ -284,11 +290,21 @@ def invite(profile_path, share=False):
     result = safe_profile(profile, profile_path) | {'invitation_file': str(path), 'expires_at': invitation['expires_at']}
     if share:
         result['invitation'] = descriptor
+    if message:
+        # The text carries the bearer code; it is returned only on this explicit request.
+        result['message'] = invite_message.compose(descriptor, me['me']['display_name'], me['room']['name'], message)
+        result['local_only'] = invite_message.local_only(descriptor)
     return result
 
 
-def join(invitation_file, name, state_dir):
-    descriptor = read_json(invitation_file)
+def join(invitation_file, name, state_dir, invitation_code=None):
+    if (invitation_file is None) == (invitation_code is None):
+        raise ValueError('Provide exactly one invitation file or code')
+    if invitation_file is not None:
+        descriptor = read_json(invitation_file)
+    else:
+        from .invite_message import decode
+        descriptor = decode(invitation_code)
     origin = validate_origin(descriptor['origin'])
     from datetime import datetime, timezone
     expiry = datetime.fromisoformat(descriptor['expires_at'])
@@ -355,12 +371,18 @@ def main(argv=None):
         sub.add_argument('--profile', required=True)
         if command == 'invite':
             sub.add_argument('--share', action='store_true')
+            sub.add_argument('--message', choices=['en', 'zh'],
+                             help='Also print a shareable invitation text in this language; it contains the one-time code')
+            sub.add_argument('--hours', type=int, default=1, help='Invitation lifetime, 1-72 hours (default 1)')
         if command == 'revoke-invitation':
             sub.add_argument('--invitation-file', required=True)
         if command == 'revoke-member':
             sub.add_argument('--member-id', required=True)
     sub = commands.add_parser('join')
-    sub.add_argument('--invitation-file', required=True)
+    source = sub.add_mutually_exclusive_group(required=True)
+    source.add_argument('--invitation-file')
+    source.add_argument('--invitation-code-stdin', action='store_true',
+                        help='Read an invitation code, or a whole invitation message, from standard input')
     sub.add_argument('--name', required=True)
     sub.add_argument('--state-dir', required=True)
     sub = commands.add_parser('reconnect')
@@ -385,6 +407,9 @@ def main(argv=None):
                 request(profile['origin'], '/api/operations/' + operation, token=web_credential(profile), data=data)
             result = safe_profile(profile, args['profile']) | {'status': 'revoked'}
         else:
+            if command == 'join' and args.pop('invitation_code_stdin'):
+                # Pasted messages may hold any text; only the ASCII code inside matters.
+                args['invitation_code'] = sys.stdin.buffer.read(64 * 1024 + 1).decode('utf-8', 'replace')
             handler = {'create': create, 'start': start, 'status': status, 'stop': stop, 'board': board,
                        'invite': invite, 'join': join, 'reconnect': reconnect}[command]
             if 'profile' in args:
@@ -395,7 +420,9 @@ def main(argv=None):
     except Exception as error:
         # Exception messages from HTTP clients may contain URLs; never print
         # bodies, headers, tracebacks or opaque credentials from remote errors.
-        print(json.dumps({'error': type(error).__name__, 'message': 'Space operation failed; check private state and runtime health'}), file=sys.stderr)
+        from .invite_message import InvitationCodeError
+        text = str(error) if isinstance(error, InvitationCodeError) else 'Space operation failed; check private state and runtime health'
+        print(json.dumps({'error': type(error).__name__, 'message': text}), file=sys.stderr)
         return 1
 
 

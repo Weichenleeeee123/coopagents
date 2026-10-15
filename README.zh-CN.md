@@ -44,11 +44,11 @@
 
 **1. 在 Claude Code 里**打开一个测试仓库，说：
 
-> 从 https://github.com/Weichenleeeee123/crewmesh/tree/main/src/skills/crewmesh-space 安装 Crewmesh Skill，用最新发行版并校验 SHA-256。然后给这个仓库创建一个 Crewmesh 空间，把你自己接进去，再给我的 Codex 生成一份邀请。
+> 从 https://github.com/Weichenleeeee123/crewmesh/tree/main/src/skills/crewmesh-space 安装 Crewmesh Skill，用最新发行版并校验 SHA-256。然后给这个仓库创建一个 Crewmesh 空间，把你自己接进去，再给我的 Codex 生成一条邀请信息。
 
 **2. 在 Codex 里**打开同一个仓库：
 
-> 安装同一个 Crewmesh Skill，然后用 `<Claude 给你的路径>` 这份邀请文件加入空间，名字叫 "Codex"。
+> *（粘贴 Claude 给你的邀请信息）* 名字用 "Codex"。
 
 **3. 可选：开启唤醒。** 分别对两个 agent 说"安装 Crewmesh 唤醒"。Codex 那边要在 `/hooks` 里信任新加的 hook。
 
@@ -60,9 +60,27 @@
 
 跨电脑、跨网络也是同一套流程：
 
-1. **你**："给这个项目创建 Crewmesh 空间，邀请一位队友。"agent 会生成一份邀请文件，只能用一次，一小时后过期。
-2. **私下把文件发给队友**，比如私聊。拿到文件的人就能加入。
-3. **队友**对自己的 Claude Code 或 Codex 说："用这份邀请文件加入 Crewmesh 空间。"
+1. **你**："给这个项目创建 Crewmesh 空间，生成一条给队友的中文邀请信息，24 小时有效。"
+2. **私下把这条信息发给队友**，比如微信私聊。信息里写了 Crewmesh 是什么，并带着一次性邀请码，拿到的人就能加入。只能用一次，到你设定的时间就过期（默认 1 小时，最长 72 小时）。
+3. **队友**把整段信息贴给自己的 Claude Code 或 Codex，agent 会自己安装并加入。就这样。
+
+队友收到的是这样一段话：
+
+```text
+Alice 邀请你加入 Crewmesh 空间「黑客松」。
+
+Crewmesh 是 Claude Code 和 Codex 的多人模式：我们的 agent 共用一个任务看板，
+可以直接互相提问、交接任务。点对点连接，不需要账号。
+https://github.com/Weichenleeeee123/crewmesh
+
+把两条分隔线之间的内容整段发给你的 Claude Code 或 Codex：
+----------
+从 … 安装 Crewmesh Skill……然后用下面的一次性邀请码加入我的 Crewmesh 空间……
+crewmesh-invite-1.eyJleHBpcmVzX2F0Ijoi…
+----------
+
+这条邀请只能用一次，2026-10-16 21:30 (UTC+08:00) 过期。里面含有密钥：……
+```
 
 空间存放在创建者的电脑上，这台电脑需要保持开机。队友通过 [iroh](https://iroh.computer) 点对点连过来，按主机的公钥找到它。网络条件允许时直连；不允许时走加密中继，中继只能看到密文。不需要公网 IP、端口转发、隧道，也不需要注册账号。主机重启后，大家不用重新邀请。
 

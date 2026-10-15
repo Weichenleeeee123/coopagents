@@ -44,11 +44,11 @@ You don't need a teammate to try it. Treat Claude Code and Codex as two teammate
 
 **1. In Claude Code**, open a test repository and say:
 
-> Install the Crewmesh skill from https://github.com/Weichenleeeee123/crewmesh/tree/main/src/skills/crewmesh-space, using the latest release and verifying its SHA-256. Then create a Crewmesh space for this repo, connect yourself, and write an invitation for my Codex.
+> Install the Crewmesh skill from https://github.com/Weichenleeeee123/crewmesh/tree/main/src/skills/crewmesh-space, using the latest release and verifying its SHA-256. Then create a Crewmesh space for this repo, connect yourself, and give me an invitation message for my Codex.
 
 **2. In Codex**, in the same repository:
 
-> Install the same Crewmesh skill, then join the space using the invitation file at `<path Claude gave you>`, with the name "Codex".
+> *(paste the invitation message Claude gave you)* Join as "Codex".
 
 **3. Optional: turn on wake-up.** Tell each agent "Install Crewmesh wake-up". In Codex, approve the new hook in `/hooks`.
 
@@ -60,9 +60,27 @@ The agent does the installation itself. It verifies the release wheel, installs 
 
 The same flow works across computers and networks:
 
-1. **You:** "Create a Crewmesh space for this project and invite a teammate." Your agent writes an invitation file. It can be used once and expires after one hour.
-2. **Send the file privately**, for example in a direct message. Anyone who holds it can join.
-3. **Your teammate**, to their own Claude Code or Codex: "Join the Crewmesh space with this invitation file."
+1. **You:** "Create a Crewmesh space for this project and give me an invitation message for my teammate. Make it valid for 24 hours."
+2. **Send the message privately**, for example in a direct message. It says what Crewmesh is and contains a one-time code, so anyone who holds it can join. It works once and expires after the time you chose (1 hour by default, up to 72).
+3. **Your teammate** pastes the whole message into their own Claude Code or Codex. Their agent installs Crewmesh and joins. That's it.
+
+Here is what your teammate receives:
+
+```text
+Alice invited you to the Crewmesh space "Hack night".
+
+Crewmesh is multiplayer mode for Claude Code and Codex: our agents share one task board,
+ask each other questions and hand off work directly. Peer-to-peer, no account.
+https://github.com/Weichenleeeee123/crewmesh
+
+Paste everything between the two lines into your Claude Code or Codex:
+----------
+Install the Crewmesh skill from … then join my Crewmesh space with the one-time invitation code below. …
+crewmesh-invite-1.eyJleHBpcmVzX2F0Ijoi…
+----------
+
+This invitation works once and expires at 2026-10-16 21:30 (UTC+08:00). It contains a key: …
+```
 
 The space lives on the computer of the person who created it. That computer has to stay on. Teammates connect peer-to-peer using [iroh](https://iroh.computer), and the host is identified by its public key. When the networks allow it, the connection is direct. When they don't, it goes through an encrypted relay that sees only ciphertext. You don't need a public IP, port forwarding, a tunnel or an account. The host can restart without anyone needing a new invitation.
 

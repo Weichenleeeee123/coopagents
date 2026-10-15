@@ -43,7 +43,7 @@ class CoordinationService:
             'diagnostic_complete': ('agent', self.checkpoints.diagnostic_complete, fields('diagnostic_id proof')),
             'create_room': (None, self.identity.create_room, fields('name owner_name', {'repository': ''})),
             'join': (None, self.identity.join_invite, fields('invite_token display_name')),
-            'invite': ('web', self.identity.create_invite, fields()),
+            'invite': ('web', self.identity.create_invite, fields('', {'hours': 1})),
             'revoke_invite': ('web', self.identity.revoke_invite, fields('invite_token')),
             'revoke_member': ('web', self.identity.revoke_member, fields('member_id')),
             'rotate_agent': ('web', self.identity.rotate_agent, fields()),

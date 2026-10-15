@@ -1,5 +1,11 @@
 # 版本记录
 
+## 未发布
+
+- 邀请信息：`space_runtime invite --message en|zh` 生成一段可直接转发的文字，包含一句话介绍、项目与 Skill 链接、给对方 agent 的指令和一次性邀请码 `crewmesh-invite-1.…`。对方把整段贴给自己的 agent，由 `join --invitation-code-stdin` 从标准输入读取并加入；邀请码不进命令参数，解析失败只返回固定的、不含输入内容的原因。
+- 邀请有效期可设：`--hours 1-72`，默认仍为 1 小时；领域操作 `invite` 新增可选整数字段 `hours` 并校验范围。
+- 首页按"Claude Code 和 Codex 的多人模式"重写（英文为主，另有中文版），新增 SECURITY.md，账号服务内容迁至 [自托管服务](self-hosted-service.md)。
+
 ## 0.6.0rc1 — 点对点异地入口与 Agent 唤醒候选版（2026-10-14）
 
 首个公开的 Agent 承载空间预发行版，包含下面 0.5.0rc1 记录的全部内容（0.5.0rc1 未单独发布）。真人双机、双方都在家用/移动 NAT 后的验收尚未进行，清单见 [双机验收](two-machine-acceptance.md)。
