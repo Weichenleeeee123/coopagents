@@ -1,7 +1,7 @@
 'use strict';
 (() => {
-  const $=id=>document.getElementById(id),board=window.CrewmeshBoard;
-  const adapters={git:window.CrewmeshGit,dependencies:window.CrewmeshDependencies,open:openTask};
+  const $=id=>document.getElementById(id),board=window.CoopagentsBoard;
+  const adapters={git:window.CoopagentsGit,dependencies:window.CoopagentsDependencies,open:openTask};
   let token='',snapshot=null,active=null,opener=null,poll=null,stream=null,stopped=false,busy=false,dirty=false,generation=0;
   const requests=new Set();
   const node=(tag,value='',cls)=>{const n=document.createElement(tag);n.textContent=value??'';if(cls)n.className=cls;return n;};
@@ -60,7 +60,7 @@
     $('room-name').textContent='团队协作';$('board-count').textContent='';$('board-error').textContent='';$('transport-status').textContent='正在连接…';
     try{
       const result=await request('/board/session',{ticket});if(epoch!==generation||stopped)return;token=result.token;
-      status('degraded');stream=window.CrewmeshRealtime.connect({token,refresh:()=>epoch===generation?refresh():Promise.resolve(),status:value=>{if(epoch===generation)status(value);}});await refresh();
+      status('degraded');stream=window.CoopagentsRealtime.connect({token,refresh:()=>epoch===generation?refresh():Promise.resolve(),status:value=>{if(epoch===generation)status(value);}});await refresh();
     }catch(error){if(epoch===generation)$('board-error').textContent=error.message;}
   }
   start();

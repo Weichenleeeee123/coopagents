@@ -1,7 +1,7 @@
 import unittest
 from functools import partial
 from unittest.mock import patch
-from crewmesh.api import create_app
+from coopagents.api import create_app
 from transport_support import LiveService
 
 SECRET = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
@@ -18,13 +18,13 @@ class AccountHTTPTests(unittest.TestCase):
         return self.live.request('POST', path, data=data, headers=headers or self.headers)
 
     def bootstrap(self):
-        status, info, headers = self.post('/account/bootstrap', {'username': 'owner', 'password': PASSWORD}, {**self.headers, 'X-Crewmesh-Bootstrap': SECRET})
+        status, info, headers = self.post('/account/bootstrap', {'username': 'owner', 'password': PASSWORD}, {**self.headers, 'X-Coopagents-Bootstrap': SECRET})
         self.assertEqual(status, 200, info)
         self.assertNotIn('session_token', info)
         cookie = headers['Set-Cookie']
         self.assertIn('HttpOnly', cookie)
         self.assertIn('SameSite=lax', cookie)
-        self.headers.update({'Cookie': cookie.split(';')[0], 'X-Crewmesh-CSRF': info['csrf_token']})
+        self.headers.update({'Cookie': cookie.split(';')[0], 'X-Coopagents-CSRF': info['csrf_token']})
         return info
 
     def test_origin_cookie_csrf_and_logout(self):
@@ -49,7 +49,7 @@ class AccountHTTPTests(unittest.TestCase):
         owner_headers = dict(self.headers)
         status, member, cookies = self.post('/account/invites/accept', {'invite_token': invite, 'username': 'member', 'password': PASSWORD}, {'Origin': self.live.url})
         self.assertEqual(status, 200, member)
-        self.headers = {'Origin': self.live.url, 'Cookie': cookies['Set-Cookie'].split(';')[0], 'X-Crewmesh-CSRF': member['csrf_token']}
+        self.headers = {'Origin': self.live.url, 'Cookie': cookies['Set-Cookie'].split(';')[0], 'X-Coopagents-CSRF': member['csrf_token']}
         member_token = self.post(f'/account/projects/{project}/select', {})[1]['web_token']
         self.headers = owner_headers
         self.assertEqual(self.post(f"/account/teams/{team}/members/{member['account']['id']}/remove", {})[0], 200)
@@ -85,14 +85,14 @@ class AccountHTTPTests(unittest.TestCase):
         from urllib.request import urlopen
         with urlopen(self.live.url + '/static/invitations.js') as response:
             self.assertEqual(200, response.status)
-            self.assertIn(b'CrewmeshInvitations', response.read())
+            self.assertIn(b'CoopagentsInvitations', response.read())
     def test_public_secure_cookie_and_cloud_legacy_disabled(self):
         from starlette.testclient import TestClient
         from pathlib import Path
         from uuid import uuid4
         app = create_app(Path('.local/c1-tests') / (str(uuid4()) + '.sqlite3'), public_url='https://example.com', bootstrap_secret=SECRET)
         with TestClient(app, base_url='https://example.com') as client:
-            response = client.post('/account/bootstrap', json={'username': 'owner', 'password': PASSWORD}, headers={'Origin':'https://example.com', 'X-Crewmesh-Bootstrap':SECRET})
+            response = client.post('/account/bootstrap', json={'username': 'owner', 'password': PASSWORD}, headers={'Origin':'https://example.com', 'X-Coopagents-Bootstrap':SECRET})
             self.assertEqual(response.status_code, 200)
             self.assertIn('Secure', response.headers['set-cookie'])
             self.assertFalse(client.get('/account/config').json()['bootstrap_enabled'])
@@ -108,7 +108,7 @@ class AccountHTTPTests(unittest.TestCase):
         invite = self.post(f'/account/teams/{first}/invites', {})[1]['invite_token']
         _, member, cookie = self.post('/account/invites/accept', {'invite_token':invite,'username':'member','password':PASSWORD}, {'Origin':self.live.url})
         invite = self.post(f'/account/teams/{second}/invites', {})[1]['invite_token']
-        self.headers = {'Origin':self.live.url, 'Cookie':cookie['Set-Cookie'].split(';')[0], 'X-Crewmesh-CSRF':member['csrf_token']}
+        self.headers = {'Origin':self.live.url, 'Cookie':cookie['Set-Cookie'].split(';')[0], 'X-Coopagents-CSRF':member['csrf_token']}
         self.assertEqual(self.post('/account/invites/accept', {'invite_token':invite, 'username':'forged'})[0],400)
         self.assertEqual(self.post('/account/invites/accept', {'invite_token':invite}, {'Origin':self.live.url,'Cookie':self.headers['Cookie']})[0],401)
         self.assertEqual(self.post('/account/invites/accept', {'invite_token':invite})[0],200)
@@ -124,10 +124,10 @@ class AccountHTTPTests(unittest.TestCase):
             connection.execute('UPDATE account_login_throttle SET window=0')
         self.assertEqual(self.post('/account/login', {'username':'owner','password':PASSWORD})[0],200)
     def test_throttle_bounded_storage_and_expired_reuse(self):
-        from crewmesh.account_api import LoginThrottle
-        from crewmesh.errors import AccessDenied
+        from coopagents.account_api import LoginThrottle
+        from coopagents.errors import AccessDenied
         throttle=LoginThrottle(self.live.app.state.service.accounts.db)
-        with patch('crewmesh.account_api.THROTTLE_LIMIT',2):
+        with patch('coopagents.account_api.THROTTLE_LIMIT',2):
             throttle.attempt('first','127.0.0.1')
             with self.assertRaises(AccessDenied):
                 throttle.attempt('second','127.0.0.1')
@@ -173,7 +173,7 @@ class AccountHTTPTests(unittest.TestCase):
         self.assertEqual(self.post(f'/account/teams/{team}/members/{aid}/role',{'role':'admin','account_id':'forged'})[0],400)
         self.assertEqual(self.post(f'/account/teams/{team}/members/{aid}/role',{'role':'admin'})[0],200)
         self.assertEqual(self.post(f'/account/projects/{project}/members/{aid}/grant',{})[0],200)
-        member_headers={'Origin':self.live.url,'Cookie':cookie['Set-Cookie'].split(';')[0],'X-Crewmesh-CSRF':member['csrf_token']}
+        member_headers={'Origin':self.live.url,'Cookie':cookie['Set-Cookie'].split(';')[0],'X-Coopagents-CSRF':member['csrf_token']}
         self.headers=member_headers
         self.assertTrue(self.live.request('GET',f'/account/teams/{team}/managed-projects',headers=self.headers)[1][0]['has_access'])
         token=self.post(f'/account/projects/{project}/select',{})[1]['web_token']
@@ -202,7 +202,7 @@ class AccountHTTPTests(unittest.TestCase):
         self.assertIn(b'Origin not accepted',response.read())
     def test_boundary_rejection_consumes_pending_chunks(self):
         import asyncio
-        from crewmesh.api import LocalBoundary
+        from coopagents.api import LocalBoundary
         received=[]
         sent=[]
         async def upstream(scope,receive,send):
@@ -247,7 +247,7 @@ class AccountHTTPTests(unittest.TestCase):
             self.assertIn('Max-Age=0',cookies['Set-Cookie'])
 
     def test_initial_bootstrap_ignores_stale_single_cookie(self):
-        status,body,_=self.post('/account/bootstrap',{'username':'owner','password':PASSWORD},{'Origin':self.live.url,'X-Crewmesh-Bootstrap':SECRET,'Cookie':'crewmesh_account=stale'})
+        status,body,_=self.post('/account/bootstrap',{'username':'owner','password':PASSWORD},{'Origin':self.live.url,'X-Coopagents-Bootstrap':SECRET,'Cookie':'coopagents_account=stale'})
         self.assertEqual(status,200,body)
     def test_expired_cookie_can_login_but_valid_logout_requires_csrf(self):
         self.bootstrap()

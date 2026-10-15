@@ -99,7 +99,7 @@
     append(root,element('p',git.binding.repository,'git-repository'),element('p','项目 ID：'+snapshot.me.room_id,'meta'));
     const local=element('section','','git-block');local.setAttribute('aria-label','本地 agent 接入');
     append(local,element('p','02 / LOCAL AGENT','eyebrow'),element('h3','本地 agent 接入'),element('p','每台电脑配置一次，在任务检查点同步分支与实际变更。','muted'));panel.append(local);
-    const setup=element('details');append(setup,element('summary','本地 agent 一次接入'),element('p','安装 Crewmesh service 依赖；用自己的 agent 令牌启动本地 stdio MCP。令牌放在环境变量中。'),element('pre','python -m crewmesh.git_adapter --repository PATH --service '+context.origin+' --project '+snapshot.me.room_id),element('p','检查点工具：repo_checkpoint(task_id)。通过 --inspect 诊断、--init-project 创建可提交的公共约定；保留现有 agent 配置。','muted'));local.append(setup);
+    const setup=element('details');append(setup,element('summary','本地 agent 一次接入'),element('p','安装 Coopagents service 依赖；用自己的 agent 令牌启动本地 stdio MCP。令牌放在环境变量中。'),element('pre','python -m coopagents.git_adapter --repository PATH --service '+context.origin+' --project '+snapshot.me.room_id),element('p','检查点工具：repo_checkpoint(task_id)。通过 --inspect 诊断、--init-project 创建可提交的公共约定；保留现有 agent 配置。','muted'));local.append(setup);
     root=element('section','','git-block');root.setAttribute('aria-label','GitHub 交付同步');
     append(root,element('p','03 / VERIFIED DELIVERY','eyebrow'));panel.append(root);
     append(root,element('h3','GitHub 交付同步'),element('p',connected(git)?'已授权 '+git.connection.full_name+' · 最后核对 '+when(git.connection.sync_at):'尚未连接 GitHub App。','meta'));
@@ -121,5 +121,5 @@
   }
   const api={state,safeURL,caption,checks,summarize,renderDetails,renderPanel,renderOverlaps,clear};
   if(typeof module!=='undefined'&&module.exports)module.exports=api;
-  if(typeof window!=='undefined')window.CrewmeshGit=api;
+  if(typeof window!=='undefined')window.CoopagentsGit=api;
 })();

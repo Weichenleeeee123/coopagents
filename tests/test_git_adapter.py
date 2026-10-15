@@ -10,8 +10,8 @@ import sqlite3
 import threading
 from contextlib import closing
 from mcp import Client, StdioServerParameters
-from crewmesh.git_adapter import LocalAdapter, service_origin
-from crewmesh.errors import ValidationError
+from coopagents.git_adapter import LocalAdapter, service_origin
+from coopagents.errors import ValidationError
 from transport_support import LiveService
 
 
@@ -115,8 +115,8 @@ class AdapterTests(unittest.TestCase):
             if index == 1:
                 async def stdio_checkpoint():
                     params=StdioServerParameters(command=sys.executable,
-                        args=['-m','crewmesh.git_adapter','--repository',str(repo.resolve()),'--service',live.url,'--project',owner['room_id']],
-                        env={**os.environ,'CREWMESH_AGENT_TOKEN':identity['agent_token'],'LOCALAPPDATA':str((root/'appdata').resolve())})
+                        args=['-m','coopagents.git_adapter','--repository',str(repo.resolve()),'--service',live.url,'--project',owner['room_id']],
+                        env={**os.environ,'COOPAGENTS_AGENT_TOKEN':identity['agent_token'],'LOCALAPPDATA':str((root/'appdata').resolve())})
                     async with Client(params,cache=None) as client:
                         names={t.name for t in (await client.list_tools()).tools}
                         self.assertIn('repo_checkpoint',names)
@@ -146,6 +146,6 @@ class AdapterTests(unittest.TestCase):
         wrong = LocalAdapter(repo,live.url,str(uuid4()),member['agent_token'],state_root=root/'wrong')
         with self.assertRaises(ValidationError): wrong.checkpoint(task['id'])
         with self.assertRaises(ValidationError): wrong.forward('claim_task',{'task_id':task['id']})
-        config_dir=repo/'.crewmesh'; config_dir.mkdir()
+        config_dir=repo/'.coopagents'; config_dir.mkdir()
         (config_dir/'project.json').write_text(json.dumps({'schema_version':1,'project_ref':str(uuid4()),'repository':'github.com/acme/demo'}))
         with self.assertRaises(ValidationError): adapter.checkpoint(task['id'])

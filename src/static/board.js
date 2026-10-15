@@ -54,5 +54,5 @@
     s.contracts.filter(c=>c.versions.some(v=>related.some(r=>r.id===v.source_request_id))).forEach(c=>root.append(contract(c)));
     return root;
   }
-  window.CrewmeshBoard={columns,column,matchingTasks,card,readonlyDetail,request,contract};
+  window.CoopagentsBoard={columns,column,matchingTasks,card,readonlyDetail,request,contract};
 })();

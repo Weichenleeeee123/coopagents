@@ -15,7 +15,7 @@ class NativeCheckTests(unittest.TestCase):
         args = claude_args("claude.exe", "prompt", "id")
         self.assertEqual(args[args.index("--tools") + 1], "")
         allowed = args[args.index("--allowedTools") + 1].split(",")
-        self.assertEqual(set(allowed), {"mcp__crewmesh_probe__post_probe"})
+        self.assertEqual(set(allowed), {"mcp__coopagents_probe__post_probe"})
         self.assertNotIn("--dangerously-skip-permissions", args)
         self.assertNotIn("--settings", args)
 
@@ -28,7 +28,7 @@ class NativeCheckTests(unittest.TestCase):
         report = {"audit": [{"author": "claude-native", "receivers": ["codex-native"]}]}
         self.assertFalse(native_pair_passed(report))
         report["claude"] = {"exit_code": 0, "timed_out": False,
-                            "tool_calls": [{"name": "mcp__crewmesh_probe__post_probe"}]}
+                            "tool_calls": [{"name": "mcp__coopagents_probe__post_probe"}]}
         report["codex"] = {"exit_code": 0, "timed_out": False,
                            "tool_calls": [{"name": "read_probes"}, {"name": "ack_probe"},
                                           {"name": "probe_receipts"}]}
@@ -42,7 +42,7 @@ class NativeCheckTests(unittest.TestCase):
         def call(name, arguments, result):
             return {"name": name, "arguments": arguments, "result": result, "success": True}
         report = {"run_id": "run", "claude": {"exit_code": 0, "timed_out": False,
-                  "tool_calls": [call("mcp__crewmesh_probe__post_probe",
+                  "tool_calls": [call("mcp__coopagents_probe__post_probe",
                     {key: row[key] for key in ("request_key", "author", "body")}, row)]},
                   "codex": {"exit_code": 0, "timed_out": False,
                             "answer": {"message_id": 42, "lantern_count": 3}, "tool_calls": [

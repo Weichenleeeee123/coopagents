@@ -100,7 +100,7 @@ def start(profile_path):
     with log_path.open('xb') as log:
         from .spaces import protect
         protect(log_path)
-        child = subprocess.Popen([sys.executable, '-m', 'crewmesh.space_runtime', '_serve',
+        child = subprocess.Popen([sys.executable, '-m', 'coopagents.space_runtime', '_serve',
                                   '--profile', str(profile_path)], stdout=log, stderr=log,
                                  creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
     deadline = time.monotonic() + 60
@@ -357,7 +357,7 @@ def board(profile_path):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description='Manage a private agent-hosted Crewmesh space')
+    parser = argparse.ArgumentParser(description='Manage a private agent-hosted Coopagents space')
     commands = parser.add_subparsers(dest='command', required=True)
     create_parser = commands.add_parser('create')
     create_parser.add_argument('--name', required=True)

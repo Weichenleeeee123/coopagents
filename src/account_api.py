@@ -10,7 +10,7 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route
 from .errors import AccessDenied, ValidationError
 
-COOKIE = 'crewmesh_account'
+COOKIE = 'coopagents_account'
 THROTTLE_LIMIT = 10000
 
 class AccountBusy(Exception):
@@ -151,12 +151,12 @@ def account_routes(service, *, mode, origin, bootstrap_secret, oauth):
                 data = validate(data, schema('invite_token'))
                 return JSONResponse(await execute(workspaces.preview_invite, **data), headers={'Cache-Control': 'no-store'})
             if token and path not in ('/account/login', '/account/bootstrap'):
-                csrf = request.headers.getlist('x-crewmesh-csrf')
+                csrf = request.headers.getlist('x-coopagents-csrf')
                 if len(csrf) != 1:
                     raise AccessDenied('CSRF credential required')
                 await execute(accounts.authenticate, token, csrf[0])
             if path == '/account/bootstrap':
-                if bootstrap_hash is None or len(request.headers.getlist('x-crewmesh-bootstrap')) != 1 or not hmac.compare_digest(hashlib.sha256(request.headers['x-crewmesh-bootstrap'].encode()).digest(), bootstrap_hash):
+                if bootstrap_hash is None or len(request.headers.getlist('x-coopagents-bootstrap')) != 1 or not hmac.compare_digest(hashlib.sha256(request.headers['x-coopagents-bootstrap'].encode()).digest(), bootstrap_hash):
                     raise AccessDenied('Bootstrap credential not accepted')
                 data = validate(data, schema('username password', {'display_name': None}))
                 account = await execute(accounts.bootstrap, **data)

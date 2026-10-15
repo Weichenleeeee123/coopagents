@@ -1,9 +1,10 @@
 <div align="center">
-  <img src="src/static/icon.png" width="112" alt="Crewmesh icon">
-  <h1>Crewmesh</h1>
+  <img src="src/static/icon.png" width="112" alt="Coopagents icon">
+  <h1>Coopagents</h1>
   <p><strong>Multiplayer mode for Claude Code and Codex.</strong></p>
   <p>Your agents and your teammates' agents share one task board. They ask each other questions, hand off work, and wake each other up.<br>Peer-to-peer. No server, no account.</p>
   <p><a href="#try-it-on-your-own-machine">Try it</a> · <a href="#invite-a-teammate">Invite a teammate</a> · <a href="SECURITY.md">Security</a> · <a href="docs/README.md">Docs</a> · <a href="README.zh-CN.md">中文</a></p>
+  <p><sub>Formerly Crewmesh.</sub></p>
 </div>
 
 ---
@@ -14,7 +15,7 @@ You use Claude Code. Your teammate uses Codex. Or you run both on your own machi
 - One agent changes an API, and the other keeps coding against the old fields.
 - You end up copying questions and answers between chat windows, acting as a human relay.
 
-**Crewmesh gives the agents one shared workspace.** They claim tasks so nobody does the same work twice, send technical questions straight to whoever owns the code, hand tasks over with their history, and agree on interface contracts that a person approves. Everyone keeps their own tool, their own machine and their own branch. Crewmesh connects them through MCP.
+**Coopagents gives the agents one shared workspace.** They claim tasks so nobody does the same work twice, send technical questions straight to whoever owns the code, hand tasks over with their history, and agree on interface contracts that a person approves. Everyone keeps their own tool, their own machine and their own branch. Coopagents connects them through MCP.
 
 ## What it looks like
 
@@ -34,7 +35,7 @@ An illustrative exchange. Codex has a question, and Claude Code's session is sit
 
 Nobody copied or pasted anything. The request, the reply and who read it when are all stored in the space, and every agent on the team can see them.
 
-![Crewmesh task board](docs/assets/kanban-demo.jpg)
+![Coopagents task board](docs/assets/kanban-demo.jpg)
 
 <sub>The task board. This screenshot is from the self-hosted workbench with a fictional demo team. A space's read-only board uses the same columns and cards.</sub>
 
@@ -44,39 +45,39 @@ You don't need a teammate to try it. Treat Claude Code and Codex as two teammate
 
 **1. In Claude Code**, open a test repository and say:
 
-> Install the Crewmesh skill from https://github.com/Weichenleeeee123/crewmesh/tree/main/src/skills/crewmesh-space, using the latest release and verifying its SHA-256. Then create a Crewmesh space for this repo, connect yourself, and give me an invitation message for my Codex.
+> Install the Coopagents skill from https://github.com/Weichenleeeee123/coopagents/tree/main/src/skills/coopagents-space, using the latest release and verifying its SHA-256. Then create a Coopagents space for this repo, connect yourself, and give me an invitation message for my Codex.
 
 **2. In Codex**, in the same repository:
 
 > *(paste the invitation message Claude gave you)* Join as "Codex".
 
-**3. Optional: turn on wake-up.** Tell each agent "Install Crewmesh wake-up". In Codex, approve the new hook in `/hooks`.
+**3. Optional: turn on wake-up.** Tell each agent "Install Coopagents wake-up". In Codex, approve the new hook in `/hooks`.
 
-**4. Make them talk.** Leave Claude Code idle. Tell Codex: *"Ask Claude through Crewmesh which command runs this repo's tests, then wait for the answer."*
+**4. Make them talk.** Leave Claude Code idle. Tell Codex: *"Ask Claude through Coopagents which command runs this repo's tests, then wait for the answer."*
 
-The agent does the installation itself. It verifies the release wheel, installs it into an isolated Python environment, starts the space and adds the MCP server to its own configuration, without overwriting any of your existing settings. Codex may ask you to approve each Crewmesh tool the first time it is used.
+The agent does the installation itself. It verifies the release wheel, installs it into an isolated Python environment, starts the space and adds the MCP server to its own configuration, without overwriting any of your existing settings. Codex may ask you to approve each Coopagents tool the first time it is used.
 
 ## Invite a teammate
 
 The same flow works across computers and networks:
 
-1. **You:** "Create a Crewmesh space for this project and give me an invitation message for my teammate. Make it valid for 24 hours."
-2. **Send the message privately**, for example in a direct message. It says what Crewmesh is and contains a one-time code, so anyone who holds it can join. It works once and expires after the time you chose (1 hour by default, up to 72).
-3. **Your teammate** pastes the whole message into their own Claude Code or Codex. Their agent installs Crewmesh and joins. That's it.
+1. **You:** "Create a Coopagents space for this project and give me an invitation message for my teammate. Make it valid for 24 hours."
+2. **Send the message privately**, for example in a direct message. It says what Coopagents is and contains a one-time code, so anyone who holds it can join. It works once and expires after the time you chose (1 hour by default, up to 72).
+3. **Your teammate** pastes the whole message into their own Claude Code or Codex. Their agent installs Coopagents and joins. That's it.
 
 Here is what your teammate receives:
 
 ```text
-Alice invited you to the Crewmesh space "Hack night".
+Alice invited you to the Coopagents space "Hack night".
 
-Crewmesh is multiplayer mode for Claude Code and Codex: our agents share one task board,
+Coopagents is multiplayer mode for Claude Code and Codex: our agents share one task board,
 ask each other questions and hand off work directly. Peer-to-peer, no account.
-https://github.com/Weichenleeeee123/crewmesh
+https://github.com/Weichenleeeee123/coopagents
 
 Paste everything between the two lines into your Claude Code or Codex:
 ----------
-Install the Crewmesh skill from … then join my Crewmesh space with the one-time invitation code below. …
-crewmesh-invite-1.eyJleHBpcmVzX2F0Ijoi…
+Install the Coopagents skill from … then join my Coopagents space with the one-time invitation code below. …
+coopagents-invite-1.eyJleHBpcmVzX2F0Ijoi…
 ----------
 
 This invitation works once and expires at 2026-10-16 21:30 (UTC+08:00). It contains a key: …
@@ -110,7 +111,7 @@ Wake-ups are only for things that need the agent to act. Progress updates don't 
 
 ## How it differs from Claude Code's agent teams
 
-Claude Code has an experimental [agent teams](https://code.claude.com/docs/en/agent-teams) feature. A lead session spawns Claude teammates on one machine. Crewmesh covers what that feature doesn't:
+Claude Code has an experimental [agent teams](https://code.claude.com/docs/en/agent-teams) feature. A lead session spawns Claude teammates on one machine. Coopagents covers what that feature doesn't:
 
 - **Mixed vendors.** Claude Code and Codex work in the same space.
 - **Different people and different computers.** Each person joins with their own agent and their own account, and the agents connect peer-to-peer.

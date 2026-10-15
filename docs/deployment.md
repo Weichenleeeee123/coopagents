@@ -4,7 +4,7 @@
 
 ## 首次部署
 
-1. 下载发行版或克隆仓库。复制 `.env.example` 为 `.env`，把 `CREWMESH_DOMAIN` 改成真实域名（仅域名，不带协议或路径）。配置 DNS A / AAAA，确认对应服务器可达。仅配置实际可用的 IPv6 地址。
+1. 下载发行版或克隆仓库。复制 `.env.example` 为 `.env`，把 `COOPAGENTS_DOMAIN` 改成真实域名（仅域名，不带协议或路径）。配置 DNS A / AAAA，确认对应服务器可达。仅配置实际可用的 IPv6 地址。
 2. 生成首次账号初始化 / 旧版建房密钥，保存在未提交的 `.local/`。以下 Python 命令在 Windows / Linux 均可执行，使用独占创建，已有文件会拒绝覆盖：
 
 ```bash
@@ -30,12 +30,12 @@ Caddy 自动申请并续期证书。首次签发依赖真实 DNS 和公网端口
 
 | 配置 | 用途 |
 | --- | --- |
-| `CREWMESH_MODE` | 默认 `self-hosted`，本地认证不需要官方网络；`cloud` 仅在明确配置 GitHub OAuth 时启用 |
-| `CREWMESH_HOST` / `CREWMESH_PORT` | 默认 `127.0.0.1:8787`；非回环地址必须同时配置公网模式 |
-| `CREWMESH_PUBLIC_URL` | 严格 HTTPS origin，例如 `https://crewmesh.example.com`；不接受路径、查询或用户信息 |
-| `CREWMESH_BOOTSTRAP_SECRET_FILE` | 公网建房密钥文件；也可配置 `CREWMESH_BOOTSTRAP_SECRET`，二者不能同时设置 |
-| `CREWMESH_TRUSTED_PROXIES` | 明确的代理 IP / CIDR；默认不信任代理，禁止 `*` 或全网范围 |
-| `CREWMESH_DATABASE` | 数据库路径；Compose 默认 `/data/crewmesh.sqlite3` |
+| `COOPAGENTS_MODE` | 默认 `self-hosted`，本地认证不需要官方网络；`cloud` 仅在明确配置 GitHub OAuth 时启用 |
+| `COOPAGENTS_HOST` / `COOPAGENTS_PORT` | 默认 `127.0.0.1:8787`；非回环地址必须同时配置公网模式 |
+| `COOPAGENTS_PUBLIC_URL` | 严格 HTTPS origin，例如 `https://coopagents.example.com`；不接受路径、查询或用户信息 |
+| `COOPAGENTS_BOOTSTRAP_SECRET_FILE` | 公网建房密钥文件；也可配置 `COOPAGENTS_BOOTSTRAP_SECRET`，二者不能同时设置 |
+| `COOPAGENTS_TRUSTED_PROXIES` | 明确的代理 IP / CIDR；默认不信任代理，禁止 `*` 或全网范围 |
+| `COOPAGENTS_DATABASE` | 数据库路径；Compose 默认 `/data/coopagents.sqlite3` |
 
 Compose 中仅代理发布端口，应用无宿主端口映射。内部固定网段为 `172.30.87.0/24`，只信任代理 `.2`。如与现有网络冲突，必须同时修改网段、两个静态地址及受信代理配置。不要将受信范围扩大为全网。
 
@@ -46,8 +46,8 @@ Compose 中仅代理发布端口，应用无宿主端口映射。内部固定网
 SQLite 在线备份命令可在服务运行时执行，不要直接复制活跃数据库主文件来代替一致备份。每次使用新的目标名称：
 
 ```bash
-docker compose exec app python -m crewmesh.backup backup /data/crewmesh.sqlite3 /data/backups/crewmesh-20261010-01.sqlite3
-docker compose cp app:/data/backups/crewmesh-20261010-01.sqlite3 .local/crewmesh-20261010-01.sqlite3
+docker compose exec app python -m coopagents.backup backup /data/coopagents.sqlite3 /data/backups/coopagents-20261010-01.sqlite3
+docker compose cp app:/data/backups/coopagents-20261010-01.sqlite3 .local/coopagents-20261010-01.sqlite3
 ```
 
 备份包含账号、成员、凭据哈希、所有团队消息及完整 billing ledger（catalog、bindings、事件、lease、audit、出站与 Checkout idempotency keys），应像生产数据一样保护并额外保存到独立介质。命令校验数据库完整性，拒绝覆盖已有目标。失败时任何部分文件保留，使用新的目标重试；本项目不自动删除文件。
@@ -57,19 +57,19 @@ docker compose cp app:/data/backups/crewmesh-20261010-01.sqlite3 .local/crewmesh
 恢复会写入新文件，不覆盖原数据库：
 
 ```bash
-docker compose exec app python -m crewmesh.backup restore /data/backups/crewmesh-20261010-01.sqlite3 /data/restored-20261010-01.sqlite3
+docker compose exec app python -m coopagents.backup restore /data/backups/coopagents-20261010-01.sqlite3 /data/restored-20261010-01.sqlite3
 docker compose stop app
 ```
 
-在 `.env` 设置 `CREWMESH_DATABASE=/data/restored-20261010-01.sqlite3`，再执行 `docker compose up -d app`。通过网页检查房间、任务、消息和 MCP 认证，保留旧文件以便回退。启用 billing 时保留原 mode/catalog 与所有出站 key，按 [C2 运维](c2-operations.md) 进行 bounded canonical reconcile 与到期 retry；不得删除账本或重置 key。恢复历史备份也会恢复当时的令牌状态，可能让备份后已撤销的令牌重新有效；恢复后立即轮换相关成员的 agent 令牌，重新签发邀请并确认网页凭据的有效性。
+在 `.env` 设置 `COOPAGENTS_DATABASE=/data/restored-20261010-01.sqlite3`，再执行 `docker compose up -d app`。通过网页检查房间、任务、消息和 MCP 认证，保留旧文件以便回退。启用 billing 时保留原 mode/catalog 与所有出站 key，按 [C2 运维](c2-operations.md) 进行 bounded canonical reconcile 与到期 retry；不得删除账本或重置 key。恢复历史备份也会恢复当时的令牌状态，可能让备份后已撤销的令牌重新有效；恢复后立即轮换相关成员的 agent 令牌，重新签发邀请并确认网页凭据的有效性。
 
-升级前做一致备份并记录镜像版本 / digest。领取新版源码或发行包，更新 `CREWMESH_VERSION`，运行 `docker compose up -d --build`，检查就绪状态和业务数据。本版数据库升级为附加字段；未来版本能否降级需阅读变更说明。回退代码时仍保留原卷，必要时从升级前备份恢复到新路径。
+升级前做一致备份并记录镜像版本 / digest。领取新版源码或发行包，更新 `COOPAGENTS_VERSION`，运行 `docker compose up -d --build`，检查就绪状态和业务数据。本版数据库升级为附加字段；未来版本能否降级需阅读变更说明。回退代码时仍保留原卷，必要时从升级前备份恢复到新路径。
 
 停止使用 `docker compose stop`，会保留容器和卷。不要使用删除容器、卷或文件的清理命令。证书数据保存在独立卷，应随服务迁移保护。
 
 ## C1 账号、迁移和代理
 
-账号 Cookie 为 HttpOnly / SameSite=Lax，公网 HTTPS 下为 Secure，有效七天。所有账号写请求校验精确 Origin，已登录写请求还需要会话绑定的 `X-Crewmesh-CSRF`。反向代理必须保留 Host，并只从指定代理接受转发协议；应用的 `CREWMESH_PUBLIC_URL` 必须与浏览器实际 origin 相同。账号 Cookie 不能当作项目或 MCP bearer 令牌。
+账号 Cookie 为 HttpOnly / SameSite=Lax，公网 HTTPS 下为 Secure，有效七天。所有账号写请求校验精确 Origin，已登录写请求还需要会话绑定的 `X-Coopagents-CSRF`。反向代理必须保留 Host，并只从指定代理接受转发协议；应用的 `COOPAGENTS_PUBLIC_URL` 必须与浏览器实际 origin 相同。账号 Cookie 不能当作项目或 MCP bearer 令牌。
 
 团队 owner 可管理所有团队角色；admin 只可管理普通成员，不能修改 owner/admin 身份。最后一个 owner 不能被移除或降级。团队成员仅可使用明确授予的项目，创建项目不会自动授权其他成员。移除成员撤销其项目凭据和其未使用邀请；降级使此前管理员邀请失效。密码重置撤销该账号全部会话，其派生的项目网页凭据立即不可用；独立 agent 凭据需另行轮换。
 
@@ -81,7 +81,7 @@ docker compose stop app
 
 ```bash
 docker compose stop app
-docker compose run --no-deps --name crewmesh-recovery-20261011-01 app python -m crewmesh.account_recovery --database /data/crewmesh.sqlite3 --username owner
+docker compose run --no-deps --name coopagents-recovery-20261011-01 app python -m coopagents.account_recovery --database /data/coopagents.sqlite3 --username owner
 docker compose up -d app
 ```
 
@@ -93,20 +93,20 @@ docker compose up -d app
 
 默认 Compose 只挂载 bootstrap secret，不要求不存在的 GitHub 密钥文件。直接运行 cloud 服务不需要 bootstrap secret；Compose 覆盖方式保留基础文件的挂载，但 cloud 不开放账号初始化。官方部署目标尚未确定。配置 cloud 时注册真实 GitHub OAuth App，回调必须精确为 `https://你的域名/account/oauth/github/callback`；账号按 GitHub 数字 ID 绑定，不按邮箱或用户名合并。
 
-直接启动服务时设置 `CREWMESH_MODE=cloud`、`CREWMESH_PUBLIC_URL`、`CREWMESH_GITHUB_CLIENT_ID`，以及 `CREWMESH_GITHUB_CLIENT_SECRET_FILE` 指向服务器上受保护文件（或互斥的 `CREWMESH_GITHUB_CLIENT_SECRET`）。Compose 可使用保存在忽略目录的覆盖文件，显式将受保护的 GitHub secret 挂载给 app 并设置文件路径；仅在启用 cloud 时加载该覆盖文件。不要把 secret 值写入受版本控制的 YAML、URL 或日志。示例覆盖文件：
+直接启动服务时设置 `COOPAGENTS_MODE=cloud`、`COOPAGENTS_PUBLIC_URL`、`COOPAGENTS_GITHUB_CLIENT_ID`，以及 `COOPAGENTS_GITHUB_CLIENT_SECRET_FILE` 指向服务器上受保护文件（或互斥的 `COOPAGENTS_GITHUB_CLIENT_SECRET`）。Compose 可使用保存在忽略目录的覆盖文件，显式将受保护的 GitHub secret 挂载给 app 并设置文件路径；仅在启用 cloud 时加载该覆盖文件。不要把 secret 值写入受版本控制的 YAML、URL 或日志。示例覆盖文件：
 
 ```yaml
 services:
   app:
     environment:
-      CREWMESH_MODE: cloud
-      CREWMESH_GITHUB_CLIENT_ID: ${CREWMESH_GITHUB_CLIENT_ID:?Configure GitHub client ID}
-      CREWMESH_GITHUB_CLIENT_SECRET_FILE: /run/secrets/github
+      COOPAGENTS_MODE: cloud
+      COOPAGENTS_GITHUB_CLIENT_ID: ${COOPAGENTS_GITHUB_CLIENT_ID:?Configure GitHub client ID}
+      COOPAGENTS_GITHUB_CLIENT_SECRET_FILE: /run/secrets/github
     secrets:
       - github
 secrets:
   github:
-    file: ${CREWMESH_GITHUB_SECRET_FILE:?Configure protected server secret path}
+    file: ${COOPAGENTS_GITHUB_SECRET_FILE:?Configure protected server secret path}
 ```
 
 将覆盖文件保存为 `.local/compose-cloud.yaml`，在未提交的 `.env` 中设置 ID 和 secret 文件路径，然后运行 `docker compose --env-file .env -f compose.yaml -f .local/compose-cloud.yaml config --quiet` 和相同参数的 `up -d --build`。密钥文件需允许 UID 10001 读取；支持有限长度文件，缺失/部分/冲突配置会启动失败。Cloud 关闭本地登录/初始化/密码重置，用户通过 GitHub 登录创建团队或接受团队邀请。只有 OAuth 交换需要访问 GitHub，自托管默认没有这项依赖。代码及隔离测试不等于真实 OAuth 登录已通过；目前没有提供方凭据，真实回调未验收。

@@ -14,7 +14,7 @@ from urllib.error import HTTPError
 from uuid import uuid4
 
 import uvicorn
-from crewmesh.api import create_app
+from coopagents.api import create_app
 
 
 class DeploymentTests(unittest.TestCase):
@@ -33,7 +33,7 @@ class DeploymentTests(unittest.TestCase):
             create_app('.local/test-evidence/invalid.sqlite3', public_url='https://team.example', bootstrap_secret='weak')
 
     def test_proxy_configuration_requires_explicit_addresses(self):
-        from crewmesh.config import trusted_proxies
+        from coopagents.config import trusted_proxies
         self.assertEqual(trusted_proxies(''), [])
         self.assertEqual(trusted_proxies('127.0.0.1,10.0.0.0/24'), ['127.0.0.1', '10.0.0.0/24'])
         for value in ('*', '0.0.0.0/0', '::/0', 'proxy.example', '127.0.0.1,'):
@@ -41,24 +41,24 @@ class DeploymentTests(unittest.TestCase):
                 trusted_proxies(value)
 
     def test_secret_sources_and_server_proxy_defaults(self):
-        from crewmesh.config import bootstrap_from_env
-        from crewmesh.server import main
+        from coopagents.config import bootstrap_from_env
+        from coopagents.server import main
         secret = secrets.token_urlsafe(32)
         path = Path('.local/test-evidence') / (str(uuid4()) + '.secret')
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(secret + '\n', encoding='ascii')
-        self.assertEqual(bootstrap_from_env({'CREWMESH_BOOTSTRAP_SECRET_FILE': str(path)}), secret)
-        self.assertEqual(bootstrap_from_env({'CREWMESH_BOOTSTRAP_SECRET': secret}), secret)
+        self.assertEqual(bootstrap_from_env({'COOPAGENTS_BOOTSTRAP_SECRET_FILE': str(path)}), secret)
+        self.assertEqual(bootstrap_from_env({'COOPAGENTS_BOOTSTRAP_SECRET': secret}), secret)
         with self.assertRaises(ValueError):
-            bootstrap_from_env({'CREWMESH_BOOTSTRAP_SECRET': secret, 'CREWMESH_BOOTSTRAP_SECRET_FILE': str(path)})
-        with patch.dict(os.environ, {}, clear=True), patch('sys.argv', ['crewmesh']), patch('crewmesh.api.create_app', return_value='app'), patch('uvicorn.run') as run:
+            bootstrap_from_env({'COOPAGENTS_BOOTSTRAP_SECRET': secret, 'COOPAGENTS_BOOTSTRAP_SECRET_FILE': str(path)})
+        with patch.dict(os.environ, {}, clear=True), patch('sys.argv', ['coopagents']), patch('coopagents.api.create_app', return_value='app'), patch('uvicorn.run') as run:
             main()
             self.assertEqual(run.call_args.kwargs['host'], '127.0.0.1')
             self.assertFalse(run.call_args.kwargs['proxy_headers'])
             self.assertEqual(run.call_args.kwargs['forwarded_allow_ips'], [])
-        env = {'CREWMESH_HOST': '0.0.0.0', 'CREWMESH_PORT': '9090', 'CREWMESH_PUBLIC_URL': 'https://team.example',
-               'CREWMESH_BOOTSTRAP_SECRET_FILE': str(path), 'CREWMESH_TRUSTED_PROXIES': '10.0.0.2'}
-        with patch.dict(os.environ, env, clear=True), patch('sys.argv', ['crewmesh']), patch('crewmesh.api.create_app', return_value='app') as create, patch('uvicorn.run') as run:
+        env = {'COOPAGENTS_HOST': '0.0.0.0', 'COOPAGENTS_PORT': '9090', 'COOPAGENTS_PUBLIC_URL': 'https://team.example',
+               'COOPAGENTS_BOOTSTRAP_SECRET_FILE': str(path), 'COOPAGENTS_TRUSTED_PROXIES': '10.0.0.2'}
+        with patch.dict(os.environ, env, clear=True), patch('sys.argv', ['coopagents']), patch('coopagents.api.create_app', return_value='app') as create, patch('uvicorn.run') as run:
             main()
             config=dict(create.call_args.kwargs)
             self.assertFalse(config.pop('github_app').enabled)
@@ -69,8 +69,8 @@ class DeploymentTests(unittest.TestCase):
             self.assertEqual(run.call_args.kwargs['forwarded_allow_ips'], ['10.0.0.2'])
 
     def test_nonlocal_binding_fails_closed_without_public_config(self):
-        from crewmesh.server import main
-        with patch.dict(os.environ, {}, clear=True), patch('sys.argv', ['crewmesh', '--host', '0.0.0.0']), patch('sys.stderr', new_callable=io.StringIO) as stderr, patch('uvicorn.run') as run:
+        from coopagents.server import main
+        with patch.dict(os.environ, {}, clear=True), patch('sys.argv', ['coopagents', '--host', '0.0.0.0']), patch('sys.stderr', new_callable=io.StringIO) as stderr, patch('uvicorn.run') as run:
             with self.assertRaises(SystemExit) as failure:
                 main()
             self.assertEqual(failure.exception.code, 2)
@@ -114,16 +114,16 @@ class DeploymentTests(unittest.TestCase):
             self.assertEqual(request('/health', headers={'X-Forwarded-Host': 'evil.example', 'X-Forwarded-Proto': 'https'}), (200, {'status': 'ok'}))
             room = {'name': 'Public team', 'owner_name': 'Owner'}
             self.assertEqual(request('/api/rooms', room)[0], 401)
-            self.assertEqual(request('/api/rooms', room, {'X-Crewmesh-Bootstrap': 'wrong'})[0], 401)
-            self.assertEqual(request('/api/rooms', room, {'X-Crewmesh-Bootstrap': secret, 'Origin': 'https://evil.example'})[0], 403)
-            status, owner = request('/api/rooms', room, {'X-Crewmesh-Bootstrap': secret, 'Origin': 'https://team.example'})
+            self.assertEqual(request('/api/rooms', room, {'X-Coopagents-Bootstrap': 'wrong'})[0], 401)
+            self.assertEqual(request('/api/rooms', room, {'X-Coopagents-Bootstrap': secret, 'Origin': 'https://evil.example'})[0], 403)
+            status, owner = request('/api/rooms', room, {'X-Coopagents-Bootstrap': secret, 'Origin': 'https://team.example'})
             self.assertEqual(status, 200)
             rpc = {'jsonrpc': '2.0', 'id': 1, 'method': 'initialize',
                    'params': {'protocolVersion': '2025-11-25', 'capabilities': {}, 'clientInfo': {'name': 'test', 'version': '1'}}}
             hdr = {'Authorization': 'Bearer ' + owner['agent_token'], 'Accept': 'application/json, text/event-stream', 'Origin': 'https://team.example'}
             status, result = request('/mcp', rpc, hdr)
             self.assertEqual(status, 200, result)
-            self.assertEqual(result['result']['serverInfo']['name'], 'Crewmesh')
+            self.assertEqual(result['result']['serverInfo']['name'], 'Coopagents')
             self.assertEqual(request('/mcp', rpc, {**hdr, 'Origin': 'https://evil.example'})[0], 403)
             self.assertEqual(request('/mcp', rpc, {**hdr, 'Host': 'evil.example'})[0], 400)
             with patch.object(app.state.service.identity.db, 'connect', side_effect=RuntimeError('private database path')):

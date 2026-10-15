@@ -27,7 +27,7 @@ class WebTests(unittest.TestCase):
             with urlopen(self.live.url + path) as response:
                 self.assertEqual(response.status, 200)
                 self.assertEqual(response.headers.get_content_type(), mime)
-                self.assertEqual(response.read(), files('crewmesh').joinpath('static', resource).read_bytes())
+                self.assertEqual(response.read(), files('coopagents').joinpath('static', resource).read_bytes())
                 policy = response.headers['Content-Security-Policy']
                 self.assertIn("script-src 'self'", policy)
                 self.assertIn("frame-ancestors 'none'", policy)

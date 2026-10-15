@@ -32,5 +32,5 @@
     open();
     return {close(){stopped=true;serial++;dirty=false;clearTimeout(retryTimer);socket?.close();socket=null;}};
   }
-  window.CrewmeshRealtime={connect};
+  window.CoopagentsRealtime={connect};
 })();

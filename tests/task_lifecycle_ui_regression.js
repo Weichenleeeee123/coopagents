@@ -54,7 +54,7 @@ global.document={createElement:tag=>new Element(tag),activeElement:null};
   const vm=require('node:vm'), elements=new Map();
   document.getElementById=id=>{if(!elements.has(id))elements.set(id,new Element('div'));return elements.get(id);};
   document.querySelectorAll=()=>[];
-  const app=vm.createContext({document,window:{CrewmeshTaskLifecycle:Lifecycle},sessionStorage:{getItem:()=>'',setItem(){},removeItem(){}},setTimeout:()=>1,clearTimeout(){},location:{origin:'http://localhost'},AbortController,Date,JSON});
+  const app=vm.createContext({document,window:{CoopagentsTaskLifecycle:Lifecycle},sessionStorage:{getItem:()=>'',setItem(){},removeItem(){}},setTimeout:()=>1,clearTimeout(){},location:{origin:'http://localhost'},AbortController,Date,JSON});
   vm.runInContext(fs.readFileSync('src/static/app.js','utf8'),app);
   const event=id=>({id,task_id:1,action:'release_task',actor_member_id:'me',from_owner_member_id:'me',ownership_epoch:1,summary:'Event '+id,created_at:'2026-10-11T00:00:00Z',context:{progress:{summary:'Progress '+id}}});
   const fixture={...snapshot,tasks:[task],progress:[],requests:[],contracts:[],lifecycle:{...snapshot.lifecycle,history:[event(30)]}};

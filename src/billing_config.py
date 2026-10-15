@@ -39,13 +39,13 @@ def load_billing_config(deployment_mode: str, env=None) -> BillingConfig:
     if deployment_mode == 'self-hosted':
         return BillingConfig()
     env = os.environ if env is None else env
-    names = ('CREWMESH_BILLING_MODE', 'CREWMESH_STRIPE_SECRET_KEY', 'CREWMESH_STRIPE_SECRET_KEY_FILE',
-             'CREWMESH_STRIPE_WEBHOOK_SECRET', 'CREWMESH_STRIPE_WEBHOOK_SECRET_FILE',
-             'CREWMESH_TEAM_MONTHLY_PRICE_ID', 'CREWMESH_FREE_MEMBERS', 'CREWMESH_FREE_PROJECTS',
-             'CREWMESH_TEAM_MEMBERS', 'CREWMESH_TEAM_PROJECTS')
+    names = ('COOPAGENTS_BILLING_MODE', 'COOPAGENTS_STRIPE_SECRET_KEY', 'COOPAGENTS_STRIPE_SECRET_KEY_FILE',
+             'COOPAGENTS_STRIPE_WEBHOOK_SECRET', 'COOPAGENTS_STRIPE_WEBHOOK_SECRET_FILE',
+             'COOPAGENTS_TEAM_MONTHLY_PRICE_ID', 'COOPAGENTS_FREE_MEMBERS', 'COOPAGENTS_FREE_PROJECTS',
+             'COOPAGENTS_TEAM_MEMBERS', 'COOPAGENTS_TEAM_PROJECTS')
     if not any(name in env for name in names):
         return BillingConfig()
-    mode = env.get('CREWMESH_BILLING_MODE')
+    mode = env.get('COOPAGENTS_BILLING_MODE')
     if mode not in ('test', 'live'):
         raise ValueError('Explicit billing mode required')
     caps = []
@@ -54,11 +54,11 @@ def load_billing_config(deployment_mode: str, env=None) -> BillingConfig:
         if not isinstance(raw, str) or not re.fullmatch(r'[1-9][0-9]{0,9}', raw):
             raise ValueError('Explicit positive billing limits required')
         caps.append(int(raw))
-    price = env.get('CREWMESH_TEAM_MONTHLY_PRICE_ID')
+    price = env.get('COOPAGENTS_TEAM_MONTHLY_PRICE_ID')
     if not isinstance(price, str) or not re.fullmatch(r'price_[A-Za-z0-9]{1,200}', price):
         # Fixture IDs and real IDs share Stripe's prefix; underscore suffixes are allowed below.
         if not isinstance(price, str) or not re.fullmatch(r'price_[A-Za-z0-9_]{1,200}', price):
             raise ValueError('Explicit monthly price required')
     return BillingConfig(True, BillingCatalog(*caps, price, mode),
-                         _secret(env, 'CREWMESH_STRIPE_SECRET_KEY', 'sk_' + mode + '_'),
-                         _secret(env, 'CREWMESH_STRIPE_WEBHOOK_SECRET', 'whsec_'))
+                         _secret(env, 'COOPAGENTS_STRIPE_SECRET_KEY', 'sk_' + mode + '_'),
+                         _secret(env, 'COOPAGENTS_STRIPE_WEBHOOK_SECRET', 'whsec_'))

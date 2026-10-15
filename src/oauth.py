@@ -12,7 +12,7 @@ from starlette.routing import Route
 from .config import public_origin
 from .errors import AccessDenied
 
-STATE_COOKIE = 'crewmesh_oauth_state'
+STATE_COOKIE = 'coopagents_oauth_state'
 STATE_LIMIT = 10000
 
 class NoRedirect(HTTPRedirectHandler):
@@ -67,7 +67,7 @@ class GitHubOAuth:
             return row['verifier']
 
     def _json(self, url, *, data=None, token=None):
-        headers = {'Accept': 'application/json', 'User-Agent': 'Crewmesh', 'X-GitHub-Api-Version': '2022-11-28'}
+        headers = {'Accept': 'application/json', 'User-Agent': 'Coopagents', 'X-GitHub-Api-Version': '2022-11-28'}
         if token:
             headers['Authorization'] = 'Bearer ' + token
         if data is not None:

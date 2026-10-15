@@ -13,7 +13,7 @@
 ```powershell
 python -m venv .venv
 & .\.venv\Scripts\python.exe -m pip install -e ".[service]"
-& .\.venv\Scripts\python.exe -m crewmesh.server
+& .\.venv\Scripts\python.exe -m coopagents.server
 ```
 
 **macOS / Linux**
@@ -21,10 +21,10 @@ python -m venv .venv
 ```bash
 python3 -m venv .venv
 .venv/bin/python -m pip install -e '.[service]'
-.venv/bin/python -m crewmesh.server
+.venv/bin/python -m coopagents.server
 ```
 
-启动前按 [本机运行](app-running.md) 生成并配置首次账号初始化密钥。打开 **http://127.0.0.1:8787/**，用密钥建立本地账号，再创建团队与项目。管理员在项目卡片点击「邀请队友」复制单次邀请链接，新成员打开链接登录或注册并明确接受；登录后可切换多个团队与项目。MCP 地址为 `http://127.0.0.1:8787/mcp`，数据存放于 `.local/crewmesh.sqlite3`。
+启动前按 [本机运行](app-running.md) 生成并配置首次账号初始化密钥。打开 **http://127.0.0.1:8787/**，用密钥建立本地账号，再创建团队与项目。管理员在项目卡片点击「邀请队友」复制单次邀请链接，新成员打开链接登录或注册并明确接受；登录后可切换多个团队与项目。MCP 地址为 `http://127.0.0.1:8787/mcp`，数据存放于 `.local/coopagents.sqlite3`。
 
 ## 部署给团队
 
@@ -39,7 +39,7 @@ docker compose --env-file .env up -d --build
 ## 保留你习惯的工具
 
 1. 登录账号后建立团队与项目、声明任务，管理员复制指定项目范围的单次邀请链接。
-2. 成员加入项目后点击「接入 agent」，复制包含公开 Skill 地址与个人 agent 凭据的接入指令，交给自己的 Claude Code 或 Codex 完成原生 MCP 配置。无需安装 Crewmesh 本地客户端。
+2. 成员加入项目后点击「接入 agent」，复制包含公开 Skill 地址与个人 agent 凭据的接入指令，交给自己的 Claude Code 或 Codex 完成原生 MCP 配置。无需安装 Coopagents 本地客户端。
 3. agent 开始前读取团队上下文并认领任务，推进时汇报状态，遇到依赖时发起技术请求。
 4. 人在网页查看工作现场、分派请求并审核公共约定；代码继续通过分支和 PR 汇合。
 
@@ -47,7 +47,7 @@ docker compose --env-file .env up -d --build
 
 ### 从真实仓库获得上下文
 
-本地 Git 自动采集是可选高级功能：在网页“仓库接入”绑定共同仓库，每台电脑配置一次本地 stdio 适配器。它不是 Skill 接入或基础团队协作的前置条件。它读取本机 Git，在任务检查点同步分支、完整提交 SHA 与已跟踪文件的实际变更路径；离线观测保存在本机 SQLite，恢复连接后幂等重试。版本化的 `.crewmesh/project.json` 和 `rules.md` 只存公共项目约定，服务地址与个人令牌由本机配置提供。
+本地 Git 自动采集是可选高级功能：在网页“仓库接入”绑定共同仓库，每台电脑配置一次本地 stdio 适配器。它不是 Skill 接入或基础团队协作的前置条件。它读取本机 Git，在任务检查点同步分支、完整提交 SHA 与已跟踪文件的实际变更路径；离线观测保存在本机 SQLite，恢复连接后幂等重试。版本化的 `.coopagents/project.json` 和 `rules.md` 只存公共项目约定，服务地址与个人令牌由本机配置提供。
 
 ```text
 任务 → 本地工作区 → 分支 / 提交 → PR → 检查 → 合并证据

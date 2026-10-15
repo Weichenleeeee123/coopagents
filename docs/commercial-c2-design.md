@@ -83,4 +83,4 @@ Webhook 独立于账号 Cookie/CSRF，仅接受提供方对原始 body 的有效
 - [Stripe Customer Portal](https://docs.stripe.com/customer-management/integrate-customer-portal)
 - [Paddle Customer Portal](https://developer.paddle.com/build/customers/integrate-customer-portal/)
 
-参考文档于 2026-10-11 查阅。以上是 Crewmesh 拟采用的产品策略；提供方 API、事件版本与签名细节在适配器实施前再次按官方文档锁定，不把本设计的权益策略当作提供方默认行为。
+参考文档于 2026-10-11 查阅。以上是 Coopagents 拟采用的产品策略；提供方 API、事件版本与签名细节在适配器实施前再次按官方文档锁定，不把本设计的权益策略当作提供方默认行为。

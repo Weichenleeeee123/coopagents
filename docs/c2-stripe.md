@@ -20,14 +20,14 @@ Use deployment mode exactly `cloud` or `self-hosted`. Complete absence of all bi
 
 | Environment variable | Required meaning |
 | --- | --- |
-| `CREWMESH_BILLING_MODE` | Exactly `test` or `live` |
-| `CREWMESH_STRIPE_SECRET_KEY` or `CREWMESH_STRIPE_SECRET_KEY_FILE` | Exactly one source; corresponding `sk_test_` or `sk_live_` key |
-| `CREWMESH_STRIPE_WEBHOOK_SECRET` or `CREWMESH_STRIPE_WEBHOOK_SECRET_FILE` | Exactly one source; `whsec_` signing secret |
-| `CREWMESH_TEAM_MONTHLY_PRICE_ID` | Configured Stripe `price_` identifier |
-| `CREWMESH_FREE_MEMBERS` | Free active member cap |
-| `CREWMESH_FREE_PROJECTS` | Free project cap |
-| `CREWMESH_TEAM_MEMBERS` | Team active member cap |
-| `CREWMESH_TEAM_PROJECTS` | Team project cap |
+| `COOPAGENTS_BILLING_MODE` | Exactly `test` or `live` |
+| `COOPAGENTS_STRIPE_SECRET_KEY` or `COOPAGENTS_STRIPE_SECRET_KEY_FILE` | Exactly one source; corresponding `sk_test_` or `sk_live_` key |
+| `COOPAGENTS_STRIPE_WEBHOOK_SECRET` or `COOPAGENTS_STRIPE_WEBHOOK_SECRET_FILE` | Exactly one source; `whsec_` signing secret |
+| `COOPAGENTS_TEAM_MONTHLY_PRICE_ID` | Configured Stripe `price_` identifier |
+| `COOPAGENTS_FREE_MEMBERS` | Free active member cap |
+| `COOPAGENTS_FREE_PROJECTS` | Free project cap |
+| `COOPAGENTS_TEAM_MEMBERS` | Team active member cap |
+| `COOPAGENTS_TEAM_PROJECTS` | Team project cap |
 
 Secret files are read as ASCII with a 4096-byte bound and optional trailing CR/LF. Embedded whitespace, excessive length, absent/duplicate sources and inaccessible files fail with safe messages. Do not commit actual keys, secret files, machine configuration or raw provider data. Fixture secret strings are explicitly nonfunctional.
 

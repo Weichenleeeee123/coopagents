@@ -1,6 +1,6 @@
 # C1 Account and Workspace Implementation Plan
 
-> **For agentic workers:** Use subagent-driven-development to implement sequential tasks, with independent specification and quality reviews. Never delete files; retain test evidence under ignored `.local/`. Work in the user's existing repository on `feat/crewmesh-integration`.
+> **For agentic workers:** Use subagent-driven-development to implement sequential tasks, with independent specification and quality reviews. Never delete files; retain test evidence under ignored `.local/`. Work in the user's existing repository on `feat/coopagents-integration`.
 
 **Goal:** Deliver the approved open source account, team and multi-project foundation without changing existing agent workflows.
 
@@ -26,7 +26,7 @@ Files: create `src/account_api.py`, `src/oauth.py`, `tests/test_account_api.py`,
 - [x] Mount `/account/*` routes for configuration/session/bootstrap/login/logout/teams/invites/projects/roles/removal/password reset. Keep existing `/api/*` unchanged. Exchange authorized project selection for personal expiring web credentials without exposing account cookies to project/MCP callers. HTTP errors never return passwords, cookies or provider tokens.
 - [x] Use HttpOnly SameSite=Lax account cookies, Secure on public HTTPS; require matching Origin and session-bound CSRF header on authenticated writes. Bootstrap has explicit secret authorization even locally; configuration reports setup availability without exposing the secret. Cookie and bearer authorization must never be interchangeable.
 - [x] Implement cloud-only GitHub OAuth using standard-library HTTPS calls, client secret from environment/file, canonical callback URL and one-use state bound to browser cookie; expire state after ten minutes. Exchange code server-side, fetch GitHub numeric user ID, link only by that ID. Never merge by email/name. Validate fixed provider endpoints; no attacker supplied redirect URI. Callback query allowance is restricted to its expected fields.
-- [x] Add `CREWMESH_MODE=self-hosted|cloud`; self-hosted defaults local auth and no official network/license dependency. Invalid or partial OAuth configuration fails clearly. Keep provider credentials out of logs and ordinary responses. GitHub OAuth remote authentication cannot be marked verified without actual app configuration.
+- [x] Add `COOPAGENTS_MODE=self-hosted|cloud`; self-hosted defaults local auth and no official network/license dependency. Invalid or partial OAuth configuration fails clearly. Keep provider credentials out of logs and ordinary responses. GitHub OAuth remote authentication cannot be marked verified without actual app configuration.
 - [x] Run account HTTP/OAuth and all existing HTTP/MCP tests; review spec then quality; commit `feat: expose account sessions and configured GitHub login`.
 
 ## Task 3: Account and workspace UI

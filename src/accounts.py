@@ -88,7 +88,7 @@ class AccountStore:
     @staticmethod
     def csrf_token(session_token):
         _token_hash(session_token)
-        return hashlib.sha256(('crewmesh-csrf:' + session_token).encode()).hexdigest()
+        return hashlib.sha256(('coopagents-csrf:' + session_token).encode()).hexdigest()
 
     def _create_session(self, c, account_id):
         account = self._get(c, account_id)

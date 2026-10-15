@@ -14,12 +14,12 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 from uuid import uuid4
 
-from crewmesh.accounts import AccountStore
-from crewmesh.billing import BillingCatalog, BillingStore
-from crewmesh.errors import AccessDenied, Conflict
-from crewmesh.identity import IdentityStore
-from crewmesh.workspaces import WorkspaceStore
-from crewmesh.stripe_billing import StripeClient, StripeError
+from coopagents.accounts import AccountStore
+from coopagents.billing import BillingCatalog, BillingStore
+from coopagents.errors import AccessDenied, Conflict
+from coopagents.identity import IdentityStore
+from coopagents.workspaces import WorkspaceStore
+from coopagents.stripe_billing import StripeClient, StripeError
 
 
 class FixtureTransport:
@@ -104,8 +104,8 @@ class FixtureTransport:
 
 class BillingServiceTests(unittest.TestCase):
     def setUp(self):
-        self.assertIsNotNone(importlib.util.find_spec('crewmesh.billing_service'),'Billing coordinator must exist')
-        self.module=importlib.import_module('crewmesh.billing_service')
+        self.assertIsNotNone(importlib.util.find_spec('coopagents.billing_service'),'Billing coordinator must exist')
+        self.module=importlib.import_module('coopagents.billing_service')
         root=Path('.local/c2-stripe-tests');root.mkdir(parents=True,exist_ok=True)
         self.identity=IdentityStore(root/(str(uuid4())+'.sqlite'));self.accounts=AccountStore(self.identity)
         self.accounts.bootstrap('owner','long password 123');self.owner=self.accounts.login('owner','long password 123')['session_token']
@@ -113,7 +113,7 @@ class BillingServiceTests(unittest.TestCase):
         self.catalog=BillingCatalog(2,1,20,10,'price_fixture','test')
         self.store=BillingStore(self.workspaces,'cloud',self.catalog);self.transport=FixtureTransport()
         self.client=StripeClient('sk_test_fixture','test',transport=self.transport)
-        self.service=self.module.BillingService(self.store,self.client,'whsec_fixture','https://crewmesh.example')
+        self.service=self.module.BillingService(self.store,self.client,'whsec_fixture','https://coopagents.example')
 
     def bind(self):
         self.store.bind_customer(self.team,'cus_fixture',provider_mode='test')
@@ -139,13 +139,13 @@ class BillingServiceTests(unittest.TestCase):
     def test_checkout_stable_keys_restart_and_single_outbound_winner(self):
         first=self.service.checkout(self.owner,self.team)
         self.assertEqual('checkout',first['kind']);self.assertTrue(first['url'].startswith('https://checkout.stripe.com/'))
-        restarted=self.module.BillingService(BillingStore(self.workspaces,'cloud',self.catalog),self.client,'whsec_fixture','https://crewmesh.example')
+        restarted=self.module.BillingService(BillingStore(self.workspaces,'cloud',self.catalog),self.client,'whsec_fixture','https://coopagents.example')
         second=restarted.checkout(self.owner,self.team)
         self.assertEqual(first,second)
         creates=[call for call in self.transport.calls if call[0]=='POST' and call[1]=='/checkout/sessions']
         self.assertEqual(1,len(creates))
         self.assertEqual('price_fixture',creates[0][3]['line_items[0][price]']);self.assertEqual('1',creates[0][3]['line_items[0][quantity]'])
-        self.assertEqual('https://crewmesh.example/#billing-return',creates[0][3]['success_url'])
+        self.assertEqual('https://coopagents.example/#billing-return',creates[0][3]['success_url'])
         self.assertNotIn('customer_email',creates[0][3])
 
     def test_multicurrency_price_pins_verified_base_currency_and_paid_checkout_reconciles(self):
@@ -202,7 +202,7 @@ class BillingServiceTests(unittest.TestCase):
             return status,raw
         self.client.transport=fragment
         self.assertEqual(url,self.service.checkout(self.owner,self.team)['url'])
-        restarted=self.module.BillingService(BillingStore(self.workspaces,'cloud',self.catalog),self.client,'whsec_fixture','https://crewmesh.example')
+        restarted=self.module.BillingService(BillingStore(self.workspaces,'cloud',self.catalog),self.client,'whsec_fixture','https://coopagents.example')
         self.assertEqual(url,restarted.checkout(self.owner,self.team)['url'])
 
     def test_uncertain_checkout_reuses_key_then_recovers_after_retention_window(self):
@@ -358,12 +358,12 @@ class BillingServiceTests(unittest.TestCase):
         self.assertFalse(self.service.process_next());self.assertEqual('pending',self.store.event_state('evt_fixture')['state'])
         self.transport.fail=None
         with self.store.db.connect(write=True) as c:c.execute('UPDATE billing_events SET next_attempt=0')
-        restarted=self.module.BillingService(BillingStore(self.workspaces,'cloud',self.catalog),self.client,'whsec_fixture','https://crewmesh.example')
+        restarted=self.module.BillingService(BillingStore(self.workspaces,'cloud',self.catalog),self.client,'whsec_fixture','https://coopagents.example')
         self.assertTrue(restarted.process_next());self.assertEqual(2,self.store.event_state('evt_fixture')['attempts'])
 
     def test_selfhost_never_calls_provider(self):
         self.store=BillingStore(self.workspaces,'self-hosted',self.catalog)
-        service=self.module.BillingService(self.store,None,None,'https://crewmesh.example')
+        service=self.module.BillingService(self.store,None,None,'https://coopagents.example')
         self.assertEqual('unlimited',service.summary(self.owner,self.team)['plan'])
         self.assertFalse(service.process_next())
         with self.assertRaises(Conflict):service.checkout(self.owner,self.team)
@@ -373,10 +373,10 @@ class BillingServiceTests(unittest.TestCase):
         disabled=BillingStore(self.workspaces,'self-hosted')
         service=self.module.BillingService(disabled,None,None,None)
         self.assertEqual('unlimited',service.summary(self.owner,self.team)['plan'])
-        service=self.module.BillingService(self.store,self.client,'whsec_fixture','https://crewmesh.example:8443')
+        service=self.module.BillingService(self.store,self.client,'whsec_fixture','https://coopagents.example:8443')
         result=service.checkout(self.owner,self.team)
         self.assertEqual('checkout',result['kind'])
-        self.assertEqual('https://crewmesh.example:8443/#billing-return',self.transport.objects['/checkout/sessions/cs_fixture']['success_url'])
+        self.assertEqual('https://coopagents.example:8443/#billing-return',self.transport.objects['/checkout/sessions/cs_fixture']['success_url'])
 
     def test_prior_subscription_lookup_failure_records_error_preserves_verified_state(self):
         self.bind();self.transport.paid();self.service.sync(self.owner,self.team)
@@ -531,7 +531,7 @@ class BillingServiceTests(unittest.TestCase):
                 pause.set();resume.wait(5)
             return result
         stale=self.module.BillingService(BillingStore(self.workspaces,'cloud',self.catalog),
-            StripeClient('sk_test_fixture','test',transport=delayed),'whsec_fixture','https://crewmesh.example')
+            StripeClient('sk_test_fixture','test',transport=delayed),'whsec_fixture','https://coopagents.example')
         def slow_sync():
             thread_id.append(threading.get_ident())
             try:stale.sync(self.owner,self.team)
@@ -627,16 +627,16 @@ class BillingServiceTests(unittest.TestCase):
         script='''import json,sys
 sys.path.insert(0,'tests')
 from test_billing_service import FixtureTransport
-from crewmesh.accounts import AccountStore
-from crewmesh.identity import IdentityStore
-from crewmesh.workspaces import WorkspaceStore
-from crewmesh.billing import BillingCatalog,BillingStore
-from crewmesh.billing_service import BillingService
-from crewmesh.stripe_billing import StripeClient
+from coopagents.accounts import AccountStore
+from coopagents.identity import IdentityStore
+from coopagents.workspaces import WorkspaceStore
+from coopagents.billing import BillingCatalog,BillingStore
+from coopagents.billing_service import BillingService
+from coopagents.stripe_billing import StripeClient
 transport=FixtureTransport()
 transport.objects['/customers/cus_fixture']={'id':'cus_fixture','object':'customer','livemode':False,'metadata':{}}
 store=BillingStore(WorkspaceStore(AccountStore(IdentityStore(sys.argv[1]))),'cloud',BillingCatalog(2,1,20,10,'price_fixture','test'))
-service=BillingService(store,StripeClient('sk_test_fixture','test',transport=transport),'whsec_fixture','https://crewmesh.example')
+service=BillingService(store,StripeClient('sk_test_fixture','test',transport=transport),'whsec_fixture','https://coopagents.example')
 service.checkout(sys.argv[2],sys.argv[3])
 print(json.dumps([c[2] for c in transport.calls if c[0]=='POST' and c[1]=='/checkout/sessions']))
 '''
@@ -650,17 +650,17 @@ print(json.dumps([c[2] for c in transport.calls if c[0]=='POST' and c[1]=='/chec
         script='''import json,sys
 sys.path.insert(0,'tests')
 from test_billing_service import FixtureTransport
-from crewmesh.accounts import AccountStore
-from crewmesh.identity import IdentityStore
-from crewmesh.workspaces import WorkspaceStore
-from crewmesh.billing import BillingCatalog,BillingStore
-from crewmesh.billing_service import BillingService
-from crewmesh.stripe_billing import StripeClient
+from coopagents.accounts import AccountStore
+from coopagents.identity import IdentityStore
+from coopagents.workspaces import WorkspaceStore
+from coopagents.billing import BillingCatalog,BillingStore
+from coopagents.billing_service import BillingService
+from coopagents.stripe_billing import StripeClient
 store=BillingStore(WorkspaceStore(AccountStore(IdentityStore(sys.argv[1]))),'cloud',BillingCatalog(2,1,20,10,'price_fixture','test'))
 state=store.customer_state(sys.argv[2])
 transport=FixtureTransport();transport.paid()
 transport.objects['/customers/cus_fixture']={'id':'cus_fixture','object':'customer','livemode':False,'metadata':{'customer_key':state['customer_key'],'team_id':sys.argv[2]}}
-service=BillingService(store,StripeClient('sk_test_fixture','test',transport=transport),'whsec_fixture','https://crewmesh.example')
+service=BillingService(store,StripeClient('sk_test_fixture','test',transport=transport),'whsec_fixture','https://coopagents.example')
 print(json.dumps({'processed':service.process_next(),'customer':store.customer_state(sys.argv[2])['customer_id']}))
 '''
         result=subprocess.run([sys.executable,'-c',script,str(self.identity.db.path),self.team],capture_output=True,text=True,check=True)
@@ -714,7 +714,7 @@ print(json.dumps({'processed':service.process_next(),'customer':store.customer_s
         self.assertEqual('open',self.transport.objects['/checkout/sessions/cs_fixture']['status'])
         self.assertFalse(any(c[1]=='/billing_portal/sessions' for c in self.transport.calls))
         self.release_checkout();self.transport.fail=None
-        restarted=self.module.BillingService(BillingStore(self.workspaces,'cloud',self.catalog),self.client,'whsec_fixture','https://crewmesh.example')
+        restarted=self.module.BillingService(BillingStore(self.workspaces,'cloud',self.catalog),self.client,'whsec_fixture','https://coopagents.example')
         self.assertEqual('portal',restarted.checkout(self.owner,self.team)['kind'])
         keys=[c[2] for c in self.transport.calls if c[0]=='POST' and c[1].endswith('/expire')]
         self.assertEqual(2,len(keys));self.assertEqual(keys[0],keys[1])
@@ -751,7 +751,7 @@ print(json.dumps({'processed':service.process_next(),'customer':store.customer_s
         self.assertEqual('free',self.store.summary(self.owner,self.team)['plan'])
         self.release_checkout();self.transport.fail=None
         with self.store.db.connect(write=True) as c:c.execute('UPDATE billing_events SET next_attempt=0')
-        restarted=self.module.BillingService(BillingStore(self.workspaces,'cloud',self.catalog),self.client,'whsec_fixture','https://crewmesh.example')
+        restarted=self.module.BillingService(BillingStore(self.workspaces,'cloud',self.catalog),self.client,'whsec_fixture','https://coopagents.example')
         self.assertTrue(restarted.process_next())
         self.assertEqual('processed',self.store.event_state('evt_fixture')['state'])
         self.assertEqual('expired',self.transport.objects['/checkout/sessions/cs_fixture']['status'])

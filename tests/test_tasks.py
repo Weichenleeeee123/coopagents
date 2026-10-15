@@ -7,10 +7,10 @@ from threading import Barrier
 import unittest
 from uuid import uuid4
 
-from crewmesh.identity import IdentityStore
-from crewmesh.errors import AccessDenied, Conflict, NotFound, ValidationError
+from coopagents.identity import IdentityStore
+from coopagents.errors import AccessDenied, Conflict, NotFound, ValidationError
 try:
-    from crewmesh.tasks import TaskStore
+    from coopagents.tasks import TaskStore
 except ModuleNotFoundError:
     TaskStore = None
 

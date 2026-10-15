@@ -40,8 +40,8 @@ def validate_bootstrap_secret(value):
 
 def bootstrap_from_env(environ=None):
     environ = os.environ if environ is None else environ
-    secret = environ.get('CREWMESH_BOOTSTRAP_SECRET')
-    filename = environ.get('CREWMESH_BOOTSTRAP_SECRET_FILE')
+    secret = environ.get('COOPAGENTS_BOOTSTRAP_SECRET')
+    filename = environ.get('COOPAGENTS_BOOTSTRAP_SECRET_FILE')
     if secret and filename:
         raise ValueError('Set only one bootstrap secret source')
     if filename:
@@ -72,9 +72,9 @@ def trusted_proxies(value):
 def github_oauth_from_env(environ=None):
     """No default credentials; mutually exclusive, bounded secret sources."""
     environ = os.environ if environ is None else environ
-    client_id = environ.get('CREWMESH_GITHUB_CLIENT_ID')
-    secret = environ.get('CREWMESH_GITHUB_CLIENT_SECRET')
-    filename = environ.get('CREWMESH_GITHUB_CLIENT_SECRET_FILE')
+    client_id = environ.get('COOPAGENTS_GITHUB_CLIENT_ID')
+    secret = environ.get('COOPAGENTS_GITHUB_CLIENT_SECRET')
+    filename = environ.get('COOPAGENTS_GITHUB_CLIENT_SECRET_FILE')
     if secret is not None and filename is not None:
         raise ValueError('Set only one GitHub client secret source')
     if filename is not None:

@@ -1,7 +1,7 @@
 # Room invalidation stream, protocol 1
 
 Both hosted and local service compositions use `events_route(service, base_url=...,
-public_url=...)` from `crewmesh.realtime`. Register it before the MCP mount.
+public_url=...)` from `coopagents.realtime`. Register it before the MCP mount.
 The collaboration core remains standard-library-only; the service dependency
 includes `websockets==17.2` for Uvicorn's WebSocket transport.
 

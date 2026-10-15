@@ -157,7 +157,7 @@ def bearer(request):
     return values[0][7:]
 
 
-def create_app(database_path='.local/crewmesh.sqlite3', *, base_url=None, public_url=None, bootstrap_secret=None, mode='self-hosted', github_client_id=None, github_client_secret=None, github_app=None, billing_config=None):
+def create_app(database_path='.local/coopagents.sqlite3', *, base_url=None, public_url=None, bootstrap_secret=None, mode='self-hosted', github_client_id=None, github_client_secret=None, github_app=None, billing_config=None):
     if base_url and public_url:
         raise ValueError('Set only one service origin')
     origin = public_origin(public_url) if public_url is not None else None
@@ -244,7 +244,7 @@ def create_app(database_path='.local/crewmesh.sqlite3', *, base_url=None, public
             if mode == 'cloud' and operation in ('create_room', 'join'):
                 raise AccessDenied('GitHub account workspace required')
             if operation == 'create_room' and bootstrap_hash is not None:
-                credentials = request.headers.getlist('x-crewmesh-bootstrap')
+                credentials = request.headers.getlist('x-coopagents-bootstrap')
                 candidate = credentials[0] if len(credentials) == 1 else ''
                 if not hmac.compare_digest(hashlib.sha256(candidate.encode('utf-8')).digest(), bootstrap_hash):
                     raise AccessDenied('Bootstrap credential not accepted')
@@ -311,7 +311,7 @@ def create_app(database_path='.local/crewmesh.sqlite3', *, base_url=None, public
         resource = request.path_params['resource']
         if resource not in ('SKILL.md', 'protocol.md'):
             return Response(status_code=404)
-        return Response(files('crewmesh').joinpath('skills', 'crewmesh-connect', resource).read_bytes(),
+        return Response(files('coopagents').joinpath('skills', 'coopagents-connect', resource).read_bytes(),
                         media_type='text/plain', headers={'X-Content-Type-Options':'nosniff',
                         'Content-Security-Policy': WEB_CSP})
 
@@ -331,7 +331,7 @@ def create_app(database_path='.local/crewmesh.sqlite3', *, base_url=None, public
         if request.url.path == '/favicon.ico':
             return Response(status_code=204, headers=headers)
         resource, mime = assets[request.url.path]
-        return Response(files('crewmesh').joinpath('static', resource).read_bytes(), media_type=mime, headers=headers)
+        return Response(files('coopagents').joinpath('static', resource).read_bytes(), media_type=mime, headers=headers)
 
     routes = [Route(path, web_asset, methods=['GET']) for path in ('/', '/static/styles.css', '/static/app.js', '/static/git.js', '/static/collaboration.js', '/static/task_lifecycle.js', '/static/dependencies.js', '/static/accounts.js', '/static/invitations.js', '/static/billing.js', '/static/icon.png', '/favicon.ico')]
     routes += [route('/health', ['GET']), route('/ready', ['GET']), route('/api/rooms', ['POST'], operation='create_room'), route('/api/join', ['POST'], operation='join'),
@@ -339,7 +339,7 @@ def create_app(database_path='.local/crewmesh.sqlite3', *, base_url=None, public
               route('/api/invites', ['POST'], operation='invite'), route('/api/agent-token', ['POST'], operation='rotate_agent'),
               route('/api/inbox', ['GET'], read_name='inbox'),
               route('/api/agent-connect', ['POST'], operation='connect_agent'),
-              Route('/skills/crewmesh-connect/{resource}', skill_asset, methods=['GET'])]
+              Route('/skills/coopagents-connect/{resource}', skill_asset, methods=['GET'])]
     for name in ('tasks', 'sessions', 'progress', 'overlaps', 'requests', 'contracts', 'events', 'git'):
         routes.append(route('/api/' + name, ['GET'], read_name=name))
     routes.append(route('/api/git/binding',['GET'],read_name='git_binding'))

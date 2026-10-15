@@ -5,11 +5,11 @@ import sqlite3
 import unittest
 from uuid import uuid4
 
-from crewmesh.identity import IdentityStore
-from crewmesh.tasks import TaskStore
-from crewmesh.errors import AccessDenied, NotFound, ValidationError
+from coopagents.identity import IdentityStore
+from coopagents.tasks import TaskStore
+from coopagents.errors import AccessDenied, NotFound, ValidationError
 try:
-    from crewmesh.activity import ActivityStore
+    from coopagents.activity import ActivityStore
 except ModuleNotFoundError:
     ActivityStore = None
 

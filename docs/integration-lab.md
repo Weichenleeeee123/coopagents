@@ -50,4 +50,4 @@
 
 回环地址不支持跨电脑共享。迁移后的真实 HTTP 往返验证只证明 SDK/传输仍能运行，不证明现有原生会话已经重新接入。
 
-历史源码包在 `experiments/agent-integration/archive/crewmesh-integration-lab-source.zip`，属于迁移前快照；当前运行方式以仓库源码和本文为准。
+历史源码包在 `experiments/agent-integration/archive/coopagents-integration-lab-source.zip`，属于迁移前快照；当前运行方式以仓库源码和本文为准。

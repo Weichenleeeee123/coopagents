@@ -2,10 +2,10 @@ import unittest
 from pathlib import Path
 from uuid import uuid4
 from unittest.mock import patch
-from crewmesh.identity import IdentityStore
-from crewmesh.accounts import AccountStore
-from crewmesh.oauth import GitHubOAuth
-from crewmesh.errors import AccessDenied
+from coopagents.identity import IdentityStore
+from coopagents.accounts import AccountStore
+from coopagents.oauth import GitHubOAuth
+from coopagents.errors import AccessDenied
 
 class OAuthTests(unittest.TestCase):
     def setUp(self):
@@ -27,7 +27,7 @@ class OAuthTests(unittest.TestCase):
 
     def test_expiry_future_and_persistent_replay(self):
         result = self.oauth.start()
-        with patch('crewmesh.oauth.time.time', return_value=0):
+        with patch('coopagents.oauth.time.time', return_value=0):
             with self.assertRaises(AccessDenied):
                 self.oauth.consume(result['state'], result['browser_token'])
         other = GitHubOAuth.configured(self.accounts, 'cloud', 'https://example.com', 'client', 'secret')
@@ -52,7 +52,7 @@ class OAuthTests(unittest.TestCase):
                 GitHubOAuth.configured(self.accounts, mode, origin, cid, secret)
     def test_callback_http_redirect_replay_and_failure(self):
         from starlette.testclient import TestClient
-        from crewmesh.api import create_app
+        from coopagents.api import create_app
         from urllib.parse import urlsplit, parse_qs
         app = create_app(Path('.local/c1-tests') / (str(uuid4()) + '.sqlite3'), public_url='https://example.com', mode='cloud', github_client_id='client', github_client_secret='secret')
         with TestClient(app, base_url='https://example.com', follow_redirects=False) as client:
@@ -61,18 +61,18 @@ class OAuthTests(unittest.TestCase):
             self.assertEqual(start.status_code,302)
             self.assertIn('Secure',start.headers['set-cookie'])
             state=parse_qs(urlsplit(start.headers['location']).query)['state'][0]
-            with patch('crewmesh.oauth.GitHubOAuth._json',side_effect=[{'access_token':'provider-secret'},{'id':456,'login':'user'}]):
+            with patch('coopagents.oauth.GitHubOAuth._json',side_effect=[{'access_token':'provider-secret'},{'id':456,'login':'user'}]):
                 response=client.get('/account/oauth/github/callback',params={'state':state,'code':'code'},headers={'Sec-Fetch-Site':'cross-site'})
             self.assertEqual(response.status_code,303)
             self.assertEqual(client.get('/account/session').status_code,200)
             self.assertEqual(client.get('/account/oauth/github/callback',params={'state':state,'code':'code'}).status_code,401)
             start=client.get('/account/oauth/github/start')
             state=parse_qs(urlsplit(start.headers['location']).query)['state'][0]
-            with patch('crewmesh.oauth.GitHubOAuth._json',side_effect=RuntimeError('provider-secret')):
+            with patch('coopagents.oauth.GitHubOAuth._json',side_effect=RuntimeError('provider-secret')):
                 response=client.get('/account/oauth/github/callback',params={'state':state,'code':'code'})
             self.assertEqual(response.status_code,401)
             self.assertNotIn('provider-secret',response.text)
-            self.assertNotIn('crewmesh_oauth_state',client.cookies)
+            self.assertNotIn('coopagents_oauth_state',client.cookies)
             self.assertEqual(client.get('/account/session?unexpected=1').status_code,400)
 
     def test_concurrent_state_consume_only_one_wins(self):
@@ -87,7 +87,7 @@ class OAuthTests(unittest.TestCase):
         with ThreadPoolExecutor(max_workers=4) as pool:
             self.assertEqual(sum(pool.map(consume,range(4))),1)
     def test_state_storage_capacity_and_reuse(self):
-        with patch('crewmesh.oauth.STATE_LIMIT',2):
+        with patch('coopagents.oauth.STATE_LIMIT',2):
             first=self.oauth.start()
             self.oauth.start()
             with self.assertRaises(AccessDenied):
@@ -98,19 +98,19 @@ class OAuthTests(unittest.TestCase):
             self.assertEqual(connection.execute('SELECT count(*) FROM account_oauth_states').fetchone()[0],2)
 
     def test_redirects_are_blocked(self):
-        from crewmesh.oauth import NoRedirect
+        from coopagents.oauth import NoRedirect
         with self.assertRaises(AccessDenied):
             NoRedirect().redirect_request(None,None,302,'redirect',{},'https://evil.example')
     def test_environment_secret_sources_bounded_and_exclusive(self):
-        from crewmesh.config import github_oauth_from_env
+        from coopagents.config import github_oauth_from_env
         self.assertEqual(github_oauth_from_env({}),{})
         with self.assertRaises(ValueError):
-            github_oauth_from_env({'CREWMESH_GITHUB_CLIENT_ID':'client'})
+            github_oauth_from_env({'COOPAGENTS_GITHUB_CLIENT_ID':'client'})
         with self.assertRaises(ValueError):
-            github_oauth_from_env({'CREWMESH_GITHUB_CLIENT_ID':'client','CREWMESH_GITHUB_CLIENT_SECRET':'secret','CREWMESH_GITHUB_CLIENT_SECRET_FILE':'ignored'})
+            github_oauth_from_env({'COOPAGENTS_GITHUB_CLIENT_ID':'client','COOPAGENTS_GITHUB_CLIENT_SECRET':'secret','COOPAGENTS_GITHUB_CLIENT_SECRET_FILE':'ignored'})
         path=Path('.local/c1-tests')/(str(uuid4())+'.secret')
         path.write_text('secret\n',encoding='ascii')
-        env={'CREWMESH_GITHUB_CLIENT_ID':'client','CREWMESH_GITHUB_CLIENT_SECRET_FILE':str(path)}
+        env={'COOPAGENTS_GITHUB_CLIENT_ID':'client','COOPAGENTS_GITHUB_CLIENT_SECRET_FILE':str(path)}
         self.assertEqual(github_oauth_from_env(env),{'github_client_id':'client','github_client_secret':'secret'})
         path.write_text('x'*4097,encoding='ascii')
         with self.assertRaises(ValueError):
@@ -119,21 +119,21 @@ class OAuthTests(unittest.TestCase):
         import threading
         from concurrent.futures import ThreadPoolExecutor
         from starlette.testclient import TestClient
-        from crewmesh.api import create_app
+        from coopagents.api import create_app
         entered=threading.Barrier(3)
         release=threading.Event()
         def blocked(*args,**kwargs):
             entered.wait(timeout=5)
             release.wait(timeout=5)
             return {}
-        with patch('crewmesh.accounts.AccountStore.session_info',side_effect=blocked):
+        with patch('coopagents.accounts.AccountStore.session_info',side_effect=blocked):
             app=create_app(Path('.local/c1-tests')/(str(uuid4())+'.sqlite3'),public_url='https://example.com',mode='cloud',github_client_id='client',github_client_secret='secret')
             accounts=app.state.service.accounts
             account=accounts.oauth_account('github','789','busy-test')
             session=accounts.create_session(account['id'])
             provider=GitHubOAuth.configured(accounts,'cloud','https://example.com','client','secret')
             state=provider.start()
-            cookies={'Cookie':'crewmesh_account='+session['session_token']+'; crewmesh_oauth_state='+state['browser_token']}
+            cookies={'Cookie':'coopagents_account='+session['session_token']+'; coopagents_oauth_state='+state['browser_token']}
             with TestClient(app,base_url='https://example.com',follow_redirects=False) as client:
                 with ThreadPoolExecutor(max_workers=2) as pool:
                     futures=[pool.submit(client.get,'/account/session',headers=cookies) for _ in range(2)]

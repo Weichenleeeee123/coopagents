@@ -11,7 +11,7 @@ async function scenario(oldStatus){
   }
   const element=id=>{if(!elements.has(id))elements.set(id,new Node(id));return elements.get(id);};
   const location={origin:'http://127.0.0.1:8000',pathname:'/board',hash:'#first-ticket'};
-  const context=vm.createContext({window:{CrewmeshBoard:{columns:[],matchingTasks:()=>[],request:()=>{},contract:()=>{}},CrewmeshRealtime:{connect:options=>{const stream={options,closed:false,close(){this.closed=true;}};streams.push(stream);return stream;}},addEventListener:(event,fn)=>listeners[event]=fn},
+  const context=vm.createContext({window:{CoopagentsBoard:{columns:[],matchingTasks:()=>[],request:()=>{},contract:()=>{}},CoopagentsRealtime:{connect:options=>{const stream={options,closed:false,close(){this.closed=true;}};streams.push(stream);return stream;}},addEventListener:(event,fn)=>listeners[event]=fn},
     document:{getElementById:element,createElement:tag=>new Node(tag),activeElement:null},location,
     history:{replaceState(){location.hash='';}},AbortController,Date,JSON,
     setTimeout:(fn,delay)=>{const id=++timerId;timers.set(id,{fn,delay});return id;},clearTimeout:id=>timers.delete(id),

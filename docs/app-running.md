@@ -6,7 +6,7 @@
 & .\.venv\Scripts\python.exe -m pip install -e ".[service]"
 ```
 
-完成下面的密钥配置后启动服务。默认监听 `127.0.0.1:8787`。正式 MCP 地址为 `http://127.0.0.1:8787/mcp`；健康检查为 `http://127.0.0.1:8787/health`。服务数据保存在仓库的 `.local/crewmesh.sqlite3`。从其他工作目录启动时，使用绝对数据库路径，避免生成另一份数据库。
+完成下面的密钥配置后启动服务。默认监听 `127.0.0.1:8787`。正式 MCP 地址为 `http://127.0.0.1:8787/mcp`；健康检查为 `http://127.0.0.1:8787/health`。服务数据保存在仓库的 `.local/coopagents.sqlite3`。从其他工作目录启动时，使用绝对数据库路径，避免生成另一份数据库。
 
 ## 网页使用
 
@@ -14,8 +14,8 @@
 
 ```powershell
 & .\.venv\Scripts\python.exe -c "import pathlib,secrets; p=pathlib.Path('.local'); p.mkdir(exist_ok=True); f=(p/'bootstrap-secret.txt').open('x'); f.write(secrets.token_urlsafe(32)); f.close()"
-$env:CREWMESH_BOOTSTRAP_SECRET_FILE = (Resolve-Path .local/bootstrap-secret.txt).Path
-& .\.venv\Scripts\python.exe -m crewmesh.server
+$env:COOPAGENTS_BOOTSTRAP_SECRET_FILE = (Resolve-Path .local/bootstrap-secret.txt).Path
+& .\.venv\Scripts\python.exe -m coopagents.server
 ```
 
 已有密钥文件时直接配置路径，不重新生成。打开 <http://127.0.0.1:8787/>，首次初始化账号，输入密钥、用户名和 12–256 字符密码；初始化后关闭该入口。登录后建立团队与项目。团队邀请明确选择角色和项目，24 小时有效且单次使用；新成员通过邀请注册，已有账号登录后接受。新项目初始仅创建者可访问，团队成员身份不会自动授权所有项目。
@@ -47,7 +47,7 @@ $env:CREWMESH_BOOTSTRAP_SECRET_FILE = (Resolve-Path .local/bootstrap-secret.txt)
 在运行服务的终端按 Ctrl+C 正常停止。备份可在服务运行时通过 SQLite 一致备份命令完成，目标使用未存在的新路径：
 
 ```powershell
-& .\.venv\Scripts\python.exe -m crewmesh.backup backup .local/crewmesh.sqlite3 .local/crewmesh-backup-20261011-01.sqlite3
+& .\.venv\Scripts\python.exe -m coopagents.backup backup .local/coopagents.sqlite3 .local/coopagents-backup-20261011-01.sqlite3
 ```
 
 恢复同样写入新文件：将 `backup` 改为 `restore`，指定备份来源和新的数据库路径，停止服务后用 `--database` 指向恢复文件。详细验收、备份权限及恢复后令牌状态见 [部署与运维](deployment.md)。不要删除原数据库。测试生成独立 UUID 数据库，保留在 `.local/test-evidence/`。
@@ -67,7 +67,7 @@ $env:CREWMESH_BOOTSTRAP_SECRET_FILE = (Resolve-Path .local/bootstrap-secret.txt)
 停止服务并先备份。具有数据库本机读写权限的运维人员运行：
 
 ```powershell
-& .\.venv\Scripts\python.exe -m crewmesh.account_recovery --database .local/crewmesh.sqlite3 --username owner
+& .\.venv\Scripts\python.exe -m coopagents.account_recovery --database .local/coopagents.sqlite3 --username owner
 ```
 
 终端隐藏输入两次新密码。CLI 只访问已有文件与已有本地账号，用户名使用与登录相同的规范化规则；密码没有命令参数，不记录日志。事务撤销全部账号会话及其派生项目网页访问。GitHub-only 账号不能离线设置本地密码。独立 agent 令牌未因改密自动轮换，需要在重新登录后按情况轮换。保护数据库和备份的文件权限，保留全部文件，详见 [部署与运维](deployment.md)。

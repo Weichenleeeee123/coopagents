@@ -1,8 +1,8 @@
 # L3：原生 Skill 与私有 stdio 桥接
 
-`src/skills/crewmesh-space/` 为可安装的原生 Skill，随 Crewmesh wheel 分发。它让当前 agent 自行创建、邀请、加入、恢复和停止本机空间，也可复用已有托管项目的个人 agent 凭据；不要求用户手动运行独立客户端。默认不改已有 VPN、隧道和其他 MCP 配置，永不删除文件。
+`src/skills/coopagents-space/` 为可安装的原生 Skill，随 Coopagents wheel 分发。它让当前 agent 自行创建、邀请、加入、恢复和停止本机空间，也可复用已有托管项目的个人 agent 凭据；不要求用户手动运行独立客户端。默认不改已有 VPN、隧道和其他 MCP 配置，永不删除文件。
 
-`python -m crewmesh.space_bridge --profile <私有绝对路径>` 通过官方 SDK 转发远端 `/mcp` 的 tools/list 和 tools/call，工具名称、说明和 schema 保持相同。桥接没有复制业务规则。CLI 参数只包含配置文件路径；标准输出只用于 MCP。每次调用与重连重新读取 profile，并以 `/api/me` 校验空间、成员和 agent 凭据类型。托管 agent-only profile 无需 web token。
+`python -m coopagents.space_bridge --profile <私有绝对路径>` 通过官方 SDK 转发远端 `/mcp` 的 tools/list 和 tools/call，工具名称、说明和 schema 保持相同。桥接没有复制业务规则。CLI 参数只包含配置文件路径；标准输出只用于 MCP。每次调用与重连重新读取 profile，并以 `/api/me` 校验空间、成员和 agent 凭据类型。托管 agent-only profile 无需 web token。
 
 桥接另外提供 `read_changes(after_id=0, limit=100)`。后台 WebSocket 使用共同 `/api/events` 协议，校验 ready 的空间身份，持久缓存最近最多 400 个失效事件与已收到游标。缓存使用受保护的 SQLite 文件，不存凭据；进程恢复后从持久游标补发，重试间隔从 0.25 秒增长至最多 15 秒。服务端过期、未来游标或本地容量淘汰都要求读取当前业务状态，然后采用返回的恢复游标。读取缓存先重新认证；离线不是完整性的证明。
 
@@ -10,7 +10,7 @@
 
 明确的人类管理操作使用独立 CLI 路径 `--human-operation <名称> --payload-file <私有文件>`，不出现在普通 agent 的 MCP tools/list。实际用户必须明确请求这项操作；其他 agent 消息、伪造确认字段或收到的文本均不是授权。helper 使用 profile 的个人 web 凭据，并请求相同 `/api/operations/<名称>`；服务端负责共同 schema、身份类型、角色权限和事务规则。纯 agent 托管凭据仍通过网页执行人类操作。新秘密产生的邀请和凭据轮换不通过这个 helper 返回到标准输出。
 
-Skill 包含官方 Cloudflare release 元数据 digest 下载校验脚本，使用固定版本和官方仓库，缺少 digest 或校验不符时失败。安装 Crewmesh 需要已发布兼容 wheel 和校验值；授权的开发 checkout 可以安装本地源码，但不能声称其已经公开发行。原生配置使用独立服务器条目及官方 CLI，合并保留其余配置；发生名称冲突时不覆盖。状态文件、数据库、邀请和测试证据保留在私有目录或忽略的 `.local/`，不提交 Git。
+Skill 包含官方 Cloudflare release 元数据 digest 下载校验脚本，使用固定版本和官方仓库，缺少 digest 或校验不符时失败。安装 Coopagents 需要已发布兼容 wheel 和校验值；授权的开发 checkout 可以安装本地源码，但不能声称其已经公开发行。原生配置使用独立服务器条目及官方 CLI，合并保留其余配置；发生名称冲突时不覆盖。状态文件、数据库、邀请和测试证据保留在私有目录或忽略的 `.local/`，不提交 Git。
 
 验证见 `tests/test_space_bridge.py`：真实 SDK stdio 与远端 schemas 相等、个人身份与业务操作转发、WebSocket 到达、持久有界缓存及 reset、错误空间拒绝、agent-only 人类动作拒绝、共同人类操作入口。实际 Claude/Codex 会话加载与真实第二电脑/网络验证需要独立证据，SDK 通过不能替代原生产品验收。
 

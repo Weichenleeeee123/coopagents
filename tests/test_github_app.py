@@ -8,8 +8,8 @@ import httpx2 as httpx
 import jwt
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives import serialization
-from crewmesh.github_app import GitHubApp, GitHubError
-from crewmesh.errors import AccessDenied, ValidationError
+from coopagents.github_app import GitHubApp, GitHubError
+from coopagents.errors import AccessDenied, ValidationError
 
 
 class GitHubAppTests(unittest.TestCase):
@@ -34,7 +34,7 @@ class GitHubAppTests(unittest.TestCase):
         self.assertLessEqual(claims['exp']-claims['iat'],600)
     def test_config_disabled_partial_and_https_callback(self):
         with patch.dict(os.environ,{},clear=True): self.assertFalse(GitHubApp.from_env('https://crew.example').enabled)
-        with patch.dict(os.environ,{'CREWMESH_GITHUB_APP_ID':'123'},clear=True):
+        with patch.dict(os.environ,{'COOPAGENTS_GITHUB_APP_ID':'123'},clear=True):
             with self.assertRaises(ValidationError): GitHubApp.from_env('https://crew.example')
         with self.assertRaises(ValidationError): GitHubApp('123','client','secret',self.pem,'secret','http://crew.example/api/git/github/callback')
     def test_fixed_origin_no_redirect_credentials_and_narrow_install_token(self):

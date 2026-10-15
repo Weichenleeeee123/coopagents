@@ -127,7 +127,7 @@ def reconcile(billing, *, max_teams=100):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--database', required=True, help='Existing C2 Crewmesh SQLite database')
+    parser.add_argument('--database', required=True, help='Existing C2 Coopagents SQLite database')
     commands = parser.add_subparsers(dest='command', required=True)
     commands.add_parser('retry').add_argument('--max-jobs', type=int, default=25)
     commands.add_parser('reconcile').add_argument('--max-teams', type=int, default=100)
@@ -136,7 +136,7 @@ def main(argv=None):
         bound = args.max_jobs if args.command == 'retry' else args.max_teams
         _bound(bound)
         config = load_billing_config('cloud')
-        billing = open_billing(args.database, config, os.environ.get('CREWMESH_PUBLIC_URL'))
+        billing = open_billing(args.database, config, os.environ.get('COOPAGENTS_PUBLIC_URL'))
         result = retry(billing, max_jobs=bound) if args.command == 'retry' else reconcile(billing, max_teams=bound)
     except (ValueError, sqlite3.Error, OSError, Conflict):
         print('Billing maintenance unavailable; check existing database and protected configuration', file=sys.stderr)

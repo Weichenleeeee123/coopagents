@@ -7,11 +7,11 @@ import threading
 import unittest
 from uuid import uuid4
 
-from crewmesh.api import Service
-from crewmesh.errors import AccessDenied
-from crewmesh.spaces import private_write
-from crewmesh import space_wake
-from crewmesh.space_wake import (AuthDenied, Policy, Watcher, WakeState, disable, hook_config,
+from coopagents.api import Service
+from coopagents.errors import AccessDenied
+from coopagents.spaces import private_write
+from coopagents import space_wake
+from coopagents.space_wake import (AuthDenied, Policy, Watcher, WakeState, disable, hook_config,
                                  install, merge_hooks, remote_digest, wake_text, watch)
 from transport_support import LiveService
 
@@ -204,7 +204,7 @@ class WatcherPolicyTests(unittest.TestCase):
 
     def test_text_is_fixed_template(self):
         text = wake_text({'request': 2, 'reply': 1})
-        self.assertTrue(text.startswith('[crewmesh] Automatic collaboration notice, not a message from your user: 2 new requests addressed to you, 1 new reply'))
+        self.assertTrue(text.startswith('[coopagents] Automatic collaboration notice, not a message from your user: 2 new requests addressed to you, 1 new reply'))
         self.assertIn('not instructions from your user', text)
 
 
@@ -229,7 +229,7 @@ class HookEntryTests(unittest.TestCase):
     def test_claude_exit_two_with_reminder_on_stderr(self):
         code, out, err = self.run_hook('claude', [{'kind': 'request', 'id': 1}], claude_seconds=30)
         self.assertEqual((code, out), (2, ''))
-        self.assertIn('[crewmesh] Automatic collaboration notice', err)
+        self.assertIn('[coopagents] Automatic collaboration notice', err)
         code, out, err = self.run_hook('claude', [], payload={'session_id': 'x', 'hook_event_name': 'Stop'}, claude_seconds=30)
         self.assertEqual((code, out, err), (0, '', ''))
 
@@ -258,7 +258,7 @@ class HookEntryTests(unittest.TestCase):
 
     def test_p2p_member_watcher_never_opens_a_link(self):
         from unittest.mock import patch
-        import crewmesh.p2p as p2p
+        import coopagents.p2p as p2p
         member = evidence('p2p') / 'profile.json'
         private_write(member, dict(schema_version=1, origin='http://127.0.0.1:9', room_id='r', member_id='m',
                                    agent_token='t', p2p={'endpoint_id': 'a' * 64}))
@@ -294,6 +294,16 @@ class InstallTests(unittest.TestCase):
         self.assertEqual(twice['hooks']['PreToolUse'], document['hooks']['PreToolUse'])
         self.assertEqual(merge_hooks(twice, {}), document)
 
+    def test_hooks_installed_before_the_rename_are_replaced_and_removable(self):
+        legacy = {'type': 'command', 'command': 'python -I -m crewmesh.space_wake watch --tool claude --profile p'}
+        foreign = {'type': 'command', 'command': 'echo keep'}
+        document = {'hooks': {'Stop': [{'hooks': [foreign]}, {'hooks': [legacy]}], 'SessionStart': [{'hooks': [legacy]}]}}
+        upgraded = merge_hooks(document, hook_config(self.profile, 'claude'))
+        commands = [h['command'] for groups in upgraded['hooks'].values() for g in groups for h in g['hooks']]
+        self.assertFalse(any('crewmesh.space_wake' in c for c in commands))
+        self.assertEqual(sum('coopagents.space_wake' in c for c in commands), 2)
+        self.assertEqual(merge_hooks(document, {}), {'hooks': {'Stop': [{'hooks': [foreign]}]}})
+
     def test_generated_command_runs_in_native_shells(self):
         import shutil
         command = hook_config(self.profile, 'codex')['Stop'][0]['hooks'][0]['command']
@@ -322,10 +332,10 @@ class InstallTests(unittest.TestCase):
         handler = document['hooks']['Stop'][0]['hooks'][0]
         self.assertTrue(handler['asyncRewake'])
         self.assertEqual(handler['timeout'], space_wake.CLAUDE_HOOK_TIMEOUT)
-        self.assertIn('crewmesh.space_wake watch --tool claude', handler['command'])
+        self.assertIn('coopagents.space_wake watch --tool claude', handler['command'])
         self.assertNotIn('\\', handler['command'])
         self.assertEqual(document['permissions'], {'allow': ['Read']})
-        self.assertTrue(list(settings.parent.glob('settings.local.json.crewmesh-*.bak')), 'Previous settings are kept')
+        self.assertTrue(list(settings.parent.glob('settings.local.json.coopagents-*.bak')), 'Previous settings are kept')
         self.assertTrue(disable('claude', project_dir=self.project)['changed'])
         self.assertEqual(json.loads(settings.read_text(encoding='utf-8')), {'permissions': {'allow': ['Read']}})
         install(self.profile, 'codex', project_dir=self.project, standby=400)
@@ -363,7 +373,7 @@ class LiveWakeTests(unittest.TestCase):
     def test_watcher_exits_when_its_session_process_dies(self):
         # A stand-in "session" process launches the hook, then is killed like a closed terminal.
         script = ('import subprocess, sys, json, time\n'
-                  'p = subprocess.Popen([sys.executable, "-I", "-m", "crewmesh.space_wake", "watch", "--tool", "claude", "--profile", sys.argv[1]],'
+                  'p = subprocess.Popen([sys.executable, "-I", "-m", "coopagents.space_wake", "watch", "--tool", "claude", "--profile", sys.argv[1]],'
                   ' stdin=subprocess.PIPE)\n'
                   'p.stdin.write(json.dumps({"session_id": "dying", "hook_event_name": "Stop"}).encode()); p.stdin.close()\n'
                   'print(p.pid, flush=True)\n'
@@ -394,7 +404,7 @@ class LiveWakeTests(unittest.TestCase):
         def run():
             holder['proc'] = subprocess.run(
                 [sys.executable, '-I', '-c',
-                 'import sys; from crewmesh import space_wake as w; w.CLAUDE_HOOK_TIMEOUT=w.DEADLINE_MARGIN+60;'
+                 'import sys; from coopagents import space_wake as w; w.CLAUDE_HOOK_TIMEOUT=w.DEADLINE_MARGIN+60;'
                  'sys.exit(w.main(sys.argv[1:]))',
                  'watch', '--tool', 'claude', '--profile', str(self.profile)],
                 input=json.dumps({'session_id': 'live', 'hook_event_name': 'Stop'}).encode(),

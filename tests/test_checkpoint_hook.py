@@ -22,15 +22,15 @@ class HookTests(unittest.TestCase):
         self.owner, self.peer = self.live.bootstrap()
         self.root = Path('.local/test-evidence') / ('hook ' + str(uuid4()))
         self.root.mkdir(parents=True)
-        self.env = {**os.environ, 'CREWMESH_SERVICE_URL': self.live.url,
-            'CREWMESH_PROJECT_ID': self.owner['room_id'], 'CREWMESH_AGENT_TOKEN': self.owner['agent_token'],
+        self.env = {**os.environ, 'COOPAGENTS_SERVICE_URL': self.live.url,
+            'COOPAGENTS_PROJECT_ID': self.owner['room_id'], 'COOPAGENTS_AGENT_TOKEN': self.owner['agent_token'],
             'LOCALAPPDATA': str(self.root.resolve()), 'XDG_STATE_HOME': str(self.root.resolve())}
 
     def run_hook(self, event='SessionStart', session='native', args=(), env=None, raw=None):
         payload = {'session_id': session, 'hook_event_name': event, 'cwd': 'private-working-dir',
             'prompt': 'DO NOT SEND PRIVATE PROMPT', 'transcript_path': 'private-transcript',
             'tool_input': {'command': 'private-command'}, 'tool_response': 'private-result'}
-        return subprocess.run([sys.executable, '-m', 'crewmesh.checkpoint_hook', '--tool', 'codex-cli', *args],
+        return subprocess.run([sys.executable, '-m', 'coopagents.checkpoint_hook', '--tool', 'codex-cli', *args],
             input=raw if raw is not None else json.dumps(payload), text=True, capture_output=True,
             env=env or self.env, timeout=15)
 
@@ -41,7 +41,7 @@ class HookTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0)
         self.assertTrue(result.stdout.strip(), 'Hook failure must emit a user-visible systemMessage')
         self.assertEqual(json.loads(result.stdout), {'systemMessage':
-            'Crewmesh warning: checkpoint unavailable; check trusted connection settings and run --doctor. Native work may continue.'})
+            'Coopagents warning: checkpoint unavailable; check trusted connection settings and run --doctor. Native work may continue.'})
         self.assertIn('warning', result.stderr.lower())
 
     def test_real_hook_returns_bounded_context_without_leaking_native_payload(self):
@@ -64,7 +64,7 @@ class HookTests(unittest.TestCase):
             self.assertEqual(db.execute('SELECT COUNT(*) FROM message_receipts').fetchone()[0], 0)
 
     def test_wrong_project_revoked_credentials_fail_open_without_checkpoint(self):
-        for changes in ({'CREWMESH_PROJECT_ID':'wrong'}, {'CREWMESH_AGENT_TOKEN':'revoked'}, {'CREWMESH_SERVICE_URL':'https://user:secret@example.test'}):
+        for changes in ({'COOPAGENTS_PROJECT_ID':'wrong'}, {'COOPAGENTS_AGENT_TOKEN':'revoked'}, {'COOPAGENTS_SERVICE_URL':'https://user:secret@example.test'}):
             result = self.run_hook(env={**self.env, **changes})
             self.assert_visible_fail_open(result)
             self.assertNotIn('secret', result.stderr)
@@ -80,7 +80,7 @@ class HookTests(unittest.TestCase):
         self.run_hook('SessionStart')
         self.assertEqual(self.view()['checkpoints'][0]['checkpoint_count'], 3)
         self.run_hook('PostToolUse', session='different')
-        self.run_hook('PostToolUse', env={**self.env, 'CREWMESH_AGENT_TOKEN': self.peer['agent_token']})
+        self.run_hook('PostToolUse', env={**self.env, 'COOPAGENTS_AGENT_TOKEN': self.peer['agent_token']})
         self.assertEqual(len(self.view()['checkpoints']), 3)
         # Revocation is checked even for a recently throttled session.
         self.live.request('POST', '/api/agent-token', self.owner['web_token'], {})
@@ -119,7 +119,7 @@ class HookTests(unittest.TestCase):
         self.assertEqual(native.returncode, 0, native.stderr)
         self.assertIn('hookSpecificOutput', json.loads(native.stdout))
         # Native sessions choose cwd. A repository module must not shadow the installed hook.
-        (self.root/'crewmesh.py').write_text("print('repository-module-shadowed-hook')",encoding='utf-8')
+        (self.root/'coopagents.py').write_text("print('repository-module-shadowed-hook')",encoding='utf-8')
         native = subprocess.run(command, shell=True, text=True, capture_output=True, env=self.env,
             cwd=self.root, input=json.dumps({'session_id':'isolated-import','hook_event_name':'SessionStart'}), timeout=15)
         self.assertEqual(native.returncode,0,native.stderr)
@@ -147,7 +147,7 @@ class HookTests(unittest.TestCase):
         server.slow = False
         threading.Thread(target=server.serve_forever, daemon=True).start()
         self.addCleanup(server.server_close); self.addCleanup(server.shutdown)
-        env = {**self.env, 'CREWMESH_SERVICE_URL':'http://127.0.0.1:'+str(server.server_port)}
+        env = {**self.env, 'COOPAGENTS_SERVICE_URL':'http://127.0.0.1:'+str(server.server_port)}
         for slow in (False, True):
             server.slow = slow
             start = time.monotonic()
@@ -157,7 +157,7 @@ class HookTests(unittest.TestCase):
         self.assertEqual(requests, ['/api/me','/api/me'])
 
     def test_whole_operation_has_a_deadline_even_if_connection_blocks(self):
-        from crewmesh import checkpoint_hook
+        from coopagents import checkpoint_hook
         self.assertTrue(hasattr(checkpoint_hook, 'bounded_call'), 'whole-operation deadline missing')
         start = time.monotonic()
         with self.assertRaises(TimeoutError):
@@ -172,17 +172,17 @@ class HookTests(unittest.TestCase):
         server = ThreadingHTTPServer(('127.0.0.1',0),Handler)
         threading.Thread(target=server.serve_forever,daemon=True).start()
         self.addCleanup(server.server_close);self.addCleanup(server.shutdown)
-        result=self.run_hook(env={**self.env,'CREWMESH_SERVICE_URL':'http://127.0.0.1:'+str(server.server_port)})
+        result=self.run_hook(env={**self.env,'COOPAGENTS_SERVICE_URL':'http://127.0.0.1:'+str(server.server_port)})
         self.assert_visible_fail_open(result)
 
     def test_all_supported_events_warn_without_permission_decisions(self):
         for event in ('SessionStart','UserPromptSubmit','PostToolUse'):
-            result=self.run_hook(event, env={**self.env,'CREWMESH_AGENT_TOKEN':'revoked'})
+            result=self.run_hook(event, env={**self.env,'COOPAGENTS_AGENT_TOKEN':'revoked'})
             self.assert_visible_fail_open(result)
         self.assertEqual(self.view()['checkpoints'], [])
 
     def test_diagnostic_and_preview_failures_do_not_emit_hook_protocol(self):
-        cases = [(('--doctor',), {**self.env,'CREWMESH_AGENT_TOKEN':'revoked'}),
+        cases = [(('--doctor',), {**self.env,'COOPAGENTS_AGENT_TOKEN':'revoked'}),
                  (('--config-preview','--timeout','0'), self.env)]
         for arguments, env in cases:
             result=self.run_hook(args=arguments, env=env)
@@ -192,12 +192,12 @@ class HookTests(unittest.TestCase):
         self.assertEqual(self.view()['diagnostics'], [])
 
     def test_hook_output_budget_counts_nested_json_escaping(self):
-        from crewmesh.checkpoint_hook import context_output
+        from coopagents.checkpoint_hook import context_output
         output=context_output('SessionStart',{'brief':{'body':'\\'*12000}})
         self.assertLessEqual(len(json.dumps(output).encode()),30000)
 
     def test_large_legal_briefs_keep_useful_complete_data_within_native_context_cap(self):
-        from crewmesh.checkpoint_hook import context_output
+        from coopagents.checkpoint_hook import context_output
         for text, count in [('a',4), ('界',1), ('😀',1), ('\\"\n',2)]:
             field=lambda size:(text*size)[:size]
             brief={'tasks':[{'id':i,'title':field(100),'scope':field(500)} for i in range(count)],
@@ -208,8 +208,8 @@ class HookTests(unittest.TestCase):
             self.assertLessEqual(len(json.dumps(brief,ensure_ascii=False).encode()),16000)
             context=context_output('PostToolUse',{'brief':brief})['hookSpecificOutput']['additionalContext']
             self.assertLessEqual(len(context),9000,'Complete context must stay below the native 10000-character spill threshold')
-            self.assertTrue(context.endswith('\nEND CREWMESH EXTERNAL DATA'))
-            data=json.loads(context.split('\nBEGIN CREWMESH EXTERNAL DATA\n',1)[1].rsplit('\nEND CREWMESH EXTERNAL DATA',1)[0])
+            self.assertTrue(context.endswith('\nEND COOPAGENTS EXTERNAL DATA'))
+            data=json.loads(context.split('\nBEGIN COOPAGENTS EXTERNAL DATA\n',1)[1].rsplit('\nEND COOPAGENTS EXTERNAL DATA',1)[0])
             self.assertTrue(data['truncated'])
             self.assertIn('read_team',data['note']);self.assertIn('read_inbox',data['note'])
             for key in ('tasks','requests','contracts'):
@@ -217,7 +217,7 @@ class HookTests(unittest.TestCase):
             self.assertEqual(json.dumps(brief),original,'Hook truncation must not mutate the service result')
 
     def test_only_codex_config_declares_native_context_budget(self):
-        from crewmesh.checkpoint_hook import config_fragment
+        from coopagents.checkpoint_hook import config_fragment
         for tool in ('codex-cli','codex-desktop','claude-code'):
             for handlers in config_fragment(tool)['hooks'].values():
                 command=handlers[0]['hooks'][0]
@@ -227,10 +227,10 @@ class HookTests(unittest.TestCase):
                     self.assertNotIn('additionalContextLimit',command)
 
     def test_first_setup_guide_commands_ignore_repository_module_shadowing(self):
-        (self.root/'crewmesh.py').write_text("print('repository-module-shadowed-hook')",encoding='utf-8')
+        (self.root/'coopagents.py').write_text("print('repository-module-shadowed-hook')",encoding='utf-8')
         guide=Path('docs/collaboration-checkpoints.md').read_text(encoding='utf-8')
         commands=[shlex.split(line) for line in guide.splitlines()
-                  if line.startswith('python ') and 'crewmesh.checkpoint_hook' in line]
+                  if line.startswith('python ') and 'coopagents.checkpoint_hook' in line]
         self.assertEqual(len(commands),2)
         for command in commands:
             result=subprocess.run([sys.executable,*command[1:]],cwd=self.root,env=self.env,

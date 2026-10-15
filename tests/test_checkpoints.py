@@ -6,8 +6,8 @@ import unittest
 from unittest.mock import patch
 from uuid import uuid4
 
-from crewmesh.api import Service
-from crewmesh.errors import AccessDenied, NotFound, ValidationError
+from coopagents.api import Service
+from coopagents.errors import AccessDenied, NotFound, ValidationError
 
 
 class CheckpointTests(unittest.TestCase):
@@ -91,12 +91,12 @@ class CheckpointTests(unittest.TestCase):
     def test_freshness_exact_five_minutes_and_hook_evidence_survives_manual(self):
         self.checkpoint()
         at = datetime(2026, 1, 1, tzinfo=timezone.utc)
-        with patch('crewmesh.checkpoints._utc_now', return_value=at.isoformat()):
+        with patch('coopagents.checkpoints._utc_now', return_value=at.isoformat()):
             self.checkpoint()
-        with patch('crewmesh.checkpoints._now', return_value=at + timedelta(seconds=299)):
+        with patch('coopagents.checkpoints._now', return_value=at + timedelta(seconds=299)):
             record = self.service.snapshot(self.owner['web_token'])['collaboration']['checkpoints'][0]
             self.assertFalse(record['stale'])
-        with patch('crewmesh.checkpoints._now', return_value=at + timedelta(seconds=300)):
+        with patch('coopagents.checkpoints._now', return_value=at + timedelta(seconds=300)):
             record = self.service.snapshot(self.owner['web_token'])['collaboration']['checkpoints'][0]
             self.assertTrue(record['stale'])
         self.service.call('checkpoint', self.owner['agent_token'],
@@ -139,7 +139,7 @@ class CheckpointTests(unittest.TestCase):
         self.assertEqual(len(view['collaboration']['checkpoints']), 1)
 
     def test_upgrade_from_database_without_collaboration_tables(self):
-        from crewmesh.identity import IdentityStore
+        from coopagents.identity import IdentityStore
         legacy_path=self.path.with_name('legacy-'+str(uuid4())+'.sqlite3')
         identity=IdentityStore(legacy_path)
         owner=identity.create_room('Legacy', 'Owner')

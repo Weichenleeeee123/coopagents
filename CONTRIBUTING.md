@@ -17,7 +17,7 @@ python -m venv .venv
 
 领域包只使用 Python 标准库；仅开发领域代码时可以用 `pip install -e .`。完整测试和正式服务使用 `service` 依赖组；仅运行原生接入实验可用 `integration` 组。依赖声明以 `pyproject.toml` 为准。正式启动与备份见 [本机运行](docs/app-running.md)。
 
-`pyproject.toml` 将逻辑包名 `crewmesh` 映射到 `src/`，不增加同名物理子目录。安装后直接 `import crewmesh`，无需手动设置 `PYTHONPATH`。实验脚本仍从实验目录运行，接入步骤见 [实验说明](docs/integration-lab.md)。
+`pyproject.toml` 将逻辑包名 `coopagents` 映射到 `src/`，不增加同名物理子目录。安装后直接 `import coopagents`，无需手动设置 `PYTHONPATH`。实验脚本仍从实验目录运行，接入步骤见 [实验说明](docs/integration-lab.md)。
 
 ## 数据与提交
 
@@ -29,7 +29,7 @@ python -m venv .venv
 
 发行依赖固定在 `deploy/constraints.txt`，完整安装可使用 `pip install -c deploy/constraints.txt -e '.[service]'`。GitHub CI 覆盖 Python 3.11 / 3.13、网页脚本、发行包、镜像与 TLS smoke。
 
-本地容器验收：`docker build -t crewmesh:0.6.0rc2 .`，然后 `python scripts/deployment_smoke.py --image crewmesh:0.6.0rc2`。需要运行的 Docker 引擎；测试只停止自己的容器并保留证据。原生 CLI 验收入口为 `experiments/agent-integration/p4_native_check.py`，需要已认证的实际工具，失败不能用模拟数据代替。
+本地容器验收：`docker build -t coopagents:0.6.0rc2 .`，然后 `python scripts/deployment_smoke.py --image coopagents:0.6.0rc2`。需要运行的 Docker 引擎；测试只停止自己的容器并保留证据。原生 CLI 验收入口为 `experiments/agent-integration/p4_native_check.py`，需要已认证的实际工具，失败不能用模拟数据代替。
 
 候选版 0.4.0rc1 的默认自托管 TLS smoke 同时覆盖账号、项目、MCP、禁用订阅的 Unlimited/实际用量、付款操作拒绝、Billing/Git 静态资源及重启/恢复。Docker CLI 存在不等于 Engine 可用；执行失败必须保留原始失败记录，不沿用历史版本通过结果。
 

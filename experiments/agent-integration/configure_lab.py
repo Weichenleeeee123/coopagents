@@ -34,10 +34,10 @@ def main():
         return {"hooks": result}
 
     files = {
-        ".codex/config.toml": '[mcp_servers.crewmesh_probe]\nurl = "http://127.0.0.1:8768/mcp"\n',
+        ".codex/config.toml": '[mcp_servers.coopagents_probe]\nurl = "http://127.0.0.1:8768/mcp"\n',
         ".codex/hooks.json": json.dumps(hooks("codex"), indent=2) + "\n",
         ".claude/settings.json": json.dumps(hooks("claude"), indent=2) + "\n",
-        ".mcp.json": json.dumps({"mcpServers": {"crewmesh_probe": {
+        ".mcp.json": json.dumps({"mcpServers": {"coopagents_probe": {
             "type": "http", "url": "http://127.0.0.1:8768/mcp"}}}, indent=2) + "\n",
     }
     for name, content in files.items():

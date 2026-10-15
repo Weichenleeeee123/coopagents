@@ -4,8 +4,8 @@ from uuid import uuid4
 import unittest
 from unittest.mock import patch
 
-from crewmesh.coordination import CoordinationService
-from crewmesh.errors import AccessDenied
+from coopagents.coordination import CoordinationService
+from coopagents.errors import AccessDenied
 
 
 class SpaceIdentityTests(unittest.TestCase):
@@ -36,7 +36,7 @@ class SpaceIdentityTests(unittest.TestCase):
     def test_shared_http_rejects_bootstrap_and_agent_management(self):
         from starlette.applications import Starlette
         from starlette.testclient import TestClient
-        from crewmesh.coordination_http import coordination_routes
+        from coopagents.coordination_http import coordination_routes
         with TestClient(Starlette(routes=coordination_routes(self.service, base_url='http://127.0.0.1')), base_url='http://127.0.0.1') as client:
             headers = {'Authorization': 'Bearer ' + self.owner['agent_token']}
             self.assertEqual(client.get('/api/agent-snapshot', headers=headers).status_code, 200)
@@ -50,7 +50,7 @@ class SpaceIdentityTests(unittest.TestCase):
     def test_http_domain_error_subclasses_keep_permission_response(self):
         from starlette.applications import Starlette
         from starlette.testclient import TestClient
-        from crewmesh.coordination_http import coordination_routes
+        from coopagents.coordination_http import coordination_routes
         class ProviderDenied(AccessDenied):
             pass
         with TestClient(Starlette(routes=coordination_routes(self.service)), base_url='http://127.0.0.1') as client:

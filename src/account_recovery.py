@@ -57,7 +57,7 @@ def recover_password(database, username, new_password):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--database', required=True, help='Existing Crewmesh SQLite file')
+    parser.add_argument('--database', required=True, help='Existing Coopagents SQLite file')
     parser.add_argument('--username', required=True, help='Existing local username (not GitHub display name)')
     args = parser.parse_args(argv)
     try:

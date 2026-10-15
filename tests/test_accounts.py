@@ -1,9 +1,9 @@
 import unittest
 from pathlib import Path
 from uuid import uuid4
-from crewmesh.identity import IdentityStore
-from crewmesh.accounts import AccountStore
-from crewmesh.errors import AccessDenied, ValidationError
+from coopagents.identity import IdentityStore
+from coopagents.accounts import AccountStore
+from coopagents.errors import AccessDenied, ValidationError
 
 
 class AccountTests(unittest.TestCase):

@@ -7,10 +7,10 @@ import unittest
 from unittest.mock import patch
 from uuid import uuid4
 
-from crewmesh.accounts import AccountStore
-from crewmesh.identity import IdentityStore
-from crewmesh.workspaces import WorkspaceStore
-from crewmesh.errors import AccessDenied, ValidationError
+from coopagents.accounts import AccountStore
+from coopagents.identity import IdentityStore
+from coopagents.workspaces import WorkspaceStore
+from coopagents.errors import AccessDenied, ValidationError
 
 
 class RecoveryTests(unittest.TestCase):
@@ -28,7 +28,7 @@ class RecoveryTests(unittest.TestCase):
         self.web = self.workspaces.project_credential(self.session, project)['web_token']
 
     def test_normalized_reset_revokes_session_and_issued_web(self):
-        from crewmesh.account_recovery import recover_password
+        from coopagents.account_recovery import recover_password
         recover_password(self.path, ' ＯＷＮＥＲ ', 'replacement password 456')
         for action in (lambda: self.accounts.authenticate(self.session),
                        lambda: self.identity.authenticate(self.web),
@@ -37,7 +37,7 @@ class RecoveryTests(unittest.TestCase):
         self.accounts.login('owner', 'replacement password 456')
 
     def test_missing_file_not_created_and_unknown_or_oauth_rejected(self):
-        from crewmesh.account_recovery import recover_password
+        from coopagents.account_recovery import recover_password
         missing = self.root / 'missing.sqlite3'
         with self.assertRaises(ValidationError): recover_password(missing, 'owner', 'replacement password 456')
         self.assertFalse(missing.exists())
@@ -47,24 +47,24 @@ class RecoveryTests(unittest.TestCase):
         self.accounts.authenticate(self.session)
 
     def test_invalid_password_rolls_back_and_prompt_does_not_echo_secret(self):
-        from crewmesh.account_recovery import main, recover_password
+        from coopagents.account_recovery import main, recover_password
         with self.assertRaises(ValidationError): recover_password(self.path, 'owner', 'short')
         self.accounts.authenticate(self.session)
         secret = 'replacement password 456'
         output = io.StringIO()
-        with patch('crewmesh.account_recovery.getpass.getpass', side_effect=[secret, secret]) as prompt, contextlib.redirect_stdout(output):
+        with patch('coopagents.account_recovery.getpass.getpass', side_effect=[secret, secret]) as prompt, contextlib.redirect_stdout(output):
             self.assertEqual(0, main(['--database', str(self.path), '--username', 'owner']))
         self.assertEqual(2, prompt.call_count)
         self.assertNotIn(secret, output.getvalue())
 
     def test_mismatched_confirmation_does_not_reset(self):
-        from crewmesh.account_recovery import main
-        with patch('crewmesh.account_recovery.getpass.getpass', side_effect=['replacement password 456', 'different password 789']), contextlib.redirect_stderr(io.StringIO()):
+        from coopagents.account_recovery import main
+        with patch('coopagents.account_recovery.getpass.getpass', side_effect=['replacement password 456', 'different password 789']), contextlib.redirect_stderr(io.StringIO()):
             self.assertEqual(1, main(['--database', str(self.path), '--username', 'owner']))
         self.accounts.authenticate(self.session)
 
     def test_terminal_without_hidden_input_aborts(self):
-        from crewmesh.account_recovery import main
-        with patch('crewmesh.account_recovery.getpass.getpass', side_effect=getpass.GetPassWarning('cannot hide')), contextlib.redirect_stderr(io.StringIO()):
+        from coopagents.account_recovery import main
+        with patch('coopagents.account_recovery.getpass.getpass', side_effect=getpass.GetPassWarning('cannot hide')), contextlib.redirect_stderr(io.StringIO()):
             self.assertEqual(1, main(['--database', str(self.path), '--username', 'owner']))
         self.accounts.authenticate(self.session)

@@ -5,13 +5,13 @@ import ipaddress
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Crewmesh HTTP and MCP service')
-    parser.add_argument('--host', default=os.environ.get('CREWMESH_HOST', '127.0.0.1'))
-    parser.add_argument('--port', type=int, default=os.environ.get('CREWMESH_PORT', '8787'))
-    parser.add_argument('--database', default=os.environ.get('CREWMESH_DATABASE', '.local/crewmesh.sqlite3'))
-    parser.add_argument('--public-url', default=os.environ.get('CREWMESH_PUBLIC_URL'))
-    parser.add_argument('--mode', choices=('self-hosted', 'cloud'), default=os.environ.get('CREWMESH_MODE', 'self-hosted'))
-    parser.add_argument('--trusted-proxies', default=os.environ.get('CREWMESH_TRUSTED_PROXIES', ''))
+    parser = argparse.ArgumentParser(description='Coopagents HTTP and MCP service')
+    parser.add_argument('--host', default=os.environ.get('COOPAGENTS_HOST', '127.0.0.1'))
+    parser.add_argument('--port', type=int, default=os.environ.get('COOPAGENTS_PORT', '8787'))
+    parser.add_argument('--database', default=os.environ.get('COOPAGENTS_DATABASE', '.local/coopagents.sqlite3'))
+    parser.add_argument('--public-url', default=os.environ.get('COOPAGENTS_PUBLIC_URL'))
+    parser.add_argument('--mode', choices=('self-hosted', 'cloud'), default=os.environ.get('COOPAGENTS_MODE', 'self-hosted'))
+    parser.add_argument('--trusted-proxies', default=os.environ.get('COOPAGENTS_TRUSTED_PROXIES', ''))
     args = parser.parse_args()
     if not 1 <= args.port <= 65535:
         parser.error('port must be between 1 and 65535')

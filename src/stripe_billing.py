@@ -149,7 +149,7 @@ def https_transport(method, url, headers, body, timeout, max_bytes):
             # Never emit thread exception tracebacks, credentials or provider payloads.
             queue.put((False,error if isinstance(error,(StripeError,AccessDenied)) else StripeError('provider_unavailable')))
         finally:slots.release()
-    thread=threading.Thread(target=run,daemon=True,name='crewmesh-stripe')
+    thread=threading.Thread(target=run,daemon=True,name='coopagents-stripe')
     try:thread.start()
     except RuntimeError:
         slots.release();raise StripeError('provider_unavailable') from None

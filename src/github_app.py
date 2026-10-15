@@ -76,8 +76,8 @@ class GitHubApp:
     @classmethod
     def from_env(cls, public_origin=None):
         def setting(name,secret=False):
-            value=os.environ.get('CREWMESH_GITHUB_'+name)
-            filename=os.environ.get('CREWMESH_GITHUB_'+name+'_FILE') if secret else None
+            value=os.environ.get('COOPAGENTS_GITHUB_'+name)
+            filename=os.environ.get('COOPAGENTS_GITHUB_'+name+'_FILE') if secret else None
             if value is not None and filename is not None:
                 raise ValidationError('Use exactly one GitHub secret source')
             if filename is not None:
@@ -125,7 +125,7 @@ class GitHubApp:
             operation['requests']+=1
             timeout=min(timeout,remaining)
         headers={'Accept':'application/vnd.github+json','X-GitHub-Api-Version':self.API_VERSION,
-                 'User-Agent':'Crewmesh-GitHub-App'}
+                 'User-Agent':'Coopagents-GitHub-App'}
         if url=='https://github.com/login/oauth/access_token': headers['Accept']='application/json'
         if token: headers['Authorization']='Bearer '+token
         try:

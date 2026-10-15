@@ -3,8 +3,8 @@ from pathlib import Path
 from uuid import uuid4
 import unittest
 
-from crewmesh.api import Service
-from crewmesh.errors import AccessDenied, Conflict, NotFound
+from coopagents.api import Service
+from coopagents.errors import AccessDenied, Conflict, NotFound
 from test_github_sync import FakeProvider
 
 
@@ -115,7 +115,7 @@ class LifecycleTests(unittest.TestCase):
         first = self.s.github.associate(self.a['agent_token'], self.task['id'], pr_number=7, **auth)
         self.s.github.app.current['pull_requests'][0]['merged'] = True
         self.s.github.refresh(self.owner['web_token'])
-        from crewmesh.tasks import _utc_now
+        from coopagents.tasks import _utc_now
         observation = dict(request_key='original', workspace_id='workspace_original', repository='github.com/acme/demo', branch='feature',head='a'*40,paths=['src/a'],captured_at=_utc_now())
         self.s.repositories.observe(self.a['agent_token'], self.task['id'], observation, **auth)
         self.assertEqual(self.s.git_snapshot(self.a['web_token'])['deliveries'][0]['state'], 'merged')
@@ -205,10 +205,10 @@ class LifecycleTests(unittest.TestCase):
 
     def test_old_database_migration_preserves_activity_and_then_archives_it(self):
         from unittest.mock import patch
-        from crewmesh.identity import IdentityStore
-        from crewmesh.tasks import _utc_now
+        from coopagents.identity import IdentityStore
+        from coopagents.tasks import _utc_now
         old_path=self.path.with_name('old-'+self.path.name)
-        with patch('crewmesh.task_lifecycle.initialize'):
+        with patch('coopagents.task_lifecycle.initialize'):
             old=IdentityStore(old_path)
         person=old.create_room('Legacy','Legacy owner');now=_utc_now()
         with old.db.connect(write=True) as db:
@@ -234,7 +234,7 @@ class LifecycleTests(unittest.TestCase):
 
     def test_legacy_observation_payload_retry_survives_upgrade(self):
         import hashlib,json
-        from crewmesh.tasks import _utc_now
+        from coopagents.tasks import _utc_now
         self.claim(session=None)
         self.s.repositories.bind_repository(self.owner['web_token'],'github.com/acme/demo')
         observation=dict(request_key='legacy',workspace_id='legacy_workspace_1',repository='github.com/acme/demo',branch='feature',head='a'*40,paths=['src/a'],captured_at=_utc_now())

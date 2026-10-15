@@ -10,18 +10,18 @@ import time
 import unittest
 from unittest.mock import patch
 from uuid import uuid4
-from crewmesh.api import create_app
-from crewmesh.billing import BillingCatalog
-from crewmesh.billing_config import BillingConfig
-from crewmesh.stripe_billing import StripeClient
+from coopagents.api import create_app
+from coopagents.billing import BillingCatalog
+from coopagents.billing_config import BillingConfig
+from coopagents.stripe_billing import StripeClient
 from test_billing_service import FixtureTransport
 from test_billing_api import CATALOG, CONFIG, ORIGIN, event, signature
 
 
 class BillingAdminTests(unittest.TestCase):
     def setUp(self):
-        self.assertIsNotNone(importlib.util.find_spec('crewmesh.billing_admin'), 'Existing-database recovery CLI must exist')
-        self.admin = importlib.import_module('crewmesh.billing_admin')
+        self.assertIsNotNone(importlib.util.find_spec('coopagents.billing_admin'), 'Existing-database recovery CLI must exist')
+        self.admin = importlib.import_module('coopagents.billing_admin')
         self.root = Path('.local/c2-admin-tests'); self.root.mkdir(parents=True, exist_ok=True)
         self.database = self.root / (str(uuid4()) + '.sqlite3')
         self.transport = FixtureTransport()
@@ -139,7 +139,7 @@ class BillingAdminTests(unittest.TestCase):
         self.fixture()
         billing = self.open()
         output, error = io.StringIO(), io.StringIO()
-        with patch.object(self.admin, 'load_billing_config', return_value=CONFIG), patch.object(self.admin, 'open_billing', return_value=billing), patch.dict('os.environ', {'CREWMESH_PUBLIC_URL': ORIGIN}, clear=True), contextlib.redirect_stdout(output), contextlib.redirect_stderr(error):
+        with patch.object(self.admin, 'load_billing_config', return_value=CONFIG), patch.object(self.admin, 'open_billing', return_value=billing), patch.dict('os.environ', {'COOPAGENTS_PUBLIC_URL': ORIGIN}, clear=True), contextlib.redirect_stdout(output), contextlib.redirect_stderr(error):
             self.assertEqual(self.admin.main(['--database', str(self.database), 'reconcile', '--max-teams', '1']), 0)
             self.transport.fail = lambda method, path: True
             self.assertEqual(self.admin.main(['--database', str(self.database), 'reconcile', '--max-teams', '1']), 1)

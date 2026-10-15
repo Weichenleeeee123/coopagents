@@ -16,7 +16,7 @@ def main():
     paths = [ROOT / name for name in DESTINATIONS]
     before = {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest() for path in paths}
     config = tomllib.loads(paths[0].read_text(encoding="utf-8"))
-    assert config["mcp_servers"]["crewmesh_probe"]["url"] == "http://127.0.0.1:8768/mcp"
+    assert config["mcp_servers"]["coopagents_probe"]["url"] == "http://127.0.0.1:8768/mcp"
     for path, agent in ((paths[1], "codex"), (paths[2], "claude")):
         hooks = json.loads(path.read_text(encoding="utf-8"))["hooks"]
         assert set(hooks) == {"SessionStart", "UserPromptSubmit", "PostToolUse", "Stop"}
@@ -25,7 +25,7 @@ def main():
             command = event[0]["hooks"][0]
             assert command["timeout"] == 5
             assert command["command"] == f'"{Path(sys.executable).resolve()}" "{ROOT / "hook_probe.py"}" --agent {agent}'
-    assert json.loads(paths[3].read_text(encoding="utf-8")) == {"mcpServers": {"crewmesh_probe": {"type": "http", "url": "http://127.0.0.1:8768/mcp"}}}
+    assert json.loads(paths[3].read_text(encoding="utf-8")) == {"mcpServers": {"coopagents_probe": {"type": "http", "url": "http://127.0.0.1:8768/mcp"}}}
     retry = subprocess.run([sys.executable, str(ROOT / "configure_lab.py")], capture_output=True, text=True, timeout=5)
     after = {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest() for path in paths}
     assert retry.returncode != 0

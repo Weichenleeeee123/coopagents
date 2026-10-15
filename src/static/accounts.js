@@ -2,7 +2,7 @@
 (() => {
   'use strict';
   const el = id => document.getElementById(id);
-  const project = window.CrewmeshProject;
+  const project = window.CoopagentsProject;
   let epoch = 0, session = null, config = null, teams = [], projects = [], managed = [], members = [], teamId = '', roomId = '', busy = false, operationId = 0;
   let hubView = 'projects';
   const hubViews = {
@@ -19,7 +19,7 @@
       el('hub-nav-'+key).setAttribute('aria-current',key===view?'page':'false');
     }
     [el('hub-kicker').textContent,el('hub-title').textContent,el('hub-description').textContent]=hubViews[view];
-    el('billing-empty').hidden=!!teamId;document.title=hubViews[view][1]+' · Crewmesh';
+    el('billing-empty').hidden=!!teamId;document.title=hubViews[view][1]+' · Coopagents';
   }
   for(const key of Object.keys(hubViews))el('hub-nav-'+key).addEventListener('click',()=>setHubView(key));
   const pending = new Set();
@@ -27,7 +27,7 @@
   const node = (tag, value, cls) => { const n=document.createElement(tag); n.textContent=value == null?'':String(value); if(cls)n.className=cls;return n; };
   const btn = (label, action, cls) => {const n=node('button',label,cls);n.type='button';n.addEventListener('click',()=>act(n,action));return n;};
   const routeTeam = () => '/account/teams/'+encodeURIComponent(teamId);
-  function invitationState(){window.CrewmeshInvitations?.update({session,config,request,accept:acceptInvitation,refresh:start});}
+  function invitationState(){window.CoopagentsInvitations?.update({session,config,request,accept:acceptInvitation,refresh:start});}
   async function acceptInvitation(token,isCurrent=()=>true){
     const mine=epoch,result=await request('/account/invites/accept',{invite_token:token});
     if(mine!==epoch || !isCurrent())throw stale();await reload(result.team_id,isCurrent);
@@ -36,20 +36,20 @@
   }
   async function createInvitation(projectIds,data={role:'member'}){
     const mine=epoch,invite=await request(routeTeam()+'/invites',{...data,project_ids:projectIds});
-    if(mine===epoch)project.private('复制团队邀请链接',{invite_url:window.CrewmeshInvitations.link(invite),expires_at:invite.expires_at});
+    if(mine===epoch)project.private('复制团队邀请链接',{invite_url:window.CoopagentsInvitations.link(invite),expires_at:invite.expires_at});
   }
   function invalidate() {
-    window.CrewmeshBilling?.clear();el('hub-loading').hidden=true;
+    window.CoopagentsBilling?.clear();el('hub-loading').hidden=true;
     epoch++; for(const c of pending)c.abort(); pending.clear(); project.clear();
     el('workspace').hidden=true;el('account-switchers').hidden=true;
     ['hub-projects','hub-members','invite-scopes'].forEach(id=>el(id).replaceChildren());
     el('hub-identity').textContent='';el('hub-error').textContent='';el('workspace-project').replaceChildren();
     for(const input of document.querySelectorAll('input[type=password]'))input.value='';projects=[];managed=[];members=[];roomId='';
-    sessionStorage.removeItem('crewmesh_selected_project');
+    sessionStorage.removeItem('coopagents_selected_project');
   }
   function loggedOut() {
-    invalidate();session=null;teams=[];teamId='';hubView='projects';document.title='Crewmesh · 同频';
-    sessionStorage.removeItem('crewmesh_account_project');sessionStorage.removeItem('crewmesh_selected_team');
+    invalidate();session=null;teams=[];teamId='';hubView='projects';document.title='Coopagents · 同频';
+    sessionStorage.removeItem('coopagents_account_project');sessionStorage.removeItem('coopagents_selected_team');
     el('account-hub').hidden=true;el('login').hidden=false;
     ['account-login','bootstrap-form','register-form','accept-form','password-form','claim-form','project-form','team-form','team-invite-form'].forEach(id=>el(id).reset());
     el('hub-team').replaceChildren();el('workspace-team').replaceChildren();el('workspace-project').replaceChildren();
@@ -59,7 +59,7 @@
     const mine=epoch, c=new AbortController();pending.add(c);
     const timer=setTimeout(()=>c.abort(),timeout);
     try {
-      const h={...headers};if(data!==undefined){h['Content-Type']='application/json';if(session)h['X-Crewmesh-CSRF']=session.csrf_token;}
+      const h={...headers};if(data!==undefined){h['Content-Type']='application/json';if(session)h['X-Coopagents-CSRF']=session.csrf_token;}
       const response=await fetch(path,{method:data===undefined?'GET':'POST',credentials:'same-origin',cache:'no-store',headers:h,body:data===undefined?undefined:JSON.stringify(data),signal:c.signal});
       if(mine!==epoch)throw stale();
       const body=await response.json();if(mine!==epoch)throw stale();
@@ -126,14 +126,14 @@
     }
   }
   function loadBilling(mine,id) {
-    window.CrewmeshBilling?.load({teamId:id,role:teams.find(t=>t.team_id===id)?.role,
+    window.CoopagentsBilling?.load({teamId:id,role:teams.find(t=>t.team_id===id)?.role,
       isCurrent:()=>mine===epoch && !!session && teamId===id,
       request:(path,data)=>{if(mine!==epoch || !session || teamId!==id)return Promise.reject(stale());return request(path,data,{},true,60000);}});
   }
   async function loadTeam(id,isCurrent=()=>true) {
     if(!isCurrent())throw stale();
     const nextView=id===teamId?hubView:'projects';
-    invalidate();teamId=id;sessionStorage.setItem('crewmesh_selected_team',id);showHub();renderTeams();setHubView(nextView);const mine=epoch;
+    invalidate();teamId=id;sessionStorage.setItem('coopagents_selected_team',id);showHub();renderTeams();setHubView(nextView);const mine=epoch;
     el('hub-loading').hidden=!id;el('hub-projects').setAttribute('aria-busy',String(!!id));
     if(!id){renderProjects();return;}
     try {
@@ -153,7 +153,7 @@
     if(!session || !isCurrent() || !projects.some(p=>p.room_id===id))return;
     const selectedTeam=teamId, available=projects;invalidate();showHub();const mine=epoch;
     const credential=await request('/account/projects/'+encodeURIComponent(id)+'/select',{});if(mine!==epoch || selectedTeam!==teamId || !isCurrent())return;
-    projects=available;roomId=id;sessionStorage.setItem('crewmesh_selected_project',id);project.enter(credential.web_token);
+    projects=available;roomId=id;sessionStorage.setItem('coopagents_selected_project',id);project.enter(credential.web_token);
     el('account-hub').hidden=true;el('account-switchers').hidden=false;el('logout').textContent='返回团队与项目';renderTeams();
   }
   async function home(){
@@ -163,11 +163,11 @@
   async function denied(){invalidate();showHub();try{await request('/account/session');await reload();el('hub-error').textContent='项目访问已失效，请重新选择获授权的项目。';}catch(error){if(error.status===401)loggedOut();else el('hub-error').textContent=error.message;}}
   async function login(path,data,headers={},isCurrent=()=>true){
     loggedOut();const mine=epoch;const info=await request(path,data,headers);if(mine!==epoch || !isCurrent())return;session=info;el('legacy-entry').open=false;await reload(info.team_id,isCurrent);
-    if(path==='/account/invites/accept' && isCurrent()){if(info.project_ids?.length===1)await selectProject(info.project_ids[0],isCurrent);if(isCurrent())window.CrewmeshInvitations?.clear();}
+    if(path==='/account/invites/accept' && isCurrent()){if(info.project_ids?.length===1)await selectProject(info.project_ids[0],isCurrent);if(isCurrent())window.CoopagentsInvitations?.clear();}
   }
   bind('account-login',data=>login('/account/login',data));
-  bind('bootstrap-form',data=>{const secret=data.bootstrap_secret;delete data.bootstrap_secret;if(!data.display_name)delete data.display_name;return login('/account/bootstrap',data,{'X-Crewmesh-Bootstrap':secret});});
-  bind('register-form',data=>{if(!data.display_name)delete data.display_name;return login('/account/invites/accept',window.CrewmeshInvitations?.registration(data)||data,{},window.CrewmeshInvitations?.guard()||(()=>true));});
+  bind('bootstrap-form',data=>{const secret=data.bootstrap_secret;delete data.bootstrap_secret;if(!data.display_name)delete data.display_name;return login('/account/bootstrap',data,{'X-Coopagents-Bootstrap':secret});});
+  bind('register-form',data=>{if(!data.display_name)delete data.display_name;return login('/account/invites/accept',window.CoopagentsInvitations?.registration(data)||data,{},window.CoopagentsInvitations?.guard()||(()=>true));});
   bind('team-form',async data=>{const mine=epoch,result=await request('/account/teams',data);if(mine===epoch)await reload(result.team_id);});
   bind('project-form',async data=>{await change(routeTeam()+'/projects',data);});
   bind('accept-form',async data=>{await acceptInvitation(data.invite_token);});
@@ -176,7 +176,7 @@
   bind('password-form',async data=>{const mine=epoch;await request('/account/password',data);if(mine!==epoch)return;loggedOut();el('account-error').textContent='密码已修改，请重新登录。';});
   el('account-logout').addEventListener('click',()=>{busy=false;return act(el('account-logout'),async()=>{
     const csrf=session?.csrf_token;invalidate();el('account-hub').hidden=true;el('login').hidden=true;
-    try{await request('/account/logout',{},csrf?{'X-Crewmesh-CSRF':csrf}:{});loggedOut();}
+    try{await request('/account/logout',{},csrf?{'X-Coopagents-CSRF':csrf}:{});loggedOut();}
     catch(error){if(session){showHub();el('hub-error').textContent='退出未完成：'+error.message+'。请重试退出。';}throw error;}
   });});
   for(const id of ['hub-team','workspace-team'])el(id).addEventListener('change',()=>{const value=el(id).value;busy=false;act(el(id),()=>loadTeam(value));});
@@ -184,7 +184,7 @@
   el('account-settings').addEventListener('click',()=>act(el('account-settings'),home));
   el('hub-refresh').addEventListener('click',()=>act(el('hub-refresh'),reload));
   async function start(){
-    const storedTeam=sessionStorage.getItem('crewmesh_selected_team');const storedProject=sessionStorage.getItem('crewmesh_selected_project');const wasManaged=sessionStorage.getItem('crewmesh_account_project');
+    const storedTeam=sessionStorage.getItem('coopagents_selected_team');const storedProject=sessionStorage.getItem('coopagents_selected_project');const wasManaged=sessionStorage.getItem('coopagents_account_project');
     if(wasManaged)project.clear();const mine=epoch;
     config=await request('/account/config',undefined,{},false);if(mine!==epoch)return;
     el('account-mode').textContent=config.local_login_enabled?'本地部署 · 使用本机服务的账号登录':config.github_oauth_enabled?'云端部署 · 使用 GitHub 账号登录':'云端部署尚未配置 GitHub 登录，请联系部署管理员。';
@@ -197,7 +197,7 @@
     catch(error){if(mine!==epoch)return;if(error.status===401){if(wasManaged)loggedOut();return;}throw error;}
     if(mine!==epoch)return;session=info;await reload(storedTeam);
     if(['#billing','#billing-return'].includes(window.location?.hash))setHubView('billing');
-    if(wasManaged&&storedProject&&!window.CrewmeshInvitations?.pending()&&!['#billing','#billing-return'].includes(window.location?.hash)&&projects.some(p=>p.room_id===storedProject))await selectProject(storedProject);
+    if(wasManaged&&storedProject&&!window.CoopagentsInvitations?.pending()&&!['#billing','#billing-return'].includes(window.location?.hash)&&projects.some(p=>p.room_id===storedProject))await selectProject(storedProject);
   }
   window.addEventListener('hashchange',async()=>{
     const hash=window.location.hash,account=session,selectedTeam=teamId;
@@ -206,7 +206,7 @@
     if(session!==account || selectedTeam!==teamId || window.location.hash!==hash || el('account-hub').hidden)return;
     setHubView('billing');loadBilling(epoch,teamId);
   });
-  window.CrewmeshAccounts={home,denied};
+  window.CoopagentsAccounts={home,denied};
   el('account-retry').addEventListener('click',()=>act(el('account-retry'),start));
   act(el('account-retry'),start);
 })();

@@ -14,7 +14,7 @@ Task 4 最初在团队账号中心的项目列表后增加英文 Plan & billing 
 
 ## 生命周期与付款跳转
 
-`accounts.js` 在所有账号失效、退出、团队切换和项目选择路径中先调用可选 `CrewmeshBilling.clear()`。团队加载独立启动 `load({teamId, role, request, isCurrent})`，不会等待 Billing 完成才加载项目或成员。Billing 复用账号 Cookie、CSRF、401 会话复查和 AbortController；其请求允许 60 秒，其他账号请求仍为 10 秒。
+`accounts.js` 在所有账号失效、退出、团队切换和项目选择路径中先调用可选 `CoopagentsBilling.clear()`。团队加载独立启动 `load({teamId, role, request, isCurrent})`，不会等待 Billing 完成才加载项目或成员。Billing 复用账号 Cookie、CSRF、401 会话复查和 AbortController；其请求允许 60 秒，其他账号请求仍为 10 秒。
 
 模块在自己的 mount generation 与账号 epoch 同时有效时才渲染、显示错误、开始动作或跳转。等待 provider 时只禁用 Billing 按钮，账号退出及团队切换仍可用。旧 fetch、旧 JSON body 和旧付款 URL 无法恢复新账号的界面或触发跳转。
 

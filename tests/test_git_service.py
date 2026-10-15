@@ -5,7 +5,7 @@ import unittest
 import threading
 from unittest.mock import patch
 from starlette.testclient import TestClient
-from crewmesh.api import create_app
+from coopagents.api import create_app
 from test_github_sync import FakeProvider
 
 

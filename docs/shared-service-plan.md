@@ -1,4 +1,4 @@
-# Crewmesh 最小共享服务 Implementation Plan
+# Coopagents 最小共享服务 Implementation Plan
 
 > **For agentic workers:** Use subagent-driven-development task by task, with spec review before quality review. Follow the user's no-file-deletion rule and phase-by-phase Git commits.
 

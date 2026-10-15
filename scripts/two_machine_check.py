@@ -18,12 +18,12 @@ import time
 
 
 def report(profile_path):
-    from crewmesh.space_runtime import request, status
-    from crewmesh.space_wake import WakeState, remote_digest
-    from crewmesh.spaces import read_profile
-    from crewmesh.p2p import member_link
+    from coopagents.space_runtime import request, status
+    from coopagents.space_wake import WakeState, remote_digest
+    from coopagents.spaces import read_profile
+    from coopagents.p2p import member_link
     profile = read_profile(profile_path)
-    result = {'collected_at': time.strftime('%Y-%m-%dT%H:%M:%S%z'), 'crewmesh': version('crewmesh'),
+    result = {'collected_at': time.strftime('%Y-%m-%dT%H:%M:%S%z'), 'coopagents': version('coopagents'),
               'python': sys.version.split()[0], 'platform': platform.platform(),
               'member_id': profile['member_id'], 'room_id': profile['room_id'],
               'runtime': status(profile_path), 'wake': WakeState(profile_path).summary()}
@@ -43,9 +43,9 @@ def report(profile_path):
 
 
 def ping(profile_path, to, marker):
-    from crewmesh.space_runtime import request
-    from crewmesh.spaces import read_profile
-    from crewmesh.p2p import member_link
+    from coopagents.space_runtime import request
+    from coopagents.spaces import read_profile
+    from coopagents.p2p import member_link
     profile = read_profile(profile_path)
     with member_link(profile):
         sent = request(profile['origin'], '/api/operations/send_request', token=profile['agent_token'], data={

@@ -25,7 +25,7 @@ class AgentConnectTests(unittest.TestCase):
         for token in (result['agent_token'], self.member['agent_token']):
             self.assertEqual(self.live.request('GET', '/api/me', token)[0], 200)
         self.assertNotIn(result['agent_token'], str(self.live.request('GET', '/api/snapshot', self.member['web_token'])[1]))
-        with patch('crewmesh.identity._utcnow', return_value=datetime.now(timezone.utc) + timedelta(days=91)):
+        with patch('coopagents.identity._utcnow', return_value=datetime.now(timezone.utc) + timedelta(days=91)):
             self.assertEqual(self.live.request('GET', '/api/me', result['agent_token'])[0], 401)
         self.live.request('POST', '/api/agent-token', self.member['web_token'], {})
         self.assertEqual(self.live.request('GET', '/api/me', result['agent_token'])[0], 401)
@@ -39,7 +39,7 @@ class AgentConnectTests(unittest.TestCase):
 
     def test_public_skill_and_reference_have_no_private_credentials(self):
         for name in ('SKILL.md', 'protocol.md'):
-            with urlopen(self.live.url + '/skills/crewmesh-connect/' + name) as response:
+            with urlopen(self.live.url + '/skills/coopagents-connect/' + name) as response:
                 self.assertEqual(response.status, 200)
                 content = response.read().decode()
                 self.assertNotIn(self.owner['agent_token'], content)

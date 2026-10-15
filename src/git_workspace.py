@@ -200,9 +200,9 @@ def _unique_object(pairs):
 
 
 def load_project(path):
-    """Read .crewmesh/project.json; no endpoints, commands, or extensions allowed."""
+    """Read .coopagents/project.json; no endpoints, commands, or extensions allowed."""
     try:
-        with (Path(path) / '.crewmesh' / 'project.json').open('rb') as stream:
+        with (Path(path) / '.coopagents' / 'project.json').open('rb') as stream:
             data = stream.read(MAX_PROJECT_BYTES + 1)
         if len(data) > MAX_PROJECT_BYTES:
             raise ValidationError('Project configuration exceeded its size limit')

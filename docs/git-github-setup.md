@@ -10,16 +10,16 @@ G2 使用独立 GitHub App 读取已授权仓库。现有 GitHub 账号登录继
 
 | 环境变量 | 内容 |
 | --- | --- |
-| `CREWMESH_GITHUB_APP_ID` | 数字 App ID |
-| `CREWMESH_GITHUB_APP_CLIENT_ID` | 此 GitHub App 的 client ID，区别于数字 App ID 和登录 OAuth client ID |
-| `CREWMESH_GITHUB_APP_CLIENT_SECRET` | 此 App 的用户授权 secret |
-| `CREWMESH_GITHUB_APP_PRIVATE_KEY` | App 的 RSA PEM 私钥，至少 2048 位 |
-| `CREWMESH_GITHUB_WEBHOOK_SECRET` | 与 GitHub webhook 配置相同的 secret |
-| `CREWMESH_GITHUB_APP_CALLBACK_URL` | HTTPS `/api/git/github/callback` 完整 URL；省略时从 public origin 推导 |
+| `COOPAGENTS_GITHUB_APP_ID` | 数字 App ID |
+| `COOPAGENTS_GITHUB_APP_CLIENT_ID` | 此 GitHub App 的 client ID，区别于数字 App ID 和登录 OAuth client ID |
+| `COOPAGENTS_GITHUB_APP_CLIENT_SECRET` | 此 App 的用户授权 secret |
+| `COOPAGENTS_GITHUB_APP_PRIVATE_KEY` | App 的 RSA PEM 私钥，至少 2048 位 |
+| `COOPAGENTS_GITHUB_WEBHOOK_SECRET` | 与 GitHub webhook 配置相同的 secret |
+| `COOPAGENTS_GITHUB_APP_CALLBACK_URL` | HTTPS `/api/git/github/callback` 完整 URL；省略时从 public origin 推导 |
 
-client secret、private key、webhook secret 均支持同名追加 `_FILE` 的文件来源，例如 `CREWMESH_GITHUB_APP_PRIVATE_KEY_FILE`。直接值与文件不能同时提供；每个文件最多 65536 字节。配置错误只返回通用错误，不回显文件内容。`.[service]` 明确安装 PyJWT 的 crypto 支持，固定发行依赖包含 cryptography 和 httpx2。
+client secret、private key、webhook secret 均支持同名追加 `_FILE` 的文件来源，例如 `COOPAGENTS_GITHUB_APP_PRIVATE_KEY_FILE`。直接值与文件不能同时提供；每个文件最多 65536 字节。配置错误只返回通用错误，不回显文件内容。`.[service]` 明确安装 PyJWT 的 crypto 支持，固定发行依赖包含 cryptography 和 httpx2。
 
-Compose 部署时按 `.env.example` 的注释设置 App ID、client ID 和三个本机 secret 文件路径，再运行 `docker compose --env-file .env -f compose.yaml -f compose.github.yaml up -d --build`。该扩展只挂载指定 secret，不把密钥复制到镜像。基础 `compose.yaml` 不配置 App 时仍正常运行；callback 从 `CREWMESH_PUBLIC_URL` 推导。
+Compose 部署时按 `.env.example` 的注释设置 App ID、client ID 和三个本机 secret 文件路径，再运行 `docker compose --env-file .env -f compose.yaml -f compose.github.yaml up -d --build`。该扩展只挂载指定 secret，不把密钥复制到镜像。基础 `compose.yaml` 不配置 App 时仍正常运行；callback 从 `COOPAGENTS_PUBLIC_URL` 推导。
 
 ## 网页授权与关联
 

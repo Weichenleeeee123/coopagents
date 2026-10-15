@@ -10,16 +10,16 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from uuid import uuid4
 
-from crewmesh.accounts import AccountStore
-from crewmesh.errors import AccessDenied, Conflict, ValidationError
-from crewmesh.identity import IdentityStore
-from crewmesh.workspaces import WorkspaceStore
+from coopagents.accounts import AccountStore
+from coopagents.errors import AccessDenied, Conflict, ValidationError
+from coopagents.identity import IdentityStore
+from coopagents.workspaces import WorkspaceStore
 
 
 class BillingTests(unittest.TestCase):
     def setUp(self):
-        self.assertIsNotNone(importlib.util.find_spec('crewmesh.billing'), 'Billing domain must exist')
-        self.module = importlib.import_module('crewmesh.billing')
+        self.assertIsNotNone(importlib.util.find_spec('coopagents.billing'), 'Billing domain must exist')
+        self.module = importlib.import_module('coopagents.billing')
         root = Path('.local/c2-domain-tests')
         root.mkdir(parents=True, exist_ok=True)
         self.identity = IdentityStore(root / (str(uuid4()) + '.sqlite'))
@@ -529,10 +529,10 @@ class BillingTests(unittest.TestCase):
         script = '''
 import json, sys
 from dataclasses import asdict
-from crewmesh.identity import IdentityStore
-from crewmesh.accounts import AccountStore
-from crewmesh.workspaces import WorkspaceStore
-from crewmesh.billing import BillingStore, BillingCatalog, SubscriptionSnapshot
+from coopagents.identity import IdentityStore
+from coopagents.accounts import AccountStore
+from coopagents.workspaces import WorkspaceStore
+from coopagents.billing import BillingStore, BillingCatalog, SubscriptionSnapshot
 b = BillingStore(WorkspaceStore(AccountStore(IdentityStore(sys.argv[1]))), 'cloud', BillingCatalog(**json.loads(sys.argv[3])))
 r = b.reserve_checkout(sys.argv[2])
 assert b.update_checkout(r, status='complete', checkout_id='cs_recovered', subscription_id='sub_fixture')

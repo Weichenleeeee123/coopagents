@@ -12,10 +12,10 @@ import unittest
 from unittest.mock import patch
 from uuid import uuid4
 import uvicorn
-from crewmesh.api import create_app
-from crewmesh.billing import BillingCatalog
-from crewmesh.billing_config import BillingConfig
-from crewmesh.stripe_billing import StripeClient
+from coopagents.api import create_app
+from coopagents.billing import BillingCatalog
+from coopagents.billing_config import BillingConfig
+from coopagents.stripe_billing import StripeClient
 from test_billing_service import FixtureTransport
 
 CATALOG = BillingCatalog(3, 1, 20, 10, 'price_fixture', 'test')
@@ -73,9 +73,9 @@ class BillingHTTP:
     def request(self, method, path, session=None, data=None, raw=None, headers=None, raw_response=False):
         values = [('Host', 'team.example')]
         if session:
-            values += [('Cookie', 'crewmesh_account=' + session['session_token'])]
+            values += [('Cookie', 'coopagents_account=' + session['session_token'])]
             if method == 'POST':
-                values += [('Origin', ORIGIN), ('X-Crewmesh-CSRF', session['csrf_token'])]
+                values += [('Origin', ORIGIN), ('X-Coopagents-CSRF', session['csrf_token'])]
         if data is not None:
             raw = json.dumps(data).encode()
             values += [('Content-Type', 'application/json')]
@@ -131,11 +131,11 @@ class BillingAPITests(unittest.TestCase):
 
     def test_cookie_origin_csrf_and_role_denial_preserves_sessions(self):
         for headers, status in (([('Authorization', 'Bearer irrelevant')], 401),
-            ([('Cookie', 'crewmesh_account=x; crewmesh_account=y')], 401),
+            ([('Cookie', 'coopagents_account=x; coopagents_account=y')], 401),
             ([('Origin', 'https://foreign.example')], 403),
-            ([('X-Crewmesh-CSRF', 'wrong')], 401),
+            ([('X-Coopagents-CSRF', 'wrong')], 401),
             ([('Origin', ORIGIN), ('Origin', ORIGIN)], 403),
-            ([('X-Crewmesh-CSRF', self.owner['csrf_token']), ('X-Crewmesh-CSRF', self.owner['csrf_token'])], 401)):
+            ([('X-Coopagents-CSRF', self.owner['csrf_token']), ('X-Coopagents-CSRF', self.owner['csrf_token'])], 401)):
             session = None if headers[0][0] == 'Authorization' else self.owner
             self.assertEqual(self.live.request('POST', self.path + '/checkout', session, {}, headers=headers)[0], status)
         for role in ('member', 'admin'):
@@ -294,7 +294,7 @@ class BillingConfigurationTests(unittest.TestCase):
 class BillingRuntimeCancellationTests(unittest.IsolatedAsyncioTestCase):
     async def test_repeated_cancellation_keeps_capacity_until_physical_completion(self):
         import asyncio
-        from crewmesh.billing_api import BillingRuntime, BillingBusy
+        from coopagents.billing_api import BillingRuntime, BillingBusy
         runtime = BillingRuntime()
         release = threading.Event()
         entered = threading.Event()
@@ -316,7 +316,7 @@ class BillingRuntimeCancellationTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_cancelled_shutdown_waits_for_every_owned_pool(self):
         import asyncio
-        from crewmesh.billing_api import BillingRuntime
+        from coopagents.billing_api import BillingRuntime
         runtime = BillingRuntime()
         release_provider, release_ingestion = threading.Event(), threading.Event()
         entered_provider, entered_ingestion = threading.Event(), threading.Event()
@@ -396,7 +396,7 @@ class BillingWorkerHTTPTests(unittest.TestCase):
         finally: fresh.close()
 
     def test_unexpected_worker_failure_retains_lease_and_worker_stays_alive(self):
-        from crewmesh.billing_service import BillingService
+        from coopagents.billing_service import BillingService
         live, _, _ = self.fixture()
         live.close()
         raw = event('evt_unexpected', 'product.updated', 'prod_fixture')
@@ -410,7 +410,7 @@ class BillingWorkerHTTPTests(unittest.TestCase):
                 calls.append(True)
                 raise RuntimeError('sk_test_SECRET private payload')
             return original(billing)
-        with patch.object(BillingService, 'process_next', flaky), self.assertLogs('crewmesh.billing_worker', level='ERROR') as logs:
+        with patch.object(BillingService, 'process_next', flaky), self.assertLogs('coopagents.billing_worker', level='ERROR') as logs:
             fresh = BillingHTTP(database=live.database, transport=live.transport)
             try:
                 wait_for(lambda: bool(calls))
@@ -451,38 +451,38 @@ class BillingWorkerHTTPTests(unittest.TestCase):
 
 class BillingServerConfigurationTests(unittest.TestCase):
     def environment(self):
-        return {'CREWMESH_MODE': 'cloud', 'CREWMESH_PUBLIC_URL': ORIGIN,
-            'CREWMESH_BILLING_MODE': 'test', 'CREWMESH_STRIPE_SECRET_KEY': 'sk_test_fixture',
-            'CREWMESH_STRIPE_WEBHOOK_SECRET': 'whsec_fixture', 'CREWMESH_TEAM_MONTHLY_PRICE_ID': 'price_fixture',
-            'CREWMESH_FREE_MEMBERS': '3', 'CREWMESH_FREE_PROJECTS': '1',
-            'CREWMESH_TEAM_MEMBERS': '20', 'CREWMESH_TEAM_PROJECTS': '10'}
+        return {'COOPAGENTS_MODE': 'cloud', 'COOPAGENTS_PUBLIC_URL': ORIGIN,
+            'COOPAGENTS_BILLING_MODE': 'test', 'COOPAGENTS_STRIPE_SECRET_KEY': 'sk_test_fixture',
+            'COOPAGENTS_STRIPE_WEBHOOK_SECRET': 'whsec_fixture', 'COOPAGENTS_TEAM_MONTHLY_PRICE_ID': 'price_fixture',
+            'COOPAGENTS_FREE_MEMBERS': '3', 'COOPAGENTS_FREE_PROJECTS': '1',
+            'COOPAGENTS_TEAM_MEMBERS': '20', 'COOPAGENTS_TEAM_PROJECTS': '10'}
 
     def test_server_loads_explicit_billing_only_when_enabled(self):
-        from crewmesh.server import main
+        from coopagents.server import main
         env = self.environment()
-        with patch.dict('os.environ', env, clear=True), patch('sys.argv', ['crewmesh']), patch('crewmesh.api.create_app', return_value='app') as create, patch('uvicorn.run') as run:
+        with patch.dict('os.environ', env, clear=True), patch('sys.argv', ['coopagents']), patch('coopagents.api.create_app', return_value='app') as create, patch('uvicorn.run') as run:
             main()
             self.assertEqual(create.call_args.kwargs['billing_config'], CONFIG)
             self.assertEqual(create.call_args.kwargs['mode'], 'cloud')
             run.assert_called_once()
-        env = {'CREWMESH_MODE': 'cloud', 'CREWMESH_PUBLIC_URL': ORIGIN}
-        with patch.dict('os.environ', env, clear=True), patch('sys.argv', ['crewmesh']), patch('crewmesh.api.create_app', return_value='app') as create, patch('uvicorn.run'):
+        env = {'COOPAGENTS_MODE': 'cloud', 'COOPAGENTS_PUBLIC_URL': ORIGIN}
+        with patch.dict('os.environ', env, clear=True), patch('sys.argv', ['coopagents']), patch('coopagents.api.create_app', return_value='app') as create, patch('uvicorn.run'):
             main()
             self.assertNotIn('billing_config', create.call_args.kwargs)
 
     def test_partial_cloud_configuration_fails_before_server_start(self):
         import io
-        from crewmesh.server import main
-        env = self.environment(); env.pop('CREWMESH_STRIPE_WEBHOOK_SECRET')
-        with patch.dict('os.environ', env, clear=True), patch('sys.argv', ['crewmesh']), patch('sys.stderr', new_callable=io.StringIO) as error, patch('crewmesh.api.create_app') as create, patch('uvicorn.run') as run:
+        from coopagents.server import main
+        env = self.environment(); env.pop('COOPAGENTS_STRIPE_WEBHOOK_SECRET')
+        with patch.dict('os.environ', env, clear=True), patch('sys.argv', ['coopagents']), patch('sys.stderr', new_callable=io.StringIO) as error, patch('coopagents.api.create_app') as create, patch('uvicorn.run') as run:
             with self.assertRaises(SystemExit) as failure: main()
             self.assertEqual(failure.exception.code, 2)
             create.assert_not_called(); run.assert_not_called()
             self.assertNotIn('sk_test_fixture', error.getvalue())
 
     def test_selfhost_ignores_billing_secret_files_and_create_app_never_reads_environment(self):
-        from crewmesh.billing_config import load_billing_config
-        env = self.environment(); env['CREWMESH_STRIPE_SECRET_KEY_FILE'] = 'C:/nonexistent-billing-secret'
+        from coopagents.billing_config import load_billing_config
+        env = self.environment(); env['COOPAGENTS_STRIPE_SECRET_KEY_FILE'] = 'C:/nonexistent-billing-secret'
         with patch.dict('os.environ', env, clear=True), patch('pathlib.Path.open', side_effect=AssertionError('Secret files must not be read')):
             self.assertFalse(load_billing_config('self-hosted').enabled)
         with patch.dict('os.environ', self.environment(), clear=True), patch.object(StripeClient, '__init__', side_effect=AssertionError('No implicit provider construction')):
@@ -492,7 +492,7 @@ class BillingServerConfigurationTests(unittest.TestCase):
 
 class BillingProductionTransportShutdownTests(unittest.TestCase):
     def test_transport_timeout_joins_service_work_but_retains_bounded_daemon_and_late_dns_cannot_post(self):
-        import crewmesh.stripe_billing as stripe
+        import coopagents.stripe_billing as stripe
         entered, release = threading.Event(), threading.Event()
         connections, physical_threads, wire_requests = [], [], []
         fixture = FixtureTransport()
@@ -539,7 +539,7 @@ class BillingProductionTransportShutdownTests(unittest.TestCase):
                 self.assertEqual(len(connections), 3)
                 residue = [thread for thread in physical_threads if thread.is_alive()]
                 self.assertEqual(len(residue), 2)
-                self.assertTrue(all(thread.daemon and thread.name == 'crewmesh-stripe' for thread in residue))
+                self.assertTrue(all(thread.daemon and thread.name == 'coopagents-stripe' for thread in residue))
                 # Owned service jobs have finished; shutdown must not wait for
                 # an unbounded OS DNS resolution in a daemon transport helper.
                 started = time.monotonic()

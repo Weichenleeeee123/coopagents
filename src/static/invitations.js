@@ -61,7 +61,7 @@
   el('invitation-dismiss').addEventListener('click',clear);
   window.addEventListener('hashchange',()=>{if(capture()){render();load();}});
   capture();
-  window.CrewmeshInvitations={
+  window.CoopagentsInvitations={
     update(next){hooks=next;render();return load();}, clear, pending:()=>!!token,
     guard(){const mine=revision;return ()=>mine===revision;},
     registration(data){return token?{...data,invite_token:token}:data;},

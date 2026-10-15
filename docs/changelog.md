@@ -1,5 +1,16 @@
 # 版本记录
 
+## 未发布 — 改名为 Coopagents
+
+项目由 Crewmesh 改名为 Coopagents：Python 包与导入名 `coopagents`，Skill 目录 `coopagents-space` / `coopagents-connect`，环境变量前缀 `COOPAGENTS_`，网页的请求头与本地存储键同步改名。兼容处理：
+
+- 0.6.0rc2 生成的 `crewmesh-invite-1.` 邀请码仍可加入；新邀请码前缀为 `coopagents-invite-1.`。
+- 点对点连接的协议标识保持 `crewmesh/space/1`，0.6 的主机和成员可以互连。
+- `space_wake install` 会替换旧的 `crewmesh.space_wake` 钩子，`disable` 也会移除它们。
+- 不兼容：原生 MCP 配置里指向 `crewmesh.space_bridge` 的条目需要按 Skill 重新配置；自托管服务的 `CREWMESH_*` 环境变量和默认数据库文件名 `crewmesh.sqlite3` 需改为新名字。
+
+以下为改名前的发布记录，资产文件名保持原样。
+
 ## 0.6.0rc2 — 邀请信息候选版（2026-10-15）
 
 在 0.6.0rc1 之上加入一次粘贴就能加入的邀请信息。真人双机验收仍未进行，清单已改为用邀请信息加入，见 [双机验收](two-machine-acceptance.md)。

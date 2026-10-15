@@ -3,7 +3,7 @@
 空间主机启动后，可让 agent 执行：
 
 ```powershell
-python -m crewmesh.space_runtime board --profile C:\private\space\profile.json
+python -m coopagents.space_runtime board --profile C:\private\space\profile.json
 ```
 
 返回 `url` 是本机控制端口的 `/board#一次性票据`。在主机浏览器打开它；地址仅供主机查看，不经过公开隧道。票据在 60 秒后过期且只能交换一次。页面立即清除地址片段，并将交换得到的看板会话仅保存在内存中。看板会话最多有效一小时；刷新或关闭页面后需重新执行 `board`。
