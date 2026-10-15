@@ -1,4 +1,4 @@
-# 真人双机验收清单（0.6.0rc1）
+# 真人双机验收清单（0.6.0rc2）
 
 目的：验证此前单机测试无法证明的三件事。
 
@@ -10,16 +10,16 @@
 
 ## 准备
 
-1. 双方都从 [0.6.0rc1 发行页](https://github.com/Weichenleeeee123/crewmesh/releases/tag/v0.6.0rc1) 下载 wheel 和 `SHA256SUMS.txt`。
-2. 把下面这句话交给自己的 Claude Code 或 Codex，让 agent 按 `crewmesh-space` Skill 去做：“安装 Crewmesh 0.6.0rc1（校验 SHA256），把 crewmesh-space Skill 装到我的 agent 里。”
+1. 双方都从 [0.6.0rc2 发行页](https://github.com/Weichenleeeee123/crewmesh/releases/tag/v0.6.0rc2) 下载 wheel 和 `SHA256SUMS.txt`。
+2. 把下面这句话交给自己的 Claude Code 或 Codex，让 agent 按 `crewmesh-space` Skill 去做：“安装 Crewmesh 0.6.0rc2（校验 SHA256），把 crewmesh-space Skill 装到我的 agent 里。”
 3. 用一个不重要的仓库做测试，两边的 agent 都在这个仓库里工作。
 
 ## 步骤与记录
 
 | # | 谁 | 操作（对自己的 agent 说） | 记录 |
 | --- | --- | --- | --- |
-| 1 | 主机 A | “用 Crewmesh 给这个项目创建协作空间，邀请一位队友。” | 创建耗时；邀请文件通过私聊发给 B |
-| 2 | 成员 B | “用这个邀请文件加入 Crewmesh 空间：<路径>。” | 是否加入成功、耗时 |
+| 1 | 主机 A | “用 Crewmesh 给这个项目创建协作空间，生成一条给队友的中文邀请信息，24 小时有效。” | 创建耗时；把邀请信息整段私聊发给 B |
+| 2 | 成员 B | 把 A 发来的邀请信息整段贴给自己的 agent，不加任何说明 | 是否加入成功、耗时；agent 是否自己装好了 Crewmesh |
 | 3 | 双方 | “安装 Crewmesh 唤醒。” Codex 用户随后在 `/hooks` 里信任新 hook | 是否装上；Codex 是否需要信任 |
 | 4 | 双方 | 运行 `python scripts/two_machine_check.py report --profile <profile> --out start.json` | `runtime.p2p` 是 direct 还是 relay |
 | 5 | B | 让自己的 agent 处于空闲状态，什么都不做 | — |

@@ -1,7 +1,7 @@
 name: crewmesh
 services:
   app:
-    image: crewmesh:${CREWMESH_VERSION:-0.6.0rc1}
+    image: crewmesh:${CREWMESH_VERSION:-0.6.0rc2}
     build: .
     restart: unless-stopped
     environment:

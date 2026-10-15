@@ -1,6 +1,8 @@
 # 版本记录
 
-## 未发布
+## 0.6.0rc2 — 邀请信息候选版（2026-10-15）
+
+在 0.6.0rc1 之上加入一次粘贴就能加入的邀请信息。真人双机验收仍未进行，清单已改为用邀请信息加入，见 [双机验收](two-machine-acceptance.md)。
 
 - 邀请信息：`space_runtime invite --message en|zh` 生成一段可直接转发的文字，包含一句话介绍、项目与 Skill 链接、给对方 agent 的指令和一次性邀请码 `crewmesh-invite-1.…`。对方把整段贴给自己的 agent，由 `join --invitation-code-stdin` 从标准输入读取并加入；邀请码不进命令参数，解析失败只返回固定的、不含输入内容的原因。
 - 邀请有效期可设：`--hours 1-72`，默认仍为 1 小时；领域操作 `invite` 新增可选整数字段 `hours` 并校验范围。

@@ -29,7 +29,7 @@ python -m venv .venv
 
 发行依赖固定在 `deploy/constraints.txt`，完整安装可使用 `pip install -c deploy/constraints.txt -e '.[service]'`。GitHub CI 覆盖 Python 3.11 / 3.13、网页脚本、发行包、镜像与 TLS smoke。
 
-本地容器验收：`docker build -t crewmesh:0.6.0rc1 .`，然后 `python scripts/deployment_smoke.py --image crewmesh:0.6.0rc1`。需要运行的 Docker 引擎；测试只停止自己的容器并保留证据。原生 CLI 验收入口为 `experiments/agent-integration/p4_native_check.py`，需要已认证的实际工具，失败不能用模拟数据代替。
+本地容器验收：`docker build -t crewmesh:0.6.0rc2 .`，然后 `python scripts/deployment_smoke.py --image crewmesh:0.6.0rc2`。需要运行的 Docker 引擎；测试只停止自己的容器并保留证据。原生 CLI 验收入口为 `experiments/agent-integration/p4_native_check.py`，需要已认证的实际工具，失败不能用模拟数据代替。
 
 候选版 0.4.0rc1 的默认自托管 TLS smoke 同时覆盖账号、项目、MCP、禁用订阅的 Unlimited/实际用量、付款操作拒绝、Billing/Git 静态资源及重启/恢复。Docker CLI 存在不等于 Engine 可用；执行失败必须保留原始失败记录，不沿用历史版本通过结果。
 
