@@ -26,5 +26,5 @@ def validate(data, schema):
 def fields(required='', optional=None):
     result = {key: (int if key in {'source_task_id', 'target_task_id', 'dependency_id', 'reply_id', 'expected_revision', 'ownership_epoch', 'expected_version', 'context_version', 'version', 'request_id', 'contract_id', 'task_id', 'after_id', 'limit'} else str, True, None) for key in required.split()}
     for key, default in (optional or {}).items():
-        result[key] = (int if key in {'before_id', 'ownership_epoch', 'source_request_id', 'task_id', 'after_id', 'limit'} else str, False, default)
+        result[key] = (int if key in {'before_id', 'ownership_epoch', 'source_request_id', 'task_id', 'after_id', 'limit', 'hours'} else str, False, default)
     return result

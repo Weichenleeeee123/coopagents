@@ -46,9 +46,19 @@ private profile path, and status. `invite` writes a private invitation file;
 `invite --share` explicitly prints the sensitive invitation descriptor for
 sharing. A descriptor contains `schema_version`, `origin`, `room_id`,
 `invite_token`, and `expires_at`. Invitations are single-use, expire after one
-hour, and can be revoked. Join checks the expected room inside the same domain
+hour by default (`--hours`, at most 72), and can be revoked. Join checks the expected room inside the same domain
 transaction that consumes the invitation. Send the invitation file through a
 trusted private channel.
+
+`invite --message en|zh` additionally returns `message`, a text to paste into a private chat: a short
+pitch, the project and Skill links, a prompt for the invitee's own agent and a one-time code
+`crewmesh-invite-1.<base64url>` carrying the same descriptor as the file. The invitee's agent passes the
+whole message or the code on standard input, never as an argument:
+
+```powershell
+python -m crewmesh.space_runtime invite --profile .local/spaces/team/profile.json --message en --hours 24
+Get-Content C:\private\message.txt | python -m crewmesh.space_runtime join --invitation-code-stdin --name "Bob" --state-dir .local/spaces/bob
+```
 
 ```powershell
 python -m crewmesh.space_runtime revoke-invitation --profile .local/spaces/team/profile.json --invitation-file .local/spaces/team/invitation-EXAMPLE.json

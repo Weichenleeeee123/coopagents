@@ -8,6 +8,8 @@ from uuid import uuid4
 from .database import Database
 from .errors import AccessDenied, Conflict, NotFound, ValidationError
 
+MAX_INVITE_HOURS = 72
+
 
 @dataclass(frozen=True)
 class Principal:
@@ -94,14 +96,17 @@ class IdentityStore:
                 (principal.room_id,),
             ).fetchone())
 
-    def create_invite(self, web_token):
+    def create_invite(self, web_token, hours=1):
+        # Invitations are bearer secrets: keep their lifetime short and bounded.
+        if type(hours) is not int or not 1 <= hours <= MAX_INVITE_HOURS:
+            raise ValidationError('Invitation lifetime must be 1-%d hours' % MAX_INVITE_HOURS)
         with self.db.connect(write=True) as connection:
             principal = self.resolve(connection, web_token, required_kind='web')
             self._require_unmanaged_room(connection, principal.room_id)
             if principal.role != 'owner':
                 raise AccessDenied('Owner credential required')
             token = secrets.token_urlsafe(32)
-            expires_at = (_utcnow() + timedelta(hours=1)).isoformat()
+            expires_at = (_utcnow() + timedelta(hours=hours)).isoformat()
             connection.execute('''INSERT INTO invitations
                 (token_hash, room_id, created_by_member_id, expires_at) VALUES (?, ?, ?, ?)''',
                 (_token_hash(token), principal.room_id, principal.member_id, expires_at))

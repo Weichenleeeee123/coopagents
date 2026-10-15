@@ -10,15 +10,16 @@ Use the absolute isolated Python path as `<python>`. None of these commands incl
 <python> -m crewmesh.space_runtime create --name <space-name> --owner <display-name> --state-dir <private-dir> --network local
 <python> -m crewmesh.space_runtime create --name <space-name> --owner <display-name> --state-dir <private-dir> --network external --public-url https://<trusted-host>
 <python> -m crewmesh.space_runtime status --profile <private-dir>/profile.json
-<python> -m crewmesh.space_runtime invite --profile <private-dir>/profile.json
+<python> -m crewmesh.space_runtime invite --profile <private-dir>/profile.json [--message en|zh] [--hours 1-72]
 <python> -m crewmesh.space_runtime join --invitation-file <private-invite> --name <display-name> --state-dir <new-private-dir>
+<python> -m crewmesh.space_runtime join --invitation-code-stdin --name <display-name> --state-dir <new-private-dir>   # message or code on stdin
 <python> -m crewmesh.space_runtime start --profile <owner-profile>
 <python> -m crewmesh.space_runtime reconnect --profile <member-profile> --origin https://<new-trusted-host> --room-id <expected-room>
 <python> -m crewmesh.space_runtime stop --profile <owner-profile>
 <python> -m crewmesh.space_runtime board --profile <owner-profile>
 ```
 
-The invite helper saves a protected descriptor and normally emits its path. Use `--share` only if sharing was requested and the output channel is private; it can emit the bearer invitation. Never run it in a captured/public terminal transcript. Revoke a leaked or unused invite with `revoke-invitation --profile <owner-profile> --invitation-file <private-invite>`; revoke a member with `revoke-member --profile <owner-profile> --member-id <member>` only when the actual user requests it. Database and identity survive start/stop. In p2p mode the endpoint key also survives, so the origin and invitations stay valid; the quick-tunnel origin may change.
+The invite helper saves a protected descriptor and normally emits its path. With `--message`, it also emits `message`: a shareable text with a short pitch, the project and Skill links, a prompt for the invitee's agent and the one-time code `crewmesh-invite-1.<base64url>` (the same descriptor as the file), plus `local_only` when the space only accepts agents on the host computer. The message is a bearer secret like `--share` output. `--hours` sets the lifetime (default 1, at most 72). `join --invitation-code-stdin` reads up to 64 KiB from standard input, accepts the code alone or the whole message, and reports a fixed secret-free reason when the code is missing, repeated with different values, truncated or malformed. Use `--share` only if sharing was requested and the output channel is private; it can emit the bearer invitation. Never run it in a captured/public terminal transcript. Revoke a leaked or unused invite with `revoke-invitation --profile <owner-profile> --invitation-file <private-invite>`; revoke a member with `revoke-member --profile <owner-profile> --member-id <member>` only when the actual user requests it. Database and identity survive start/stop. In p2p mode the endpoint key also survives, so the origin and invitations stay valid; the quick-tunnel origin may change.
 
 ## Hosted profile and identity
 

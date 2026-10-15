@@ -184,6 +184,44 @@ class Runtime(unittest.TestCase):
         self.assertNotIn(owner['web_token'], result.stdout + result.stderr)
         self.assertNotIn(owner['agent_token'], result.stdout + result.stderr)
 
+    def test_invitation_message_joins_once_through_stdin(self):
+        from datetime import datetime, timedelta, timezone
+        runtime.create('Hack night', 'Alice', self.profile_path.parent, network='local')
+        owner = read_profile(self.profile_path)
+        for hours in (0, 73):
+            with self.subTest(hours=hours), self.assertRaises(urllib.error.HTTPError):
+                runtime.invite(self.profile_path, hours=hours)
+        result = subprocess.run([sys.executable, '-m', 'crewmesh.space_runtime', 'invite', '--profile',
+                                 str(self.profile_path), '--message', 'zh', '--hours', '24'],
+                                capture_output=True, text=True, encoding='utf-8')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        invited = json.loads(result.stdout)
+        message = invited['message']
+        self.assertTrue(message.startswith('Alice 邀请你加入 Crewmesh 空间「Hack night」。'))
+        self.assertTrue(invited['local_only'])
+        self.assertNotIn('invitation', invited)
+        for secret in (owner['web_token'], owner['agent_token'], owner['control_token']):
+            self.assertNotIn(secret, result.stdout + result.stderr)
+        expires = datetime.fromisoformat(invited['expires_at'])
+        self.assertLess(abs(expires - datetime.now(timezone.utc) - timedelta(hours=24)), timedelta(minutes=5))
+
+        def join(name, text):
+            return subprocess.run([sys.executable, '-m', 'crewmesh.space_runtime', 'join', '--invitation-code-stdin',
+                                   '--name', name, '--state-dir', str(self.directory / name)],
+                                  input=text.encode('utf-8'), capture_output=True)
+        damaged = join('damaged', message.replace('crewmesh-invite-1.', 'crewmesh-invite-1.%'))
+        self.assertEqual(damaged.returncode, 1)
+        self.assertIn(b'Invitation code', damaged.stderr)
+        joined = join('peer', message)
+        self.assertEqual(joined.returncode, 0, joined.stderr)
+        peer = read_profile(json.loads(joined.stdout)['profile'])
+        self.assertEqual(peer['room_id'], owner['room_id'])
+        for secret in (peer['web_token'], peer['agent_token']):
+            self.assertNotIn(secret.encode(), joined.stdout + joined.stderr)
+        self.assertEqual(join('again', message).returncode, 1)
+        with self.assertRaises(ValueError):
+            runtime.join(invited['invitation_file'], 'Both', self.directory / 'both', invitation_code=message)
+
     def test_revoke_invitation_member_and_control_denial(self):
         runtime.create('Test space', 'Owner', self.profile_path.parent, network='local')
         owner = read_profile(self.profile_path)
