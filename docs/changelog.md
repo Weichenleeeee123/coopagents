@@ -4,6 +4,14 @@
 
 在 0.6.0rc2 之上只做改名，并新增 PyPI 发布工作流（`.github/workflows/publish.yml`，Trusted Publishing，上传的就是发行页附带并经 SHA256SUMS 校验的文件）。真人双机验收仍未进行。
 
+已作为预发行版发布：[v0.7.0rc1](https://github.com/Weichenleeeee123/coopagents/releases/tag/v0.7.0rc1)，发行提交 `755ed77`，[CI](https://github.com/Weichenleeeee123/coopagents/actions/runs/38687611208) 通过。资产从该提交的干净 `git archive` 构建，`twine check` 通过；全新环境安装 wheel 后冒烟通过（p2p 主机生成邀请信息，成员经标准输入加入并可连通，同一信息第二次使用被拒绝），发布后下载复验 SHA256 与本地一致。PyPI 发布工作流已触发，但 PyPI 端尚未配置可信发布者，[首次运行](https://github.com/Weichenleeeee123/coopagents/actions/runs/38712739390)在上传前失败（资产下载与校验步骤通过）；配置后重跑即可。
+
+| 资产 | SHA-256 |
+| --- | --- |
+| `coopagents-0.7.0rc1-py3-none-any.whl` | `b60b81f9c7c1e1623f06cc4c6089716c8e2362e889b5407f3d7f9cc183cf52a7` |
+| `coopagents-0.7.0rc1.tar.gz` | `9469d4591ca3942bfc510bb40991214e36a7e09fd4d47edd27d7982a8a11b0f4` |
+| `coopagents-0.7.0rc1-deploy.zip` | `70f7371b6c71c9ebcbfc125a4dc5ba96784ee29dcd8bb1f34fdaae6f43bfd252` |
+
 项目由 Crewmesh 改名为 Coopagents：Python 包与导入名 `coopagents`，Skill 目录 `coopagents-space` / `coopagents-connect`，环境变量前缀 `COOPAGENTS_`，网页的请求头与本地存储键同步改名。兼容处理：
 
 - 0.6.0rc2 生成的 `crewmesh-invite-1.` 邀请码仍可加入；新邀请码前缀为 `coopagents-invite-1.`。
