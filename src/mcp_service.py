@@ -20,6 +20,28 @@ def tool_error(error):
     return CallToolResult(is_error=True, content=[TextContent(type='text', text=json.dumps(payload))])
 
 
+TOOL_DESCRIPTIONS = {
+    'whoami': 'Your own identity in this space: your member id, display name and room.',
+    'read_team': ('Everyone in this space and the shared state: members (member_id and display_name), tasks with '
+                  'owners, sessions with the tool each member uses, requests, contracts and progress. Use it to find '
+                  'the member_id of the teammate you want to ask before calling send_request.'),
+    'send_request': ('Ask a specific teammate a question or for help. Set receiver_member_id to the member who should '
+                     'answer (look it up with read_team; display names are how teammates are called, for example '
+                     '"Claude" or "Codex"). Without receiver_member_id the request is delivered to nobody and wakes '
+                     'nobody: it waits until a person assigns it. Use a new request_key per question; '
+                     'context_version is any positive integer you choose (1 is fine).'),
+    'read_inbox': 'Read requests delivered to you and replies to your requests. Reading records that you read them.',
+    'reply': 'Answer a request delivered to you. Pass the request_id, a new request_key and the same context_version.',
+    'acknowledge': 'Mark a request delivered to you as being handled, without answering yet.',
+    'resolve_request': 'Close a request you sent once its answer is enough.',
+    'claim_task': 'Claim an unowned task; only one member can win. Pass a fresh session_key.',
+    'report_progress': 'Report progress on a task you own.',
+}
+NOT_DELIVERED = ('Not delivered: no receiver_member_id was given, so nobody receives or is woken by this request '
+                 'until a person assigns it. To ask a teammate directly, send a new request with their member_id '
+                 'from read_team.')
+
+
 def create_mcp_app(service, *, origin=None):
     """Return (SDK lifespan application, authenticated ASGI application)."""
     names = ('read_task_history', 'release_task', 'propose_handoff', 'claim_task', 'register_session', 'report_progress', 'send_request', 'read_inbox',
@@ -66,6 +88,8 @@ def create_mcp_app(service, *, origin=None):
                     result = service.snapshot(token, web=False)
                 else:
                     result = service.call(name, token, kwargs)
+                    if name == 'send_request' and result.get('receiver_member_id') is None:
+                        result = result | {'not_delivered': NOT_DELIVERED}
                 return CallToolResult(content=[TextContent(type='text', text=json.dumps(result))], structured_content=result)
             except Exception as error:
                 return tool_error(error)
@@ -79,7 +103,7 @@ def create_mcp_app(service, *, origin=None):
         execute.__name__ = name
         execute.__annotations__ = annotations
         execute.__signature__ = inspect.Signature(parameters, return_annotation=CallToolResult)
-        server.add_tool(execute, name=name, description='Authenticated room operation: ' + name, structured_output=False)
+        server.add_tool(execute, name=name, description=TOOL_DESCRIPTIONS.get(name, 'Authenticated room operation: ' + name), structured_output=False)
 
     for name, schema in schemas.items():
         register(name, schema)

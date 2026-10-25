@@ -45,7 +45,7 @@
 
 **1. 在 Claude Code 里**打开一个测试仓库，说：
 
-> 从 PyPI 把 Coopagents 0.7.0rc2 装进独立的 Python 环境（`pip install "coopagents[space]==0.7.0rc2"`），再按 https://github.com/Weichenleeeee123/coopagents/tree/v0.7.0rc2/src/skills/coopagents-space 配置它的 Skill。然后给这个仓库创建一个 Coopagents 空间，把你自己接进去，再给我的 Codex 生成一条邀请信息。
+> 从 PyPI 把 Coopagents 0.7.0rc2 装进独立的 Python 环境（`pip install "coopagents[space]==0.7.0rc2"`），再按 https://github.com/Weichenleeeee123/coopagents/tree/v0.7.0rc2/src/skills/coopagents-space 配置它的 Skill。然后给这个仓库创建一个 Coopagents 空间，你在里面的名字叫 "Claude"，把你自己接进去，再给我的 Codex 生成一条邀请信息。
 
 **2. 在 Codex 里**打开同一个仓库：
 

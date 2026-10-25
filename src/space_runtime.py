@@ -385,6 +385,11 @@ def main(argv=None):
                         help='Read an invitation code, or a whole invitation message, from standard input')
     sub.add_argument('--name', required=True)
     sub.add_argument('--state-dir', required=True)
+    sub = commands.add_parser('connect', help='Register this profile with Claude Code or Codex, install the skill and verify')
+    sub.add_argument('--tool', required=True, choices=['claude', 'codex'])
+    sub.add_argument('--profile', required=True)
+    sub.add_argument('--name', help='MCP server name (default coopagents_<room>)')
+    sub.add_argument('--cli', help='Full path of the claude or codex command when PATH has none or a broken one')
     sub = commands.add_parser('reconnect')
     sub.add_argument('--profile', required=True)
     sub.add_argument('--origin', required=True)
@@ -407,6 +412,10 @@ def main(argv=None):
                 request(profile['origin'], '/api/operations/' + operation, token=web_credential(profile), data=data)
             result = safe_profile(profile, args['profile']) | {'status': 'revoked'}
         else:
+            if command == 'connect':
+                from .space_connect import connect
+                print(json.dumps(connect(args['tool'], args['profile'], name=args['name'], cli=args['cli'])))
+                return 0
             if command == 'join' and args.pop('invitation_code_stdin'):
                 # Pasted messages may hold any text; only the ASCII code inside matters.
                 args['invitation_code'] = sys.stdin.buffer.read(64 * 1024 + 1).decode('utf-8', 'replace')
@@ -421,7 +430,8 @@ def main(argv=None):
         # Exception messages from HTTP clients may contain URLs; never print
         # bodies, headers, tracebacks or opaque credentials from remote errors.
         from .invite_message import InvitationCodeError
-        text = str(error) if isinstance(error, InvitationCodeError) else 'Space operation failed; check private state and runtime health'
+        from .space_connect import ConnectError
+        text = str(error) if isinstance(error, (InvitationCodeError, ConnectError)) else 'Space operation failed; check private state and runtime health'
         print(json.dumps({'error': type(error).__name__, 'message': text}), file=sys.stderr)
         return 1
 

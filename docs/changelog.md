@@ -1,5 +1,13 @@
 # 版本记录
 
+## 未发布
+
+修复 [单人流程验收](solo-acceptance-2026-10-25.md) 发现的三个阻塞问题。
+
+- 新增 `space_runtime connect --tool claude|codex --profile <p>`：由程序调用原生 `mcp add` 注册桥接，再用 `claude mcp get` / `codex mcp get --json` 读回核验，并把 Skill 装进工具的 skills 目录（不同的旧副本改名备份，不删除）。同名但命令不同的条目拒绝覆盖。依次尝试多个 CLI，用第一个能读自己配置的：Claude 优先用 `CLAUDE_CODE_EXECPATH`，Codex 在 PATH 上的版本读不了配置时，改用正在运行的 Codex 自带的 `codex.exe`。Skill 和邀请信息改为要求 agent 用这条命令接入，不再自己改配置文件。
+- MCP 工具有了真正的说明：`send_request` 写明要填 `receiver_member_id`、不填就没人收到也不会唤醒任何人；`read_team` 写明用来查成员 id。不指定接收人的请求仍然保留（它是等人分派的队列），但返回结果里会明确写出 `not_delivered`。
+- 成员命名：单人模式下用 agent 的名字（"Claude"、"Codex"），团队里用"人名 (工具)"。README 的单人示例改为让 Claude 以 "Claude" 建空间。
+
 ## 0.7.0rc2 — 邀请信息写明版本、从 PyPI 安装（2026-10-15）
 
 已作为预发行版发布：[v0.7.0rc2](https://github.com/Weichenleeeee123/coopagents/releases/tag/v0.7.0rc2)，发行提交 `9794113`，[CI](https://github.com/Weichenleeeee123/coopagents/actions/runs/38743108661) 通过；[发布工作流](https://github.com/Weichenleeeee123/coopagents/actions/runs/38744729456) 自动上传到 [PyPI](https://pypi.org/project/coopagents/0.7.0rc2/)，PyPI 上的 SHA256 与下表一致。资产从干净的 `git archive` 构建，`twine check` 通过；全新环境装 wheel 冒烟通过，生成的邀请信息写明 `coopagents[space]==0.7.0rc2` 和 `v0.7.0rc2` 标签。

@@ -64,6 +64,22 @@ class MCPTests(unittest.TestCase):
                 self.assertEqual(team['me']['member_id'], self.member['member_id'])
         asyncio.run(run())
 
+    def test_tool_descriptions_guide_addressing_and_unaddressed_requests_say_so(self):
+        async def run():
+            async with self.client(self.owner['agent_token']) as owner:
+                tools = {tool.name: tool.description for tool in (await owner.list_tools()).tools}
+                self.assertIn('receiver_member_id', tools['send_request'])
+                self.assertIn('delivered to nobody', tools['send_request'])
+                self.assertIn('member_id', tools['read_team'])
+                self.assertNotIn('Authenticated room operation', tools['send_request'] + tools['read_team'])
+                addressed = await self.call(owner, 'send_request', {'request_key': 'a', 'receiver_member_id': self.member['member_id'],
+                                                                    'context_version': 1, 'body': 'Q'})
+                self.assertNotIn('not_delivered', addressed)
+                unaddressed = await self.call(owner, 'send_request', {'request_key': 'b', 'context_version': 1, 'body': 'Please ask Claude'})
+                self.assertIsNone(unaddressed['receiver_member_id'])
+                self.assertIn('nobody receives or is woken', unaddressed['not_delivered'])
+        asyncio.run(run())
+
     def test_cross_room_sdk_isolation(self):
         status, other, _ = self.live.request('POST', '/api/rooms', data={'name': 'Other room', 'owner_name': 'Other owner'})
         self.assertEqual(status, 200)
