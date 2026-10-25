@@ -1,6 +1,6 @@
 """Real Docker/Caddy TLS acceptance. Retains containers, volumes and evidence.
 
-Run from repository root: python scripts/deployment_smoke.py --image coopagents:0.7.1
+Run from repository root: python scripts/deployment_smoke.py --image coopagents:0.7.2
 Requires Docker Engine and the pinned Caddy image. No external DNS or CA needed.
 """
 import argparse
@@ -26,7 +26,7 @@ class LoopbackTLS(http.client.HTTPSConnection):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--image', default='coopagents:0.7.1')
+    parser.add_argument('--image', default='coopagents:0.7.2')
     parser.add_argument('--docker', default=shutil.which('docker'))
     args = parser.parse_args()
     if not args.docker:
