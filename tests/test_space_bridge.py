@@ -98,7 +98,21 @@ class SpaceBridgeTests(unittest.TestCase):
                     async with Client(streamable_http_client(self.live.url+'/mcp', http_client=http), cache=None) as remote:
                         expected = {t.name:t.model_dump() for t in (await remote.list_tools()).tools}
                 actual = {t.name:t.model_dump() for t in (await bridge.list_tools()).tools}
-                self.assertEqual({n:v for n,v in actual.items() if n != 'read_changes'}, expected)
+                self.assertEqual({n:v for n,v in actual.items() if n not in ('read_changes', 'install_wake')}, expected)
+                self.assertIn('returns installed', actual['install_wake']['description'])
+                repo = self.path.parent / 'repo'
+                repo.mkdir()
+                bad = await bridge.call_tool('install_wake', {'tool': 'cursor', 'project_dir': str(repo.absolute())})
+                self.assertTrue(bad.is_error)
+                missing = await bridge.call_tool('install_wake', {'tool': 'claude', 'project_dir': str(repo.absolute() / 'nope')})
+                self.assertTrue(missing.is_error)
+                woke = await bridge.call_tool('install_wake', {'tool': 'claude', 'project_dir': str(repo.absolute())})
+                self.assertFalse(woke.is_error, woke.content)
+                self.assertEqual(woke.structured_content['installed'], 'claude')
+                settings = json.loads((repo / '.claude' / 'settings.local.json').read_text(encoding='utf-8'))
+                self.assertEqual(sorted(settings['hooks']), ['SessionStart', 'Stop'])
+                self.assertIn('coopagents.space_wake watch --tool claude', json.dumps(settings))
+                self.assertNotIn(self.owner['agent_token'], woke.model_dump_json())
                 identity = await bridge.call_tool('whoami', {})
                 self.assertFalse(identity.is_error)
                 self.assertEqual(identity.structured_content['me']['room_id'], self.owner['room_id'])

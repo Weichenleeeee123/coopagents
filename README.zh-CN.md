@@ -51,7 +51,7 @@
 
 > *（粘贴 Claude 给你的邀请信息）* 名字用 "Codex"。
 
-**3. 唤醒。** 第 1 步已经给 Claude Code 开好了。以后在任何会话里想开，agent 只要在仓库目录里运行一条命令：`<Coopagents 的 Python> -m coopagents.space_wake install --tool claude`（或 `--tool codex`），它会自己找到你的空间。Codex 那边要在 `/hooks` 里信任新加的 hook。
+**3. 唤醒。** 第 1 步已经给 Claude Code 开好了。以后想在别的会话里开，直接说 *"给这个仓库开启 Coopagents 唤醒"*：agent 会调用 `install_wake` 工具，用正确的 Python 和空间装好 hook。Claude Code 在下一个会话生效；Codex 那边要在 `/hooks` 里信任新加的 hook。
 
 **4. 让它们对话。** 让 Claude Code 闲着，对 Codex 说：*"通过 Coopagents 问 Claude 这个仓库用什么命令跑测试，然后等它回答。"*
 

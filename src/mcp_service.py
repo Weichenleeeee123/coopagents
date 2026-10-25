@@ -39,6 +39,8 @@ TOOL_DESCRIPTIONS = {
     'resolve_request': 'Close a request you sent once its answer is enough.',
     'claim_task': 'Claim an unowned task; only one member can win. Pass a fresh session_key.',
     'report_progress': 'Report progress on a task you own.',
+    'register_session': ('Record which tool, repository and branch this session works in. It does not turn on '
+                         'wake-up: in an agent-hosted space call install_wake for that.'),
 }
 NOT_DELIVERED = ('Not delivered: no receiver_member_id was given, so nobody receives or is woken by this request '
                  'until a person assigns it. To ask a teammate directly, send a new request with their member_id '
