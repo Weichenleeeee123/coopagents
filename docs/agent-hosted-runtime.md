@@ -17,6 +17,10 @@ python -m coopagents.space_runtime stop --profile .local/spaces/team/profile.jso
 python -m coopagents.space_runtime start --profile .local/spaces/team/profile.json
 ```
 
+To connect a profile to Claude Code or Codex, run `python -m coopagents.space_runtime connect --tool claude|codex --profile <profile>`.
+It registers the stdio bridge with the native `mcp add` command, reads the entry back to verify it, installs the
+skill and prints JSON with `verified`. A new session of that tool then loads the tools.
+
 Peer-to-peer mode (`--network p2p`) is the default. The host keeps a private
 iroh endpoint key in `host.json`; its public endpoint id goes into invitations
 and member profiles and stays the same across restarts. Each member's link

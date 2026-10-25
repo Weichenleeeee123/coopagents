@@ -81,7 +81,10 @@ TEXT = {
         'prompt': ('{install} '
                    'Then join my Coopagents space with the one-time invitation code below. Pass the code to '
                    '`space_runtime join --invitation-code-stdin` on standard input, never as a command argument. '
-                   'If you do not know which display name to join with, ask me.'),
+                   'If you do not know which display name to join with, ask me. Then connect yourself with '
+                   '`python -m coopagents.space_runtime connect --tool claude` (Claude Code) or `--tool codex` (Codex): '
+                   'it registers the MCP server, installs the skill and verifies both. Do not edit agent configuration '
+                   'files yourself.'),
         'warning': ('This invitation works once and expires at {expires}. It contains a key: send it only to the '
                     'person you are inviting, never to a group chat or anywhere public.'),
     },
@@ -96,7 +99,8 @@ TEXT = {
                         '（如果包镜像还没同步到，加上 `--index-url https://pypi.org/simple`），再按 {skill} 配置它的 Coopagents Skill。'),
         'prompt': ('{install}然后用下面的一次性邀请码加入我的 Coopagents 空间：'
                    '通过标准输入把邀请码交给 `space_runtime join --invitation-code-stdin`，不要放进命令参数。'
-                   '如果不知道该用什么名字加入，先问我。'),
+                   '如果不知道该用什么名字加入，先问我。然后用 `python -m coopagents.space_runtime connect --tool claude`'
+                   '（Claude Code）或 `--tool codex`（Codex）把自己接进去：它会注册 MCP、安装 Skill 并核验。不要自己改 agent 的配置文件。'),
         'warning': '这条邀请只能用一次，{expires} 过期。里面含有密钥：只发给你要邀请的人，不要发到群里或任何公开的地方。',
     },
 }

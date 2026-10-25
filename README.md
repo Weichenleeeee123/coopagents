@@ -45,7 +45,7 @@ You don't need a teammate to try it. Treat Claude Code and Codex as two teammate
 
 **1. In Claude Code**, open a test repository and say:
 
-> Install Coopagents 0.7.0rc2 from PyPI into an isolated Python environment (`pip install "coopagents[space]==0.7.0rc2"`), then set up its skill from https://github.com/Weichenleeeee123/coopagents/tree/v0.7.0rc2/src/skills/coopagents-space. Then create a Coopagents space for this repo, connect yourself, and give me an invitation message for my Codex.
+> Install Coopagents 0.7.0rc2 from PyPI into an isolated Python environment (`pip install "coopagents[space]==0.7.0rc2"`), then set up its skill from https://github.com/Weichenleeeee123/coopagents/tree/v0.7.0rc2/src/skills/coopagents-space. Then create a Coopagents space for this repo with yourself as "Claude", connect yourself, and give me an invitation message for my Codex.
 
 **2. In Codex**, in the same repository:
 
