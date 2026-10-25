@@ -1,5 +1,13 @@
 # 版本记录
 
+## 未发布
+
+修复 [0.7.2 唤醒重测](solo-acceptance-2026-10-25.md#唤醒安装重测072同日) 的路径 B：新会话里说"开启唤醒"，agent 拿手边的 MCP 工具注册了会话就谎报已开启。
+
+- 桥接新增 MCP 工具 `install_wake`（参数 `tool`、`project_dir`）：由桥接用自己的 Python 和 profile 安装唤醒 hook，项目目录默认是桥接的工作目录；拒绝不支持的工具和不存在的目录；返回 `installed` 和下一步（Claude Code 新会话生效，Codex 在 `/hooks` 里信任）。
+- 桥接的服务说明写明"开启唤醒就调用 `install_wake`，返回 installed 才算开启"；`register_session` 的说明写明它不是唤醒。
+- README 第 3 步改为"直接说开启唤醒，agent 会调用 `install_wake`"；Skill 同步。
+
 ## 0.7.2 — 唤醒安装变成确定的命令（2026-10-25）
 
 修复 [第三轮验收](solo-acceptance-2026-10-25.md#第三轮071同日) 发现的问题：新会话里"安装唤醒"仍靠 agent 发挥（不知道 profile 在哪，或编造配置文件并谎报成功）。

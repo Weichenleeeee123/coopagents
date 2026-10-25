@@ -38,7 +38,7 @@ codex mcp add <unique-space-name> -- <absolute-python> -m coopagents.space_bridg
 
 Claude's user JSON entry is under `mcpServers`, with `type: "stdio"`, `command` and `args`. Codex's private TOML entry is under `mcp_servers.<name>` with `command` and `args`. Prefer native add commands after conflict checks; if manual merge is necessary, parse and preserve the complete existing configuration and retain a private backup. Never append duplicate TOML sections or replace the whole file with a single server. Personal skills belong in `~/.claude/skills/coopagents-space/` or `~/.codex/skills/coopagents-space/` (respect configured skill roots). Copy SKILL.md, protocol.md and the scripts together only if absent; do not overwrite a different installed skill.
 
-The bridge proxies `/mcp` using the official MCP SDK. Remote tool names, descriptions and schemas are forwarded verbatim. It adds only `read_changes`, with optional integer `after_id` (default 0) and `limit` (1–200, default 100). Remote human operations are not added to MCP.
+The bridge proxies `/mcp` using the official MCP SDK. Remote tool names, descriptions and schemas are forwarded verbatim. It adds only `read_changes`, with optional integer `after_id` (default 0) and `limit` (1–200, default 100), and `install_wake`, with required `tool` (`claude` or `codex`) and optional `project_dir` (default: the bridge's working folder), which installs this profile's wake hooks for that repository and returns the `space_wake install` result plus a `next` step. Remote human operations are not added to MCP.
 
 ## Event replay and failures
 
