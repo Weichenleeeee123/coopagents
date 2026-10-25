@@ -1,5 +1,13 @@
 # 版本记录
 
+## 未发布
+
+修复 [第三轮验收](solo-acceptance-2026-10-25.md#第三轮071同日) 发现的问题：新会话里"安装唤醒"仍靠 agent 发挥（不知道 profile 在哪，或编造配置文件并谎报成功）。
+
+- `space_runtime connect --wake [--project-dir <repo>]`：接入时一并安装唤醒 hook（项目目录默认是当前目录）；不加 `--wake` 时，输出里给出带好 Python 和 profile 的唤醒安装命令。
+- `space_wake install` / `preview` 不再必须传 `--profile`：只读地读取 Claude Code（`.claude.json`，含当前项目的条目）或 Codex（`config.toml`）里已注册的 coopagents 连接，正好一个就用它；没有或有多个时报出原因和服务器名，不去猜。`--project-dir` 默认是当前目录。
+- README 第 1 步改为"接入时开启唤醒"，第 3 步给出单条命令；Skill 写明不得手写 hook 或配置文件，命令没有输出 `installed` 就不能报告已安装。
+
 ## 0.7.1 — 文件加入、回复去处、单份 Skill、唤醒后直接回答（2026-10-25）
 
 修复 [0.7.0 复测](solo-acceptance-2026-10-25.md#复测070同日) 新发现的四个问题。

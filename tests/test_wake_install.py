@@ -1,0 +1,108 @@
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import unittest
+from unittest.mock import patch
+from uuid import uuid4
+
+from coopagents import space_connect, space_wake
+from coopagents.spaces import private_write
+from coopagents.space_wake import WakeSetupError
+
+FAKE = str(Path(__file__).with_name('fake_mcp_cli.py').resolve())
+
+
+class WakeInstall(unittest.TestCase):
+    def setUp(self):
+        self.directory = (Path('.local/wake-install-tests') / uuid4().hex).resolve()
+        self.repo = self.directory / 'repo'
+        self.repo.mkdir(parents=True)
+        self.profile = self.make_profile('one')
+        self.claude_home = self.directory / 'claude-home'
+        self.codex_home = self.directory / 'codex-home'
+        self.claude_home.mkdir()
+        self.codex_home.mkdir()
+        self.env = patch.dict(os.environ, {'CLAUDE_CONFIG_DIR': str(self.claude_home), 'CODEX_HOME': str(self.codex_home)})
+        self.env.start()
+        self.addCleanup(self.env.stop)
+
+    def make_profile(self, name):
+        path = self.directory / name / 'profile.json'
+        private_write(path, dict(schema_version=1, origin='http://127.0.0.1:8765', room_id='room-' + name,
+                                 member_id='member', web_token='web-secret', agent_token='agent-secret'))
+        return path
+
+    def bridge(self, profile):
+        return {'type': 'stdio', 'command': sys.executable, 'args': ['-m', 'coopagents.space_bridge', '--profile', str(profile)]}
+
+    def write_claude(self, servers, project_servers=None):
+        document = {'mcpServers': servers}
+        if project_servers is not None:
+            document['projects'] = {str(self.repo).replace(os.sep, '/'): {'mcpServers': project_servers}}
+        (self.claude_home / '.claude.json').write_text(json.dumps(document), encoding='utf-8')
+
+    def test_claude_and_codex_connections_are_found_without_running_anything(self):
+        self.write_claude({'coopagents_one': self.bridge(self.profile), 'other': {'command': 'node', 'args': ['x.js']}})
+        found = space_connect.registered_spaces('claude', self.repo)
+        self.assertEqual([(e['server'], e['profile']) for e in found], [('coopagents_one', str(self.profile))])
+        toml = '[mcp_servers.coopagents_one]\ncommand = %s\nargs = ["-m", "coopagents.space_bridge", "--profile", %s]\n' \
+               '[mcp_servers.node_repl]\ncommand = "node"\n' % (json.dumps(sys.executable), json.dumps(str(self.profile)))
+        (self.codex_home / 'config.toml').write_text(toml, encoding='utf-8')
+        found = space_connect.registered_spaces('codex')
+        self.assertEqual([e['profile'] for e in found], [str(self.profile)])
+
+    def test_project_scoped_claude_connection_counts_for_that_repository(self):
+        self.write_claude({}, {'coopagents_one': self.bridge(self.profile)})
+        self.assertEqual(len(space_connect.registered_spaces('claude', self.repo)), 1)
+        self.assertEqual(space_connect.registered_spaces('claude', self.directory), [])
+
+    def test_install_without_profile_or_project_dir_uses_the_single_connection_and_current_folder(self):
+        self.write_claude({'coopagents_one': self.bridge(self.profile)})
+        previous = os.getcwd()
+        os.chdir(self.repo)
+        try:
+            result = space_wake.install(None, 'claude')
+        finally:
+            os.chdir(previous)
+        self.assertEqual(result['profile'], str(self.profile))
+        settings = json.loads((self.repo / '.claude' / 'settings.local.json').read_text(encoding='utf-8'))
+        self.assertEqual(sorted(settings['hooks']), ['SessionStart', 'Stop'])
+        self.assertIn(str(self.profile).replace(os.sep, '/'), json.dumps(settings).replace('\\\\', '/'))
+
+    def test_none_or_several_connections_are_explained_not_guessed(self):
+        self.write_claude({})
+        with self.assertRaises(WakeSetupError) as raised:
+            space_wake.find_profile('claude', self.repo)
+        self.assertIn('run space_runtime connect first', str(raised.exception))
+        self.write_claude({'coopagents_one': self.bridge(self.profile), 'coopagents_two': self.bridge(self.make_profile('two'))})
+        with self.assertRaises(WakeSetupError) as raised:
+            space_wake.find_profile('claude', self.repo)
+        self.assertIn('coopagents_one, coopagents_two', str(raised.exception))
+        self.assertIn('--profile', str(raised.exception))
+
+    def test_cli_reports_the_reason_and_writes_nothing(self):
+        self.write_claude({})
+        result = subprocess.run([sys.executable, '-m', 'coopagents.space_wake', 'install', '--tool', 'claude'],
+                                capture_output=True, text=True, cwd=self.repo, env=os.environ.copy())
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('No Coopagents connection is registered for claude', result.stderr)
+        self.assertFalse((self.repo / '.claude').exists())
+
+    def test_connect_can_install_wake_up_in_the_same_step(self):
+        state = self.directory / 'mcp.json'
+        with patch.dict(os.environ, {'FAKE_TOOL': 'claude', 'FAKE_MCP_STATE': str(state)}):
+            plain = space_connect.connect('claude', self.profile, cli=[sys.executable, FAKE], skills=self.directory / 'skills')
+            self.assertIn('space_wake install --tool claude --profile', plain['wake_command'])
+            self.assertIn(str(self.profile), plain['wake_command'])
+            self.assertNotIn('wake', plain)
+            woken = space_connect.connect('claude', self.profile, cli=[sys.executable, FAKE], skills=self.directory / 'skills',
+                                          wake=True, project_dir=self.repo)
+        self.assertEqual(woken['wake']['installed'], 'claude')
+        self.assertTrue((self.repo / '.claude' / 'settings.local.json').exists())
+        self.assertNotIn('secret', json.dumps(woken))
+
+
+if __name__ == '__main__':
+    unittest.main()

@@ -45,13 +45,13 @@
 
 **1. 在 Claude Code 里**打开一个测试仓库，说：
 
-> 从 PyPI 把 Coopagents 0.7.1 装进独立的 Python 环境（`pip install "coopagents[space]==0.7.1"`；如果包镜像还没有 0.7.1，加上 `--index-url https://pypi.org/simple`，不要装别的版本），再阅读 https://github.com/Weichenleeeee123/coopagents/tree/v0.7.1/src/skills/coopagents-space 上的 Skill。然后给这个仓库创建一个 Coopagents 空间，你在里面的名字叫 "Claude"，把你自己接进去，再给我的 Codex 生成一条邀请信息。
+> 从 PyPI 把 Coopagents 0.7.1 装进独立的 Python 环境（`pip install "coopagents[space]==0.7.1"`；如果包镜像还没有 0.7.1，加上 `--index-url https://pypi.org/simple`，不要装别的版本），再阅读 https://github.com/Weichenleeeee123/coopagents/tree/v0.7.1/src/skills/coopagents-space 上的 Skill。然后给这个仓库创建一个 Coopagents 空间，你在里面的名字叫 "Claude"，把你自己接进去并开启唤醒，再给我的 Codex 生成一条邀请信息。
 
 **2. 在 Codex 里**打开同一个仓库：
 
 > *（粘贴 Claude 给你的邀请信息）* 名字用 "Codex"。
 
-**3. 可选：开启唤醒。** 分别对两个 agent 说"安装 Coopagents 唤醒"。Codex 那边要在 `/hooks` 里信任新加的 hook。
+**3. 唤醒。** 第 1 步已经给 Claude Code 开好了。以后在任何会话里想开，agent 只要在仓库目录里运行一条命令：`<Coopagents 的 Python> -m coopagents.space_wake install --tool claude`（或 `--tool codex`），它会自己找到你的空间。Codex 那边要在 `/hooks` 里信任新加的 hook。
 
 **4. 让它们对话。** 让 Claude Code 闲着，对 Codex 说：*"通过 Coopagents 问 Claude 这个仓库用什么命令跑测试，然后等它回答。"*
 

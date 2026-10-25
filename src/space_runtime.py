@@ -387,6 +387,8 @@ def main(argv=None):
     sub.add_argument('--profile', required=True)
     sub.add_argument('--name', help='MCP server name (default coopagents_<room>)')
     sub.add_argument('--cli', help='Full path of the claude or codex command when PATH has none or a broken one')
+    sub.add_argument('--wake', action='store_true', help='Also install wake-up hooks for the repository folder')
+    sub.add_argument('--project-dir', help='Repository folder for --wake (default: current folder)')
     sub = commands.add_parser('reconnect')
     sub.add_argument('--profile', required=True)
     sub.add_argument('--origin', required=True)
@@ -411,7 +413,8 @@ def main(argv=None):
         else:
             if command == 'connect':
                 from .space_connect import connect
-                print(json.dumps(connect(args['tool'], args['profile'], name=args['name'], cli=args['cli'])))
+                print(json.dumps(connect(args['tool'], args['profile'], name=args['name'], cli=args['cli'],
+                                         wake=args['wake'], project_dir=args['project_dir'])))
                 return 0
             if command == 'join' and args.pop('invitation_code_stdin'):
                 from .invite_message import read_stdin
