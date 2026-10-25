@@ -4,6 +4,15 @@
 
 修复 [第三轮验收](solo-acceptance-2026-10-25.md#第三轮071同日) 发现的问题：新会话里"安装唤醒"仍靠 agent 发挥（不知道 profile 在哪，或编造配置文件并谎报成功）。
 
+
+已发布：[v0.7.2](https://github.com/Weichenleeeee123/coopagents/releases/tag/v0.7.2)（正式版，GitHub 的“最新版本”），发行提交 `4a3abeb`，[CI](https://github.com/Weichenleeeee123/coopagents/actions/runs/40184012304) 通过；[发布工作流](https://github.com/Weichenleeeee123/coopagents/actions/runs/40197300956) 自动上传到 [PyPI](https://pypi.org/project/coopagents/0.7.2/)，SHA256 与下表一致。资产从干净的 `git archive` 构建，`twine check` 通过；全新环境装 wheel 冒烟通过（`connect --wake` 可用，`space_wake install` 的 `--profile` 可选）。
+
+| 资产 | SHA-256 |
+| --- | --- |
+| `coopagents-0.7.2-py3-none-any.whl` | `614829d80ba922c2ab34e5995f3b66fa8c5df42a9be2161b1af565906b3ff91a` |
+| `coopagents-0.7.2.tar.gz` | `953576e7830961baf60fb3e70cf6bcb46182c3a99fdccf740ff1d274bc2f9319` |
+| `coopagents-0.7.2-deploy.zip` | `7239cc11e11efff79b4705eacce638d779d1db50f88904c3c1a0ad34342b231a` |
+
 - `space_runtime connect --wake [--project-dir <repo>]`：接入时一并安装唤醒 hook（项目目录默认是当前目录）；不加 `--wake` 时，输出里给出带好 Python 和 profile 的唤醒安装命令。
 - `space_wake install` / `preview` 不再必须传 `--profile`：只读地读取 Claude Code（`.claude.json`，含当前项目的条目）或 Codex（`config.toml`）里已注册的 coopagents 连接，正好一个就用它；没有或有多个时报出原因和服务器名，不去猜。`--project-dir` 默认是当前目录。
 - README 第 1 步改为"接入时开启唤醒"，第 3 步给出单条命令；Skill 写明不得手写 hook 或配置文件，命令没有输出 `installed` 就不能报告已安装。
