@@ -12,7 +12,8 @@ Use the absolute isolated Python path as `<python>`. None of these commands incl
 <python> -m coopagents.space_runtime status --profile <private-dir>/profile.json
 <python> -m coopagents.space_runtime invite --profile <private-dir>/profile.json [--message en|zh] [--hours 1-72]
 <python> -m coopagents.space_runtime join --invitation-file <private-invite> --name <display-name> --state-dir <new-private-dir>
-<python> -m coopagents.space_runtime join --invitation-code-stdin --name <display-name> --state-dir <new-private-dir>   # message or code on stdin
+<python> -m coopagents.space_runtime join --invitation-file <saved-message-or-code> --name <display-name> --state-dir <new-private-dir>
+<python> -m coopagents.space_runtime join --invitation-code-stdin --name <display-name> --state-dir <new-private-dir>   # piped text; fails after 15 s without input
 <python> -m coopagents.space_runtime start --profile <owner-profile>
 <python> -m coopagents.space_runtime reconnect --profile <member-profile> --origin https://<new-trusted-host> --room-id <expected-room>
 <python> -m coopagents.space_runtime stop --profile <owner-profile>

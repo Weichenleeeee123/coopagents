@@ -121,6 +121,12 @@ def _skill_files(root):
             if path.is_file() and '__pycache__' not in path.parts}
 
 
+def _same_text(left, right):
+    # A copy downloaded from GitHub (LF) and one from a Windows-built wheel (CRLF) are the same skill.
+    normal = lambda files: {name: data.replace(b'\r\n', b'\n') for name, data in files.items()}
+    return normal(left) == normal(right)
+
+
 def install_skill(tool, root=None):
     """Copy the packaged skill; an existing different copy is kept as a dated backup, never removed."""
     source = Path(__file__).resolve().parent / 'skills' / SKILL_NAME
@@ -130,10 +136,13 @@ def install_skill(tool, root=None):
     target = Path(root or skills_root(tool)) / SKILL_NAME
     state, backup = 'installed', None
     if target.exists() or target.is_symlink():
-        if target.is_dir() and _skill_files(target) == files:
+        if target.is_dir() and _same_text(_skill_files(target), files):
             return {'skill': 'present', 'skill_path': str(target)}
-        backup = target.with_name(SKILL_NAME + '.backup-' + time.strftime('%Y%m%d%H%M%S'))
-        os.rename(target, backup)
+        # Outside the skills folder: a backup inside it would load as a second skill.
+        backups = target.parent.parent / 'coopagents-backups'
+        backups.mkdir(parents=True, exist_ok=True)
+        backup = backups / (SKILL_NAME + '-' + time.strftime('%Y%m%d%H%M%S'))
+        shutil.move(str(target), str(backup))
         state = 'updated'
     for relative, data in files.items():
         destination = target / relative
@@ -162,7 +171,7 @@ def connect(tool, profile_path, name=None, cli=None, skills=None):
         except ConnectError as error:
             failure = error
     else:
-        raise failure
+        raise failure or ConnectError('No usable native CLI was found')
     if registered is None:
         _add(tool, cli, name, command)
         state = 'added'

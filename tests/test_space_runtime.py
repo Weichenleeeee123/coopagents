@@ -219,6 +219,14 @@ class Runtime(unittest.TestCase):
         for secret in (peer['web_token'], peer['agent_token']):
             self.assertNotIn(secret.encode(), joined.stdout + joined.stderr)
         self.assertEqual(join('again', message).returncode, 1)
+        # The file route agents use: the whole message saved to a file.
+        second = json.loads(subprocess.run([sys.executable, '-m', 'coopagents.space_runtime', 'invite', '--profile',
+                                            str(self.profile_path), '--message', 'en'], capture_output=True, text=True).stdout)
+        saved = self.directory / 'pasted-message.txt'
+        saved.write_text(second['message'], encoding='utf-8')
+        by_file = subprocess.run([sys.executable, '-m', 'coopagents.space_runtime', 'join', '--invitation-file', str(saved),
+                                  '--name', 'FromFile', '--state-dir', str(self.directory / 'from-file')], capture_output=True)
+        self.assertEqual(by_file.returncode, 0, by_file.stderr)
         with self.assertRaises(ValueError):
             runtime.join(invited['invitation_file'], 'Both', self.directory / 'both', invitation_code=message)
 
