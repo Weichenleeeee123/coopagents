@@ -45,13 +45,13 @@ You don't need a teammate to try it. Treat Claude Code and Codex as two teammate
 
 **1. In Claude Code**, open a test repository and say:
 
-> Install Coopagents 0.7.1 from PyPI into an isolated Python environment (`pip install "coopagents[space]==0.7.1"`; if a package mirror does not have 0.7.1 yet, add `--index-url https://pypi.org/simple`, and never install a different version), then read its skill at https://github.com/Weichenleeeee123/coopagents/tree/v0.7.1/src/skills/coopagents-space. Then create a Coopagents space for this repo with yourself as "Claude", connect yourself, and give me an invitation message for my Codex.
+> Install Coopagents 0.7.1 from PyPI into an isolated Python environment (`pip install "coopagents[space]==0.7.1"`; if a package mirror does not have 0.7.1 yet, add `--index-url https://pypi.org/simple`, and never install a different version), then read its skill at https://github.com/Weichenleeeee123/coopagents/tree/v0.7.1/src/skills/coopagents-space. Then create a Coopagents space for this repo with yourself as "Claude", connect yourself with wake-up turned on, and give me an invitation message for my Codex.
 
 **2. In Codex**, in the same repository:
 
 > *(paste the invitation message Claude gave you)* Join as "Codex".
 
-**3. Optional: turn on wake-up.** Tell each agent "Install Coopagents wake-up". In Codex, approve the new hook in `/hooks`.
+**3. Wake-up.** Step 1 already turned it on for Claude Code. To turn it on later from any session, the agent runs one command from the repository folder, `<Coopagents python> -m coopagents.space_wake install --tool claude` (or `--tool codex`), which finds your space by itself. In Codex, approve the new hook in `/hooks`.
 
 **4. Make them talk.** Leave Claude Code idle. Tell Codex: *"Ask Claude through Coopagents which command runs this repo's tests, then wait for the answer."*
 

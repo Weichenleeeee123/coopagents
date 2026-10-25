@@ -448,9 +448,8 @@ def hook_config(profile_path, tool, standby=DEFAULT_STANDBY):
 def settings_path(tool, scope, project_dir=None):
     if scope == 'user':
         return Path.home() / ('.claude/settings.json' if tool == 'claude' else '.codex/hooks.json')
-    if not project_dir:
-        raise ValueError('Project scope requires --project-dir')
-    base = Path(project_dir).absolute()
+    # Agents run from the repository folder, so that is the default project.
+    base = Path(project_dir or os.getcwd()).absolute()
     return base / ('.claude/settings.local.json' if tool == 'claude' else '.codex/hooks.json')
 
 
@@ -498,13 +497,32 @@ def _load(path):
     return document
 
 
+class WakeSetupError(RuntimeError):
+    """A fixed, secret-free explanation shown to the user."""
+
+
+def find_profile(tool, project_dir=None):
+    """The profile of the single Coopagents connection registered with this tool."""
+    from .space_connect import registered_spaces
+    spaces = registered_spaces(tool, project_dir or os.getcwd())
+    if not spaces:
+        raise WakeSetupError('No Coopagents connection is registered for %s; run space_runtime connect first, '
+                             'or pass --profile' % tool)
+    if len(spaces) > 1:
+        raise WakeSetupError('Several Coopagents connections are registered (%s); pass --profile for the one '
+                             'to wake' % ', '.join(sorted(s['server'] for s in spaces)))
+    return spaces[0]['profile']
+
+
 def install(profile_path, tool, scope='project', project_dir=None, standby=DEFAULT_STANDBY):
+    profile_path = profile_path or find_profile(tool, project_dir)
     read_profile(profile_path)
     path = settings_path(tool, scope, project_dir)
     _write_settings(path, merge_hooks(_load(path), hook_config(profile_path, tool, standby)))
     if tool == 'codex':
         WakeState(profile_path).set_budget(standby)
-    return {'installed': tool, 'settings': str(path), 'events': sorted(hook_config(profile_path, tool, standby))}
+    return {'installed': tool, 'settings': str(path), 'profile': str(profile_path),
+            'events': sorted(hook_config(profile_path, tool, standby))}
 
 
 def disable(tool, scope='project', project_dir=None):
@@ -539,7 +557,7 @@ def main(argv=None):
     for name in ('install', 'preview'):
         p = commands.add_parser(name)
         p.add_argument('--tool', choices=TOOLS, required=True)
-        p.add_argument('--profile', required=True)
+        p.add_argument('--profile', help='Default: the single Coopagents connection registered with the tool')
         p.add_argument('--scope', choices=('project', 'user'), default='project')
         p.add_argument('--project-dir')
         p.add_argument('--standby-limit', type=int, default=DEFAULT_STANDBY, help='Codex hook timeout budget in seconds')
@@ -560,7 +578,8 @@ def main(argv=None):
         if args.command == 'install':
             result = install(args.profile, args.tool, args.scope, args.project_dir, args.standby_limit)
         elif args.command == 'preview':
-            result = {'hooks': hook_config(args.profile, args.tool, args.standby_limit),
+            profile = args.profile or find_profile(args.tool, args.project_dir)
+            result = {'hooks': hook_config(profile, args.tool, args.standby_limit),
                       'settings': str(settings_path(args.tool, args.scope, args.project_dir))}
         elif args.command == 'disable':
             result = disable(args.tool, args.scope, args.project_dir)
@@ -574,7 +593,8 @@ def main(argv=None):
         print(json.dumps(result, indent=2))
         return 0
     except Exception as error:
-        print('Coopagents wake command failed: ' + type(error).__name__, file=sys.stderr)
+        detail = (': ' + str(error)) if isinstance(error, WakeSetupError) else ''
+        print('Coopagents wake command failed: ' + type(error).__name__ + detail, file=sys.stderr)
         return 1
 
 

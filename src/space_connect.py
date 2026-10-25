@@ -19,6 +19,56 @@ class ConnectError(RuntimeError):
     """A fixed, secret-free explanation that the CLI may show to the user."""
 
 
+def _bridge_entry(name, command, args):
+    """A registered Coopagents bridge: <python> -m coopagents.space_bridge --profile <path>."""
+    args = [str(a) for a in (args or [])]
+    if args[:2] != ['-m', 'coopagents.space_bridge'] or '--profile' not in args:
+        return None
+    index = args.index('--profile')
+    if index + 1 >= len(args):
+        return None
+    return {'server': name, 'python': str(command), 'profile': args[index + 1]}
+
+
+def registered_spaces(tool, project_dir=None):
+    """Read the native configuration (read-only, no processes) for registered Coopagents bridges."""
+    entries = []
+    if tool == 'codex':
+        import tomllib
+        path = Path(os.environ.get('CODEX_HOME') or Path.home() / '.codex') / 'config.toml'
+        if path.is_file():
+            servers = tomllib.loads(path.read_text(encoding='utf-8')).get('mcp_servers') or {}
+            for name, server in servers.items():
+                if isinstance(server, dict):
+                    entries.append(_bridge_entry(name, server.get('command'), server.get('args')))
+    else:
+        home = os.environ.get('CLAUDE_CONFIG_DIR')
+        path = Path(home) / '.claude.json' if home else Path.home() / '.claude.json'
+        if path.is_file():
+            document = json.loads(path.read_text(encoding='utf-8') or '{}')
+            groups = [document.get('mcpServers') or {}]
+            projects = document.get('projects') or {}
+            if project_dir is not None:
+                wanted = os.path.normcase(os.path.abspath(project_dir)).replace(os.sep, '/')
+                for key, value in projects.items():
+                    if os.path.normcase(os.path.abspath(key)).replace(os.sep, '/') == wanted and isinstance(value, dict):
+                        groups.append(value.get('mcpServers') or {})
+            for servers in groups:
+                for name, server in servers.items():
+                    if isinstance(server, dict):
+                        entries.append(_bridge_entry(name, server.get('command'), server.get('args')))
+    unique = {}
+    for entry in entries:
+        if entry is not None:
+            unique.setdefault(entry['profile'], entry)
+    return list(unique.values())
+
+
+def wake_command(tool, profile_path):
+    return '"%s" -m coopagents.space_wake install --tool %s --profile "%s" --project-dir <your repository folder>' % (
+        sys.executable, tool, profile_path)
+
+
 def server_name(profile):
     return 'coopagents_' + profile['room_id'].replace('-', '')[:8]
 
@@ -154,7 +204,7 @@ def install_skill(tool, root=None):
     return result
 
 
-def connect(tool, profile_path, name=None, cli=None, skills=None):
+def connect(tool, profile_path, name=None, cli=None, skills=None, wake=False, project_dir=None):
     if tool not in TOOLS:
         raise ConnectError('Tool must be claude or codex')
     path = checked_path(profile_path).resolve()
@@ -186,7 +236,10 @@ def connect(tool, profile_path, name=None, cli=None, skills=None):
               'room_id': profile['room_id'], 'member_id': profile['member_id']}
     result.update(install_skill(tool, skills))
     label = 'Claude Code' if tool == 'claude' else 'Codex'
-    result['next'] = ('Start a new %s session to load the Coopagents tools, then call whoami. '
-                      'Optional wake-up: python -m coopagents.space_wake install --tool %s --profile <profile> '
-                      '--project-dir <repo>' % (label, tool))
+    if wake:
+        from .space_wake import install as install_wake
+        result['wake'] = install_wake(str(path), tool, 'project', project_dir or os.getcwd())
+    else:
+        result['wake_command'] = wake_command(tool, path)
+    result['next'] = 'Start a new %s session to load the Coopagents tools, then call whoami.' % label
     return result
