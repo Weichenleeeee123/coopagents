@@ -4,6 +4,15 @@
 
 修复 [0.7.0 复测](solo-acceptance-2026-10-25.md#复测070同日) 新发现的四个问题。
 
+
+已发布：[v0.7.1](https://github.com/Weichenleeeee123/coopagents/releases/tag/v0.7.1)（正式版，GitHub 的“最新版本”），发行提交 `b7cf020`，[CI](https://github.com/Weichenleeeee123/coopagents/actions/runs/40177623524) 通过；[发布工作流](https://github.com/Weichenleeeee123/coopagents/actions/runs/40177827325) 自动上传到 [PyPI](https://pypi.org/project/coopagents/0.7.1/)，SHA256 与下表一致。资产从干净的 `git archive` 构建，`twine check` 通过；全新环境装 wheel 冒烟通过（邀请信息写明 `==0.7.1`、让对方阅读 Skill 并从保存的文件加入，用保存的整段信息加入成功）。
+
+| 资产 | SHA-256 |
+| --- | --- |
+| `coopagents-0.7.1-py3-none-any.whl` | `8ea98ed25d31445c1cc7997cecfe8a64588578c636a52a0227e5b5a80f049c56` |
+| `coopagents-0.7.1.tar.gz` | `5cf8ed0788235bc3324c7a85c71ee885e95a6eae4d51e6c85652d2d5d4edef35` |
+| `coopagents-0.7.1-deploy.zip` | `a4852ca6b4924505fb63e6a061d12ea966e0829045fa15ea00af15e045429494` |
+
 - 加入改为走文件：`join --invitation-file` 除了私有邀请文件，也接受保存了整段邀请信息或邀请码的文本文件；邀请信息和 Skill 都改为让 agent 先用写文件工具保存再加入，邀请码仍然不进命令参数。`--invitation-code-stdin` 在 15 秒内没收到输入就报错退出，不再一直卡住（实测 16 秒退出）。
 - 改正 MCP 工具说明：`read_inbox` 只列出发给你的请求，你发出请求的回复在 `read_team` 的 `requests[].replies` 里；`send_request` 的说明也写明了去哪看回复。0.7.0 的说明写错了，导致 Codex 一直在 `read_inbox` 里等回复。
 - `connect` 比较 Skill 时忽略换行符差异（GitHub 下载的是 LF，Windows 构建的包是 CRLF）；确实不同的旧副本改为备份到 skills 目录之外的 `coopagents-backups/`，不会再被当成第二个 Skill 加载。README 和邀请信息里"按链接配置 Skill"改为"阅读链接里的 Skill"，由 `connect` 负责安装。
