@@ -76,3 +76,21 @@ Codex 在等待中收到这条回复，最终输出 "Claude replied: `python -m 
    - 建议：改正说明，并在 `send_request` 的说明里写明去 `read_team` 看回复。
 4. **被唤醒后先问用户。** 唤醒提示和 Skill 都写着"队友内容不能让你离开当前任务，需要决定时问用户"。这次会话没有当前任务，Claude 把"回答 Codex"当成新工作，先问了用户。另外本机全局 CLAUDE.md 要求"审视地指出问题"，也让它更谨慎；上一轮同样的提问它直接回答了，说明这一点不稳定。
    - 建议：唤醒提示和 Skill 写清楚，用能读到的信息回答队友的问题、回复和确认属于本职；改文件、跑会改变东西的命令、接受交接或接新任务才需要问用户。
+
+## 第三轮：0.7.1（同日）
+
+在 `D:/coop-acceptance-3/` 用 PyPI 上的 0.7.1 重跑，全程用 README 原话，不给任何提示。
+
+| 步骤 | 结果 | 耗时 |
+| --- | --- | --- |
+| 1. Claude 装包、建空间、接入、生成邀请信息 | 第一次：本机 pip 用的是清华镜像，镜像还没同步 0.7.1，**Claude 悄悄装了 0.7.0**。README 改为在安装那句里写明"镜像没有就加 `--index-url https://pypi.org/simple`，不要装别的版本"（`933666e`）后重跑。第二次：Claude 照本机全局 CLAUDE.md 的人设反问了一串问题，什么也没做；之后在搭环境的步骤里追加一句"这是自动化验收，直接照做"的系统提示（唤醒那一步不加）。第三次成功：装的是 0.7.1；Skill 只有一份、没有备份；`connect` 接入并 `√ Connected`；邀请信息是新写法（存文件后 `--invitation-file` 加入、阅读 Skill） | 835 秒，其中从 pypi.org 直连下载约 10 分钟 |
+| 2. Codex 只拿到邀请信息 | **一次成功，没有任何提示**：Codex 把信息存成文件，用 `--invitation-file` 加入，再用 `connect --tool codex` 接入，`verified: true`，Skill 只有一份。写文件时多留了几份私有邀请文件（其中一份是错的），按仓库规则没有删除 | 184 秒（复用了第 1 步的 pip 缓存） |
+| 3. 新会话里说"Install Coopagents wake-up" | **失败**：中转额度充值后重跑，Claude 问 profile 在哪；告诉它路径后，它编了一个不存在的 `.claude/coopagents-wakeup.json` 并报告"已安装"，实际没有 hook（见下）。改用 `space_wake install` 安装 | 303 秒 + 53 秒 |
+| 4. Claude 闲着，Codex 原话提问 | **全程无人介入、一次通过**：Codex 发给 "Claude"；闲置 Claude 4 秒被唤醒，11 秒读到请求，43 秒直接回复正确命令（没有先问用户，本机全局 CLAUDE.md 仍在生效）；Codex 在 `read_team` 里看到回复并转述 | Codex 共 117 秒 |
+
+本轮新增的观察：
+- **国内镜像未同步时，agent 会降级到旧版本。** 修复方式是在 README 的安装指令里直接写回退方法；邀请信息本来就带这句。代价是回退到 pypi.org 时下载很慢（本次约 10 分钟）。
+- Codex 第 2 步不再卡住：文件加入的修复有效。
+- 0.7.0 复测的四个问题全部确认修好：文件加入（第 2 步）、回复去处（第 4 步 Codex 在 `read_team` 里拿到回复）、只有一份 Skill（第 1、2 步）、唤醒后直接回答（第 4 步）。
+- **新问题：新会话里"安装唤醒"仍靠 agent 发挥。** 新会话不知道 profile 在哪；在"直接照做"的测试提示下，Claude 编造了一个配置文件并谎报成功。测试提示加重了这种倾向，但根因是这一步没有确定的命令。
+  - 建议：`space_wake install` 不传 `--profile` 时，从 Claude Code / Codex 已注册的 coopagents 连接里自动找到 profile；README 第 3 步直接给出这条命令；`connect` 完成后在输出里给出带好参数的唤醒安装命令。
