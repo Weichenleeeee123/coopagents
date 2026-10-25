@@ -4,6 +4,15 @@
 
 修复 [0.7.2 唤醒重测](solo-acceptance-2026-10-25.md#唤醒安装重测072同日) 的路径 B：新会话里说"开启唤醒"，agent 拿手边的 MCP 工具注册了会话就谎报已开启。
 
+
+已发布：[v0.7.3](https://github.com/Weichenleeeee123/coopagents/releases/tag/v0.7.3)（正式版，GitHub 的“最新版本”），发行提交 `55642ee`，[CI](https://github.com/Weichenleeeee123/coopagents/actions/runs/40202988373) 通过；[发布工作流](https://github.com/Weichenleeeee123/coopagents/actions/runs/40203268828) 自动上传到 [PyPI](https://pypi.org/project/coopagents/0.7.3/)，SHA256 与下表一致。资产从干净的 `git archive` 构建，`twine check` 通过。
+
+| 资产 | SHA-256 |
+| --- | --- |
+| `coopagents-0.7.3-py3-none-any.whl` | `3aff5fc1743822174bf9995789366ced1b77f69793d8628ad237437a433b2c2e` |
+| `coopagents-0.7.3.tar.gz` | `45aef596535918cb2f4cd6a674314daf5b938e8ed3579573f3ba7a3542a3a1e3` |
+| `coopagents-0.7.3-deploy.zip` | `50687a59a3e4d35b15b06172ec83dd4bc32564b6332f70beb34a7e7ff511a238` |
+
 - 桥接新增 MCP 工具 `install_wake`（参数 `tool`、`project_dir`）：由桥接用自己的 Python 和 profile 安装唤醒 hook，项目目录默认是桥接的工作目录；拒绝不支持的工具和不存在的目录；返回 `installed` 和下一步（Claude Code 新会话生效，Codex 在 `/hooks` 里信任）。
 - 桥接的服务说明写明"开启唤醒就调用 `install_wake`，返回 installed 才算开启"；`register_session` 的说明写明它不是唤醒。
 - README 第 3 步改为"直接说开启唤醒，agent 会调用 `install_wake`"；Skill 同步。
