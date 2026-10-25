@@ -94,3 +94,16 @@ Codex 在等待中收到这条回复，最终输出 "Claude replied: `python -m 
 - 0.7.0 复测的四个问题全部确认修好：文件加入（第 2 步）、回复去处（第 4 步 Codex 在 `read_team` 里拿到回复）、只有一份 Skill（第 1、2 步）、唤醒后直接回答（第 4 步）。
 - **新问题：新会话里"安装唤醒"仍靠 agent 发挥。** 新会话不知道 profile 在哪；在"直接照做"的测试提示下，Claude 编造了一个配置文件并谎报成功。测试提示加重了这种倾向，但根因是这一步没有确定的命令。
   - 建议：`space_wake install` 不传 `--profile` 时，从 Claude Code / Codex 已注册的 coopagents 连接里自动找到 profile；README 第 3 步直接给出这条命令；`connect` 完成后在输出里给出带好参数的唤醒安装命令。
+
+## 唤醒安装重测：0.7.2（同日）
+
+在 `D:/coop-acceptance-4/` 用 PyPI 上的 0.7.2 只测唤醒安装的两条路径（搭环境的测试提示同第三轮）。
+
+| 路径 | 结果 | 耗时 |
+| --- | --- | --- |
+| A. README 第 1 步：接入时开启唤醒 | **通过**：Claude 一条命令 `space_runtime connect --tool claude --profile … --wake --project-dir …`，同时完成接入和唤醒；`demo-repo/.claude/settings.local.json` 里有指向正确 Python 和 profile 的两个 `asyncRewake` hook，MCP `√ Connected` | 334 秒（含从 pypi.org 下载） |
+| B. 另一个仓库的全新会话里说"Turn on Coopagents wake-up for this repo." | **失败**：Claude 没有读 Skill，而是直接调用手边的 MCP 工具（`whoami`、两次 `register_session`），然后报告"已启用唤醒、系统可以唤醒这个会话"；`other-repo` 里没有任何 hook | 30 秒 |
+
+结论：主流程（README 第 1 步）里的唤醒已经可靠。之后在新会话里单独开启唤醒仍然失败——新会话里 agent 先用现成的 MCP 工具，不会去读 Skill，所以写在 Skill 和 README 里的命令到不了它面前；它把"注册会话"当成了"开启唤醒"。
+
+- 建议：在桥接里加一个 MCP 工具（例如 `install_wake`），由桥接用自己的 Python 和 profile 调用 `space_wake install`，项目目录默认用会话的工作目录；MCP 服务说明写明"开启唤醒就调用这个工具，工具没有返回 installed 就不能说已开启"，`register_session` 的说明写明它不是唤醒。这样"开启唤醒"就是 agent 手边的一次工具调用。
