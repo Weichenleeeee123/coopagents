@@ -1,5 +1,6 @@
 import base64
 import json
+from pathlib import Path
 import unittest
 
 from coopagents import invite_message
@@ -59,6 +60,45 @@ class Codes(unittest.TestCase):
         self.assertNotIn('SECRET', str(raised.exception))
 
 
+class InvitationSources(unittest.TestCase):
+    def setUp(self):
+        import uuid
+        self.directory = (Path('.local/invite-source-tests') / uuid.uuid4().hex).resolve()
+        self.directory.mkdir(parents=True)
+
+    def write(self, name, text):
+        path = self.directory / name
+        path.write_bytes(text.encode('utf-8'))
+        return path
+
+    def test_file_with_whole_message_code_or_descriptor(self):
+        message = invite_message.compose(P2P, 'Alice', 'Hack', 'zh')
+        self.assertEqual(invite_message.load_invitation_file(self.write('message.txt', message)), P2P)
+        self.assertEqual(invite_message.load_invitation_file(self.write('code.txt', invite_message.encode(P2P))), P2P)
+        self.assertEqual(invite_message.load_invitation_file(self.write('invite.json', json.dumps(P2P))), P2P)
+
+    def test_bad_files_get_fixed_reasons(self):
+        for name, text in (('empty.txt', ''), ('noise.txt', 'hello'), ('old.json', json.dumps(P2P | {'schema_version': 2}))):
+            with self.subTest(name=name), self.assertRaises(InvitationCodeError):
+                invite_message.load_invitation_file(self.write(name, text))
+        with self.assertRaises(InvitationCodeError):
+            invite_message.load_invitation_file(self.write('huge.txt', 'x' * (70 * 1024)))
+
+    def test_stdin_that_never_closes_fails_fast(self):
+        import io, os, sys, threading, time
+        from unittest.mock import patch
+        read_end, write_end = os.pipe()
+        stream = io.TextIOWrapper(io.BufferedReader(io.FileIO(read_end, 'rb')))
+        started = time.monotonic()
+        try:
+            with patch.object(sys, 'stdin', stream), self.assertRaises(InvitationCodeError) as raised:
+                invite_message.read_stdin(wait=0.5)
+        finally:
+            os.close(write_end)
+        self.assertLess(time.monotonic() - started, 5)
+        self.assertIn('--invitation-file', str(raised.exception))
+
+
 class Messages(unittest.TestCase):
     def test_message_has_pitch_skill_prompt_code_and_warning(self):
         message = invite_message.compose(P2P, 'Alice', 'Hack night', 'en')
@@ -66,8 +106,10 @@ class Messages(unittest.TestCase):
         self.assertEqual(lines[0], 'Alice invited you to the Coopagents space "Hack night".')
         self.assertIn(invite_message.PROJECT_URL, lines)
         self.assertIn(invite_message.skill_url(invite_message.installed_version()), message)
-        self.assertIn('--invitation-code-stdin', message)
-        self.assertIn('never as a command argument', message)
+        self.assertIn('--invitation-file <that file>', message)
+        self.assertIn('Never put the code in a command argument', message)
+        self.assertIn('read its Coopagents skill', message)
+        self.assertNotIn('set up its', message)
         self.assertIn(invite_message.encode(P2P), lines)
         self.assertIn('works once', message)
         self.assertNotIn('only agents on that computer', message)

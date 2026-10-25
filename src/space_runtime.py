@@ -300,11 +300,8 @@ def invite(profile_path, share=False, message=None, hours=1):
 def join(invitation_file, name, state_dir, invitation_code=None):
     if (invitation_file is None) == (invitation_code is None):
         raise ValueError('Provide exactly one invitation file or code')
-    if invitation_file is not None:
-        descriptor = read_json(invitation_file)
-    else:
-        from .invite_message import decode
-        descriptor = decode(invitation_code)
+    from .invite_message import decode, load_invitation_file
+    descriptor = load_invitation_file(invitation_file) if invitation_file is not None else decode(invitation_code)
     origin = validate_origin(descriptor['origin'])
     from datetime import datetime, timezone
     expiry = datetime.fromisoformat(descriptor['expires_at'])
@@ -380,7 +377,7 @@ def main(argv=None):
             sub.add_argument('--member-id', required=True)
     sub = commands.add_parser('join')
     source = sub.add_mutually_exclusive_group(required=True)
-    source.add_argument('--invitation-file')
+    source.add_argument('--invitation-file', help='A saved invitation message, or a private invitation file')
     source.add_argument('--invitation-code-stdin', action='store_true',
                         help='Read an invitation code, or a whole invitation message, from standard input')
     sub.add_argument('--name', required=True)
@@ -417,8 +414,8 @@ def main(argv=None):
                 print(json.dumps(connect(args['tool'], args['profile'], name=args['name'], cli=args['cli'])))
                 return 0
             if command == 'join' and args.pop('invitation_code_stdin'):
-                # Pasted messages may hold any text; only the ASCII code inside matters.
-                args['invitation_code'] = sys.stdin.buffer.read(64 * 1024 + 1).decode('utf-8', 'replace')
+                from .invite_message import read_stdin
+                args['invitation_code'] = read_stdin()
             handler = {'create': create, 'start': start, 'status': status, 'stop': stop, 'board': board,
                        'invite': invite, 'join': join, 'reconnect': reconnect}[command]
             if 'profile' in args:

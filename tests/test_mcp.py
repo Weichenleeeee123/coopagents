@@ -71,6 +71,8 @@ class MCPTests(unittest.TestCase):
                 self.assertIn('receiver_member_id', tools['send_request'])
                 self.assertIn('delivered to nobody', tools['send_request'])
                 self.assertIn('member_id', tools['read_team'])
+                self.assertIn('does not list replies', tools['read_inbox'])
+                self.assertIn('requests[].replies', tools['send_request'])
                 self.assertNotIn('Authenticated room operation', tools['send_request'] + tools['read_team'])
                 addressed = await self.call(owner, 'send_request', {'request_key': 'a', 'receiver_member_id': self.member['member_id'],
                                                                     'context_version': 1, 'body': 'Q'})

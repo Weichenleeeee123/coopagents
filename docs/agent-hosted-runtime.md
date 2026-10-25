@@ -56,12 +56,13 @@ trusted private channel.
 
 `invite --message en|zh` additionally returns `message`, a text to paste into a private chat: a short
 pitch, the project and Skill links, a prompt for the invitee's own agent and a one-time code
-`coopagents-invite-1.<base64url>` carrying the same descriptor as the file. The invitee's agent passes the
-whole message or the code on standard input, never as an argument:
+`coopagents-invite-1.<base64url>` carrying the same descriptor as the file. The invitee's agent saves the
+whole message to a private file and passes that file to `join --invitation-file`, never the code as an
+argument (`--invitation-code-stdin` also accepts piped text and gives up after 15 seconds without input):
 
 ```powershell
 python -m coopagents.space_runtime invite --profile .local/spaces/team/profile.json --message en --hours 24
-Get-Content C:\private\message.txt | python -m coopagents.space_runtime join --invitation-code-stdin --name "Bob" --state-dir .local/spaces/bob
+python -m coopagents.space_runtime join --invitation-file C:\private\message.txt --name "Bob" --state-dir .local/spaces/bob
 ```
 
 ```powershell

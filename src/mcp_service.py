@@ -28,9 +28,12 @@ TOOL_DESCRIPTIONS = {
     'send_request': ('Ask a specific teammate a question or for help. Set receiver_member_id to the member who should '
                      'answer (look it up with read_team; display names are how teammates are called, for example '
                      '"Claude" or "Codex"). Without receiver_member_id the request is delivered to nobody and wakes '
-                     'nobody: it waits until a person assigns it. Use a new request_key per question; '
+                     'nobody: it waits until a person assigns it. The answer arrives under this request in read_team '
+                     '(requests[].replies), not in read_inbox. Use a new request_key per question; '
                      'context_version is any positive integer you choose (1 is fine).'),
-    'read_inbox': 'Read requests delivered to you and replies to your requests. Reading records that you read them.',
+    'read_inbox': ('Read requests delivered to you (teammates asking you). It does not list replies to requests you '
+                   'sent: those appear under your request in read_team (requests[].replies). Reading records that '
+                   'you read them.'),
     'reply': 'Answer a request delivered to you. Pass the request_id, a new request_key and the same context_version.',
     'acknowledge': 'Mark a request delivered to you as being handled, without answering yet.',
     'resolve_request': 'Close a request you sent once its answer is enough.',

@@ -90,8 +90,25 @@ class Connect(unittest.TestCase):
         (old / 'SKILL.md').write_text('old skill', encoding='utf-8')
         result = self.run_connect('codex')
         self.assertEqual(result['skill'], 'updated')
-        self.assertEqual((Path(result['skill_backup']) / 'SKILL.md').read_text(encoding='utf-8'), 'old skill')
+        backup = Path(result['skill_backup'])
+        self.assertEqual((backup / 'SKILL.md').read_text(encoding='utf-8'), 'old skill')
+        # A backup inside the skills folder would load as a second skill.
+        self.assertFalse(backup.is_relative_to(self.skills))
+        self.assertEqual(sorted(path.name for path in self.skills.iterdir()), ['coopagents-space'])
         self.assertNotEqual((old / 'SKILL.md').read_text(encoding='utf-8'), 'old skill')
+
+    def test_copy_differing_only_in_line_endings_is_the_same_skill(self):
+        source = Path(space_connect.__file__).resolve().parent / 'skills' / 'coopagents-space'
+        copy = self.skills / 'coopagents-space'
+        for path in source.rglob('*'):
+            if path.is_file() and '__pycache__' not in path.parts:
+                target = copy / path.relative_to(source)
+                target.parent.mkdir(parents=True, exist_ok=True)
+                data = path.read_bytes().replace(b'\r\n', b'\n')
+                target.write_bytes(data.replace(b'\n', b'\r\n') if path.suffix == '.md' else data)
+        result = self.run_connect('claude')
+        self.assertEqual(result['skill'], 'present')
+        self.assertNotIn('skill_backup', result)
 
     def test_invalid_names_and_tools_are_refused(self):
         with self.assertRaises(ConnectError):

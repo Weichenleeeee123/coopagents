@@ -55,6 +55,45 @@ def decode(text):
     return data
 
 
+
+STDIN_WAIT_SECONDS = 15
+NO_STDIN = ('No invitation text arrived on standard input; save the whole message to a file and use '
+            '--invitation-file instead')
+
+
+def load_invitation_file(path):
+    """A private invitation file (JSON descriptor) or any text file containing an invitation message or code."""
+    from .spaces import checked_path
+    path = checked_path(path)
+    if not path.is_file() or path.stat().st_size > 64 * 1024:
+        raise InvitationCodeError('The invitation file could not be read')
+    text = path.read_bytes().decode('utf-8', 'replace')
+    try:
+        data = json.loads(text)
+    except ValueError:
+        data = None
+    if isinstance(data, dict) and 'invite_token' in data:
+        if data.get('schema_version') != 1:
+            raise InvitationCodeError('Unsupported invitation file')
+        return data
+    return decode(text)
+
+
+def read_stdin(wait=STDIN_WAIT_SECONDS):
+    """Read pasted text from stdin, but never wait forever on a pipe that nobody writes or closes."""
+    import sys
+    import threading
+    stream = sys.stdin
+    if stream is None or stream.isatty():
+        raise InvitationCodeError(NO_STDIN)
+    received = []
+    reader = threading.Thread(target=lambda: received.append(stream.buffer.read(64 * 1024 + 1)), daemon=True)
+    reader.start()
+    reader.join(wait)
+    if not received or not received[0].strip():
+        raise InvitationCodeError(NO_STDIN)
+    return received[0].decode('utf-8', 'replace')
+
 def local_only(descriptor):
     return 'p2p' not in descriptor and urlsplit(descriptor['origin']).hostname in ('127.0.0.1', 'localhost', '::1')
 
@@ -74,13 +113,15 @@ TEXT = {
         'paste': 'Paste everything between the two lines into your Claude Code or Codex:',
         'install': ('Install Coopagents {version} from PyPI into an isolated Python environment: `{command}` '
                     '(if a package mirror does not have it yet, add `--index-url https://pypi.org/simple`). '
-                    'Then set up its Coopagents skill from {skill}.'),
+                    'Then read its Coopagents skill at {skill}.'),
         'install_any': ('Install the newest Coopagents from PyPI into an isolated Python environment: `{command}` '
                         '(if a package mirror does not have it yet, add `--index-url https://pypi.org/simple`). '
-                        'Then set up its Coopagents skill from {skill}.'),
+                        'Then read its Coopagents skill at {skill}.'),
         'prompt': ('{install} '
-                   'Then join my Coopagents space with the one-time invitation code below. Pass the code to '
-                   '`space_runtime join --invitation-code-stdin` on standard input, never as a command argument. '
+                   'Then join my Coopagents space with the one-time invitation code below: save this whole message '
+                   'to a private file with your file tool and run `python -m coopagents.space_runtime join '
+                   '--invitation-file <that file> --name <name> --state-dir <new folder>`. Never put the code in a '
+                   'command argument. '
                    'If you do not know which display name to join with, ask me. Then connect yourself with '
                    '`python -m coopagents.space_runtime connect --tool claude` (Claude Code) or `--tool codex` (Codex): '
                    'it registers the MCP server, installs the skill and verifies both. Do not edit agent configuration '
@@ -94,11 +135,12 @@ TEXT = {
         'local': '注意：这个空间只在发起人的电脑上开放，只有那台电脑上的 agent 能加入。',
         'paste': '把两条分隔线之间的内容整段发给你的 Claude Code 或 Codex：',
         'install': ('从 PyPI 把 Coopagents {version} 装进独立的 Python 环境：`{command}`'
-                    '（如果包镜像还没同步到，加上 `--index-url https://pypi.org/simple`），再按 {skill} 配置它的 Coopagents Skill。'),
+                    '（如果包镜像还没同步到，加上 `--index-url https://pypi.org/simple`），再阅读 {skill} 上的 Coopagents Skill。'),
         'install_any': ('从 PyPI 把最新的 Coopagents 装进独立的 Python 环境：`{command}`'
-                        '（如果包镜像还没同步到，加上 `--index-url https://pypi.org/simple`），再按 {skill} 配置它的 Coopagents Skill。'),
+                        '（如果包镜像还没同步到，加上 `--index-url https://pypi.org/simple`），再阅读 {skill} 上的 Coopagents Skill。'),
         'prompt': ('{install}然后用下面的一次性邀请码加入我的 Coopagents 空间：'
-                   '通过标准输入把邀请码交给 `space_runtime join --invitation-code-stdin`，不要放进命令参数。'
+                   '用你的写文件工具把这整段信息存成一个私有文件，然后运行 `python -m coopagents.space_runtime join '
+                   '--invitation-file <那个文件> --name <名字> --state-dir <新目录>`。不要把邀请码放进命令参数。'
                    '如果不知道该用什么名字加入，先问我。然后用 `python -m coopagents.space_runtime connect --tool claude`'
                    '（Claude Code）或 `--tool codex`（Codex）把自己接进去：它会注册 MCP、安装 Skill 并核验。不要自己改 agent 的配置文件。'),
         'warning': '这条邀请只能用一次，{expires} 过期。里面含有密钥：只发给你要邀请的人，不要发到群里或任何公开的地方。',

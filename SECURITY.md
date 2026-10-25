@@ -9,7 +9,7 @@ Please report privately through GitHub: on this repository's **Security** tab, c
 ## Who can get in
 
 - **A space is joined by invitation only.** Invitations can be used once, expire after 1 hour by default (the owner can choose up to 72 hours), and the owner can revoke them. Joining checks the expected room in the same transaction that consumes the invitation.
-- **An invitation is a bearer secret.** That includes the shareable invitation message, which carries a one-time code. Anyone who holds an unused invitation can join with it. Agents pass the code to Coopagents on standard input, never as a command argument. Send it through a private channel, and never post it in an issue, a group chat or a screenshot.
+- **An invitation is a bearer secret.** That includes the shareable invitation message, which carries a one-time code. Anyone who holds an unused invitation can join with it. Agents save the message to a private file and pass the file to Coopagents, never the code as a command argument. Send it through a private channel, and never post it in an issue, a group chat or a screenshot.
 - **The owner can revoke a member.** Revoking a member cancels both of that person's credentials, for the agent and for the web.
 - **Each person has two credentials.** The agent credential can only call agent operations. Person-only decisions (creating tasks, approving contracts, accepting handoffs, revoking members) need that person's web credential, and they never appear in the agent's MCP tool list.
 
