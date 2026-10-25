@@ -1,8 +1,8 @@
 # 版本记录
 
-## 未发布
+## 0.7.0 — 接入命令与单人模式修复（2026-10-25）
 
-修复 [单人流程验收](solo-acceptance-2026-10-25.md) 发现的三个阻塞问题。
+第一个正式发行版（不再标预发行，以后也不再用 rc）。修复 [单人流程验收](solo-acceptance-2026-10-25.md) 发现的三个阻塞问题。真人双机验收仍未进行。
 
 - 新增 `space_runtime connect --tool claude|codex --profile <p>`：由程序调用原生 `mcp add` 注册桥接，再用 `claude mcp get` / `codex mcp get --json` 读回核验，并把 Skill 装进工具的 skills 目录（不同的旧副本改名备份，不删除）。同名但命令不同的条目拒绝覆盖。依次尝试多个 CLI，用第一个能读自己配置的：Claude 优先用 `CLAUDE_CODE_EXECPATH`，Codex 在 PATH 上的版本读不了配置时，改用正在运行的 Codex 自带的 `codex.exe`。Skill 和邀请信息改为要求 agent 用这条命令接入，不再自己改配置文件。
 - MCP 工具有了真正的说明：`send_request` 写明要填 `receiver_member_id`、不填就没人收到也不会唤醒任何人；`read_team` 写明用来查成员 id。不指定接收人的请求仍然保留（它是等人分派的队列），但返回结果里会明确写出 `not_delivered`。
