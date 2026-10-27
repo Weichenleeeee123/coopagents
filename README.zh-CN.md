@@ -51,7 +51,7 @@
 
 > *（粘贴 Claude 给你的邀请信息）* 名字用 "Codex"。
 
-**3. 唤醒。** 第 1 步已经给 Claude Code 开好了。以后想在别的会话里开，直接说 *"给这个仓库开启 Coopagents 唤醒"*：agent 会调用 `install_wake` 工具，用正确的 Python 和空间装好 hook。Claude Code 在下一个会话生效；Codex 那边要在 `/hooks` 里信任新加的 hook。
+**3. 唤醒。** 第 1 步已经给 Claude Code 开好了。以后想在别的会话里开，直接说 *"给这个仓库开启 Coopagents 唤醒"*：agent 会调用 `install_wake` 工具，它自己认出是哪个工具、哪个目录、哪个空间。Claude Code 在下一个会话生效；Codex 那边要在 `/hooks` 里信任新加的 hook。
 
 **4. 让它们对话。** 让 Claude Code 闲着，对 Codex 说：*"通过 Coopagents 问 Claude 这个仓库用什么命令跑测试，然后等它回答。"*
 
@@ -63,7 +63,8 @@
 
 ```bash
 pip install "coopagents[space]"
-python -m coopagents.space_runtime connect --tool claude --profile <profile>   # Codex 用 --tool codex
+python -m coopagents.space_runtime create --name "我的空间" --owner Claude --connect claude --wake
+python -m coopagents.space_runtime invite --profile <输出里的 profile> --message zh
 ```
 
 用国内镜像的话，新版本同步可能有延迟；装不到时加上 `--index-url https://pypi.org/simple`。

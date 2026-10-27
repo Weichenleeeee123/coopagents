@@ -124,7 +124,7 @@ class Runtime(unittest.TestCase):
         peer = read_profile(joined['profile'])
         self.assertNotEqual(owner['member_id'], peer['member_id'])
         self.assertNotIn('control_token', peer)
-        with self.assertRaises(urllib.error.HTTPError):
+        with self.assertRaisesRegex(ValueError, 'already used, has expired or was revoked'):
             runtime.join(invitation['invitation_file'], 'Duplicate', self.directory / 'duplicate')
         me = runtime.request(peer['origin'], '/api/me', token=peer['agent_token'])
         self.assertEqual(me['me']['member_id'], peer['member_id'])
@@ -236,7 +236,7 @@ class Runtime(unittest.TestCase):
         invitation = runtime.invite(self.profile_path, share=True)
         runtime.request(owner['origin'], '/api/operations/revoke_invite', token=owner['web_token'],
                         data={'invite_token': invitation['invitation']['invite_token']})
-        with self.assertRaises(urllib.error.HTTPError):
+        with self.assertRaisesRegex(ValueError, 'Ask the inviter for a new invitation message'):
             runtime.join(invitation['invitation_file'], 'Peer', self.directory / 'rejected')
         invitation = runtime.invite(self.profile_path)
         peer_info = runtime.join(invitation['invitation_file'], 'Peer', self.directory / 'peer')

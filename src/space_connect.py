@@ -64,11 +64,6 @@ def registered_spaces(tool, project_dir=None):
     return list(unique.values())
 
 
-def wake_command(tool, profile_path):
-    return '"%s" -m coopagents.space_wake install --tool %s --profile "%s" --project-dir <your repository folder>' % (
-        sys.executable, tool, profile_path)
-
-
 def server_name(profile):
     return 'coopagents_' + profile['room_id'].replace('-', '')[:8]
 
@@ -236,10 +231,18 @@ def connect(tool, profile_path, name=None, cli=None, skills=None, wake=False, pr
               'room_id': profile['room_id'], 'member_id': profile['member_id']}
     result.update(install_skill(tool, skills))
     label = 'Claude Code' if tool == 'claude' else 'Codex'
+    steps = ['Tell the user to start a new %s session in the repository folder: the current session cannot load '
+             'the new tools. There, the agent calls whoami to check the connection.' % label]
     if wake:
         from .space_wake import install as install_wake
         result['wake'] = install_wake(str(path), tool, 'project', project_dir or os.getcwd())
+        if tool == 'codex':
+            steps.append('Wake-up is installed; in the new Codex session the user must review and trust the '
+                         'Coopagents hook in /hooks before it runs.')
+        else:
+            steps.append('Wake-up is installed and starts with that new session.')
     else:
-        result['wake_command'] = wake_command(tool, path)
-    result['next'] = 'Start a new %s session to load the Coopagents tools, then call whoami.' % label
+        steps.append('Wake-up is off. To turn it on later, the user can say "Turn on Coopagents wake-up for this '
+                     'repo" in a session of that folder; the agent then calls the install_wake tool.')
+    result['next'] = ' '.join(steps)
     return result

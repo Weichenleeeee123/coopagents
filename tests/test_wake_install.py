@@ -90,16 +90,25 @@ class WakeInstall(unittest.TestCase):
         self.assertIn('No Coopagents connection is registered for claude', result.stderr)
         self.assertFalse((self.repo / '.claude').exists())
 
+    def test_cli_names_a_missing_project_folder(self):
+        missing = self.directory / 'not-a-repo'
+        result = subprocess.run([sys.executable, '-m', 'coopagents.space_wake', 'install', '--tool', 'claude',
+                                 '--profile', str(self.profile), '--project-dir', str(missing)],
+                                capture_output=True, text=True, env=os.environ.copy())
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('%s does not exist' % missing, result.stderr)
+        self.assertFalse(missing.exists())
+
     def test_connect_can_install_wake_up_in_the_same_step(self):
         state = self.directory / 'mcp.json'
         with patch.dict(os.environ, {'FAKE_TOOL': 'claude', 'FAKE_MCP_STATE': str(state)}):
             plain = space_connect.connect('claude', self.profile, cli=[sys.executable, FAKE], skills=self.directory / 'skills')
-            self.assertIn('space_wake install --tool claude --profile', plain['wake_command'])
-            self.assertIn(str(self.profile), plain['wake_command'])
+            self.assertIn('install_wake', plain['next'])
             self.assertNotIn('wake', plain)
             woken = space_connect.connect('claude', self.profile, cli=[sys.executable, FAKE], skills=self.directory / 'skills',
                                           wake=True, project_dir=self.repo)
         self.assertEqual(woken['wake']['installed'], 'claude')
+        self.assertIn('starts with that new session', woken['next'])
         self.assertTrue((self.repo / '.claude' / 'settings.local.json').exists())
         self.assertNotIn('secret', json.dumps(woken))
 

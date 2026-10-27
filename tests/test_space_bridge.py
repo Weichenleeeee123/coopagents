@@ -19,7 +19,9 @@ import httpx2
 from mcp.client.streamable_http import streamable_http_client
 
 from coopagents.spaces import private_write
-from coopagents.space_bridge import EventCache, Bridge, human_operation
+from coopagents.space_bridge import EventCache, Bridge, agent_tool, human_operation, install_wake
+from coopagents.space_wake import WakeSetupError
+from mcp.types import Implementation
 from transport_support import LiveService
 
 
@@ -91,22 +93,30 @@ class SpaceBridgeTests(unittest.TestCase):
         self.assertEqual(second.read(90,100)['events'],[])
 
     def test_real_stdio_forwards_exact_schemas_identity_and_changes(self):
+        repo = self.path.parent / 'repo'
+        repo.mkdir()
         async def run():
-            params = StdioServerParameters(command=sys.executable, args=['-m', 'coopagents.space_bridge', '--profile', str(self.path.absolute())])
-            async with Client(params, cache=None) as bridge:
+            # Like Claude Code: the bridge starts in the session's folder and the client names itself.
+            params = StdioServerParameters(command=sys.executable, cwd=str(repo.absolute()),
+                                           args=['-m', 'coopagents.space_bridge', '--profile', str(self.path.absolute())])
+            async with Client(params, cache=None, client_info=Implementation(name='claude-code', version='0')) as bridge:
                 async with httpx2.AsyncClient(headers={'Authorization':'Bearer '+self.owner['agent_token']}) as http:
                     async with Client(streamable_http_client(self.live.url+'/mcp', http_client=http), cache=None) as remote:
                         expected = {t.name:t.model_dump() for t in (await remote.list_tools()).tools}
                 actual = {t.name:t.model_dump() for t in (await bridge.list_tools()).tools}
                 self.assertEqual({n:v for n,v in actual.items() if n not in ('read_changes', 'install_wake')}, expected)
                 self.assertIn('returns installed', actual['install_wake']['description'])
-                repo = self.path.parent / 'repo'
-                repo.mkdir()
-                bad = await bridge.call_tool('install_wake', {'tool': 'cursor', 'project_dir': str(repo.absolute())})
+                self.assertNotIn('required', actual['install_wake']['input_schema'])
+                bad = await bridge.call_tool('install_wake', {'tool': 'cursor'})
                 self.assertTrue(bad.is_error)
-                missing = await bridge.call_tool('install_wake', {'tool': 'claude', 'project_dir': str(repo.absolute() / 'nope')})
+                missing = await bridge.call_tool('install_wake', {'project_dir': str(repo.absolute() / 'nope')})
                 self.assertTrue(missing.is_error)
-                woke = await bridge.call_tool('install_wake', {'tool': 'claude', 'project_dir': str(repo.absolute())})
+                # The agent sees why and what to do instead of a generic failure.
+                self.assertIn('does not exist', missing.content[0].text)
+                self.assertIn('without project_dir', missing.content[0].text)
+                self.assertIn(str(repo.absolute()), missing.content[0].text)
+                self.assertFalse((repo / '.claude').exists())
+                woke = await bridge.call_tool('install_wake', {})
                 self.assertFalse(woke.is_error, woke.content)
                 self.assertEqual(woke.structured_content['installed'], 'claude')
                 settings = json.loads((repo / '.claude' / 'settings.local.json').read_text(encoding='utf-8'))
@@ -127,6 +137,30 @@ class SpaceBridgeTests(unittest.TestCase):
                 self.assertTrue(changes.structured_content['events'])
                 self.assertFalse(changes.structured_content['model_read_acknowledged'])
         asyncio.run(run())
+
+    def test_install_wake_detects_the_agent_and_its_folder(self):
+        repo = (self.path.parent / 'session').absolute()
+        repo.mkdir()
+        profile = self.path.absolute()
+        self.assertEqual(agent_tool('claude-code'), 'claude')
+        self.assertEqual(agent_tool('codex-mcp-client'), 'codex')
+        self.assertIsNone(agent_tool('mcp'))
+        with self.assertRaisesRegex(WakeSetupError, "pass tool 'claude' or 'codex'"):
+            install_wake(profile, {}, 'some-other-client')
+        with self.assertRaisesRegex(WakeSetupError, 'accepts only tool and project_dir'):
+            install_wake(profile, {'profile': 'x'}, 'claude-code')
+        with patch.dict('os.environ', {'CLAUDE_PROJECT_DIR': str(repo)}):
+            result = install_wake(profile, None, 'claude-code')
+        self.assertEqual(result['installed'], 'claude')
+        self.assertTrue((repo / '.claude' / 'settings.local.json').exists())
+        self.assertIn(str(repo), result['next'])
+        with patch('os.getcwd', return_value=str(repo)):
+            result = install_wake(profile, {}, 'codex-mcp-client')
+        self.assertEqual(result['installed'], 'codex')
+        self.assertTrue((repo / '.codex' / 'hooks.json').exists())
+        self.assertIn('/hooks', result['next'])
+        with patch('os.getcwd', return_value=str(Path.home())), self.assertRaisesRegex(WakeSetupError, 'home folder'):
+            install_wake(profile, {}, 'codex-mcp-client')
 
     def test_identity_mismatch_and_agent_human_denial(self):
         profile = json.loads(self.path.read_text())

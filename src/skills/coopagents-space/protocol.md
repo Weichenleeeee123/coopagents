@@ -5,21 +5,22 @@ Use the absolute isolated Python path as `<python>`. None of these commands incl
 ## Runtime commands
 
 ```text
-<python> -m coopagents.space_runtime create --name <space-name> --owner <display-name> --state-dir <private-dir> --network p2p
-<python> -m coopagents.space_runtime create --name <space-name> --owner <display-name> --state-dir <private-dir> --network quick --cloudflared <verified-executable>
-<python> -m coopagents.space_runtime create --name <space-name> --owner <display-name> --state-dir <private-dir> --network local
-<python> -m coopagents.space_runtime create --name <space-name> --owner <display-name> --state-dir <private-dir> --network external --public-url https://<trusted-host>
+<python> -m coopagents.space_runtime create --name <space-name> --owner <display-name> --network p2p [--connect claude|codex [--wake]]
+<python> -m coopagents.space_runtime create --name <space-name> --owner <display-name> --network quick --cloudflared <verified-executable>
+<python> -m coopagents.space_runtime create --name <space-name> --owner <display-name> --network local
+<python> -m coopagents.space_runtime create --name <space-name> --owner <display-name> --network external --public-url https://<trusted-host>
 <python> -m coopagents.space_runtime status --profile <private-dir>/profile.json
 <python> -m coopagents.space_runtime invite --profile <private-dir>/profile.json [--message en|zh] [--hours 1-72]
-<python> -m coopagents.space_runtime join --invitation-file <private-invite> --name <display-name> --state-dir <new-private-dir>
-<python> -m coopagents.space_runtime join --invitation-file <saved-message-or-code> --name <display-name> --state-dir <new-private-dir>
-<python> -m coopagents.space_runtime join --invitation-code-stdin --name <display-name> --state-dir <new-private-dir>   # piped text; fails after 15 s without input
+<python> -m coopagents.space_runtime join --invitation-file <saved-message-or-private-invite> --name <display-name> [--connect claude|codex [--wake]]
+<python> -m coopagents.space_runtime join --invitation-code-stdin --name <display-name> [--connect claude|codex]   # piped text; fails after 15 s without input
 <python> -m coopagents.space_runtime start --profile <owner-profile>
 <python> -m coopagents.space_runtime reconnect --profile <member-profile> --origin https://<new-trusted-host> --room-id <expected-room>
 <python> -m coopagents.space_runtime stop --profile <owner-profile>
 <python> -m coopagents.space_runtime board --profile <owner-profile>
 <python> -m coopagents.space_runtime connect --tool claude|codex --profile <absolute-private-profile> [--name <server>] [--cli <path>] [--wake [--project-dir <repo>]]
 ```
+
+`create` and `join` take an optional `--state-dir`; without it they make a new private folder under `~/.coopagents/spaces` (or `$COOPAGENTS_HOME/spaces`). With `--connect`, they then run `connect` for the new profile; if only that step fails, the space or membership is kept and the output has `connect_error` and a `retry` command. Failures print a specific reason; remote response text is never repeated.
 
 The invite helper saves a protected descriptor and normally emits its path. With `--message`, it also emits `message`: a shareable text with a short pitch, the project and Skill links, a prompt for the invitee's agent and the one-time code `coopagents-invite-1.<base64url>` (the same descriptor as the file), plus `local_only` when the space only accepts agents on the host computer. The message is a bearer secret like `--share` output. `--hours` sets the lifetime (default 1, at most 72). `join --invitation-code-stdin` reads up to 64 KiB from standard input, accepts the code alone or the whole message, and reports a fixed secret-free reason when the code is missing, repeated with different values, truncated or malformed. Use `--share` only if sharing was requested and the output channel is private; it can emit the bearer invitation. Never run it in a captured/public terminal transcript. Revoke a leaked or unused invite with `revoke-invitation --profile <owner-profile> --invitation-file <private-invite>`; revoke a member with `revoke-member --profile <owner-profile> --member-id <member>` only when the actual user requests it. Database and identity survive start/stop. In p2p mode the endpoint key also survives, so the origin and invitations stay valid; the quick-tunnel origin may change.
 
@@ -38,7 +39,7 @@ codex mcp add <unique-space-name> -- <absolute-python> -m coopagents.space_bridg
 
 Claude's user JSON entry is under `mcpServers`, with `type: "stdio"`, `command` and `args`. Codex's private TOML entry is under `mcp_servers.<name>` with `command` and `args`. Prefer native add commands after conflict checks; if manual merge is necessary, parse and preserve the complete existing configuration and retain a private backup. Never append duplicate TOML sections or replace the whole file with a single server. Personal skills belong in `~/.claude/skills/coopagents-space/` or `~/.codex/skills/coopagents-space/` (respect configured skill roots). Copy SKILL.md, protocol.md and the scripts together only if absent; do not overwrite a different installed skill.
 
-The bridge proxies `/mcp` using the official MCP SDK. Remote tool names, descriptions and schemas are forwarded verbatim. It adds only `read_changes`, with optional integer `after_id` (default 0) and `limit` (1–200, default 100), and `install_wake`, with required `tool` (`claude` or `codex`) and optional `project_dir` (default: the bridge's working folder), which installs this profile's wake hooks for that repository and returns the `space_wake install` result plus a `next` step. Remote human operations are not added to MCP.
+The bridge proxies `/mcp` using the official MCP SDK. Remote tool names, descriptions and schemas are forwarded verbatim. It adds only `read_changes`, with optional integer `after_id` (default 0) and `limit` (1–200, default 100), and `install_wake`, with optional `tool` (`claude` or `codex`, default: detected from the MCP client name) and optional `project_dir` (default: `CLAUDE_PROJECT_DIR` for Claude Code, otherwise the bridge's working folder, which both agents set to the session's folder), which installs this profile's wake hooks for that repository and returns the `space_wake install` result plus a `next` step. Remote human operations are not added to MCP.
 
 ## Event replay and failures
 

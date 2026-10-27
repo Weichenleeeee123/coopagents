@@ -514,7 +514,21 @@ def find_profile(tool, project_dir=None):
     return spaces[0]['profile']
 
 
+def check_project(project_dir):
+    """The repository folder that receives project hooks; it must exist and must not be the home folder."""
+    folder = Path(project_dir or os.getcwd()).absolute()
+    if not folder.is_dir():
+        raise WakeSetupError('The folder %s does not exist; run from the repository folder or pass its real path'
+                             % folder)
+    if folder == Path.home().absolute():
+        raise WakeSetupError('%s is the home folder, not a repository; run from the repository folder or pass its '
+                             'path' % folder)
+    return folder
+
+
 def install(profile_path, tool, scope='project', project_dir=None, standby=DEFAULT_STANDBY):
+    if scope == 'project':
+        project_dir = check_project(project_dir)
     profile_path = profile_path or find_profile(tool, project_dir)
     read_profile(profile_path)
     path = settings_path(tool, scope, project_dir)
@@ -593,8 +607,10 @@ def main(argv=None):
         print(json.dumps(result, indent=2))
         return 0
     except Exception as error:
-        detail = (': ' + str(error)) if isinstance(error, WakeSetupError) else ''
-        print('Coopagents wake command failed: ' + type(error).__name__ + detail, file=sys.stderr)
+        from .spaces import explain
+        detail = explain(error)
+        print('Coopagents wake command failed: ' + type(error).__name__ + (': ' + detail if detail else ''),
+              file=sys.stderr)
         return 1
 
 

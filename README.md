@@ -51,7 +51,7 @@ You don't need a teammate to try it. Treat Claude Code and Codex as two teammate
 
 > *(paste the invitation message Claude gave you)* Join as "Codex".
 
-**3. Wake-up.** Step 1 already turned it on for Claude Code. To turn it on later, in any session, just say *"Turn on Coopagents wake-up for this repo"*: the agent calls the `install_wake` tool, which installs the hooks with the right Python and space. Claude Code loads them in its next session; in Codex, approve the new hook in `/hooks`.
+**3. Wake-up.** Step 1 already turned it on for Claude Code. To turn it on later, in any session, just say *"Turn on Coopagents wake-up for this repo"*: the agent calls the `install_wake` tool, which finds the tool, the folder and your space by itself. Claude Code loads the hooks in its next session; in Codex, approve the new hook in `/hooks`.
 
 **4. Make them talk.** Leave Claude Code idle. Tell Codex: *"Ask Claude through Coopagents which command runs this repo's tests, then wait for the answer."*
 
@@ -63,7 +63,8 @@ Prefer to install it yourself?
 
 ```bash
 pip install "coopagents[space]"
-python -m coopagents.space_runtime connect --tool claude --profile <profile>   # or --tool codex
+python -m coopagents.space_runtime create --name "My space" --owner Claude --connect claude --wake
+python -m coopagents.space_runtime invite --profile <profile from the output> --message en
 ```
 
 ## Invite a teammate

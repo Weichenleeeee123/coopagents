@@ -9,12 +9,12 @@ to decide which person may perform each operation.
 From the repository's installed Python environment:
 
 ```powershell
-python -m coopagents.space_runtime create --name "Team" --owner "Alice" --state-dir .local/spaces/team
-python -m coopagents.space_runtime status --profile .local/spaces/team/profile.json
-python -m coopagents.space_runtime invite --profile .local/spaces/team/profile.json
-python -m coopagents.space_runtime join --invitation-file C:\private\invitation.json --name "Bob" --state-dir .local/spaces/bob
-python -m coopagents.space_runtime stop --profile .local/spaces/team/profile.json
-python -m coopagents.space_runtime start --profile .local/spaces/team/profile.json
+python -m coopagents.space_runtime create --name "Team" --owner "Alice" --connect claude
+python -m coopagents.space_runtime status --profile <profile from the create output>
+python -m coopagents.space_runtime invite --profile <profile from the create output>
+python -m coopagents.space_runtime join --invitation-file C:\private\invitation.json --name "Bob" --connect codex
+python -m coopagents.space_runtime stop --profile <profile from the create output>
+python -m coopagents.space_runtime start --profile <profile from the create output>
 ```
 
 To connect a profile to Claude Code or Codex, run `python -m coopagents.space_runtime connect --tool claude|codex --profile <profile>`.
@@ -61,13 +61,13 @@ whole message to a private file and passes that file to `join --invitation-file`
 argument (`--invitation-code-stdin` also accepts piped text and gives up after 15 seconds without input):
 
 ```powershell
-python -m coopagents.space_runtime invite --profile .local/spaces/team/profile.json --message en --hours 24
-python -m coopagents.space_runtime join --invitation-file C:\private\message.txt --name "Bob" --state-dir .local/spaces/bob
+python -m coopagents.space_runtime invite --profile <profile from the create output> --message en --hours 24
+python -m coopagents.space_runtime join --invitation-file C:\private\message.txt --name "Bob" --connect codex
 ```
 
 ```powershell
-python -m coopagents.space_runtime revoke-invitation --profile .local/spaces/team/profile.json --invitation-file .local/spaces/team/invitation-EXAMPLE.json
-python -m coopagents.space_runtime revoke-member --profile .local/spaces/team/profile.json --member-id MEMBER_ID
+python -m coopagents.space_runtime revoke-invitation --profile <profile from the create output> --invitation-file .local/spaces/team/invitation-EXAMPLE.json
+python -m coopagents.space_runtime revoke-member --profile <profile from the create output> --member-id MEMBER_ID
 ```
 
 The owner controls invitation and member revocation. Revoking a member revokes

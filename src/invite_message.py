@@ -118,14 +118,14 @@ TEXT = {
                         '(if a package mirror does not have it yet, add `--index-url https://pypi.org/simple`). '
                         'Then read its Coopagents skill at {skill}.'),
         'prompt': ('{install} '
-                   'Then join my Coopagents space with the one-time invitation code below: save this whole message '
-                   'to a private file with your file tool and run `python -m coopagents.space_runtime join '
-                   '--invitation-file <that file> --name <name> --state-dir <new folder>`. Never put the code in a '
-                   'command argument. '
-                   'If you do not know which display name to join with, ask me. Then connect yourself with '
-                   '`python -m coopagents.space_runtime connect --tool claude` (Claude Code) or `--tool codex` (Codex): '
-                   'it registers the MCP server, installs the skill and verifies both. Do not edit agent configuration '
-                   'files yourself.'),
+                   'Then join my Coopagents space with the one-time invitation code below and connect yourself, '
+                   'in one command: save this whole message once, with your file tool, to a private file outside '
+                   'the repository; then, from the repository folder, run `<python> -m coopagents.space_runtime join '
+                   '--invitation-file <that file> --name <name> --connect claude` if you are Claude Code, or '
+                   '`--connect codex` if you are Codex. <python> is the Python of that isolated environment. Never '
+                   'put the code in a command argument. If you do not know which display name to join with, ask me. '
+                   'The command creates its own private folder, registers the MCP server, installs the skill and '
+                   'verifies them; tell me its `next` step. Do not edit agent configuration files yourself.'),
         'warning': ('This invitation works once and expires at {expires}. It contains a key: send it only to the '
                     'person you are inviting, never to a group chat or anywhere public.'),
     },
@@ -138,11 +138,12 @@ TEXT = {
                     '（如果包镜像还没同步到，加上 `--index-url https://pypi.org/simple`），再阅读 {skill} 上的 Coopagents Skill。'),
         'install_any': ('从 PyPI 把最新的 Coopagents 装进独立的 Python 环境：`{command}`'
                         '（如果包镜像还没同步到，加上 `--index-url https://pypi.org/simple`），再阅读 {skill} 上的 Coopagents Skill。'),
-        'prompt': ('{install}然后用下面的一次性邀请码加入我的 Coopagents 空间：'
-                   '用你的写文件工具把这整段信息存成一个私有文件，然后运行 `python -m coopagents.space_runtime join '
-                   '--invitation-file <那个文件> --name <名字> --state-dir <新目录>`。不要把邀请码放进命令参数。'
-                   '如果不知道该用什么名字加入，先问我。然后用 `python -m coopagents.space_runtime connect --tool claude`'
-                   '（Claude Code）或 `--tool codex`（Codex）把自己接进去：它会注册 MCP、安装 Skill 并核验。不要自己改 agent 的配置文件。'),
+        'prompt': ('{install}然后用下面的一次性邀请码加入我的 Coopagents 空间并把自己接进去，只要一条命令：'
+                   '用你的写文件工具把这整段信息存一次，存到仓库外面的一个私有文件里；然后在仓库目录里运行 '
+                   '`<python> -m coopagents.space_runtime join --invitation-file <那个文件> --name <名字> --connect claude`'
+                   '（你是 Claude Code）或 `--connect codex`（你是 Codex）。<python> 是那个独立环境里的 Python。'
+                   '不要把邀请码放进命令参数。如果不知道该用什么名字加入，先问我。这条命令会自己建私有目录、注册 MCP、'
+                   '安装 Skill 并核验；把它返回的 `next` 下一步告诉我。不要自己改 agent 的配置文件。'),
         'warning': '这条邀请只能用一次，{expires} 过期。里面含有密钥：只发给你要邀请的人，不要发到群里或任何公开的地方。',
     },
 }

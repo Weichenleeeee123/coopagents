@@ -107,6 +107,7 @@ class Messages(unittest.TestCase):
         self.assertIn(invite_message.PROJECT_URL, lines)
         self.assertIn(invite_message.skill_url(invite_message.installed_version()), message)
         self.assertIn('--invitation-file <that file>', message)
+        self.assertIn('--connect codex', message)
         self.assertIn('Never put the code in a command argument', message)
         self.assertIn('read its Coopagents skill', message)
         self.assertNotIn('set up its', message)
