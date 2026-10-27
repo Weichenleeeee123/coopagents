@@ -11,6 +11,9 @@
 - 邀请被拒时说明"已被使用、已过期或已撤销，请邀请人重新生成"；已存在的空间或 profile 会写明所在目录。
 - `connect` 的 `next` 写明下一步：Codex 开了唤醒要在 `/hooks` 里信任；没开唤醒时提示以后直接说"开启唤醒"。
 - 邀请信息里的提示改为"在仓库外存一次文件，然后一条 `join --connect` 命令"；Skill、protocol、README 同步。
+- 安装改为"建虚拟环境、直接用它自己的 Python 运行 pip，不激活"（README、邀请信息、Skill 同步）。真实验收里 Claude 在 Git Bash 里执行（而不是 source）了 activate 脚本，什么都没变，pip 退回到全局 Python 的用户目录，覆盖了用户自己的 mcp、starlette 等包。`connect`，以及带 `--connect` 的 `create`/`join`（在创建任何东西之前），检测到装在用户 site-packages 时拒绝，并说明怎么装进独立环境。
+- 每个 agent 只能给自己接入和开唤醒：命令行从 shell 环境认出调用它的是 Codex（`CODEX_THREAD_ID`、`CODEX_SESSION_ID`）还是 Claude Code（`CLAUDECODE=1`），`--tool` 与之不符就拒绝，`space_wake install` 的 `--tool` 可省略；显式传的 `--profile` 必须是该工具自己登记的连接。起因：验收里 Codex 被要求开唤醒时，读了仓库里 Claude 的 hook 配置，用 `--tool claude` 和 Claude 的 profile 又装了一遍。
+- 唤醒提示和 Skill 写明：回答时只根据能读到的内容，不运行命令（用户可能不在，权限确认会让队友一直等）；需要运行才能确认的，在回复里说明要运行什么。起因：验收里被唤醒的 Claude 想先跑测试再答，卡在权限确认上。
 - 新增无人值守的真实 agent 验收脚本 `experiments/agent-integration/solo_acceptance.py`：用 HEAD 构建带 dev 版本号的 wheel，按 README 四步跑真实的 Claude Code 和 Codex，按状态判定每一步（配置、hook、空间里的成员和回复）。Claude Code 用隔离的配置目录，不写入用户配置；第 4 步在伪终端里开一个空闲的交互会话等待唤醒。
 
 ## 0.7.3 — install_wake 工具（2026-10-25）

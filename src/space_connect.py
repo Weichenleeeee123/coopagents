@@ -64,6 +64,33 @@ def registered_spaces(tool, project_dir=None):
     return list(unique.values())
 
 
+LABELS = {'claude': 'Claude Code', 'codex': 'Codex'}
+
+
+def calling_agent(environ=None):
+    """The agent whose shell runs this command (measured: Codex sets CODEX_THREAD_ID and CODEX_SESSION_ID,
+    Claude Code sets CLAUDECODE=1); None when neither or, for nested agents, both are present."""
+    environ = os.environ if environ is None else environ
+    codex = bool(environ.get('CODEX_THREAD_ID') or environ.get('CODEX_SESSION_ID'))
+    claude = environ.get('CLAUDECODE') == '1'
+    return ('codex' if codex else 'claude') if codex != claude else None
+
+
+def resolve_tool(tool, environ=None):
+    """Each agent sets up only itself: refuse a tool that differs from the agent running the command."""
+    caller = calling_agent(environ)
+    if tool and caller and tool != caller:
+        raise ConnectError('This command runs inside %s, but --tool %s sets up %s. Each agent sets up only itself: '
+                           'use --tool %s, or omit --tool.' % (LABELS[caller], tool, LABELS[tool], caller))
+    if not (tool or caller):
+        raise ConnectError('Could not tell whether this runs in Claude Code or Codex; pass --tool claude or --tool codex')
+    return tool or caller
+
+
+def same_file(left, right):
+    return os.path.normcase(os.path.abspath(left)) == os.path.normcase(os.path.abspath(right))
+
+
 def server_name(profile):
     return 'coopagents_' + profile['room_id'].replace('-', '')[:8]
 

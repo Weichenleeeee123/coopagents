@@ -428,7 +428,8 @@ def main(argv=None):
             result = safe_profile(profile, args['profile']) | {'status': 'revoked'}
         else:
             if command == 'connect':
-                from .space_connect import connect
+                from .space_connect import connect, resolve_tool
+                resolve_tool(args['tool'])
                 print(json.dumps(connect(args['tool'], args['profile'], name=args['name'], cli=args['cli'],
                                          wake=args['wake'], project_dir=args['project_dir'])))
                 return 0
@@ -436,7 +437,8 @@ def main(argv=None):
                 from .invite_message import read_stdin
                 args['invitation_code'] = read_stdin()
             if then_connect and then_connect[0]:
-                from .space_connect import check_own_environment
+                from .space_connect import check_own_environment, resolve_tool
+                resolve_tool(then_connect[0])
                 check_own_environment()  # before anything is created, so a retry starts clean
             handler = {'create': create, 'start': start, 'status': status, 'stop': stop, 'board': board,
                        'invite': invite, 'join': join, 'reconnect': reconnect}[command]

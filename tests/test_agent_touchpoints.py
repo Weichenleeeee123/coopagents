@@ -11,7 +11,7 @@ import urllib.error
 from uuid import uuid4
 
 from coopagents import space_runtime as runtime
-from coopagents.space_connect import ConnectError
+from coopagents.space_connect import ConnectError, resolve_tool
 from coopagents.spaces import UNREACHABLE, explain, read_json, read_profile
 
 FAKE = str(Path(__file__).with_name('fake_mcp_cli.py').resolve())
@@ -61,9 +61,12 @@ class OneCommand(unittest.TestCase):
 
     def run_cli(self, *argv, tool='claude'):
         out, err = io.StringIO(), io.StringIO()
-        # Each tool keeps its own native configuration.
+        # Each tool keeps its own native configuration, and the command runs in that agent's shell.
         state = str(self.directory / (tool + '-mcp.json'))
-        with patch.dict(os.environ, {'FAKE_TOOL': tool, 'FAKE_MCP_STATE': state}), redirect_stdout(out), redirect_stderr(err):
+        shell = {'CLAUDECODE': '1' if tool == 'claude' else '', 'CODEX_THREAD_ID': 'thread' if tool == 'codex' else '',
+                 'CODEX_SESSION_ID': ''}
+        with patch.dict(os.environ, {'FAKE_TOOL': tool, 'FAKE_MCP_STATE': state, **shell}), \
+                redirect_stdout(out), redirect_stderr(err):
             code = runtime.main(list(argv))
         return code, json.loads(out.getvalue()) if out.getvalue().strip() else None, err.getvalue()
 
@@ -112,6 +115,20 @@ class OneCommand(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn('not in its own virtual environment', error)
         self.assertIn('without activating it', error)
+        self.assertFalse((self.home / 'spaces').exists())
+
+    def test_an_agent_cannot_connect_the_other_tool(self):
+        with patch.dict(os.environ, {'CODEX_THREAD_ID': 'thread', 'CLAUDECODE': ''}):
+            self.assertEqual(resolve_tool(None), 'codex')
+            with self.assertRaisesRegex(ConnectError, 'runs inside Codex, but --tool claude'):
+                resolve_tool('claude')
+        with patch.dict(os.environ, {'CODEX_THREAD_ID': '', 'CODEX_SESSION_ID': '', 'CLAUDECODE': ''}):
+            with self.assertRaisesRegex(ConnectError, 'pass --tool claude or --tool codex'):
+                resolve_tool(None)
+        code, _, error = self.run_cli('create', '--name', 'Wrong', '--owner', 'Codex', '--network', 'local',
+                                      '--connect', 'claude', tool='codex')
+        self.assertEqual(code, 1)
+        self.assertIn('Each agent sets up only itself', error)
         self.assertFalse((self.home / 'spaces').exists())
 
     def test_wake_requires_connect_and_repository_state_is_refused_with_a_way_out(self):

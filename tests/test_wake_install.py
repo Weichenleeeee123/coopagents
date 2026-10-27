@@ -99,6 +99,32 @@ class WakeInstall(unittest.TestCase):
         self.assertIn('%s does not exist' % missing, result.stderr)
         self.assertFalse(missing.exists())
 
+    def wake_cli(self, *argv, shell):
+        env = {**os.environ, 'CLAUDECODE': '', 'CODEX_THREAD_ID': '', 'CODEX_SESSION_ID': '', **shell}
+        return subprocess.run([sys.executable, '-m', 'coopagents.space_wake', 'install', *argv],
+                              capture_output=True, text=True, cwd=self.repo, env=env)
+
+    def test_codex_cannot_install_claude_hooks_or_use_a_teammates_profile(self):
+        self.write_claude({'coopagents_one': self.bridge(self.profile)})
+        codex = {'CODEX_THREAD_ID': 'thread'}
+        result = self.wake_cli('--tool', 'claude', '--profile', str(self.profile), shell=codex)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('runs inside Codex, but --tool claude', result.stderr)
+        result = self.wake_cli('--profile', str(self.profile), shell=codex)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('Codex has no Coopagents connection', result.stderr)
+        mine = self.make_profile('codex-member')
+        toml = '[mcp_servers.coopagents_two]\ncommand = %s\nargs = ["-m", "coopagents.space_bridge", "--profile", %s]\n' % (
+            json.dumps(sys.executable), json.dumps(str(mine)))
+        (self.codex_home / 'config.toml').write_text(toml, encoding='utf-8')
+        result = self.wake_cli('--profile', str(self.profile), shell=codex)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('omit --profile', result.stderr)
+        self.assertFalse((self.repo / '.claude').exists() or (self.repo / '.codex').exists())
+        result = self.wake_cli(shell=codex)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(str(mine).replace(os.sep, '/'), (self.repo / '.codex' / 'hooks.json').read_text(encoding='utf-8'))
+
     def test_connect_can_install_wake_up_in_the_same_step(self):
         state = self.directory / 'mcp.json'
         with patch.dict(os.environ, {'FAKE_TOOL': 'claude', 'FAKE_MCP_STATE': str(state)}):
