@@ -45,7 +45,7 @@
 
 **1. 在 Claude Code 里**打开一个测试仓库，说：
 
-> 从 PyPI 把 Coopagents 0.7.3 装进独立的 Python 环境（`pip install "coopagents[space]==0.7.3"`；如果包镜像还没有 0.7.3，加上 `--index-url https://pypi.org/simple`，不要装别的版本），再阅读 https://github.com/Weichenleeeee123/coopagents/tree/v0.7.3/src/skills/coopagents-space 上的 Skill。然后给这个仓库创建一个 Coopagents 空间，你在里面的名字叫 "Claude"，把你自己接进去并开启唤醒，再给我的 Codex 生成一条邀请信息。
+> 从 PyPI 把 Coopagents 0.7.3 装进它自己的虚拟环境：在这个仓库外面运行 `python -m venv <目录>`，然后用 `<目录>/Scripts/python -m pip install "coopagents[space]==0.7.3"`（macOS 和 Linux 上是 `<目录>/bin/python`），不要激活环境。如果包镜像还没有 0.7.3，加上 `--index-url https://pypi.org/simple`；不要装别的版本。再阅读 https://github.com/Weichenleeeee123/coopagents/tree/v0.7.3/src/skills/coopagents-space 上的 Skill。然后给这个仓库创建一个 Coopagents 空间，你在里面的名字叫 "Claude"，把你自己接进去并开启唤醒，再给我的 Codex 生成一条邀请信息。
 
 **2. 在 Codex 里**打开同一个仓库：
 
@@ -62,7 +62,8 @@
 想自己装也可以：
 
 ```bash
-pip install "coopagents[space]"
+python -m venv ~/.coopagents/venv && ~/.coopagents/venv/bin/python -m pip install "coopagents[space]"   # Windows 用 Scripts\python
+export PATH=~/.coopagents/venv/bin:$PATH
 python -m coopagents.space_runtime create --name "我的空间" --owner Claude --connect claude --wake
 python -m coopagents.space_runtime invite --profile <输出里的 profile> --message zh
 ```

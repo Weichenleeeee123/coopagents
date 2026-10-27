@@ -199,9 +199,22 @@ def install_skill(tool, root=None):
     return result
 
 
+def check_own_environment():
+    """Refuse a user-site install: pip falls back to it when a venv was 'activated' in a shell where that failed."""
+    import site
+    user = site.getusersitepackages()
+    if user and Path(__file__).resolve().is_relative_to(Path(user).resolve()):
+        raise ConnectError(
+            'Coopagents is installed in the user site-packages of %s, not in its own virtual environment, so it '
+            'shares packages with everything else in that Python. Create one with `python -m venv <folder>`, install '
+            'with `<folder>/Scripts/python -m pip install "coopagents[space]==<version>"` (`<folder>/bin/python` '
+            'outside Windows) without activating it, and run connect with that Python.' % sys.executable)
+
+
 def connect(tool, profile_path, name=None, cli=None, skills=None, wake=False, project_dir=None):
     if tool not in TOOLS:
         raise ConnectError('Tool must be claude or codex')
+    check_own_environment()
     path = checked_path(profile_path).resolve()
     profile = read_profile(path)
     name = name or server_name(profile)

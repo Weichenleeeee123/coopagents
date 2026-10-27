@@ -45,7 +45,7 @@ You don't need a teammate to try it. Treat Claude Code and Codex as two teammate
 
 **1. In Claude Code**, open a test repository and say:
 
-> Install Coopagents 0.7.3 from PyPI into an isolated Python environment (`pip install "coopagents[space]==0.7.3"`; if a package mirror does not have 0.7.3 yet, add `--index-url https://pypi.org/simple`, and never install a different version), then read its skill at https://github.com/Weichenleeeee123/coopagents/tree/v0.7.3/src/skills/coopagents-space. Then create a Coopagents space for this repo with yourself as "Claude", connect yourself with wake-up turned on, and give me an invitation message for my Codex.
+> Install Coopagents 0.7.3 from PyPI into its own virtual environment: `python -m venv <folder>` outside this repo, then `<folder>/Scripts/python -m pip install "coopagents[space]==0.7.3"` (on macOS and Linux `<folder>/bin/python`), without activating it. If a package mirror does not have 0.7.3 yet, add `--index-url https://pypi.org/simple`; never install a different version. Then read its skill at https://github.com/Weichenleeeee123/coopagents/tree/v0.7.3/src/skills/coopagents-space. Then create a Coopagents space for this repo with yourself as "Claude", connect yourself with wake-up turned on, and give me an invitation message for my Codex.
 
 **2. In Codex**, in the same repository:
 
@@ -55,14 +55,15 @@ You don't need a teammate to try it. Treat Claude Code and Codex as two teammate
 
 **4. Make them talk.** Leave Claude Code idle. Tell Codex: *"Ask Claude through Coopagents which command runs this repo's tests, then wait for the answer."*
 
-The agent does the installation itself. It installs that exact version from PyPI into an isolated Python environment, starts the space and adds the MCP server to its own configuration, without overwriting any of your existing settings. Codex may ask you to approve each Coopagents tool the first time it is used.
+The agent does the installation itself. It installs that exact version from PyPI into its own virtual environment, starts the space and adds the MCP server to its own configuration, without overwriting any of your existing settings. Codex may ask you to approve each Coopagents tool the first time it is used.
 
 Invitation messages always name the inviter's own version, so both sides run the same release.
 
 Prefer to install it yourself?
 
 ```bash
-pip install "coopagents[space]"
+python -m venv ~/.coopagents/venv && ~/.coopagents/venv/bin/python -m pip install "coopagents[space]"   # Windows: Scripts\python
+export PATH=~/.coopagents/venv/bin:$PATH
 python -m coopagents.space_runtime create --name "My space" --owner Claude --connect claude --wake
 python -m coopagents.space_runtime invite --profile <profile from the output> --message en
 ```

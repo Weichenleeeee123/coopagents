@@ -1,5 +1,18 @@
 # 版本记录
 
+## 未发布
+
+一次性排查 README 单人流程里所有要 agent 自己决定或拼凑的地方（路径、工具名、目录、报错原因），全部改成由工具自己推断或给出明确原因；起因是 [0.7.3 路径 B 重测](solo-acceptance-2026-10-25.md#路径-b-重测073同日)：agent 编了一个不存在的 `project_dir`，又被通用报错误导。
+
+- `install_wake` 不需要参数：从 MCP 握手里的客户端名（实测 `claude-code`、`codex-mcp-client`）认出 Claude Code 或 Codex，目录默认是会话所在目录（实测两者启动 MCP 时的工作目录都是仓库，Claude Code 还设置 `CLAUDE_PROJECT_DIR`）。传了不存在的目录时，报错写明该目录不存在，并给出不传参数时会用的目录；家目录会被拒绝。
+- 新增统一的报错说明：本包自己抛出的固定文本原样显示；HTTP 状态和网络错误翻译成具体原因（成员被撤销、主机没开、请求冲突、限流）；远端返回的文字一律不转述，避免主机借报错给 agent 下指令。桥接、`space_runtime`、`space_wake` 都改用它，不再只有一句"Space operation failed"。
+- `create`、`join` 的 `--state-dir` 可省略，默认在 `~/.coopagents/spaces` 下新建私有目录（可用 `COOPAGENTS_HOME` 改）；在 Git 仓库里（`.local` 除外）建目录会被拒绝并提示省略该参数。
+- `create`、`join` 新增 `--connect claude|codex [--wake]`，一条命令完成创建或加入、接入和唤醒；只有接入失败时保留空间，输出 `connect_error` 和可直接重跑的 `retry` 命令。
+- 邀请被拒时说明"已被使用、已过期或已撤销，请邀请人重新生成"；已存在的空间或 profile 会写明所在目录。
+- `connect` 的 `next` 写明下一步：Codex 开了唤醒要在 `/hooks` 里信任；没开唤醒时提示以后直接说"开启唤醒"。
+- 邀请信息里的提示改为"在仓库外存一次文件，然后一条 `join --connect` 命令"；Skill、protocol、README 同步。
+- 新增无人值守的真实 agent 验收脚本 `experiments/agent-integration/solo_acceptance.py`：用 HEAD 构建带 dev 版本号的 wheel，按 README 四步跑真实的 Claude Code 和 Codex，按状态判定每一步（配置、hook、空间里的成员和回复）。Claude Code 用隔离的配置目录，不写入用户配置；第 4 步在伪终端里开一个空闲的交互会话等待唤醒。
+
 ## 0.7.3 — install_wake 工具（2026-10-25）
 
 修复 [0.7.2 唤醒重测](solo-acceptance-2026-10-25.md#唤醒安装重测072同日) 的路径 B：新会话里说"开启唤醒"，agent 拿手边的 MCP 工具注册了会话就谎报已开启。

@@ -104,6 +104,16 @@ class OneCommand(unittest.TestCase):
         self.assertIn('connect --tool claude --profile', created['retry'])
         self.assertTrue(Path(created['profile']).exists())
 
+    def test_a_user_site_install_is_refused_before_anything_is_created(self):
+        package_parent = str(Path(runtime.__file__).resolve().parent.parent)
+        with patch('site.getusersitepackages', return_value=package_parent):
+            code, _, error = self.run_cli('create', '--name', 'Global', '--owner', 'Claude', '--network', 'local',
+                                          '--connect', 'claude')
+        self.assertEqual(code, 1)
+        self.assertIn('not in its own virtual environment', error)
+        self.assertIn('without activating it', error)
+        self.assertFalse((self.home / 'spaces').exists())
+
     def test_wake_requires_connect_and_repository_state_is_refused_with_a_way_out(self):
         with self.assertRaises(SystemExit), redirect_stderr(io.StringIO()):
             runtime.main(['join', '--invitation-file', 'x', '--name', 'Codex', '--wake'])

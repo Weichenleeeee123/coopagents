@@ -435,6 +435,9 @@ def main(argv=None):
             if command == 'join' and args.pop('invitation_code_stdin'):
                 from .invite_message import read_stdin
                 args['invitation_code'] = read_stdin()
+            if then_connect and then_connect[0]:
+                from .space_connect import check_own_environment
+                check_own_environment()  # before anything is created, so a retry starts clean
             handler = {'create': create, 'start': start, 'status': status, 'stop': stop, 'board': board,
                        'invite': invite, 'join': join, 'reconnect': reconnect}[command]
             if 'profile' in args:
