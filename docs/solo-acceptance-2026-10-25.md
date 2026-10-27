@@ -107,3 +107,16 @@ Codex 在等待中收到这条回复，最终输出 "Claude replied: `python -m 
 结论：主流程（README 第 1 步）里的唤醒已经可靠。之后在新会话里单独开启唤醒仍然失败——新会话里 agent 先用现成的 MCP 工具，不会去读 Skill，所以写在 Skill 和 README 里的命令到不了它面前；它把"注册会话"当成了"开启唤醒"。
 
 - 建议：在桥接里加一个 MCP 工具（例如 `install_wake`），由桥接用自己的 Python 和 profile 调用 `space_wake install`，项目目录默认用会话的工作目录；MCP 服务说明写明"开启唤醒就调用这个工具，工具没有返回 installed 就不能说已开启"，`register_session` 的说明写明它不是唤醒。这样"开启唤醒"就是 agent 手边的一次工具调用。
+
+## 路径 B 重测：0.7.3（同日）
+
+在 `D:/coop-acceptance-5/` 用 0.7.3：先用产品命令建好空间、`connect --tool claude` 接入但不开唤醒，再在另一个仓库 `other-repo` 的全新会话里说"Turn on Coopagents wake-up for this repo."（测试提示同前）。
+
+- **有进步：不再谎报。** Claude 直接调用了 `install_wake`，失败后如实说明。
+- **仍然失败：** 它传的 `project_dir` 是自己拼出来的 `C:\Users\Weichen Li\D--coop-acceptance-5-other-repo`（像是把会话记录的目录名当成了路径），目录不存在；工具只回了一句通用错误"Space operation failed; verify profile…"，Claude 据此误以为空间没初始化，反过来让用户手动处理。
+- 另一次用"只传 tool、原样报告结果"的提示探测时，Claude 一个工具都没调用就回答了 "installed"——说明文字里出现了 "returns installed"，加上测试提示，它照着编了结果。该次探测作废。
+- **实测：** Claude Code 启动 MCP 程序时，工作目录就是会话所在的项目目录，并设置了 `CLAUDE_PROJECT_DIR`（临时注册一个只写工作目录的探针程序得到：`D:\coop-acceptance-5\other-repo`）。
+
+建议：
+- `install_wake` 不传 `project_dir` 时用 `CLAUDE_PROJECT_DIR`（没有就用桥接的工作目录），说明里写"通常只传 tool"。
+- 传了不存在的目录时，报出这个路径和"省略 project_dir 即可使用本会话目录 …"，不再用通用错误。
