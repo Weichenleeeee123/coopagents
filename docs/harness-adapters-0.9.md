@@ -10,7 +10,7 @@ python -m coopagents.harness_adapters --harness cursor --project . --service-url
 python -m coopagents.harness_adapters --harness cursor --project . --service-url https://team.example/mcp --install
 ```
 
-The generated remote entry references `COOPAGENTS_AGENT_TOKEN` and never stores the token value. The user must export that variable in the harness's process environment and start a new agent session after changing MCP configuration. The HTTP endpoint must be HTTPS, or loopback HTTP for local development.
+The generated remote entry references `COOPAGENTS_AGENT_TOKEN` and never stores the token value. Cursor and ZCode use their `${env:NAME}` header interpolation; Kimi Code uses its documented `bearerTokenEnvVar` field; OpenCode uses its `${NAME}` config interpolation. The user must export that variable in the harness's process environment and start a new agent session after changing MCP configuration. The HTTP endpoint must be HTTPS, or loopback HTTP for local development.
 
 | Harness | Project config | Entry shape | Native hook / idle wake |
 | --- | --- | --- | --- |

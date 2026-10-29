@@ -93,7 +93,10 @@ class HarnessAdapter:
     def _remote_entry(self, url, token_env):
         url = _remote_url(url)
         token_env = _string(token_env, 'Token environment variable')
-        headers = {'Authorization': 'Bearer ${%s}' % token_env}
+        if self.spec.harness == 'kimi-code':
+            return {'url': url, 'bearerTokenEnvVar': token_env}
+        placeholder = '${env:%s}' % token_env if self.spec.harness in ('cursor', 'zcode') else '${%s}' % token_env
+        headers = {'Authorization': 'Bearer ' + placeholder}
         if self.spec.format == 'opencode':
             return {'type': 'remote', 'url': url, 'headers': headers, 'enabled': True}
         return {'url': url, 'headers': headers}

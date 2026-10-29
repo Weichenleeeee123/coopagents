@@ -77,7 +77,12 @@ class HarnessAdapterTests(unittest.TestCase):
                 else:
                     entry = document['mcpServers']['coopagents']
                 self.assertEqual(entry['url'], 'https://team.example/mcp')
-                self.assertIn('${COOPAGENTS_AGENT_TOKEN}', entry['headers']['Authorization'])
+                if name == 'kimi-code':
+                    self.assertEqual(entry['bearerTokenEnvVar'], 'COOPAGENTS_AGENT_TOKEN')
+                elif name in ('cursor', 'zcode'):
+                    self.assertIn('${env:COOPAGENTS_AGENT_TOKEN}', entry['headers']['Authorization'])
+                else:
+                    self.assertIn('${COOPAGENTS_AGENT_TOKEN}', entry['headers']['Authorization'])
 
 
 if __name__ == '__main__':
