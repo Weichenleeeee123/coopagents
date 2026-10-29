@@ -1,4 +1,5 @@
 import io
+import base64
 import json
 from pathlib import Path
 import subprocess
@@ -20,6 +21,13 @@ def evidence(name):
     root = Path('.local/test-evidence') / ('wake-' + name + '-' + uuid4().hex)
     root.mkdir(parents=True, exist_ok=True)
     return root
+
+
+def hook_script(command):
+    if ' -EncodedCommand ' not in command:
+        return command
+    encoded = command.split(' -EncodedCommand ', 1)[1]
+    return base64.b64decode(encoded).decode('utf-16-le')
 
 
 class FakeClock:
@@ -303,7 +311,7 @@ class InstallTests(unittest.TestCase):
         upgraded = merge_hooks(document, hook_config(self.profile, 'claude'))
         commands = [h['command'] for groups in upgraded['hooks'].values() for g in groups for h in g['hooks']]
         self.assertFalse(any('crewmesh.space_wake' in c for c in commands))
-        self.assertEqual(sum('coopagents.space_wake' in c for c in commands), 2)
+        self.assertEqual(sum('coopagents.space_wake' in hook_script(c) for c in commands), 2)
         self.assertEqual(merge_hooks(document, {}), {'hooks': {'Stop': [{'hooks': [foreign]}]}})
 
     def test_generated_command_runs_in_native_shells(self):
@@ -334,7 +342,7 @@ class InstallTests(unittest.TestCase):
         handler = document['hooks']['Stop'][0]['hooks'][0]
         self.assertTrue(handler['asyncRewake'])
         self.assertEqual(handler['timeout'], space_wake.CLAUDE_HOOK_TIMEOUT)
-        self.assertIn('coopagents.space_wake watch --tool claude', handler['command'])
+        self.assertIn('coopagents.space_wake watch --tool claude', hook_script(handler['command']))
         self.assertNotIn('\\', handler['command'])
         self.assertEqual(document['permissions'], {'allow': ['Read']})
         self.assertTrue(list(settings.parent.glob('settings.local.json.coopagents-*.bak')), 'Previous settings are kept')

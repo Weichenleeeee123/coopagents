@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import json
 from pathlib import Path
 import sys
@@ -121,7 +122,11 @@ class SpaceBridgeTests(unittest.TestCase):
                 self.assertEqual(woke.structured_content['installed'], 'claude')
                 settings = json.loads((repo / '.claude' / 'settings.local.json').read_text(encoding='utf-8'))
                 self.assertEqual(sorted(settings['hooks']), ['SessionStart', 'Stop'])
-                self.assertIn('coopagents.space_wake watch --tool claude', json.dumps(settings))
+                commands = [hook['command'] for groups in settings['hooks'].values() for group in groups
+                            for hook in group['hooks']]
+                scripts = [base64.b64decode(command.split(' -EncodedCommand ', 1)[1]).decode('utf-16-le')
+                           if ' -EncodedCommand ' in command else command for command in commands]
+                self.assertTrue(any('coopagents.space_wake watch --tool claude' in script for script in scripts))
                 self.assertNotIn(self.owner['agent_token'], woke.model_dump_json())
                 identity = await bridge.call_tool('whoami', {})
                 self.assertFalse(identity.is_error)

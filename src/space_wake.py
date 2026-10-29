@@ -8,9 +8,11 @@ The wake text is a fixed template with counts only.  Teammate content never
 enters it, and waking never reads, acknowledges or answers anything.
 """
 import argparse
+import base64
 import json
 import os
 from pathlib import Path
+import re
 import sqlite3
 import sys
 import time
@@ -421,14 +423,19 @@ def watch(profile_path, tool, stdin, stdout, stderr, *, watcher_factory=_default
 
 
 def hook_command(profile_path, tool):
-    # Only the executable is shortened: a quoted first token breaks PowerShell.
-    # The profile keeps its real name so private-path checks still see `.local`.
-    executable = _portable(Path(sys.executable), shorten=True)
-    profile = _portable(checked_path(profile_path))
+    executable = _portable(Path(sys.executable), shorten=True, quote=os.name != 'nt')
+    profile = _portable(checked_path(profile_path), quote=os.name != 'nt')
+    if os.name == 'nt':
+        # A single encoded PowerShell command line avoids Git Bash's C:/ path lookup and slash conversion.
+        script = (f'& {_powershell_literal(executable)} -I -m {MARKER} watch --tool {tool} '
+                  f'--profile {_powershell_literal(profile)}; '
+                  "if ($LASTEXITCODE -ne $null) { exit $LASTEXITCODE } else { exit 1 }")
+        encoded = base64.b64encode(script.encode('utf-16-le')).decode('ascii')
+        return f'powershell.exe -NoLogo -NoProfile -NonInteractive -EncodedCommand {encoded}'
     return f'{executable} -I -m {MARKER} watch --tool {tool} --profile {profile}'
 
 
-def _portable(path, shorten=False):
+def _portable(path, shorten=False, quote=True):
     """A shell-neutral path: forward slashes; optionally a Windows short name to avoid spaces."""
     text = str(path)
     if shorten and os.name == 'nt':
@@ -437,7 +444,11 @@ def _portable(path, shorten=False):
         if ctypes.windll.kernel32.GetShortPathNameW(text, buffer, len(buffer)):
             text = buffer.value
     text = text.replace('\\', '/')
-    return f'"{text}"' if ' ' in text else text
+    return f'"{text}"' if quote and ' ' in text else text
+
+
+def _powershell_literal(value):
+    return "'" + value.replace("'", "''") + "'"
 
 
 def hook_config(profile_path, tool, standby=DEFAULT_STANDBY):
@@ -457,8 +468,21 @@ def settings_path(tool, scope, project_dir=None):
 
 
 def _ours(group):
-    return any(marker in str(h.get('command', '')) for h in group.get('hooks', []) if isinstance(h, dict)
-               for marker in (MARKER,) + LEGACY_MARKERS)
+    for hook in group.get('hooks', []):
+        if not isinstance(hook, dict):
+            continue
+        command = str(hook.get('command', ''))
+        if any(marker in command for marker in (MARKER,) + LEGACY_MARKERS):
+            return True
+        encoded = re.search(r'(?:^|\s)-EncodedCommand\s+([A-Za-z0-9+/=]+)(?:\s|$)', command, re.I)
+        if encoded:
+            try:
+                script = base64.b64decode(encoded.group(1), validate=True).decode('utf-16-le')
+            except (ValueError, UnicodeDecodeError):
+                continue
+            if any(marker in script for marker in (MARKER,) + LEGACY_MARKERS):
+                return True
+    return False
 
 
 def merge_hooks(document, additions):

@@ -1,3 +1,4 @@
+import base64
 import json
 import os
 from pathlib import Path
@@ -12,6 +13,18 @@ from coopagents.spaces import private_write
 from coopagents.space_wake import WakeSetupError
 
 FAKE = str(Path(__file__).with_name('fake_mcp_cli.py').resolve())
+
+
+def hook_commands(document):
+    for groups in document.get('hooks', {}).values():
+        for group in groups:
+            for hook in group.get('hooks', []):
+                command = hook.get('command', '')
+                marker = ' -EncodedCommand '
+                if marker in command:
+                    payload = command.split(marker, 1)[1].split()[0]
+                    command = base64.b64decode(payload).decode('utf-16-le')
+                yield command
 
 
 class WakeInstall(unittest.TestCase):
@@ -69,7 +82,7 @@ class WakeInstall(unittest.TestCase):
         self.assertEqual(result['profile'], str(self.profile))
         settings = json.loads((self.repo / '.claude' / 'settings.local.json').read_text(encoding='utf-8'))
         self.assertEqual(sorted(settings['hooks']), ['SessionStart', 'Stop'])
-        self.assertIn(str(self.profile).replace(os.sep, '/'), json.dumps(settings).replace('\\\\', '/'))
+        self.assertTrue(any(str(self.profile).replace(os.sep, '/') in command for command in hook_commands(settings)))
 
     def test_none_or_several_connections_are_explained_not_guessed(self):
         self.write_claude({})
@@ -123,7 +136,8 @@ class WakeInstall(unittest.TestCase):
         self.assertFalse((self.repo / '.claude').exists() or (self.repo / '.codex').exists())
         result = self.wake_cli(shell=codex)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn(str(mine).replace(os.sep, '/'), (self.repo / '.codex' / 'hooks.json').read_text(encoding='utf-8'))
+        settings = json.loads((self.repo / '.codex' / 'hooks.json').read_text(encoding='utf-8'))
+        self.assertTrue(any(str(mine).replace(os.sep, '/') in command for command in hook_commands(settings)))
 
     def test_connect_can_install_wake_up_in_the_same_step(self):
         state = self.directory / 'mcp.json'
