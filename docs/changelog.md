@@ -8,6 +8,14 @@
 - Windows 唤醒 hook 改用无配置文件的 PowerShell encoded command 启动正确的 Python 和 profile；Git Bash、PowerShell、cmd 共用同一配置并保留 stdin。安装/升级/卸载可识别该格式，旧的直调 hook 仍可替换。
 - 无人值守真实验收脚本识别 v2 邀请和 Windows encoded hook，并可显式指定 Claude 模型。
 
+干净 Git 归档生成的候选资产已通过 `twine check`；SHA256：
+
+| 资产 | SHA-256 |
+| --- | --- |
+| `coopagents-0.7.4-py3-none-any.whl` | `57187b51bf5e159fcb9b8cbddb7edb94a75d700c7bef2ab0a1aa6627565b6dda` |
+| `coopagents-0.7.4.tar.gz` | `fffb492693273137ae412123311df1ee89ed90d0c90b8efbe2c9a4aa1b7355a8` |
+| `coopagents-0.7.4-deploy.zip` | `cee1a1f32c02b94675dd691d464e474e201df7c6627fba5d235eea2fcc3f3252` |
+
 后续真人双机与双方 NAT 验收仍未完成；这次单机通过不代表 1.0 稳定版门槛全部满足。1.0 门槛见[发布就绪计划](release-1.0-plan.md)。
 
 一次性排查 README 单人流程里所有要 agent 自己决定或拼凑的地方（路径、工具名、目录、报错原因），全部改成由工具自己推断或给出明确原因；起因是 [0.7.3 路径 B 重测](solo-acceptance-2026-10-25.md#路径-b-重测073同日)：agent 编了一个不存在的 `project_dir`，又被通用报错误导。
