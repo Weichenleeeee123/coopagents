@@ -4,7 +4,9 @@
 
 当前 `feat/git-delivery-08` 已实现 GitHub Release 有界只读发现、显式 task-release 多对多关系、签名 release 事件触发核对、ownership epoch 过滤，以及由结构化协作记录生成的项目活动流。Hosted GUI 和本机 loopback-only 只读看板共用 Release/活动 renderer。Release 不会由 Coopagents 创建或发布；发布和 PR 合并均不自动验收任务。活动不访问完整 agent 对话、prompt、回复、hidden reasoning、tool I/O 或 webhook 正文。
 
-Release 最近发现上限为 20 条，每条资产元数据上限 20 项；任务关系必须明确建立。项目活动最多展示 100 条，并且只按固定字段映射。此阶段仍需完成全量 Python/实验/网页/构建检查和文档收尾。真实 GitHub App 的线上安装、权限、webhook 投递与撤权恢复仍未验收；离线 provider 回归不作为线上证据。
+0.8 本轮实现与本地验证完成，按源码/测试和 UI/文档分阶段提交：`8a14458`、`9882aab`。完整 Python 套件 579 项通过；agent-integration 实验 21 项通过；Git、活动、board、会话、账号、账单及依赖 UI 回归通过。发行版 sdist/wheel 构建成功，`twine check` 通过，wheel 确认包含 `coopagents/static/project_activity.js`。这些离线检查验证实现与打包，不替代真实 provider 或公网验收。
+
+Release 最近发现上限为 20 条，每条资产元数据上限 20 项；task-release 关联必须明确建立。项目活动最多展示 100 项，只有固定映射字段进入时间线，显式进度摘要除外；不读取或存储完整 agent 对话、prompt、回复、hidden reasoning、tool I/O 或 raw webhook body。PR 合并和 Release 发布均不自动验收任务。真实 GitHub App 的线上安装、权限、webhook 投递与撤权恢复仍未验收。
 
 日期：2026-10-11。范围：用户批准的本地 Git + GitHub，按 G1 → G2 → G3 全部实施。真实 App 安装、公网与跨电脑验收尚未完成。
 
