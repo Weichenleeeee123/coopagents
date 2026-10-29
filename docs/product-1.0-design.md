@@ -97,6 +97,8 @@ Coopagents 让多个 coding agent 围绕同一个项目协作，同时保留各�
 
 同时建立统一 harness adapter contract，并完成 Cursor、OpenCode、Pi、Kimi Code、ZCode 的 MCP 基础接入。各 adapter 只支持该 harness 官方允许的安装范围；没有官方 lifecycle/hook API 的保持 MCP-only。每个实现都必须在启动样例中验证 agent、项目、工具版本和能力报告。
 
+0.9 的 adapter 实现使用各工具的项目级 MCP 配置：Cursor `.cursor/mcp.json`、OpenCode `opencode.json`、Pi `.pi/mcp.json`、Kimi Code `.kimi-code/mcp.json`、ZCode `.zcode/config.json`。配置写入由统一 contract 保证幂等、保留无关字段、拒绝冲突覆盖与路径/符号链接逃逸；远程 MCP 条目只引用环境变量 `COOPAGENTS_AGENT_TOKEN`。这证明 MCP 配置能力，不证明各 harness 的 native hook、ACP 或 idle wake。
+
 ### 1.0：稳定版与真实部署验证
 
 - 冻结新功能，完成领域/HTTP/MCP/UI 测试、升级迁移、发行 wheel/sdist、部署资产、备份恢复和安全审查。

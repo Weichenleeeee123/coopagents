@@ -6,7 +6,7 @@
 
 0.9 正在推进；分阶段计划见 [0.9 实施计划](superpowers/plans/2026-10-29-release-0-9.md)，资产/活动阶段证据见 [0.9 资产报告](asset-sharing-report.md)。项目资产领域、持久化、配额、成员权限、成对备份/恢复和 HTTP/MCP 接口已提交（`d3431f9`、`4235fa2`）；自托管资产管理、活动筛选与任务回溯已实现，阶段提交待完成。本机 loopback 浏览器完成显式上传/下载、项目隔离、相对路径引用和 390px 检查。完整 Python 回归 597 项及 13 个网页脚本回归通过。
 
-下一工作包是统一 harness adapter contract，以及 Cursor、OpenCode、Pi、Kimi Code、ZCode 的 MCP 基础适配。真实 GitHub App 线上验收继续留在 1.0，不能由本机 HTTP/provider 测试代替。
+统一 harness adapter contract，以及 Cursor、OpenCode、Pi、Kimi Code、ZCode 的 MCP 基础适配已实现，阶段提交见后续 0.9 adapter 提交；native hook、ACP 和 idle wake 仍按 capability matrix 保守标为 unknown/unsupported。真实 GitHub App 线上验收继续留在 1.0，不能由本机 HTTP/provider 测试代替。
 
 ## 当前产品方向：Agent 承载空间
 
