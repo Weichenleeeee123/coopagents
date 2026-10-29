@@ -93,7 +93,7 @@ def context_for(db, task):
     progress = db.execute('SELECT * FROM progress WHERE task_id=?', (task_id,)).fetchone()
     result = {'task': project_task(task), 'progress': dict(progress) if progress else None,
               'sessions': [dict(r) for r in db.execute('SELECT * FROM sessions WHERE task_id=?', (task_id,))]}
-    for table in ('collaboration_checkpoints', 'github_refs', 'github_commit_refs'):
+    for table in ('collaboration_checkpoints', 'github_refs', 'github_commit_refs', 'github_release_refs'):
         result[table] = [dict(r) for r in db.execute(f'SELECT * FROM {table} WHERE task_id=?', (task_id,))] if has_table(db, table) else []
     # Immutable observations remain queryable in their original table; retain only branch context here.
     result['git_observations'] = [dict(r) for r in db.execute('''SELECT id,branch,head,received_at,ownership_epoch
@@ -121,7 +121,7 @@ def retire_execution(db, task):
     db.execute('UPDATE sessions SET task_id=NULL WHERE task_id=?', (task['id'],))
     if has_table(db, 'collaboration_checkpoints'):
         db.execute('UPDATE collaboration_checkpoints SET task_id=NULL WHERE task_id=?', (task['id'],))
-    for table in ('github_refs', 'github_commit_refs'):
+    for table in ('github_refs', 'github_commit_refs', 'github_release_refs'):
         if has_table(db, table):
             db.execute(f'DELETE FROM {table} WHERE task_id=?', (task['id'],))
     if has_table(db, 'github_connections'):
@@ -259,7 +259,7 @@ class TaskLifecycleStore:
             item['context'] = context
         else:
             item['context'] = {'progress': context['progress'],
-                **{key: context.get(key, [])[:5] for key in ('sessions','git_observations','github_refs','github_commit_refs')},
+                **{key: context.get(key, [])[:5] for key in ('sessions','git_observations','github_refs','github_commit_refs','github_release_refs')},
                 'deliveries':[{key:r.get(key) for key in ('branch','pr_number','commit_sha','state','sync_at','ownership_epoch')}
                     for r in context.get('deliveries',[])[:5]]}
             item['context_excerpted'] = True

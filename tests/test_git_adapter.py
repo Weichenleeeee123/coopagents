@@ -121,6 +121,9 @@ class AdapterTests(unittest.TestCase):
                         names={t.name for t in (await client.list_tools()).tools}
                         self.assertIn('repo_checkpoint',names)
                         self.assertIn('checkpoint',names)
+                        delivery_tool=next(t for t in (await client.list_tools()).tools if t.name=='link_delivery')
+                        self.assertIn('release_id',delivery_tool.input_schema['properties'])
+                        self.assertIn('does not create or publish releases',delivery_tool.description)
                         collaboration=await client.call_tool('checkpoint',{'session_key':'local-adapter','tool':'codex-cli','event':'startup'})
                         self.assertFalse(collaboration.is_error,collaboration.content)
                         self.assertEqual(collaboration.structured_content['checkpoint']['source'],'tool')

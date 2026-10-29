@@ -113,6 +113,13 @@ class LifecycleTests(unittest.TestCase):
         self.s.github.complete_authorization(begun['state'], 'code'); self.s.github.finish_authorization(self.owner['web_token'], begun['state'])
         auth = dict(session_key='one', ownership_epoch=self.task['ownership_epoch'])
         first = self.s.github.associate(self.a['agent_token'], self.task['id'], pr_number=7, **auth)
+        event_cursor=self.s.change_events.read(self.owner['web_token'])['cursor']
+        release = self.s.github.associate(self.a['agent_token'], self.task['id'], release_id=42, **auth)
+        release_events=self.s.change_events.read(self.owner['web_token'],event_cursor)['events']
+        self.assertTrue(any(event['topic']=='git' for event in release_events))
+        self.s.github.app.current['releases']=[{'release_id':42,'tag_name':'v1.2.3','name':'1.2.3','state':'published',
+            'draft':False,'prerelease':False,'created_at':'2026-01-01T00:00:00Z','published_at':'2026-01-02T00:00:00Z',
+            'target_commitish':'main','assets':[],'assets_truncated':False,'url':'https://github.com/acme/demo/releases/tag/v1.2.3'}]
         self.s.github.app.current['pull_requests'][0]['merged'] = True
         self.s.github.refresh(self.owner['web_token'])
         from coopagents.tasks import _utc_now
@@ -123,12 +130,18 @@ class LifecycleTests(unittest.TestCase):
         snap = self.s.git_snapshot(self.a['web_token'])
         self.assertEqual(snap['deliveries'], []); self.assertEqual(snap['workspaces'], [])
         self.assertTrue(snap['events'][0]['historical'])
+        history=self.s.lifecycle.read_task_history(self.a['agent_token'],self.task['id'],limit=10)
+        release_event=next(event for event in history['events'] if event['action']=='release_task')
+        self.assertEqual(release_event['context']['github_release_refs'][0]['release_id'],42)
+        self.assertEqual(release['ownership_epoch'],auth['ownership_epoch'])
         with self.assertRaises(Conflict): self.s.repositories.observe(self.a['agent_token'], self.task['id'], observation, **auth)
         second = self.s.github.associate(self.a['agent_token'], self.task['id'], pr_number=7, session_key='new', ownership_epoch=self.task['ownership_epoch'])
         self.assertNotEqual(first['id'], second['id'])
         self.assertEqual(self.s.git_snapshot(self.a['web_token'])['deliveries'], [])
+        self.s.github.associate(self.a['agent_token'],self.task['id'],release_id=42,session_key='new',ownership_epoch=self.task['ownership_epoch'])
         self.s.github.refresh(self.owner['web_token'])
-        self.assertEqual(self.s.git_snapshot(self.a['web_token'])['deliveries'][0]['ownership_epoch'], self.task['ownership_epoch'])
+        current_deliveries=self.s.git_snapshot(self.a['web_token'])['deliveries']
+        self.assertEqual({delivery['ownership_epoch'] for delivery in current_deliveries},{self.task['ownership_epoch']})
 
     def test_all_task_bound_activity_requires_current_session_and_epoch(self):
         self.claim(); epoch=self.task['ownership_epoch']

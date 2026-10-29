@@ -84,7 +84,7 @@ def git_routes(service,sync):
 
     async def link(request):
         token=bearer(request)
-        data=await body_object(request,{'task_id':(int,True,None),'branch':(str,False,''),'pr_number':(int,False,None),'commit_sha':(str,False,''),'session_key':(str,False,None),'ownership_epoch':(int,False,None)})
+        data=await body_object(request,{'task_id':(int,True,None),'branch':(str,False,''),'pr_number':(int,False,None),'commit_sha':(str,False,''),'release_id':(int,False,None),'session_key':(str,False,None),'ownership_epoch':(int,False,None)})
         return await run_in_threadpool(sync.associate,token,**data)
 
     async def refresh(request):

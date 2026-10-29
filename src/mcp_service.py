@@ -39,6 +39,8 @@ TOOL_DESCRIPTIONS = {
     'resolve_request': 'Close a request you sent once its answer is enough.',
     'claim_task': 'Claim an unowned task; only one member can win. Pass a fresh session_key.',
     'report_progress': 'Report progress on a task you own.',
+    'link_delivery': ('Explicitly associate one task with exactly one branch, PR number, full commit SHA, or discovered '
+                      'GitHub release ID. Release linking records a relationship only; it never creates or publishes a release.'),
     'register_session': ('Record which tool, repository and branch this session works in. It does not turn on '
                          'wake-up: in an agent-hosted space call install_wake for that.'),
 }

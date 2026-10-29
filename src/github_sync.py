@@ -13,7 +13,7 @@ from .github_app import GitHubError, positive_id, complete_sha
 from .repositories import now, require_manager, timestamp, visible_task
 
 
-EVENTS = {'push','pull_request','check_run','check_suite','status','installation','installation_repositories'}
+EVENTS = {'push','pull_request','check_run','check_suite','status','release','installation','installation_repositories'}
 SHA = re.compile(r'[0-9a-f]{40}|[0-9a-f]{64}')
 MAX_REFS = 100
 MAX_EVIDENCE_BYTES = 450000
@@ -79,6 +79,8 @@ class GitHubSync:
                 deliveries_json TEXT NOT NULL, pending_json TEXT NOT NULL, sync_at TEXT NOT NULL)''')
             if 'discovery_json' not in {r['name'] for r in c.execute('PRAGMA table_info(github_evidence)')}:
                 c.execute("ALTER TABLE github_evidence ADD COLUMN discovery_json TEXT NOT NULL DEFAULT '{}' ")
+            if 'releases_json' not in {r['name'] for r in c.execute('PRAGMA table_info(github_evidence)')}:
+                c.execute("ALTER TABLE github_evidence ADD COLUMN releases_json TEXT NOT NULL DEFAULT '[]'")
             c.execute('''CREATE TABLE IF NOT EXISTS github_inbox (
                 delivery_id TEXT PRIMARY KEY, payload_hash TEXT NOT NULL, event TEXT NOT NULL,
                 installation_id INTEGER NOT NULL, repository_id INTEGER,
@@ -260,6 +262,47 @@ class GitHubSync:
         if (not isinstance(branches,dict) or len(branches)>100 or not isinstance(pulls,list) or len(pulls)>150):
             raise GitHubError('GitHub state is invalid')
         if not isinstance(commits,dict) or len(commits)>150: raise GitHubError('GitHub commit state is invalid')
+        releases=state.get('releases',[])
+        unavailable_releases=state.get('unavailable_release_ids',[])
+        if not isinstance(releases,list) or len(releases)>120 or not isinstance(unavailable_releases,list) or len(unavailable_releases)>100:
+            raise GitHubError('GitHub release state is invalid')
+        normalized_releases={}
+        from urllib.parse import quote
+        for release in releases:
+            if not isinstance(release,dict): raise GitHubError('GitHub release is invalid')
+            try:
+                release_id=positive_id(release['release_id'])
+                tag=release['tag_name'];name=release['name'];state_name=release['state']
+                draft=release['draft'];prerelease=release['prerelease'];assets=release['assets']
+                assets_truncated=release['assets_truncated']
+                if (release_id in normalized_releases or not isinstance(tag,str) or not tag or len(tag)>250
+                        or any(ord(char)<32 for char in tag) or not isinstance(name,str) or len(name)>250
+                        or state_name not in ('draft','prerelease','published') or type(draft) is not bool
+                        or type(prerelease) is not bool or type(assets_truncated) is not bool
+                        or not isinstance(assets,list) or len(assets)>20):
+                    raise GitHubError('GitHub release is invalid')
+                if state_name!=('draft' if draft else 'prerelease' if prerelease else 'published'):
+                    raise GitHubError('GitHub release state is invalid')
+                safe_assets=[]
+                for asset in assets:
+                    if (not isinstance(asset,dict) or set(asset)!={'name','size','digest'}
+                            or not isinstance(asset['name'],str) or not asset['name'] or len(asset['name'])>250
+                            or type(asset['size']) is not int or not 0<=asset['size']<2**63
+                            or (asset['digest'] is not None and (not isinstance(asset['digest'],str) or len(asset['digest'])>100))):
+                        raise GitHubError('GitHub release asset metadata is invalid')
+                    safe_assets.append(dict(asset))
+                published_at=release['published_at'];created_at=release['created_at'];target=release['target_commitish']
+                for value in (published_at,created_at):
+                    if value is not None and (not isinstance(value,str) or len(value)>50):
+                        raise GitHubError('GitHub release timestamp is invalid')
+                if not isinstance(target,str) or len(target)>250: raise GitHubError('GitHub release target is invalid')
+                normalized_releases[release_id]={'release_id':release_id,'tag_name':tag,'name':name,'state':state_name,
+                    'draft':draft,'prerelease':prerelease,'created_at':created_at,'published_at':published_at,
+                    'target_commitish':target,'assets':safe_assets,'assets_truncated':assets_truncated,
+                    'url':f"https://github.com/{conn['full_name']}/releases/tag/{quote(tag,safe='')}",
+                    'repository_id':conn['repository_id'],'source':'github_verified','sync_at':sync_at,'stale':False}
+            except (KeyError,TypeError,ValidationError): raise GitHubError('GitHub release is invalid') from None
+        unavailable_releases=[positive_id(release_id) for release_id in unavailable_releases]
         normalized=[]
         for pr in pulls:
             if not isinstance(pr,dict): raise GitHubError('GitHub PR is invalid')
@@ -279,12 +322,19 @@ class GitHubSync:
             except (KeyError,TypeError,ValidationError): raise GitHubError('GitHub PR is invalid') from None
         deliveries=[];associated=set()
         def unavailable(ref):
-            return {'task_id':ref['task_id'],'ref_id':ref['id'],'branch':ref['branch'],
+            return {'task_id':ref['task_id'],'ref_id':ref['id'],'release_id':ref.get('release_id'),
+                'branch':ref['branch'],
                 'pr_number':ref['pr_number'] or None,'commit_sha':ref.get('commit_sha',''),
                 'head_sha':'','repository_id':conn['repository_id'],'state':'unavailable','checks':[],'statuses':[],
                 'source':'github_verified','sync_at':sync_at,'stale':False,'url':''}
         for ref in refs:
-            if ref.get('commit_sha'):
+            if ref.get('release_id') is not None:
+                release_id=ref['release_id']
+                if release_id in unavailable_releases or release_id not in normalized_releases:
+                    deliveries.append(unavailable(ref));continue
+                deliveries.append(dict(normalized_releases[release_id],task_id=ref['task_id'],
+                    ref_id=ref['id'],ownership_epoch=ref.get('ownership_epoch',0)))
+            elif ref.get('commit_sha'):
                 sha=ref['commit_sha']
                 if sha not in commits or sha in state.get('unavailable_commit_shas',[]):
                     deliveries.append(unavailable(ref));continue
@@ -319,7 +369,12 @@ class GitHubSync:
         by_ref = {ref['id']: ref for ref in refs}
         for delivery in deliveries:
             delivery['ownership_epoch'] = by_ref[delivery['ref_id']].get('ownership_epoch', 0)
-        return deliveries,[p for p in normalized if p['number'] not in associated]
+        discovery=state.get('release_discovery',{'limit':20,'truncated':False})
+        if (not isinstance(discovery,dict) or set(discovery)-{'limit','truncated'}
+                or ('limit' in discovery and (type(discovery['limit']) is not int or not 1<=discovery['limit']<=20))
+                or ('truncated' in discovery and type(discovery['truncated']) is not bool)):
+            raise GitHubError('GitHub release discovery bounds are invalid')
+        return deliveries,[p for p in normalized if p['number'] not in associated],list(normalized_releases.values()),discovery
 
     def _reconcile(self,room_id,token=None):
         with self.db.connect(write=True) as c:
@@ -335,6 +390,8 @@ class GitHubSync:
             refs=[dict(r) for r in c.execute('SELECT * FROM github_refs WHERE room_id=?',(room_id,))]
             refs.extend(dict(dict(r),id='commit:'+str(r['id']),branch='',pr_number=0)
                 for r in c.execute('SELECT * FROM github_commit_refs WHERE room_id=?',(room_id,)))
+            refs.extend(dict(dict(r),id='release:'+str(r['id']),branch='',pr_number=0,commit_sha='')
+                for r in c.execute('SELECT * FROM github_release_refs WHERE room_id=?',(room_id,)))
             if len(refs)>MAX_REFS: raise GitHubError('Project GitHub references exceed limit')
             previous=c.execute('SELECT * FROM github_evidence WHERE room_id=?',(room_id,)).fetchone()
             # Previously matched PRs remain candidates after they close; each is fetched again.
@@ -343,17 +400,19 @@ class GitHubSync:
                 candidates={r['pr_number'] for r in json.loads(previous['deliveries_json']) if r.get('pr_number')}
             explicit={r['pr_number'] for r in refs if r['pr_number']}
             prior_candidates=sorted(candidates-explicit)[:max(0,MAX_REFS-len(refs))]
+            explicit_releases=sorted({r['release_id'] for r in refs if r.get('release_id') is not None})
         try:
             state=self.app.repository_state(conn['installation_id'],conn['repository_id'],conn['full_name'],
                 branches=sorted({r['branch'] for r in refs if r['branch']}),pr_numbers=sorted(explicit.union(prior_candidates)),
-                commit_shas=sorted({r['commit_sha'] for r in refs if r.get('commit_sha')}))
-            sync_at=now().isoformat();deliveries,pending=self._evidence(state,refs,conn,sync_at)
+                commit_shas=sorted({r['commit_sha'] for r in refs if r.get('commit_sha')}),release_ids=explicit_releases)
+            sync_at=now().isoformat();deliveries,pending,releases,release_discovery=self._evidence(state,refs,conn,sync_at)
             discovery=state.get('discovery',{})
             if (not isinstance(discovery,dict) or set(discovery)-{'limit','truncated','state'}
                     or ('limit' in discovery and (type(discovery['limit']) is not int or not 1<=discovery['limit']<=50))):
                 raise GitHubError('GitHub discovery bounds are invalid')
-            deliveries_json=json.dumps(deliveries);pending_json=json.dumps(pending);discovery_json=json.dumps(discovery)
-            if len((deliveries_json+pending_json+discovery_json).encode())>MAX_EVIDENCE_BYTES:
+            discovery['releases']=release_discovery
+            deliveries_json=json.dumps(deliveries);pending_json=json.dumps(pending);discovery_json=json.dumps(discovery);releases_json=json.dumps(releases)
+            if len((deliveries_json+pending_json+discovery_json+releases_json).encode())>MAX_EVIDENCE_BYTES:
                 raise GitHubError('GitHub evidence exceeds output budget')
         except AccessDenied:
             self._revoke(room_id,conn['revision'])
@@ -369,11 +428,12 @@ class GitHubSync:
             if token: self.identity.resolve(c,token)
             current=c.execute('SELECT revision,status FROM github_connections WHERE room_id=?',(room_id,)).fetchone()
             if not current or current['revision']!=conn['revision'] or current['status']!='active': return False
-            c.execute('''INSERT INTO github_evidence(room_id,revision,deliveries_json,pending_json,sync_at,discovery_json)
-                VALUES(?,?,?,?,?,?) ON CONFLICT(room_id) DO UPDATE SET
+            c.execute('''INSERT INTO github_evidence(room_id,revision,deliveries_json,pending_json,sync_at,discovery_json,releases_json)
+                VALUES(?,?,?,?,?,?,?) ON CONFLICT(room_id) DO UPDATE SET
                 revision=excluded.revision,deliveries_json=excluded.deliveries_json,
-                pending_json=excluded.pending_json,sync_at=excluded.sync_at,discovery_json=excluded.discovery_json''',
-                (room_id,conn['revision'],deliveries_json,pending_json,sync_at,discovery_json))
+                pending_json=excluded.pending_json,sync_at=excluded.sync_at,discovery_json=excluded.discovery_json,
+                releases_json=excluded.releases_json''',
+                (room_id,conn['revision'],deliveries_json,pending_json,sync_at,discovery_json,releases_json))
             c.execute('UPDATE github_connections SET sync_at=? WHERE room_id=?',(sync_at,room_id))
         return True
 
@@ -382,7 +442,7 @@ class GitHubSync:
             principal=self.identity.resolve(c,token)
             conn=c.execute('SELECT * FROM github_connections WHERE room_id=?',(principal.room_id,)).fetchone()
             evidence=c.execute('SELECT * FROM github_evidence WHERE room_id=?',(principal.room_id,)).fetchone()
-            deliveries=[];pending=[];events=[];discovery={}
+            deliveries=[];pending=[];events=[];discovery={};releases=[]
             if conn:
                 events=[dict(r) for r in c.execute('''SELECT delivery_id,event,status,received_at,completed_at,attempts
                     FROM github_inbox WHERE installation_id=? AND (repository_id=? OR repository_id IS NULL)
@@ -390,16 +450,18 @@ class GitHubSync:
                 if conn['status']=='active' and evidence and conn['sync_at'] and conn['sync_at']==evidence['sync_at']:
                     deliveries=json.loads(evidence['deliveries_json']);pending=json.loads(evidence['pending_json'])
                     discovery=json.loads(evidence['discovery_json'])
-                    for row in deliveries+pending:
+                    releases=json.loads(evidence['releases_json'])
+                    for row in deliveries+pending+releases:
                         row['stale']=timestamp(evidence['sync_at'])<now()-timedelta(minutes=15)
             active_refs = {r['id']:(r['task_id'],r['ownership_epoch'],r['linked_at']) for r in c.execute('SELECT * FROM github_refs WHERE room_id=?',(principal.room_id,))}
             active_refs.update({'commit:'+str(r['id']):(r['task_id'],r['ownership_epoch'],r['linked_at']) for r in c.execute('SELECT * FROM github_commit_refs WHERE room_id=?',(principal.room_id,))})
+            active_refs.update({'release:'+str(r['id']):(r['task_id'],r['ownership_epoch'],r['linked_at']) for r in c.execute('SELECT * FROM github_release_refs WHERE room_id=?',(principal.room_id,))})
             tasks = {r['id']:dict(r) for r in c.execute('SELECT * FROM tasks WHERE room_id=?',(principal.room_id,))}
             deliveries = [r for r in deliveries if r.get('ref_id') in active_refs
                 and r['task_id'] in tasks and not tasks[r['task_id']]['cancelled_at']
                 and r.get('ownership_epoch',0)==tasks[r['task_id']]['ownership_epoch']==active_refs[r['ref_id']][1]
                 and r['sync_at'] >= active_refs[r['ref_id']][2]]
-            snapshot={'connection':dict(conn) if conn else None,'deliveries':deliveries,'github_events':events,
+            snapshot={'connection':dict(conn) if conn else None,'deliveries':deliveries,'releases':releases,'github_events':events,
                       'github_pending':pending,'github_discovery':discovery}
             if len(json.dumps(snapshot).encode())>MAX_SNAPSHOT_BYTES: raise GitHubError('GitHub snapshot exceeds output budget')
             return snapshot
