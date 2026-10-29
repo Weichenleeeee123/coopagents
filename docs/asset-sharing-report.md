@@ -1,6 +1,6 @@
 # 0.9 Project Assets and Activity Report
 
-Status: Stages 1-4 are implemented and locally verified. Final 0.9 package/deployment acceptance remains pending; native hook/wake claims remain conservative.
+Status: Stages 1-4 and final 0.9 local/package acceptance are complete. The full release report is [release-0.9-report.md](release-0.9-report.md); native hook/wake claims remain conservative.
 
 ## Delivered
 
@@ -29,4 +29,4 @@ Status: Stages 1-4 are implemented and locally verified. Final 0.9 package/deplo
 - The local P2P board remains read-only and received no remote asset-management routes.
 - Asset references to Git objects are explicit metadata only. They do not prove the referenced commit, PR or release exists. Real GitHub App acceptance remains deferred to 1.0.
 - Harness MCP adapters are covered in [harness-adapters-0.9.md](harness-adapters-0.9.md). Native hooks, ACP and idle wake remain unverified or unsupported as shown there.
-- Final 0.9 package/deployment acceptance remains outstanding.
+- The final 0.9 package/deployment evidence is recorded in [release-0.9-report.md](release-0.9-report.md).
