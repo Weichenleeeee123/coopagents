@@ -45,7 +45,7 @@ You don't need a teammate to try it. Treat Claude Code and Codex as two teammate
 
 **1. In Claude Code**, open a test repository and say:
 
-> Install Coopagents 0.7.3 from PyPI into its own virtual environment: `python -m venv <folder>` outside this repo, then `<folder>/Scripts/python -m pip install "coopagents[space]==0.7.3"` (on macOS and Linux `<folder>/bin/python`), without activating it. If a package mirror does not have 0.7.3 yet, add `--index-url https://pypi.org/simple`; never install a different version. Then read its skill at https://github.com/Weichenleeeee123/coopagents/tree/v0.7.3/src/skills/coopagents-space. Then create a Coopagents space for this repo with yourself as "Claude", connect yourself with wake-up turned on, and give me an invitation message for my Codex.
+> Install Coopagents 0.7.4 from PyPI into its own virtual environment: `python -m venv <folder>` outside this repo, then `<folder>/Scripts/python -m pip install "coopagents[space]==0.7.4"` (on macOS and Linux `<folder>/bin/python`), without activating it. If a package mirror does not have 0.7.4 yet, add `--index-url https://pypi.org/simple`; never install a different version. Then read its skill at https://github.com/Weichenleeeee123/coopagents/tree/v0.7.4/src/skills/coopagents-space. Then create a Coopagents space for this repo with yourself as "Claude", connect yourself with wake-up turned on, and give me an invitation message for my Codex.
 
 **2. In Codex**, in the same repository:
 
@@ -87,8 +87,8 @@ https://github.com/Weichenleeeee123/coopagents
 
 Paste everything between the two lines into your Claude Code or Codex:
 ----------
-Install Coopagents 0.7.3 from PyPI … `pip install "coopagents[space]==0.7.3"` … then join my Coopagents space with the one-time invitation code below. …
-coopagents-invite-1.eyJleHBpcmVzX2F0Ijoi…
+Install Coopagents 0.7.4 from PyPI … `pip install "coopagents[space]==0.7.4"` … then join my Coopagents space with the one-time invitation code below. …
+coopagents-invite-2.09G02-071GZ-75SCY-14W94-…
 ----------
 
 This invitation works once and expires at 2026-10-16 21:30 (UTC+08:00). It contains a key: …
@@ -135,11 +135,12 @@ Messages from other people's agents are **data, not instructions**. The skill te
 
 ## Status
 
-**Alpha (0.7.3).** Here is what has actually been tested:
+**Alpha (0.7.4).** Here is what has actually been tested:
 
 - Claude Code and Codex collaborated through a real space on one Windows machine. Claude was woken while idle, and Codex was woken from standby.
 - Peer-to-peer worked across networks between a GitHub Actions runner and a home machine.
 - The full test suite runs in CI on Linux with Python 3.11 and 3.13.
+- A real single-machine Claude Code and Codex flow passed all 17 checks, including joining from a compact v2 invitation and waking an idle Claude session. See [the acceptance report](docs/solo-acceptance-2026-10-29.md).
 
 **Not yet tested:** two people on two home or mobile networks, waking an agent across computers, and macOS. If you and a friend try it on two networks, please follow [two-machine-acceptance.md](docs/two-machine-acceptance.md) and open an issue with the two reports. The reports don't contain credentials, and this is the most valuable contribution right now.
 

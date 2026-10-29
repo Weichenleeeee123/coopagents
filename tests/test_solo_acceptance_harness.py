@@ -21,7 +21,7 @@ class SoloAcceptanceHarnessTests(unittest.TestCase):
             '',
             'Paste everything between the two lines into your Claude Code or Codex:',
             '----------',
-            'Install Coopagents 0.7.3 from PyPI.',
+            'Install Coopagents 0.7.4 from PyPI.',
             'coopagents-invite-2.09G02-071GZ-75SCY-14W94-QPCJP-XFGRW',
             '----------',
             '',
@@ -30,7 +30,7 @@ class SoloAcceptanceHarnessTests(unittest.TestCase):
         result = solo_acceptance.invitation(message, 'file:///local/skill')
         self.assertIsNotNone(result)
         self.assertIn('coopagents-invite-2.09G02-071GZ-75SCY-14W94-QPCJP-XFGRW', result)
-        self.assertIn('Install Coopagents 0.7.3', result)
+        self.assertIn('Install Coopagents 0.7.4', result)
         self.assertIn('This invitation works once', result)
 
     def test_detects_hooks_inside_windows_encoded_powershell_command(self):

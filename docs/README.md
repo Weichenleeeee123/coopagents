@@ -16,7 +16,9 @@
 | [可选本机看板](agent-hosted-board.md) | 共用视图和实时客户端、只读会话与主机回环访问 |
 | [空间发行验收](agent-hosted-release-report.md) | 完整回归、浏览器、发行安装与外部验证边界 |
 | [点对点异地入口](agent-hosted-p2p-report.md) | iroh 按公钥直连的设计、修正的问题、跨网络产品验收与边界 |
-| [双机验收清单](two-machine-acceptance.md) | 0.7.3 真人双机、双方 NAT 后的点对点与跨电脑唤醒验收步骤和取证脚本 |
+| [双机验收清单](two-machine-acceptance.md) | 0.7.4 真人双机、双方 NAT 后的点对点与跨电脑唤醒验收步骤和取证脚本 |
+| [1.0 发布就绪计划](release-1.0-plan.md) | 1.0 稳定版的范围、真实验收门槛和阶段顺序 |
+| [单机真实 agent 验收（2026-10-29）](solo-acceptance-2026-10-29.md) | Claude Opus 5 与 Codex 桌面版完成的 17 项单机闭环检查 |
 | [Agent 唤醒](agent-wake.md) | 可选唤醒 hook：Claude 空闲唤醒、Codex 每轮检查与待命、唤醒规则、限频、可靠性与原生验收 |
 | [唤醒与点对点原型](wake-and-p2p-prototype-report.md) | Claude asyncRewake 空闲唤醒、Codex Stop 待命续跑、iroh 公钥直连异地实测 |
 | [共同核心实施计划](agent-hosted-core-plan.md) | 两版共用协作与协议，完整入口组合账号，L-1 回归与阶段提交 |

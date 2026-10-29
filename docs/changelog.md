@@ -1,6 +1,14 @@
 # 版本记录
 
-## 未发布
+## 0.7.4 — 邀请可靠性与 Windows 唤醒 hook（2026-10-29）
+
+修复真实单机验收里邀请码易被 agent 复制时改写，以及 Windows Git Bash 无法启动唤醒 hook 的问题。当前版本的真实 Claude Code / Codex 单机闭环 17 项检查通过，边界见[验收报告](solo-acceptance-2026-10-29.md)。
+
+- 新生成的邀请码改用 `coopagents-invite-2`：Crockford Base32 分组编码，忽略大小写、空格、换行和连字符，并带 CRC-32 检测抄写错误；旧版 Coopagents/Crewmesh v1 邀请继续可用。损坏的邀请码会提示重新保存或粘贴，不能手动修补。
+- Windows 唤醒 hook 改用无配置文件的 PowerShell encoded command 启动正确的 Python 和 profile；Git Bash、PowerShell、cmd 共用同一配置并保留 stdin。安装/升级/卸载可识别该格式，旧的直调 hook 仍可替换。
+- 无人值守真实验收脚本识别 v2 邀请和 Windows encoded hook，并可显式指定 Claude 模型。
+
+后续真人双机与双方 NAT 验收仍未完成；这次单机通过不代表 1.0 稳定版门槛全部满足。1.0 门槛见[发布就绪计划](release-1.0-plan.md)。
 
 一次性排查 README 单人流程里所有要 agent 自己决定或拼凑的地方（路径、工具名、目录、报错原因），全部改成由工具自己推断或给出明确原因；起因是 [0.7.3 路径 B 重测](solo-acceptance-2026-10-25.md#路径-b-重测073同日)：agent 编了一个不存在的 `project_dir`，又被通用报错误导。
 
