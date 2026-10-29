@@ -46,6 +46,8 @@ class GitHubApp:
     MAX_OPERATION_REQUESTS = 150
     OPERATION_SECONDS = 60
     DISCOVERY_LIMIT = 50
+    RELEASE_DISCOVERY_LIMIT = 20
+    RELEASE_ASSET_LIMIT = 20
     CHECK_LIMIT = 100
     def __init__(self, app_id=None, client_id=None, client_secret=None, private_key=None,
                  webhook_secret=None, callback_url=None):
@@ -249,15 +251,63 @@ class GitHubApp:
             raise AccessDenied('GitHub repository identity changed')
         return repo
 
-    def repository_state(self,installation_id,repository_id,full_name,branches=(),pr_numbers=(),commit_shas=()):
-        if len(branches)+len(pr_numbers)+len(commit_shas)>100:
+    def repository_state(self,installation_id,repository_id,full_name,branches=(),pr_numbers=(),commit_shas=(),release_ids=()):
+        if len(branches)+len(pr_numbers)+len(commit_shas)+len(release_ids)>100:
             raise GitHubError('GitHub synchronization reference limit exceeded')
         context=_operation.set({'requests':0,'deadline':time.monotonic()+self.OPERATION_SECONDS})
         try:
-            return self._repository_state(installation_id,repository_id,full_name,branches,pr_numbers,commit_shas)
+            return self._repository_state(installation_id,repository_id,full_name,branches,pr_numbers,commit_shas,release_ids)
         finally: _operation.reset(context)
 
-    def _repository_state(self,installation_id,repository_id,full_name,branches,pr_numbers,commit_shas):
+    @classmethod
+    def _normalize_release(cls,release,release_id,full_name):
+        try:
+            if not isinstance(release,dict) or type(release.get('id')) is not int or release['id']!=release_id:
+                raise GitHubError('GitHub release identity is invalid')
+            tag=release.get('tag_name')
+            if not isinstance(tag,str) or not tag or len(tag)>250 or any(ord(char)<32 for char in tag):
+                raise GitHubError('GitHub release tag is invalid')
+            draft,prerelease=release.get('draft'),release.get('prerelease')
+            if type(draft) is not bool or type(prerelease) is not bool:
+                raise GitHubError('GitHub release state is invalid')
+            name=release.get('name')
+            if name is None: name=tag
+            if not isinstance(name,str) or len(name)>250 or any(ord(char)<32 for char in name):
+                raise GitHubError('GitHub release name is invalid')
+            target=release.get('target_commitish','')
+            if not isinstance(target,str) or len(target)>250 or any(ord(char)<32 for char in target):
+                raise GitHubError('GitHub release target is invalid')
+            dates={}
+            for field in ('created_at','published_at'):
+                value=release.get(field)
+                if value is not None and (not isinstance(value,str) or len(value)>50 or any(ord(char)<32 for char in value)):
+                    raise GitHubError('GitHub release timestamp is invalid')
+                dates[field]=value
+            assets=release.get('assets',[])
+            if not isinstance(assets,list) or len(assets)>1000:
+                raise GitHubError('GitHub release assets are invalid')
+            safe_assets=[]
+            for asset in assets[:cls.RELEASE_ASSET_LIMIT]:
+                if not isinstance(asset,dict): raise GitHubError('GitHub release assets are invalid')
+                asset_name=asset.get('name')
+                size=asset.get('size')
+                digest=asset.get('digest')
+                if (not isinstance(asset_name,str) or not asset_name or len(asset_name)>250
+                        or any(ord(char)<32 for char in asset_name) or type(size) is not int or not 0<=size<2**63
+                        or (digest is not None and (not isinstance(digest,str) or len(digest)>100
+                            or any(ord(char)<32 for char in digest)))):
+                    raise GitHubError('GitHub release asset metadata is invalid')
+                safe_assets.append({'name':asset_name,'size':size,'digest':digest})
+            from urllib.parse import quote
+            state='draft' if draft else 'prerelease' if prerelease else 'published'
+            return {'release_id':release_id,'tag_name':tag,'name':name,'state':state,'draft':draft,
+                    'prerelease':prerelease,'created_at':dates['created_at'],'published_at':dates['published_at'],
+                    'target_commitish':target,'assets':safe_assets,'assets_truncated':len(assets)>cls.RELEASE_ASSET_LIMIT,
+                    'url':f'https://github.com/{full_name}/releases/tag/{quote(tag,safe="")}'}
+        except (KeyError,TypeError,ValueError):
+            raise GitHubError('GitHub release is invalid') from None
+
+    def _repository_state(self,installation_id,repository_id,full_name,branches,pr_numbers,commit_shas,release_ids):
         repo=self.verify_repository(installation_id,repository_id,full_name)
         token=self.installation_token(installation_id,repository_id)
         path='/repos/'+quote(repo['full_name'],safe='/')
@@ -337,6 +387,25 @@ class GitHubApp:
                 pulls.pop(number,None)
                 continue
             pulls[number]=normalize(pr,number,True)
+        releases={};unavailable_release_ids=[]
+        summaries,releases_truncated=self.bounded_page(path+'/releases',token,limit=self.RELEASE_DISCOVERY_LIMIT)
+        for item in summaries:
+            if not isinstance(item,dict) or type(item.get('id')) is not int:
+                raise GitHubError('GitHub release identity is invalid')
+            release_id=positive_id(item['id'])
+            releases[release_id]=self._normalize_release(item,release_id,repo['full_name'])
+        for release_id in sorted(set(release_ids)):
+            positive_id(release_id)
+            if release_id in releases: continue
+            try: item=self.request('GET',path+'/releases/'+str(release_id),token)
+            except GitHubAccessDenied as error:
+                if error.status!=404: raise
+                unavailable_release_ids.append(release_id)
+                continue
+            releases[release_id]=self._normalize_release(item,release_id,repo['full_name'])
         return {'repository_id':repository_id,'full_name':repo['full_name'],'branches':refs,'pull_requests':list(pulls.values()),
                 'commits':commits,'unavailable_pr_numbers':unavailable_prs,'unavailable_commit_shas':unavailable_commits,
-                'discovery':{'limit':self.DISCOVERY_LIMIT,'truncated':truncated,'state':'open'}}
+                'discovery':{'limit':self.DISCOVERY_LIMIT,'truncated':truncated,'state':'open'},
+                'releases':sorted(releases.values(),key=lambda release:(release['published_at'] or release['created_at'] or '',release['release_id']),reverse=True),
+                'unavailable_release_ids':unavailable_release_ids,
+                'release_discovery':{'limit':self.RELEASE_DISCOVERY_LIMIT,'truncated':releases_truncated}}

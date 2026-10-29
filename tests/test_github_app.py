@@ -88,6 +88,7 @@ class GitHubAppTests(unittest.TestCase):
             if path=='/app/installations/22': return httpx.Response(200,json={'id':22,'app_id':123})
             if path.endswith('/access_tokens'): return httpx.Response(201,json=self.token_response())
             if path=='/repositories/11': return httpx.Response(200,json={'id':11,'full_name':'acme/demo'})
+            if path=='/repos/acme/demo/releases': return httpx.Response(200,json=[])
             if path=='/repos/acme/demo/git/ref/heads/feature': return httpx.Response(200,json={'object':{'sha':'a'*40}})
             if path=='/repos/acme/demo/pulls': return httpx.Response(200,json=[self.pr_summary()])
             if path=='/repos/acme/demo/pulls/7': return httpx.Response(200,json={
@@ -108,6 +109,7 @@ class GitHubAppTests(unittest.TestCase):
         if path=='/app/installations/22': return httpx.Response(200,json={'id':22,'app_id':123})
         if path.endswith('/access_tokens'): return httpx.Response(201,json=self.token_response())
         if path=='/repositories/11': return httpx.Response(200,json={'id':11,'full_name':'acme/demo'})
+        if path=='/repos/acme/demo/releases': return httpx.Response(200,json=[])
         if path=='/repos/acme/demo/pulls': return httpx.Response(200,json=[])
         if path=='/repos/acme/demo/pulls/999': return httpx.Response(404,json={})
         if path=='/repos/acme/demo/git/ref/heads/feature': return httpx.Response(200,json={'object':{'sha':'a'*40}})
@@ -193,7 +195,50 @@ class GitHubAppTests(unittest.TestCase):
         self.assertEqual(len(state['pull_requests']),50)
         self.assertTrue(state['discovery']['truncated'])
         self.assertFalse(any('/pulls/' in path or '/check-runs' in path for path in seen))
-        self.assertLessEqual(len(seen),5)
+        self.assertLessEqual(len(seen),6)
+
+    def test_release_discovery_is_bounded_and_returns_safe_metadata(self):
+        seen=[]
+        def handler(r):
+            seen.append(r.url.path)
+            if r.url.path=='/repos/acme/demo/releases':
+                self.assertEqual(r.url.params['per_page'],'20')
+                return httpx.Response(200,json=[{'id':42,'tag_name':'v1.2.3','name':'1.2.3',
+                    'draft':False,'prerelease':False,'created_at':'2026-01-01T00:00:00Z',
+                    'published_at':'2026-01-02T00:00:00Z','target_commitish':'main',
+                    'html_url':'https://evil.example/release','body':'private release notes',
+                    'assets':[{'name':'app.zip','size':17,'digest':'sha256:abc',
+                               'browser_download_url':'https://evil.example/download'}] }])
+            if r.url.path=='/repos/acme/demo/pulls': return httpx.Response(200,json=[])
+            return self.reconciliation_handler(r)
+        state=self.app(handler).repository_state(22,11,'acme/demo')
+        release=state['releases'][0]
+        self.assertEqual(release['release_id'],42)
+        self.assertEqual(release['tag_name'],'v1.2.3')
+        self.assertEqual(release['state'],'published')
+        self.assertEqual(release['url'],'https://github.com/acme/demo/releases/tag/v1.2.3')
+        self.assertEqual(release['assets'],[{'name':'app.zip','size':17,'digest':'sha256:abc'}])
+        self.assertNotIn('private release notes',json.dumps(state))
+        self.assertNotIn('evil.example',json.dumps(state))
+
+    def test_explicit_release_lookup_beyond_discovery_and_unavailable_release(self):
+        seen=[]
+        def handler(r):
+            seen.append(r.url.path)
+            if r.url.path=='/repos/acme/demo/releases': return httpx.Response(200,json=[])
+            if r.url.path=='/repos/acme/demo/releases/42':
+                return httpx.Response(200,json={'id':42,'tag_name':'v1.2.3','name':'Release',
+                    'draft':True,'prerelease':False,'created_at':'2026-01-01T00:00:00Z',
+                    'published_at':None,'target_commitish':'main','assets':[]})
+            if r.url.path=='/repos/acme/demo/releases/99': return httpx.Response(404,json={})
+            if r.url.path=='/repos/acme/demo/pulls': return httpx.Response(200,json=[])
+            return self.reconciliation_handler(r)
+        state=self.app(handler).repository_state(22,11,'acme/demo',release_ids=[42,99])
+        self.assertEqual([r['release_id'] for r in state['releases']],[42])
+        self.assertEqual(state['releases'][0]['state'],'draft')
+        self.assertEqual(state['unavailable_release_ids'],[99])
+        self.assertIn('/repos/acme/demo/releases/42',seen)
+        self.assertIn('/repos/acme/demo/releases/99',seen)
 
     def test_explicit_closed_pr_is_fetched_outside_open_discovery(self):
         def handler(r):
