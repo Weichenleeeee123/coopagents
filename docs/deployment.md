@@ -50,16 +50,26 @@ docker compose exec app python -m coopagents.backup backup /data/coopagents.sqli
 docker compose cp app:/data/backups/coopagents-20261010-01.sqlite3 .local/coopagents-20261010-01.sqlite3
 ```
 
+项目资产内容存于 `/data/coopagents.sqlite3.assets/`，SQLite 单文件备份不包含这些内容。含项目资产时必须成对备份数据库和资产目录，并将两份产物一起复制到受保护的独立介质：
+
+```bash
+docker compose exec app python -m coopagents.backup backup /data/coopagents.sqlite3 /data/backups/coopagents-20261010-01.sqlite3 --assets-source /data/coopagents.sqlite3.assets --assets-destination /data/backups/coopagents-20261010-01.sqlite3.assets
+docker compose cp app:/data/backups/coopagents-20261010-01.sqlite3 .local/coopagents-20261010-01.sqlite3
+docker compose cp app:/data/backups/coopagents-20261010-01.sqlite3.assets .local/coopagents-20261010-01.sqlite3.assets
+```
+
 备份包含账号、成员、凭据哈希、所有团队消息及完整 billing ledger（catalog、bindings、事件、lease、audit、出站与 Checkout idempotency keys），应像生产数据一样保护并额外保存到独立介质。命令校验数据库完整性，拒绝覆盖已有目标。失败时任何部分文件保留，使用新的目标重试；本项目不自动删除文件。
 
 ## 恢复、升级与回退
 
-恢复会写入新文件，不覆盖原数据库：
+恢复会写入新文件，不覆盖原数据库。若备份含项目资产，使用成对恢复命令：
 
 ```bash
-docker compose exec app python -m coopagents.backup restore /data/backups/coopagents-20261010-01.sqlite3 /data/restored-20261010-01.sqlite3
+docker compose exec app python -m coopagents.backup restore /data/backups/coopagents-20261010-01.sqlite3 /data/restored-20261010-01.sqlite3 --assets-source /data/backups/coopagents-20261010-01.sqlite3.assets --assets-destination /data/restored-20261010-01.sqlite3.assets
 docker compose stop app
 ```
+
+没有项目资产的旧部署继续使用仅传数据库路径的单文件恢复命令。
 
 在 `.env` 设置 `COOPAGENTS_DATABASE=/data/restored-20261010-01.sqlite3`，再执行 `docker compose up -d app`。通过网页检查房间、任务、消息和 MCP 认证，保留旧文件以便回退。启用 billing 时保留原 mode/catalog 与所有出站 key，按 [C2 运维](c2-operations.md) 进行 bounded canonical reconcile 与到期 retry；不得删除账本或重置 key。恢复历史备份也会恢复当时的令牌状态，可能让备份后已撤销的令牌重新有效；恢复后立即轮换相关成员的 agent 令牌，重新签发邀请并确认网页凭据的有效性。
 

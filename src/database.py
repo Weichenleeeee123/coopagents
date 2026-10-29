@@ -26,6 +26,21 @@ class Database:
                 revoked_at TEXT,
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             )""")
+            connection.execute("""CREATE TABLE IF NOT EXISTS project_assets (
+                id TEXT PRIMARY KEY,
+                room_id TEXT NOT NULL REFERENCES rooms(id),
+                uploader_member_id TEXT NOT NULL,
+                filename TEXT NOT NULL,
+                media_type TEXT NOT NULL,
+                size_bytes INTEGER NOT NULL CHECK (size_bytes >= 0),
+                sha256 TEXT NOT NULL,
+                blob_key TEXT NOT NULL UNIQUE,
+                source_type TEXT NOT NULL,
+                source_ref TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (uploader_member_id, room_id) REFERENCES members(id, room_id)
+            )""")
+            connection.execute("CREATE INDEX IF NOT EXISTS project_assets_room_created ON project_assets(room_id, created_at, id)")
             # Additive upgrades preserve existing rooms and legacy nonexpiring tokens.
             room_columns = {row['name'] for row in connection.execute('PRAGMA table_info(rooms)')}
             if 'repository' not in room_columns:

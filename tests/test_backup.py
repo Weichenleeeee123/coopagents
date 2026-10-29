@@ -5,7 +5,9 @@ import unittest
 from pathlib import Path
 from uuid import uuid4
 
-from coopagents.backup import backup_database, restore_database
+from coopagents.assets import AssetStore
+from coopagents.backup import backup_database, backup_project_data, restore_database, restore_project_data
+from coopagents.identity import IdentityStore
 
 
 class BackupTests(unittest.TestCase):
@@ -54,3 +56,21 @@ class BackupTests(unittest.TestCase):
             with self.assertRaises((FileNotFoundError, sqlite3.DatabaseError)):
                 restore_database(source, destination)
             self.assertFalse(destination.exists())
+
+    def test_project_backup_preserves_database_and_asset_bytes(self):
+        source_db = self.root / 'project.sqlite3'
+        source_blobs = self.root / 'project.sqlite3.assets'
+        identity = IdentityStore(source_db)
+        owner = identity.create_room('project', 'Alice')
+        assets = AssetStore(identity, source_blobs)
+        asset = assets.upload(owner['web_token'], 'guide.md', 'text/markdown', b'backup evidence')
+        backup_db = self.root / 'backup.sqlite3'
+        backup_blobs = self.root / 'backup.sqlite3.assets'
+
+        backup_project_data(source_db, source_blobs, backup_db, backup_blobs)
+        restored_db = self.root / 'restored.sqlite3'
+        restored_blobs = self.root / 'restored.sqlite3.assets'
+        restore_project_data(backup_db, backup_blobs, restored_db, restored_blobs)
+        restored = AssetStore(IdentityStore(restored_db), restored_blobs)
+
+        self.assertEqual(restored.read_asset(owner['web_token'], asset['id'])[1], b'backup evidence')

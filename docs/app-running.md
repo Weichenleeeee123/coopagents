@@ -52,6 +52,8 @@ $env:COOPAGENTS_BOOTSTRAP_SECRET_FILE = (Resolve-Path .local/bootstrap-secret.tx
 
 恢复同样写入新文件：将 `backup` 改为 `restore`，指定备份来源和新的数据库路径，停止服务后用 `--database` 指向恢复文件。详细验收、备份权限及恢复后令牌状态见 [部署与运维](deployment.md)。不要删除原数据库。测试生成独立 UUID 数据库，保留在 `.local/test-evidence/`。
 
+数据库旁的 `<数据库文件名>.assets/` 存放项目资产。含资产的空间须按[部署与运维](deployment.md)使用 `--assets-source` 与 `--assets-destination` 成对备份和恢复；SQLite 单文件副本不含资产字节。
+
 已有原生接入实验使用端口 `8768` 和 `.local/agent-integration/runtime/`，与正式服务相互独立。不要把实验消息当作正式房间任务或约定。
 
 ## 验证
