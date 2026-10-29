@@ -83,12 +83,20 @@ def _copy_project_data(source_database, source_assets, destination_database, des
             raise sqlite3.DatabaseError('Asset integrity check failed')
         verified.append((path, key + '.blob'))
     destination_assets.mkdir(parents=True, exist_ok=False)
+    try:
+        os.chmod(destination_assets, 0o700)
+    except OSError:
+        pass
     for source, name in verified:
         target = destination_assets / name
         with source.open('rb') as original, target.open('xb') as copy:
             shutil.copyfileobj(original, copy, 1024 * 1024)
             copy.flush()
             os.fsync(copy.fileno())
+        try:
+            os.chmod(target, 0o600)
+        except OSError:
+            pass
     return destination_database, destination_assets
 
 

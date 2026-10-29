@@ -61,6 +61,17 @@ class HarnessAdapterTests(unittest.TestCase):
             self.assertNotEqual(report['native_hook'], 'supported')
             self.assertNotEqual(report['idle_wake'], 'supported')
 
+    def test_remote_plan_requires_a_real_service_url_and_rejects_host_lookalikes(self):
+        adapter = adapter_for('cursor')
+        self.assertIsNone(adapter.plan(Path('.'))['entry'])
+        self.assertEqual(adapter.plan(Path('.'))['transport'], 'manual')
+        for url in ('http://localhost.evil/mcp', 'http://127.0.0.1.evil/mcp',
+                    'https://user:pass@team.example/mcp', 'https://team.example:99999/mcp'):
+            with self.subTest(url=url), self.assertRaises(ValueError):
+                adapter.plan(Path('.'), service_url=url)
+        with self.assertRaises(ValueError):
+            adapter.plan(Path('.'), service_url='https://team.example/mcp', token_env='TOKEN-NAME')
+
     def test_each_official_project_config_shape_can_install_remote_mcp_without_a_token_value(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)

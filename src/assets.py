@@ -22,6 +22,7 @@ DEFAULT_ASSET_LIMITS = {
     'max_project_bytes': 100 * 1024 * 1024,
     'max_total_bytes': 1024 * 1024 * 1024,
 }
+MAX_ASSET_FILE_BYTES = 10 * 1024 * 1024
 ASSET_LIMIT_ENV = {
     'max_file_bytes': 'COOPAGENTS_ASSET_MAX_FILE_BYTES',
     'max_project_bytes': 'COOPAGENTS_ASSET_MAX_PROJECT_BYTES',
@@ -39,8 +40,9 @@ def asset_limits_from_env(environ=None):
         if not isinstance(raw, str) or not raw.isdecimal():
             raise ValueError('Asset storage limits must be positive integer byte counts')
         value = int(raw)
-        if not 1 <= value <= 1024 * 1024 * 1024 * 1024:
-            raise ValueError('Asset storage limits must be between 1 byte and 1 TiB')
+        maximum = MAX_ASSET_FILE_BYTES if name == 'max_file_bytes' else 1024 * 1024 * 1024 * 1024
+        if not 1 <= value <= maximum:
+            raise ValueError('Asset storage limits exceed the supported bound')
         limits[name] = value
     if limits['max_file_bytes'] > limits['max_project_bytes'] or limits['max_project_bytes'] > limits['max_total_bytes']:
         raise ValueError('Asset limits must satisfy file <= project <= total')
@@ -65,6 +67,10 @@ class AssetStore:
         if self.max_file_bytes > self.max_project_bytes or self.max_project_bytes > self.max_total_bytes:
             raise ValueError('Asset limits must satisfy file <= project <= total')
         self.data_root.mkdir(parents=True, exist_ok=True)
+        try:
+            os.chmod(self.data_root, 0o700)
+        except OSError:
+            pass
 
     @staticmethod
     def _validate(filename, media_type, content, source_type, source_ref):
@@ -130,6 +136,10 @@ class AssetStore:
             with blob_path.open('xb') as blob:
                 blob.write(content)
                 blob.flush()
+            try:
+                os.chmod(blob_path, 0o600)
+            except OSError:
+                pass
             created_at = datetime.now(timezone.utc).isoformat()
             connection.execute('''INSERT INTO project_assets
                 (id, room_id, uploader_member_id, filename, media_type, size_bytes, sha256,

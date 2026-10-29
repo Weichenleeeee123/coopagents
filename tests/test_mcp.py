@@ -97,6 +97,34 @@ class MCPTests(unittest.TestCase):
                 self.assertTrue(invalid.is_error)
         asyncio.run(run())
 
+    def test_mcp_asset_read_has_a_bounded_response(self):
+        service = self.live.app.state.service
+        service.assets.max_file_bytes = 10 * 1024 * 1024 + 1
+        service.assets.max_project_bytes = 10 * 1024 * 1024 + 1
+        service.assets.max_total_bytes = 10 * 1024 * 1024 + 1
+        asset = service.assets.upload(self.owner['web_token'], 'large.bin', 'application/octet-stream',
+                                      b'x' * (10 * 1024 * 1024 + 1))
+        async def run():
+            async with self.client(self.owner['agent_token']) as client:
+                result = await client.call_tool('read_asset', {'asset_id': asset['id']})
+                self.assertTrue(result.is_error)
+                self.assertIn('MCP read limit', result.content[0].text)
+        asyncio.run(run())
+
+    def test_mcp_asset_read_has_a_bounded_response(self):
+        service = self.live.app.state.service
+        service.assets.max_file_bytes = 10 * 1024 * 1024 + 1
+        service.assets.max_project_bytes = 10 * 1024 * 1024 + 1
+        service.assets.max_total_bytes = 10 * 1024 * 1024 + 1
+        asset = service.assets.upload(self.owner['web_token'], 'large.bin', 'application/octet-stream',
+                                      b'x' * (10 * 1024 * 1024 + 1))
+        async def run():
+            async with self.client(self.owner['agent_token']) as client:
+                result = await client.call_tool('read_asset', {'asset_id': asset['id']})
+                self.assertTrue(result.is_error)
+                self.assertIn('MCP read limit', result.content[0].text)
+        asyncio.run(run())
+
     def test_cross_room_sdk_isolation(self):
         status, other, _ = self.live.request('POST', '/api/rooms', data={'name': 'Other room', 'owner_name': 'Other owner'})
         self.assertEqual(status, 200)

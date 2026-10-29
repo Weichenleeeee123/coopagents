@@ -14,13 +14,13 @@ The generated remote entry references `COOPAGENTS_AGENT_TOKEN` and never stores 
 
 | Harness | Project config | Entry shape | Native hook / idle wake |
 | --- | --- | --- | --- |
-| Cursor | `.cursor/mcp.json` | `mcpServers[name]` | unknown / unsupported |
+| Cursor | `.cursor/mcp.json` | `mcpServers[name]` with remote URL | unknown / unsupported |
 | OpenCode | `opencode.json` | `mcp[name]` with `type: remote` | unknown / unsupported |
-| Pi | `.pi/mcp.json` | `mcpServers[name]` | unsupported / unsupported |
-| Kimi Code | `.kimi-code/mcp.json` | `mcpServers[name]` | unsupported / unsupported |
-| ZCode | `.zcode/config.json` | `mcp.servers[name]` | unsupported / unsupported |
+| Pi | `.pi/mcp.json` | `mcpServers[name]` with remote URL | unsupported / unsupported |
+| Kimi Code | `.kimi-code/mcp.json` | `mcpServers[name]` with remote URL | unsupported / unsupported |
+| ZCode | `.zcode/config.json` | `mcp.servers[name]` with remote URL | unsupported / unsupported |
 
-These statuses are intentionally conservative. MCP setup is implemented and tested as a configuration contract; a harness's native hooks, plugins, ACP transport or idle wake are not claimed until that exact combination has a real acceptance result. Pi's extension API, Kimi ACP and ZCode hooks remain available for a later verified adapter extension.
+These statuses are intentionally conservative. MCP setup is implemented and tested as a remote configuration contract; a harness's native hooks, plugins, ACP transport or idle wake are not claimed until that exact combination has a real acceptance result. Pi's extension API, Kimi ACP and ZCode hooks remain available for a later verified adapter extension. Without `--service-url`, the CLI emits a manual plan and deliberately does not write a dead local runner.
 
 The adapter does not install a native hook, parse session files, inspect prompts, or upload any project files. It only makes the MCP server available to a new session. Existing local P2P board security and the rule against sharing full conversation text are unchanged.
 

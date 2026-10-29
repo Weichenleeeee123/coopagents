@@ -9,6 +9,8 @@ import argparse
 import json
 from pathlib import Path
 import os
+import re
+from urllib.parse import urlsplit
 
 
 SUPPORTED_HARNESSES = ('cursor', 'opencode', 'pi', 'kimi-code', 'zcode')
@@ -57,11 +59,23 @@ def _args(args):
 
 def _remote_url(url):
     url = _string(url, 'MCP URL')
-    if not (url.startswith('https://') or url.startswith('http://127.0.0.1') or url.startswith('http://localhost')):
+    parsed = urlsplit(url)
+    host = (parsed.hostname or '').lower()
+    loopback = host in ('127.0.0.1', 'localhost', '::1')
+    if not (parsed.scheme == 'https' or (parsed.scheme == 'http' and loopback)):
         raise ValueError('MCP URL must be HTTPS or loopback HTTP')
+    if parsed.username or parsed.password or parsed.port is not None and not 1 <= parsed.port <= 65535:
+        raise ValueError('MCP URL is invalid')
     if any(char.isspace() for char in url) or len(url) > 2048:
         raise ValueError('MCP URL is invalid')
     return url
+
+
+def _env_name(value):
+    value = _string(value, 'Token environment variable')
+    if not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*', value):
+        raise ValueError('Token environment variable must be a shell variable name')
+    return value
 
 
 class HarnessAdapter:
@@ -92,7 +106,7 @@ class HarnessAdapter:
 
     def _remote_entry(self, url, token_env):
         url = _remote_url(url)
-        token_env = _string(token_env, 'Token environment variable')
+        token_env = _env_name(token_env)
         if self.spec.harness == 'kimi-code':
             return {'url': url, 'bearerTokenEnvVar': token_env}
         placeholder = '${env:%s}' % token_env if self.spec.harness in ('cursor', 'zcode') else '${%s}' % token_env
@@ -205,8 +219,9 @@ class HarnessAdapter:
             plan['entry'] = self._remote_entry(service_url, token_env)
             plan['transport'] = 'streamable_http'
         else:
-            plan['entry'] = self._entry('python', ['-m', 'coopagents.mcp_service'])
-            plan['transport'] = 'stdio'
+            plan['entry'] = None
+            plan['transport'] = 'manual'
+            plan['notes'] = 'Pass --service-url to generate an installable authenticated MCP entry.'
         return plan
 
 
@@ -234,13 +249,12 @@ def main(argv=None):
     root = Path(args.project).resolve()
     adapter = adapter_for(args.harness)
     if args.install:
+        if not args.service_url:
+            parser.error('--service-url is required for installation; no local stdio runner is bundled')
         target = adapter.config_target(root)
         if args.service_url:
             result = adapter.install_remote(target, args.name, args.service_url,
                                             token_env=args.token_env, project_root=root)
-        else:
-            result = adapter.install(target, args.name, 'python', ['-m', 'coopagents.mcp_service'],
-                                     project_root=root)
     else:
         result = adapter.plan(root, args.name, args.service_url, args.token_env)
     print(json.dumps(result, ensure_ascii=False, indent=2))

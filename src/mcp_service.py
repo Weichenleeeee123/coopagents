@@ -11,8 +11,10 @@ from mcp.server.auth.provider import AccessToken
 from mcp.types import CallToolResult, TextContent
 from starlette.middleware.authentication import AuthenticationMiddleware
 
-from .errors import AccessDenied
+from .errors import AccessDenied, ValidationError
 from .api import error_payload, validate
+
+MAX_MCP_ASSET_BYTES = 10 * 1024 * 1024
 
 
 def tool_error(error):
@@ -101,6 +103,8 @@ def create_mcp_app(service, *, origin=None):
                 elif name == 'read_asset':
                     import base64
                     metadata, content = service.assets.read_asset(token, kwargs['asset_id'])
+                    if len(content) > MAX_MCP_ASSET_BYTES:
+                        raise ValidationError('Asset exceeds the MCP read limit; use the authenticated HTTP download')
                     result = {'asset': metadata, 'content_base64': base64.b64encode(content).decode('ascii')}
                 else:
                     result = service.call(name, token, kwargs)

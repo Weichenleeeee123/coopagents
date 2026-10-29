@@ -1,6 +1,8 @@
 import hashlib
 import unittest
+import os
 from pathlib import Path
+import stat
 from uuid import uuid4
 from unittest.mock import patch
 
@@ -74,6 +76,17 @@ class AssetStoreTests(unittest.TestCase):
         with patch.dict('os.environ', {'COOPAGENTS_ASSET_MAX_FILE_BYTES':'0'}, clear=True):
             with self.assertRaises(ValueError):
                 asset_limits_from_env()
+        with patch.dict('os.environ', {'COOPAGENTS_ASSET_MAX_FILE_BYTES':str(10 * 1024 * 1024 + 1)}, clear=True):
+            with self.assertRaises(ValueError):
+                asset_limits_from_env()
+
+    @unittest.skipIf(os.name == 'nt', 'Windows does not expose POSIX mode bits')
+    def test_asset_storage_is_private_on_posix(self):
+        asset = self.assets.upload(self.owner['web_token'], 'private.txt', 'text/plain', b'secret')
+        mode = stat.S_IMODE(self.blobs.stat().st_mode)
+        blob = next(self.blobs.glob(asset['sha256'][:0] + '*.blob'))
+        self.assertEqual(mode & 0o077, 0)
+        self.assertEqual(stat.S_IMODE(blob.stat().st_mode) & 0o077, 0)
 
     def test_upload_rejects_path_names_and_unsupported_content(self):
         for filename, media_type in (('../secret.txt', 'text/plain'), ('safe.txt', 'text/html')):

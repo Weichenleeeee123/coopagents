@@ -9,17 +9,17 @@ Status: 0.9 implementation and local acceptance complete. The release is ready f
 - `d3431f9`: explicit project asset storage, SHA-256 metadata, project/member isolation, paired SQLite/asset backup and restore.
 - `4235fa2`: authenticated multipart HTTP upload/list/download and MCP `list_assets`/`read_asset` operations.
 - `8c3cf12`: self-hosted asset workbench, explicit upload UI, source references, activity filters, stale/unavailable labels, task navigation, static resource allowlist fixes and deployment limits.
-- `d23023f`: shared harness adapter contract and project MCP configuration adapters for Cursor, OpenCode, Pi, Kimi Code and ZCode.
+- `d23023f`, `fcc8d19`: shared harness adapter contract, official auth interpolation and project MCP configuration adapters for Cursor, OpenCode, Pi, Kimi Code and ZCode.
 
 ## Acceptance evidence
 
 | Check | Result |
 | --- | --- |
-| Complete Python suite on Python 3.13.3 with service + space extras | 603 passed |
+| Complete Python suite on Python 3.13.3 with service + space extras | 607 passed; one Windows symlink-mode test skipped |
 | JavaScript UI regressions | 13 scripts passed |
 | Harness adapter focused tests | 6 tests passed, including all five config shapes |
 | Compose configuration | `docker compose config --quiet` passed with a synthetic domain variable |
-| Package build | sdist and wheel built successfully |
+| Package identity/build | version `0.9.0`; sdist and wheel built successfully |
 | Package metadata | `twine check` passed for both artifacts |
 | Real loopback browser | Account, two projects, explicit upload/download, project-relative source, task navigation, project isolation, real-time online state passed |
 | Mobile layout | 390px browser check kept document and body width at 390px; no horizontal overflow |
@@ -33,11 +33,11 @@ All five adapters configure project-local MCP entries and reference `COOPAGENTS_
 
 | Harness | Config | Transport |
 | --- | --- | --- |
-| Cursor | `.cursor/mcp.json` / `mcpServers` | remote streamable HTTP or local stdio plan |
-| OpenCode | `opencode.json` / `mcp` | remote or local entry with the documented command array |
-| Pi | `.pi/mcp.json` / `mcpServers` | remote streamable HTTP or local stdio plan |
-| Kimi Code | `.kimi-code/mcp.json` / `mcpServers` | remote streamable HTTP or local stdio plan |
-| ZCode | `.zcode/config.json` / `mcp.servers` | remote streamable HTTP or local stdio plan |
+| Cursor | `.cursor/mcp.json` / `mcpServers` | remote streamable HTTP |
+| OpenCode | `opencode.json` / `mcp` | remote streamable HTTP |
+| Pi | `.pi/mcp.json` / `mcpServers` | remote streamable HTTP |
+| Kimi Code | `.kimi-code/mcp.json` / `mcpServers` | remote streamable HTTP |
+| ZCode | `.zcode/config.json` / `mcp.servers` | remote streamable HTTP |
 
 Config writes preserve unrelated entries, are idempotent, refuse conflicting same-name entries, and reject symlink/path escape targets. `native_hook` and `idle_wake` remain `unknown` or `unsupported`; no adapter claims that an agent will wake or consume messages automatically.
 
