@@ -23,6 +23,7 @@
 | Multi-harness | Claude Code/Codex 单机完整闭环；Cursor/OpenCode/Pi/Kimi Code/ZCode 官方 MCP/hook/ACP 能力已拆分 | 七个 harness 的 MCP 基础加入和任务闭环；各自 native hook 只在官方提供且真实验收通过时声明 |
 | Windows/macOS/Linux | Windows Git Bash、PowerShell、cmd hook 测试通过 | 三个平台按 harness capability matrix 完成 CLI/MCP 安装和闭环；native hook 逐组合单测，不跨平台外推 |
 | 发行包与容器 | Python/网页 CI 已覆盖；本机 Docker Engine 当前不可用 | 新 v0.7.4 GitHub CI 全绿；干净 wheel 安装；容器 smoke 由 CI 提供新证据 |
+| 真实 GitHub App | 0.8 实现已完成；没有配置真实 App，尚无线上验收证据。该项明确延期到 1.0，不阻塞进入 0.9 | 使用专用测试仓库验证真实 App 安装与只读权限、用户授权 callback/finish、branch/PR/checks/Release 读取、签名 webhook 投递及补偿同步、移除安装后的撤权，以及重新授权后的恢复；记录每步的服务端状态和 GitHub 侧事件 |
 | 运维与安全 | 邀请/成员撤销、备份恢复有单元和单机证据 | 两设备运行手册、恢复/撤销演练、威胁模型和已知网络限制同步 |
 
 ## 阶段
@@ -31,7 +32,8 @@
 2. 双机试点：按[双机验收清单](two-machine-acceptance.md)招募两位参与者；原始结果留在本机，维护文档只记录脱敏的事实与失败。
 3. 缺陷收敛：每个双机失败都先保留日志，再写回归测试；不以扩大权限、禁用安全边界或重复重试至成功代替根因修复。
 4. 1.0 候选：冻结功能，完成 Python 3.11/3.13、网页、打包、容器 smoke、干净安装和两平台原生验收；所有未通过门槛必须在发布说明中明确，关键闭环不得留空。
-5. 1.0 正式版：候选验收通过后再改版本号、更新发行说明、打签名 tag、发布 GitHub 资产并由可信发布工作流上传 PyPI。
+5. 真实 GitHub App 验收：在 1.0 候选期使用专用测试仓库执行上表完整流程；保存脱敏的 GitHub 事件与服务端状态证据。离线 provider、HTTP mock 和单元测试只证明本地实现，不计为线上 App 验收。
+6. 1.0 正式版：候选验收通过后再改版本号、更新发行说明、打签名 tag、发布 GitHub 资产并由可信发布工作流上传 PyPI。若真实 App 验收仍未完成，必须在发布说明中标为未验证，不能宣称 GitHub App 端到端已通过。
 
 ## 不计为通过的证据
 

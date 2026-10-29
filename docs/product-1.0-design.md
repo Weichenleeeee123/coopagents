@@ -105,6 +105,7 @@ Coopagents 让多个 coding agent 围绕同一个项目协作，同时保留各�
 - 在 Windows、macOS、Linux 上分别验证各受支持 CLI 安装配置与 MCP 传输；平台或 harness 不提供稳定官方 hook 时，明确降级到 MCP 检查点，不模拟出自动唤醒。
 - 真实双设备验收至少覆盖 home device ↔ 有公网地址 server/VPS 的加入、任务/Git/资产/重启恢复；双方 NAT 或 CGNAT 另记 direct/relay 结果。若无法覆盖双方 NAT，不将该场景写成已支持保证。
 - 真实 GitHub App 在专用测试仓库完成 install、branch push、PR checks、release/tag、撤权和恢复验证；agent 无发布/合并权限，除非用户明确赋权。
+- 该真实 App 验收从 0.8 明确延期至 1.0 候选阶段；在完成线上证据前，离线 provider、HTTP mock 和单元测试不能标记为真实 GitHub 验收通过。
 - 发布说明准确写明任何尚未覆盖的操作系统、网络拓扑、GitHub 组织策略和服务器环境。
 
 **1.0 验收：** 两种部署模式都通过同一协作合同；没有未关闭的 P0/P1 缺陷；上表核心场景有真实的环境证据；原始凭据与 transcript 均未进入发行资产。
