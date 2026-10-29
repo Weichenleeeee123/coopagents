@@ -204,6 +204,25 @@ class GitHubSyncTests(unittest.TestCase):
             with self.subTest(value=value),self.assertRaises(ValidationError):
                 self.sync.associate(self.member['agent_token'],self.task['id'],commit_sha=value)
 
+    def test_release_reference_is_explicit_task_scoped_and_idempotent(self):
+        self.connect()
+        first=self.sync.associate(self.member['agent_token'],self.task['id'],release_id=42)
+        second=self.sync.associate(self.member['agent_token'],self.task['id'],release_id=42)
+        self.assertEqual(first['id'],second['id'])
+        self.assertEqual(first['release_id'],42)
+        self.assertEqual(first['linked_by'],self.member['member_id'])
+        with self.identity.db.connect() as c:
+            row=c.execute('SELECT * FROM github_release_refs WHERE room_id=? AND task_id=? AND release_id=?',
+                          (self.owner['room_id'],self.task['id'],42)).fetchone()
+        self.assertEqual(row['ownership_epoch'],1)
+        with self.assertRaises(NotFound):
+            self.sync.associate(self.other['agent_token'],self.task['id'],release_id=42)
+        with self.assertRaises(ValidationError):
+            self.sync.associate(self.member['agent_token'],self.task['id'],release_id=42,pr_number=7)
+        for invalid in (True,0,-1,'42'):
+            with self.subTest(release_id=invalid),self.assertRaises(ValidationError):
+                self.sync.associate(self.member['agent_token'],self.task['id'],release_id=invalid)
+
     def test_unavailable_refs_do_not_revoke_other_deliveries(self):
         self.connect()
         self.sync.associate(self.member['agent_token'],self.task['id'],branch='feature')
@@ -250,6 +269,7 @@ class GitHubSyncTests(unittest.TestCase):
             self.sync.associate(self.member['agent_token'],self.task['id'],branch='feature'+str(index))
         self.sync.associate(self.member['agent_token'],self.task['id'],branch='feature0')
         with self.assertRaises(ValidationError): self.sync.associate(self.member['agent_token'],self.task['id'],commit_sha='a'*40)
+        with self.assertRaises(ValidationError): self.sync.associate(self.member['agent_token'],self.task['id'],release_id=42)
 
     def test_discovery_and_check_truncation_are_visible_in_snapshot(self):
         self.connect();self.sync.associate(self.member['agent_token'],self.task['id'],branch='feature')
