@@ -18,6 +18,7 @@ runs in the default permission mode with only the Coopagents MCP server allowed.
 Nothing is deleted. Each run keeps its folder with transcripts and a summary.json.
 """
 import argparse
+import base64
 import functools
 import glob
 import json
@@ -34,7 +35,7 @@ import tomllib
 
 REPO = Path(__file__).resolve().parents[2]
 SKILL = REPO / 'src' / 'skills' / 'coopagents-space'
-CODE = re.compile(r'coopagents-invite-1\.[A-Za-z0-9_-]+')
+CODE = re.compile(r'coopagents-invite-(?:1\.[A-Za-z0-9_-]+|2\.[0-9ABCDEFGHJKMNPQRSTVWXYZ-]+)', re.I)
 ANSI = re.compile(r'\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07]*\x07|\x1b[@-_]')
 
 def readme_step1(version, skill):
@@ -273,13 +274,32 @@ def wake_status(python, profile):
     return json.loads(result.stdout) if result.returncode == 0 else {}
 
 
+def hooks_from_config(document):
+    installed = []
+    for event, groups in (document.get('hooks') or {}).items():
+        commands = [str(hook.get('command', '')) for group in groups if isinstance(group, dict)
+                    for hook in group.get('hooks', []) if isinstance(hook, dict)]
+        scripts = []
+        for command in commands:
+            encoded = re.search(r'(?:^|\s)-EncodedCommand\s+([A-Za-z0-9+/=]+)(?:\s|$)', command, re.I)
+            if not encoded:
+                scripts.append(command)
+                continue
+            try:
+                scripts.append(base64.b64decode(encoded.group(1), validate=True).decode('utf-16-le'))
+            except (ValueError, UnicodeDecodeError):
+                scripts.append('')
+        if any('coopagents.space_wake' in script and ' watch ' in script for script in scripts):
+            installed.append(event)
+    return sorted(installed)
+
+
 def hooks(path):
     try:
         document = json.loads(Path(path).read_text(encoding='utf-8'))
     except (OSError, ValueError):
         return []
-    return sorted(event for event, groups in (document.get('hooks') or {}).items()
-                  if 'coopagents.space_wake' in json.dumps(groups) and ' watch ' in json.dumps(groups))
+    return hooks_from_config(document)
 
 
 def names(members):
