@@ -35,7 +35,7 @@ class MCPTests(unittest.TestCase):
             async with self.client(self.owner['agent_token']) as owner, self.client(self.member['agent_token']) as member:
                 tools = (await owner.list_tools()).tools
                 names = {tool.name for tool in tools}
-                self.assertEqual(names, {'lookup_owner', 'create_dependency', 'read_dependency', 'reply_dependency', 'resolve_dependency', 'cancel_dependency', 'whoami', 'read_team', 'read_task_history', 'release_task', 'propose_handoff', 'claim_task', 'register_session', 'report_progress', 'send_request', 'read_inbox', 'acknowledge', 'reply', 'resolve_request', 'propose_contract', 'repo_checkpoint', 'link_delivery', 'checkpoint', 'diagnostic_start', 'diagnostic_read', 'diagnostic_complete'})
+                self.assertEqual(names, {'lookup_owner', 'create_dependency', 'read_dependency', 'reply_dependency', 'resolve_dependency', 'cancel_dependency', 'whoami', 'read_team', 'list_assets', 'read_asset', 'read_task_history', 'release_task', 'propose_handoff', 'claim_task', 'register_session', 'report_progress', 'send_request', 'read_inbox', 'acknowledge', 'reply', 'resolve_request', 'propose_contract', 'repo_checkpoint', 'link_delivery', 'checkpoint', 'diagnostic_start', 'diagnostic_read', 'diagnostic_complete'})
                 for tool in tools:
                     props = tool.input_schema.get('properties', {})
                     self.assertNotIn('author', props)
@@ -80,6 +80,21 @@ class MCPTests(unittest.TestCase):
                 unaddressed = await self.call(owner, 'send_request', {'request_key': 'b', 'context_version': 1, 'body': 'Please ask Claude'})
                 self.assertIsNone(unaddressed['receiver_member_id'])
                 self.assertIn('nobody receives or is woken', unaddressed['not_delivered'])
+        asyncio.run(run())
+
+    def test_agent_can_read_only_explicitly_shared_project_assets(self):
+        asset = self.live.app.state.service.assets.upload(self.owner['web_token'], 'guide.md',
+            'text/markdown', b'# shared')
+        async def run():
+            async with self.client(self.member['agent_token']) as client:
+                listed = await self.call(client, 'list_assets', {})
+                self.assertEqual([item['id'] for item in listed['assets']], [asset['id']])
+                read = await self.call(client, 'read_asset', {'asset_id': asset['id']})
+                self.assertEqual(read['asset']['sha256'], asset['sha256'])
+                import base64
+                self.assertEqual(base64.b64decode(read['content_base64']), b'# shared')
+                invalid = await client.call_tool('read_asset', {'asset_id': asset['id'], 'path': 'C:/secret'})
+                self.assertTrue(invalid.is_error)
         asyncio.run(run())
 
     def test_cross_room_sdk_isolation(self):

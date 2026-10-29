@@ -19,6 +19,7 @@ from .protocol import fields, validate
 from .config import public_origin, validate_bootstrap_secret
 
 BODY_LIMIT = 65536
+ASSET_BODY_LIMIT = 10 * 1024 * 1024 + 65536
 WEB_CSP = "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'"
 ERROR_STATUS = {ValidationError: 400, AccessDenied: 401, NotFound: 404, Conflict: 409}
 
@@ -105,7 +106,8 @@ class LocalBoundary:
                     close_connection = True
                     break
                 consumed += len(message.get('body', b''))
-                if consumed > BODY_LIMIT:
+                limit = ASSET_BODY_LIMIT if scope['path'] == '/api/assets' else BODY_LIMIT
+                if consumed > limit:
                     close_connection = True
                     break
                 if not message.get('more_body', False):
@@ -117,12 +119,14 @@ class LocalBoundary:
             if message['type'] != 'http.request':
                 return
             body.extend(message.get('body', b''))
-            if len(body) > BODY_LIMIT:
+            limit = ASSET_BODY_LIMIT if scope['path'] == '/api/assets' and scope['method'] == 'POST' else BODY_LIMIT
+            if len(body) > limit:
                 return await reject('Request body too large', 413)
             if not message.get('more_body', False):
                 break
         raw_webhook = self.billing_webhook and scope['path'] == '/billing/stripe/webhook' and scope['method'] == 'POST'
-        if body and scope['method'] not in ('GET', 'HEAD', 'OPTIONS') and not raw_webhook:
+        asset_upload = scope['path'] == '/api/assets' and scope['method'] == 'POST'
+        if body and scope['method'] not in ('GET', 'HEAD', 'OPTIONS') and not raw_webhook and not asset_upload:
             try:
                 decoded = bytes(body).decode('utf-8')
                 decoded.encode('utf-8')
@@ -300,6 +304,61 @@ def create_app(database_path='.local/coopagents.sqlite3', *, base_url=None, publ
             payload, status = error_payload(error)
             return JSONResponse(payload, status_code=status)
 
+    async def asset_upload(request):
+        try:
+            token = bearer(request)
+            content_type = request.headers.get('content-type', '').split(';')[0].strip().lower()
+            if content_type != 'multipart/form-data':
+                raise ValidationError('Content type must be multipart/form-data')
+            try:
+                form = await request.form(max_files=1, max_fields=2, max_part_size=65536)
+            except Exception:
+                raise ValidationError('Malformed asset upload') from None
+            entries = list(form.multi_items())
+            file_entries = [value for key, value in entries if key == 'file']
+            fields = {key: value for key, value in entries if key != 'file'}
+            if (len(file_entries) != 1 or any(key not in ('source_type', 'source_ref') for key in fields)
+                    or not hasattr(file_entries[0], 'read')):
+                raise ValidationError('Exactly one file field is required')
+            if len(fields) != len(entries) - 1:
+                raise ValidationError('Duplicate asset upload field')
+            uploaded = file_entries[0]
+            try:
+                content = await uploaded.read(10 * 1024 * 1024 + 1)
+                if len(content) > 10 * 1024 * 1024:
+                    return JSONResponse({'error': 'ValidationError', 'message': 'Asset exceeds the per-file limit'}, status_code=413)
+                result = await run_in_threadpool(service.assets.upload, token, uploaded.filename,
+                    uploaded.content_type or 'application/octet-stream', content,
+                    source_type=fields.get('source_type', 'upload'), source_ref=fields.get('source_ref', ''))
+            finally:
+                await form.close()
+            return JSONResponse(result, status_code=201, headers={'Cache-Control': 'no-store'})
+        except Exception as error:
+            payload, status = error_payload(error)
+            return JSONResponse(payload, status_code=status, headers={'Cache-Control': 'no-store'})
+
+    async def asset_list(request):
+        try:
+            result = await run_in_threadpool(service.assets.list_assets, bearer(request))
+            return JSONResponse({'assets': result}, headers={'Cache-Control': 'no-store'})
+        except Exception as error:
+            payload, status = error_payload(error)
+            return JSONResponse(payload, status_code=status, headers={'Cache-Control': 'no-store'})
+
+    async def asset_read(request):
+        try:
+            metadata, content = await run_in_threadpool(service.assets.read_asset, bearer(request),
+                                                        request.path_params['asset_id'])
+            from urllib.parse import quote
+            filename = quote(metadata['filename'], safe='')
+            return Response(content, media_type=metadata['media_type'], headers={
+                'Cache-Control': 'no-store', 'Content-Disposition': "attachment; filename*=UTF-8''" + filename,
+                'X-Content-Length': str(metadata['size_bytes']), 'X-Content-SHA256': metadata['sha256'],
+                'X-Content-Type-Options': 'nosniff'})
+        except Exception as error:
+            payload, status = error_payload(error)
+            return JSONResponse(payload, status_code=status, headers={'Cache-Control': 'no-store'})
+
     def route(path, methods, *, operation=None, read_name=None):
         async def handle(request):
             request.scope['operation'] = operation
@@ -335,6 +394,8 @@ def create_app(database_path='.local/coopagents.sqlite3', *, base_url=None, publ
         return Response(files('coopagents').joinpath('static', resource).read_bytes(), media_type=mime, headers=headers)
 
     routes = [Route(path, web_asset, methods=['GET']) for path in ('/', '/static/styles.css', '/static/app.js', '/static/git.js', '/static/project_activity.js', '/static/collaboration.js', '/static/task_lifecycle.js', '/static/dependencies.js', '/static/accounts.js', '/static/invitations.js', '/static/billing.js', '/static/icon.png', '/favicon.ico')]
+    routes += [Route('/api/assets', asset_list, methods=['GET']), Route('/api/assets', asset_upload, methods=['POST']),
+               Route('/api/assets/{asset_id:str}', asset_read, methods=['GET'])]
     routes += [route('/health', ['GET']), route('/ready', ['GET']), route('/api/rooms', ['POST'], operation='create_room'), route('/api/join', ['POST'], operation='join'),
               route('/api/me', ['GET'], read_name='me'), route('/api/snapshot', ['GET'], read_name='snapshot'),
               route('/api/invites', ['POST'], operation='invite'), route('/api/agent-token', ['POST'], operation='rotate_agent'),

@@ -43,6 +43,8 @@ TOOL_DESCRIPTIONS = {
                       'GitHub release ID. Release linking records a relationship only; it never creates or publishes a release.'),
     'register_session': ('Record which tool, repository and branch this session works in. It does not turn on '
                          'wake-up: in an agent-hosted space call install_wake for that.'),
+    'list_assets': 'List files explicitly shared with this project. No workspace scanning occurs.',
+    'read_asset': 'Read one explicitly shared project asset. The result includes bounded base64 content and SHA-256.',
 }
 NOT_DELIVERED = ('Not delivered: no receiver_member_id was given, so nobody receives or is woken by this request '
                  'until a person assigns it. To ask a teammate directly, send a new request with their member_id '
@@ -56,7 +58,8 @@ def create_mcp_app(service, *, origin=None):
              'checkpoint', 'diagnostic_start', 'diagnostic_read', 'diagnostic_complete')
     names += ('lookup_owner', 'create_dependency', 'read_dependency', 'reply_dependency', 'resolve_dependency', 'cancel_dependency')
     schemas = {name: service.operations[name][2] for name in names}
-    schemas.update({'whoami': {}, 'read_team': {}})
+    schemas.update({'whoami': {}, 'read_team': {}, 'list_assets': {},
+                    'read_asset': {'asset_id': (str, True, None)}})
 
     async def validate_arguments(ctx, call_next):
         if ctx.method == 'tools/call':
@@ -93,6 +96,12 @@ def create_mcp_app(service, *, origin=None):
                     result = service.me(token)
                 elif name == 'read_team':
                     result = service.snapshot(token, web=False)
+                elif name == 'list_assets':
+                    result = {'assets': service.assets.list_assets(token)}
+                elif name == 'read_asset':
+                    import base64
+                    metadata, content = service.assets.read_asset(token, kwargs['asset_id'])
+                    result = {'asset': metadata, 'content_base64': base64.b64encode(content).decode('ascii')}
                 else:
                     result = service.call(name, token, kwargs)
                     if name == 'send_request' and result.get('receiver_member_id') is None:
