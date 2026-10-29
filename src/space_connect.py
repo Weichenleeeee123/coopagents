@@ -64,9 +64,31 @@ def registered_spaces(tool, project_dir=None):
     return list(unique.values())
 
 
-def wake_command(tool, profile_path):
-    return '"%s" -m coopagents.space_wake install --tool %s --profile "%s" --project-dir <your repository folder>' % (
-        sys.executable, tool, profile_path)
+LABELS = {'claude': 'Claude Code', 'codex': 'Codex'}
+
+
+def calling_agent(environ=None):
+    """The agent whose shell runs this command (measured: Codex sets CODEX_THREAD_ID and CODEX_SESSION_ID,
+    Claude Code sets CLAUDECODE=1); None when neither or, for nested agents, both are present."""
+    environ = os.environ if environ is None else environ
+    codex = bool(environ.get('CODEX_THREAD_ID') or environ.get('CODEX_SESSION_ID'))
+    claude = environ.get('CLAUDECODE') == '1'
+    return ('codex' if codex else 'claude') if codex != claude else None
+
+
+def resolve_tool(tool, environ=None):
+    """Each agent sets up only itself: refuse a tool that differs from the agent running the command."""
+    caller = calling_agent(environ)
+    if tool and caller and tool != caller:
+        raise ConnectError('This command runs inside %s, but --tool %s sets up %s. Each agent sets up only itself: '
+                           'use --tool %s, or omit --tool.' % (LABELS[caller], tool, LABELS[tool], caller))
+    if not (tool or caller):
+        raise ConnectError('Could not tell whether this runs in Claude Code or Codex; pass --tool claude or --tool codex')
+    return tool or caller
+
+
+def same_file(left, right):
+    return os.path.normcase(os.path.abspath(left)) == os.path.normcase(os.path.abspath(right))
 
 
 def server_name(profile):
@@ -204,9 +226,22 @@ def install_skill(tool, root=None):
     return result
 
 
+def check_own_environment():
+    """Refuse a user-site install: pip falls back to it when a venv was 'activated' in a shell where that failed."""
+    import site
+    user = site.getusersitepackages()
+    if user and Path(__file__).resolve().is_relative_to(Path(user).resolve()):
+        raise ConnectError(
+            'Coopagents is installed in the user site-packages of %s, not in its own virtual environment, so it '
+            'shares packages with everything else in that Python. Create one with `python -m venv <folder>`, install '
+            'with `<folder>/Scripts/python -m pip install "coopagents[space]==<version>"` (`<folder>/bin/python` '
+            'outside Windows) without activating it, and run connect with that Python.' % sys.executable)
+
+
 def connect(tool, profile_path, name=None, cli=None, skills=None, wake=False, project_dir=None):
     if tool not in TOOLS:
         raise ConnectError('Tool must be claude or codex')
+    check_own_environment()
     path = checked_path(profile_path).resolve()
     profile = read_profile(path)
     name = name or server_name(profile)
@@ -236,10 +271,18 @@ def connect(tool, profile_path, name=None, cli=None, skills=None, wake=False, pr
               'room_id': profile['room_id'], 'member_id': profile['member_id']}
     result.update(install_skill(tool, skills))
     label = 'Claude Code' if tool == 'claude' else 'Codex'
+    steps = ['Tell the user to start a new %s session in the repository folder: the current session cannot load '
+             'the new tools. There, the agent calls whoami to check the connection.' % label]
     if wake:
         from .space_wake import install as install_wake
         result['wake'] = install_wake(str(path), tool, 'project', project_dir or os.getcwd())
+        if tool == 'codex':
+            steps.append('Wake-up is installed; in the new Codex session the user must review and trust the '
+                         'Coopagents hook in /hooks before it runs.')
+        else:
+            steps.append('Wake-up is installed and starts with that new session.')
     else:
-        result['wake_command'] = wake_command(tool, path)
-    result['next'] = 'Start a new %s session to load the Coopagents tools, then call whoami.' % label
+        steps.append('Wake-up is off. To turn it on later, the user can say "Turn on Coopagents wake-up for this '
+                     'repo" in a session of that folder; the agent then calls the install_wake tool.')
+    result['next'] = ' '.join(steps)
     return result

@@ -13,6 +13,53 @@ P2P = DESCRIPTOR | {'p2p': {'endpoint_id': 'a' * 64}}
 
 
 class Codes(unittest.TestCase):
+    def test_v2_compacts_supported_descriptors_and_tolerates_copy_spacing(self):
+        descriptor = dict(schema_version=1, origin='http://127.0.0.1:8765',
+                          room_id='48ee6bc1-ba4d-4c9f-ad97-fd38688c8669',
+                          invite_token=base64.urlsafe_b64encode(bytes(range(32))).decode().rstrip('='),
+                          expires_at='2026-10-28T12:00:00+00:00',
+                          p2p={'endpoint_id': 'a' * 64})
+        code = invite_message.encode(descriptor)
+        self.assertTrue(code.startswith(invite_message.CODE_PREFIX_2))
+        self.assertLess(len(code), 250)
+        self.assertEqual(invite_message.decode(code), descriptor)
+        prefix, payload = code.split('.', 1)
+        spaced = prefix.upper() + '.' + payload.upper().replace('-', ' -\n ')
+        self.assertEqual(invite_message.decode(spaced), descriptor)
+
+    def test_v2_rejects_changed_characters_and_truncation_without_echoing_code(self):
+        descriptor = dict(schema_version=1, origin='http://127.0.0.1:8765',
+                          room_id='48ee6bc1-ba4d-4c9f-ad97-fd38688c8669',
+                          invite_token=base64.urlsafe_b64encode(bytes(range(32))).decode().rstrip('='),
+                          expires_at='2026-10-28T12:00:00+00:00',
+                          p2p={'endpoint_id': 'a' * 64})
+        code = invite_message.encode(descriptor)
+        altered = code[:35] + ('0' if code[35] != '0' else '1') + code[36:]
+        for bad in (altered, code[:-8]):
+            with self.subTest(code=bad[-12:]), self.assertRaises(InvitationCodeError) as raised:
+                invite_message.decode(bad)
+            self.assertNotIn(bad, str(raised.exception))
+
+    def test_v2_preserves_local_origins_with_query_parameters(self):
+        descriptor = dict(schema_version=1, origin='http://127.0.0.1:8765?key=value',
+                          room_id='48ee6bc1-ba4d-4c9f-ad97-fd38688c8669',
+                          invite_token=base64.urlsafe_b64encode(bytes(range(32))).decode().rstrip('='),
+                          expires_at='2026-10-28T12:00:00+00:00',
+                          p2p={'endpoint_id': 'a' * 64})
+        code = invite_message.encode(descriptor)
+        self.assertTrue(code.startswith(invite_message.CODE_PREFIX_2))
+        self.assertEqual(invite_message.decode(code), descriptor)
+
+    def test_v2_falls_back_for_noncanonical_peer_endpoint_length(self):
+        descriptor = dict(schema_version=1, origin='https://space.example.com',
+                          room_id='48ee6bc1-ba4d-4c9f-ad97-fd38688c8669',
+                          invite_token=base64.urlsafe_b64encode(bytes(range(32))).decode().rstrip('='),
+                          expires_at='2026-10-28T12:00:00+00:00',
+                          p2p={'endpoint_id': 'ab' * 31})
+        code = invite_message.encode(descriptor)
+        self.assertTrue(code.startswith(invite_message.CODE_PREFIX))
+        self.assertEqual(invite_message.decode(code), descriptor)
+
     def test_round_trip_keeps_only_descriptor_fields(self):
         noisy = P2P | {'web_token': 'never', 'extra': 1}
         code = invite_message.encode(noisy)
@@ -107,7 +154,9 @@ class Messages(unittest.TestCase):
         self.assertIn(invite_message.PROJECT_URL, lines)
         self.assertIn(invite_message.skill_url(invite_message.installed_version()), message)
         self.assertIn('--invitation-file <that file>', message)
+        self.assertIn('--connect codex', message)
         self.assertIn('Never put the code in a command argument', message)
+        self.assertIn('never edit or repair the code by hand', message)
         self.assertIn('read its Coopagents skill', message)
         self.assertNotIn('set up its', message)
         self.assertIn(invite_message.encode(P2P), lines)

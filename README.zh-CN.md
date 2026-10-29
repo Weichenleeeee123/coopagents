@@ -45,13 +45,13 @@
 
 **1. 在 Claude Code 里**打开一个测试仓库，说：
 
-> 从 PyPI 把 Coopagents 0.7.3 装进独立的 Python 环境（`pip install "coopagents[space]==0.7.3"`；如果包镜像还没有 0.7.3，加上 `--index-url https://pypi.org/simple`，不要装别的版本），再阅读 https://github.com/Weichenleeeee123/coopagents/tree/v0.7.3/src/skills/coopagents-space 上的 Skill。然后给这个仓库创建一个 Coopagents 空间，你在里面的名字叫 "Claude"，把你自己接进去并开启唤醒，再给我的 Codex 生成一条邀请信息。
+> 从 PyPI 把 Coopagents 0.7.4 装进它自己的虚拟环境：在这个仓库外面运行 `python -m venv <目录>`，然后用 `<目录>/Scripts/python -m pip install "coopagents[space]==0.7.4"`（macOS 和 Linux 上是 `<目录>/bin/python`），不要激活环境。如果包镜像还没有 0.7.4，加上 `--index-url https://pypi.org/simple`；不要装别的版本。再阅读 https://github.com/Weichenleeeee123/coopagents/tree/v0.7.4/src/skills/coopagents-space 上的 Skill。然后给这个仓库创建一个 Coopagents 空间，你在里面的名字叫 "Claude"，把你自己接进去并开启唤醒，再给我的 Codex 生成一条邀请信息。
 
 **2. 在 Codex 里**打开同一个仓库：
 
 > *（粘贴 Claude 给你的邀请信息）* 名字用 "Codex"。
 
-**3. 唤醒。** 第 1 步已经给 Claude Code 开好了。以后想在别的会话里开，直接说 *"给这个仓库开启 Coopagents 唤醒"*：agent 会调用 `install_wake` 工具，用正确的 Python 和空间装好 hook。Claude Code 在下一个会话生效；Codex 那边要在 `/hooks` 里信任新加的 hook。
+**3. 唤醒。** 第 1 步已经给 Claude Code 开好了。以后想在别的会话里开，直接说 *"给这个仓库开启 Coopagents 唤醒"*：agent 会调用 `install_wake` 工具，它自己认出是哪个工具、哪个目录、哪个空间。Claude Code 在下一个会话生效；Codex 那边要在 `/hooks` 里信任新加的 hook。
 
 **4. 让它们对话。** 让 Claude Code 闲着，对 Codex 说：*"通过 Coopagents 问 Claude 这个仓库用什么命令跑测试，然后等它回答。"*
 
@@ -62,8 +62,10 @@
 想自己装也可以：
 
 ```bash
-pip install "coopagents[space]"
-python -m coopagents.space_runtime connect --tool claude --profile <profile>   # Codex 用 --tool codex
+python -m venv ~/.coopagents/venv && ~/.coopagents/venv/bin/python -m pip install "coopagents[space]"   # Windows 用 Scripts\python
+export PATH=~/.coopagents/venv/bin:$PATH
+python -m coopagents.space_runtime create --name "我的空间" --owner Claude --connect claude --wake
+python -m coopagents.space_runtime invite --profile <输出里的 profile> --message zh
 ```
 
 用国内镜像的话，新版本同步可能有延迟；装不到时加上 `--index-url https://pypi.org/simple`。
@@ -87,8 +89,8 @@ https://github.com/Weichenleeeee123/coopagents
 
 把两条分隔线之间的内容整段发给你的 Claude Code 或 Codex：
 ----------
-从 PyPI 把 Coopagents 0.7.3 装进独立的 Python 环境：`pip install "coopagents[space]==0.7.3"`……然后用下面的一次性邀请码加入我的 Coopagents 空间……
-coopagents-invite-1.eyJleHBpcmVzX2F0Ijoi…
+从 PyPI 把 Coopagents 0.7.4 装进独立的 Python 环境：`pip install "coopagents[space]==0.7.4"`……然后用下面的一次性邀请码加入我的 Coopagents 空间……
+coopagents-invite-2.09G02-071GZ-75SCY-14W94-…
 ----------
 
 这条邀请只能用一次，2026-10-16 21:30 (UTC+08:00) 过期。里面含有密钥：……
@@ -135,11 +137,12 @@ Claude Code 有一个实验性的 [agent teams](https://code.claude.com/docs/en/
 
 ## 当前状态
 
-**Alpha（0.7.3）。** 实际测过的有：
+**Alpha（0.7.4）。** 实际测过的有：
 
 - 在一台 Windows 电脑上，Claude Code 和 Codex 通过真实空间完成了协作，Claude 在空闲时被唤醒，Codex 在待命中被唤醒。
 - 点对点连接在 GitHub Actions 机器和家里的电脑之间跨网络连通。
 - 完整测试在 Linux CI 上用 Python 3.11 和 3.13 跑通。
+- 真实 Claude Code 和 Codex 单机流程 17 项检查全过，包括使用 v2 短邀请码加入、唤醒空闲 Claude 并完成问答。详见[验收报告](docs/solo-acceptance-2026-10-29.md)。
 
 **还没测过的**：两个人分别在家庭网络或手机网络下使用、跨电脑唤醒、macOS。如果你和朋友在两个网络下试了，请按 [双机验收清单](docs/two-machine-acceptance.md) 操作，把两份报告附在 issue 里。报告不含任何凭据，这是现阶段最有价值的贡献。
 

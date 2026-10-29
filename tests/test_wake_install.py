@@ -1,3 +1,4 @@
+import base64
 import json
 import os
 from pathlib import Path
@@ -12,6 +13,18 @@ from coopagents.spaces import private_write
 from coopagents.space_wake import WakeSetupError
 
 FAKE = str(Path(__file__).with_name('fake_mcp_cli.py').resolve())
+
+
+def hook_commands(document):
+    for groups in document.get('hooks', {}).values():
+        for group in groups:
+            for hook in group.get('hooks', []):
+                command = hook.get('command', '')
+                marker = ' -EncodedCommand '
+                if marker in command:
+                    payload = command.split(marker, 1)[1].split()[0]
+                    command = base64.b64decode(payload).decode('utf-16-le')
+                yield command
 
 
 class WakeInstall(unittest.TestCase):
@@ -69,7 +82,7 @@ class WakeInstall(unittest.TestCase):
         self.assertEqual(result['profile'], str(self.profile))
         settings = json.loads((self.repo / '.claude' / 'settings.local.json').read_text(encoding='utf-8'))
         self.assertEqual(sorted(settings['hooks']), ['SessionStart', 'Stop'])
-        self.assertIn(str(self.profile).replace(os.sep, '/'), json.dumps(settings).replace('\\\\', '/'))
+        self.assertTrue(any(str(self.profile).replace(os.sep, '/') in command for command in hook_commands(settings)))
 
     def test_none_or_several_connections_are_explained_not_guessed(self):
         self.write_claude({})
@@ -90,16 +103,52 @@ class WakeInstall(unittest.TestCase):
         self.assertIn('No Coopagents connection is registered for claude', result.stderr)
         self.assertFalse((self.repo / '.claude').exists())
 
+    def test_cli_names_a_missing_project_folder(self):
+        missing = self.directory / 'not-a-repo'
+        result = subprocess.run([sys.executable, '-m', 'coopagents.space_wake', 'install', '--tool', 'claude',
+                                 '--profile', str(self.profile), '--project-dir', str(missing)],
+                                capture_output=True, text=True, env=os.environ.copy())
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('%s does not exist' % missing, result.stderr)
+        self.assertFalse(missing.exists())
+
+    def wake_cli(self, *argv, shell):
+        env = {**os.environ, 'CLAUDECODE': '', 'CODEX_THREAD_ID': '', 'CODEX_SESSION_ID': '', **shell}
+        return subprocess.run([sys.executable, '-m', 'coopagents.space_wake', 'install', *argv],
+                              capture_output=True, text=True, cwd=self.repo, env=env)
+
+    def test_codex_cannot_install_claude_hooks_or_use_a_teammates_profile(self):
+        self.write_claude({'coopagents_one': self.bridge(self.profile)})
+        codex = {'CODEX_THREAD_ID': 'thread'}
+        result = self.wake_cli('--tool', 'claude', '--profile', str(self.profile), shell=codex)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('runs inside Codex, but --tool claude', result.stderr)
+        result = self.wake_cli('--profile', str(self.profile), shell=codex)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('Codex has no Coopagents connection', result.stderr)
+        mine = self.make_profile('codex-member')
+        toml = '[mcp_servers.coopagents_two]\ncommand = %s\nargs = ["-m", "coopagents.space_bridge", "--profile", %s]\n' % (
+            json.dumps(sys.executable), json.dumps(str(mine)))
+        (self.codex_home / 'config.toml').write_text(toml, encoding='utf-8')
+        result = self.wake_cli('--profile', str(self.profile), shell=codex)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('omit --profile', result.stderr)
+        self.assertFalse((self.repo / '.claude').exists() or (self.repo / '.codex').exists())
+        result = self.wake_cli(shell=codex)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        settings = json.loads((self.repo / '.codex' / 'hooks.json').read_text(encoding='utf-8'))
+        self.assertTrue(any(str(mine).replace(os.sep, '/') in command for command in hook_commands(settings)))
+
     def test_connect_can_install_wake_up_in_the_same_step(self):
         state = self.directory / 'mcp.json'
         with patch.dict(os.environ, {'FAKE_TOOL': 'claude', 'FAKE_MCP_STATE': str(state)}):
             plain = space_connect.connect('claude', self.profile, cli=[sys.executable, FAKE], skills=self.directory / 'skills')
-            self.assertIn('space_wake install --tool claude --profile', plain['wake_command'])
-            self.assertIn(str(self.profile), plain['wake_command'])
+            self.assertIn('install_wake', plain['next'])
             self.assertNotIn('wake', plain)
             woken = space_connect.connect('claude', self.profile, cli=[sys.executable, FAKE], skills=self.directory / 'skills',
                                           wake=True, project_dir=self.repo)
         self.assertEqual(woken['wake']['installed'], 'claude')
+        self.assertIn('starts with that new session', woken['next'])
         self.assertTrue((self.repo / '.claude' / 'settings.local.json').exists())
         self.assertNotIn('secret', json.dumps(woken))
 

@@ -17,7 +17,7 @@ from uuid import uuid4
 
 from .coordination import CoordinationService
 from .p2p import member_link, validate_link
-from .spaces import (checked_path, private_directory, private_write, read_json,
+from .spaces import (checked_path, default_state_dir, explain, private_directory, private_write, read_json,
                      read_profile, safe_profile, validate_origin)
 
 
@@ -106,7 +106,7 @@ def start(profile_path):
     deadline = time.monotonic() + 60
     while time.monotonic() < deadline:
         if child.poll() is not None:
-            raise RuntimeError('Runtime startup failed; inspect private runtime log')
+            raise RuntimeError('Runtime startup failed; see the private runtime log %s' % log_path)
         result = status(profile_path)
         if result['status'] == 'running':
             threading.Thread(target=child.wait, daemon=True).start()
@@ -122,7 +122,8 @@ def create(name, owner, state_dir, network='p2p', public_url=None, cloudflared=N
     state = private_directory(state_dir)
     profile_path, host_path = runtime_paths(state / 'profile.json')
     if profile_path.exists() or host_path.exists() or (state / 'space.sqlite3').exists():
-        raise FileExistsError('Space state already exists; use start to resume')
+        raise FileExistsError('A space already exists in %s; use start --profile %s to resume it, or omit '
+                              '--state-dir to create a new one' % (state, profile_path))
     if network not in ('p2p', 'local', 'quick', 'external'):
         raise ValueError('Unsupported network')
     if network == 'external':
@@ -311,11 +312,17 @@ def join(invitation_file, name, state_dir, invitation_code=None):
     state = private_directory(state_dir)
     path = state / 'profile.json'
     if path.exists():
-        raise FileExistsError('Personal profile already exists')
+        raise FileExistsError('A personal profile already exists in %s; omit --state-dir to use a new folder' % state)
     target = {'origin': origin, 'room_id': descriptor['room_id']} | ({'p2p': link} if link else {})
-    with member_link(target):
-        identity = request(origin, '/api/join', data={'room_id': descriptor['room_id'],
-                                                    'invite_token': descriptor['invite_token'], 'display_name': name})
+    try:
+        with member_link(target):
+            identity = request(origin, '/api/join', data={'room_id': descriptor['room_id'],
+                                                        'invite_token': descriptor['invite_token'], 'display_name': name})
+    except urllib.error.HTTPError as error:
+        if error.code in (401, 403):
+            raise ValueError('The space did not accept this invitation: it was already used, has expired or was '
+                             'revoked. Ask the inviter for a new invitation message.') from None
+        raise
     if identity['room_id'] != descriptor['room_id']:
         raise ValueError('Invitation space does not match')
     profile = dict(schema_version=1, origin=origin,
@@ -359,10 +366,11 @@ def main(argv=None):
     create_parser = commands.add_parser('create')
     create_parser.add_argument('--name', required=True)
     create_parser.add_argument('--owner', required=True)
-    create_parser.add_argument('--state-dir', required=True)
+    create_parser.add_argument('--state-dir', help='New private folder (default: a new folder under ~/.coopagents/spaces)')
     create_parser.add_argument('--network', choices=['p2p', 'local', 'quick', 'external'], default='p2p')
     create_parser.add_argument('--public-url')
     create_parser.add_argument('--cloudflared')
+    connect_options(create_parser)
     for command in ('start', 'status', 'stop', 'board', 'invite', '_serve', 'revoke-invitation', 'revoke-member'):
         sub = commands.add_parser(command)
         sub.add_argument('--profile', required=True)
@@ -381,7 +389,8 @@ def main(argv=None):
     source.add_argument('--invitation-code-stdin', action='store_true',
                         help='Read an invitation code, or a whole invitation message, from standard input')
     sub.add_argument('--name', required=True)
-    sub.add_argument('--state-dir', required=True)
+    sub.add_argument('--state-dir', help='New private folder (default: a new folder under ~/.coopagents/spaces)')
+    connect_options(sub)
     sub = commands.add_parser('connect', help='Register this profile with Claude Code or Codex, install the skill and verify')
     sub.add_argument('--tool', required=True, choices=['claude', 'codex'])
     sub.add_argument('--profile', required=True)
@@ -395,6 +404,13 @@ def main(argv=None):
     sub.add_argument('--room-id', required=True)
     args = vars(parser.parse_args(argv))
     command = args.pop('command')
+    then_connect = None
+    if command in ('create', 'join'):
+        then_connect = (args.pop('connect'), args.pop('wake'), args.pop('project_dir'))
+        if then_connect[1] and not then_connect[0]:
+            parser.error('--wake requires --connect')
+        if not args['state_dir']:
+            args['state_dir'] = str(default_state_dir(args['name']))
     try:
         if command == '_serve':
             serve(args['profile'])
@@ -412,28 +428,55 @@ def main(argv=None):
             result = safe_profile(profile, args['profile']) | {'status': 'revoked'}
         else:
             if command == 'connect':
-                from .space_connect import connect
+                from .space_connect import connect, resolve_tool
+                resolve_tool(args['tool'])
                 print(json.dumps(connect(args['tool'], args['profile'], name=args['name'], cli=args['cli'],
                                          wake=args['wake'], project_dir=args['project_dir'])))
                 return 0
             if command == 'join' and args.pop('invitation_code_stdin'):
                 from .invite_message import read_stdin
                 args['invitation_code'] = read_stdin()
+            if then_connect and then_connect[0]:
+                from .space_connect import check_own_environment, resolve_tool
+                resolve_tool(then_connect[0])
+                check_own_environment()  # before anything is created, so a retry starts clean
             handler = {'create': create, 'start': start, 'status': status, 'stop': stop, 'board': board,
                        'invite': invite, 'join': join, 'reconnect': reconnect}[command]
             if 'profile' in args:
                 args['profile_path'] = args.pop('profile')
             result = handler(**args)
+            if then_connect and then_connect[0]:
+                return connect_after(result, *then_connect)
         print(json.dumps(result))
         return 0
     except Exception as error:
-        # Exception messages from HTTP clients may contain URLs; never print
-        # bodies, headers, tracebacks or opaque credentials from remote errors.
-        from .invite_message import InvitationCodeError
-        from .space_connect import ConnectError
-        text = str(error) if isinstance(error, (InvitationCodeError, ConnectError)) else 'Space operation failed; check private state and runtime health'
+        # Only this package's fixed messages and translated HTTP/network reasons are shown;
+        # never remote bodies, headers, tracebacks or credentials.
+        text = explain(error) or 'Space operation failed; check private state and runtime health'
         print(json.dumps({'error': type(error).__name__, 'message': text}), file=sys.stderr)
         return 1
+
+
+def connect_options(parser):
+    parser.add_argument('--connect', choices=['claude', 'codex'],
+                        help='Then connect this agent: same as running connect --tool with the new profile')
+    parser.add_argument('--wake', action='store_true', help='With --connect: also turn on wake-up for the repository')
+    parser.add_argument('--project-dir', help='Repository folder for --wake (default: current folder)')
+
+
+def connect_after(result, tool, wake, project_dir):
+    """The space or membership exists either way; a failed connection says how to retry it alone."""
+    from .space_connect import connect
+    try:
+        result['connect'] = connect(tool, result['profile'], wake=wake, project_dir=project_dir)
+    except Exception as error:
+        result['connect_error'] = explain(error) or 'Connecting failed'
+        result['retry'] = '%s -m coopagents.space_runtime connect --tool %s --profile "%s"%s' % (
+            sys.executable, tool, result['profile'], ' --wake' if wake else '')
+        print(json.dumps(result))
+        return 1
+    print(json.dumps(result))
+    return 0
 
 
 if __name__ == '__main__':

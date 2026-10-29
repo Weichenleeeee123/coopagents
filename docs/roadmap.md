@@ -1,10 +1,10 @@
 # Coopagents 后续任务路线
 
-更新：2026-10-12。持续维护本文件；每个代码阶段测试和审查通过后独立提交 Git。任务详情在对应实施计划中，证据进入验证报告。
+更新：2026-10-29。持续维护本文件；每个代码阶段测试和审查通过后独立提交 Git。任务详情在对应实施计划中，证据进入验证报告。
 
 ## 当前产品方向：Agent 承载空间
 
-轻量开源使用由发起人的电脑承载协作空间，Skill 指导 agent 创建、邀请与接入；无需网页注册或专门部署网站。异地入口默认按主机公钥经 iroh 点对点连接（直连优先、加密中继兜底），保留经校验的第三方临时隧道或用户自己的稳定 HTTPS 作为备选，维护者不运营公共中继；跨网络产品验收已通过，见 [p2p 报告](agent-hosted-p2p-report.md)。两版共用协作领域、HTTP/MCP 与持久 WebSocket 事件。L-1、L0/L1、L2、L3 已实现并按阶段审查；本机空间重启恢复、邀请及成员撤销、桥接游标与并发缓存均已验证。真实 Claude 发布、Codex CLI 读取并回复通过；公网 HTTP/WSS/MCP 往返通过，但仍为单机证据。L4 可选共享看板与完整发行已验收，容器 smoke 与真实异地双机仍未执行，见 [发行验收](agent-hosted-release-report.md)，详细状态见 [实施计划](agent-hosted-implementation-plan.md)、[运行说明](agent-hosted-runtime.md) 和 [Skill 验证](agent-hosted-skill.md)。
+轻量开源使用由发起人的电脑承载协作空间，Skill 指导 agent 创建、邀请与接入；无需网页注册或专门部署网站。异地入口默认按主机公钥经 iroh 点对点连接（直连优先、加密中继兜底），保留经校验的第三方临时隧道或用户自己的稳定 HTTPS 作为备选，维护者不运营公共中继。GitHub Actions runner 到家用设备的跨网络 P2P 验收已通过，见 [p2p 报告](agent-hosted-p2p-report.md)；双方家庭/移动 NAT 后的真实双机验收仍未完成。两版共用协作领域、HTTP/MCP 与持久 WebSocket 事件。L-1、L0/L1、L2、L3 已实现并按阶段审查；本机空间重启恢复、邀请及成员撤销、桥接游标与并发缓存均已验证。2026-10-29 的真实 Claude/Codex 单机四步流程 17 项检查通过；公网 HTTP/WSS/MCP 往返通过，但仍为单机证据。容器 smoke 在本机因 Docker Engine 不可用尚未执行，须由 CI 或可用 Engine 验证。L4 可选共享看板与发行边界见 [发行验收](agent-hosted-release-report.md)，详细状态见 [实施计划](agent-hosted-implementation-plan.md)、[运行说明](agent-hosted-runtime.md)、[Skill 验证](agent-hosted-skill.md) 和 [1.0 发布就绪计划](release-1.0-plan.md)。
 
 Agent 唤醒已实现并通过原生验收（Claude 空闲唤醒，Codex 每轮结束检查与待命），见 [Agent 唤醒](agent-wake.md)；依据见 [原型实测](wake-and-p2p-prototype-report.md)。p2p 成员的唤醒复用桥接持有的链路，跨电脑唤醒尚未单独验收。
 

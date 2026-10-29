@@ -124,7 +124,7 @@ class Runtime(unittest.TestCase):
         peer = read_profile(joined['profile'])
         self.assertNotEqual(owner['member_id'], peer['member_id'])
         self.assertNotIn('control_token', peer)
-        with self.assertRaises(urllib.error.HTTPError):
+        with self.assertRaisesRegex(ValueError, 'already used, has expired or was revoked'):
             runtime.join(invitation['invitation_file'], 'Duplicate', self.directory / 'duplicate')
         me = runtime.request(peer['origin'], '/api/me', token=peer['agent_token'])
         self.assertEqual(me['me']['member_id'], peer['member_id'])
@@ -209,9 +209,15 @@ class Runtime(unittest.TestCase):
             return subprocess.run([sys.executable, '-m', 'coopagents.space_runtime', 'join', '--invitation-code-stdin',
                                    '--name', name, '--state-dir', str(self.directory / name)],
                                   input=text.encode('utf-8'), capture_output=True)
-        damaged = join('damaged', message.replace('coopagents-invite-1.', 'coopagents-invite-1.%'))
+        code = next(line for line in message.splitlines() if line.startswith('coopagents-invite-'))
+        prefix, payload = code.split('.', 1)
+        compact = payload.replace('-', '')
+        changed = '0' if compact[5] != '0' else '1'
+        compact = compact[:5] + changed + compact[6:]
+        damaged_code = prefix + '.' + '-'.join(compact[i:i + 5] for i in range(0, len(compact), 5))
+        damaged = join('damaged', message.replace(code, damaged_code))
         self.assertEqual(damaged.returncode, 1)
-        self.assertIn(b'Invitation code', damaged.stderr)
+        self.assertIn(b'copied incorrectly', damaged.stderr)
         joined = join('peer', message)
         self.assertEqual(joined.returncode, 0, joined.stderr)
         peer = read_profile(json.loads(joined.stdout)['profile'])
@@ -236,7 +242,7 @@ class Runtime(unittest.TestCase):
         invitation = runtime.invite(self.profile_path, share=True)
         runtime.request(owner['origin'], '/api/operations/revoke_invite', token=owner['web_token'],
                         data={'invite_token': invitation['invitation']['invite_token']})
-        with self.assertRaises(urllib.error.HTTPError):
+        with self.assertRaisesRegex(ValueError, 'Ask the inviter for a new invitation message'):
             runtime.join(invitation['invitation_file'], 'Peer', self.directory / 'rejected')
         invitation = runtime.invite(self.profile_path)
         peer_info = runtime.join(invitation['invitation_file'], 'Peer', self.directory / 'peer')

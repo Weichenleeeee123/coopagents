@@ -117,8 +117,9 @@ class Connect(unittest.TestCase):
             space_connect.connect('cursor', self.profile)
 
     def test_cli_prints_json_and_fixed_errors(self):
+        # The command runs in Codex's shell, as an agent would run it.
         env = os.environ | {'FAKE_TOOL': 'codex', 'FAKE_MCP_STATE': str(self.state), 'FAKE_BROKEN': '1',
-                            'COOPAGENTS_CODEX_CLI': FAKE}
+                            'COOPAGENTS_CODEX_CLI': FAKE, 'CODEX_THREAD_ID': 'thread', 'CLAUDECODE': ''}
         # A .py path is not directly executable, so the CLI path is exercised through --cli on a wrapper.
         wrapper = self.directory / ('fake.cmd' if os.name == 'nt' else 'fake.sh')
         wrapper.write_text(('@"%s" "%s" %%*\n' if os.name == 'nt' else '#!/bin/sh\nexec "%s" "%s" "$@"\n') % (sys.executable, FAKE))
