@@ -66,7 +66,8 @@ class HarnessAdapterTests(unittest.TestCase):
         self.assertIsNone(adapter.plan(Path('.'))['entry'])
         self.assertEqual(adapter.plan(Path('.'))['transport'], 'manual')
         for url in ('http://localhost.evil/mcp', 'http://127.0.0.1.evil/mcp',
-                    'https://user:pass@team.example/mcp', 'https://team.example:99999/mcp'):
+                    'https://user:pass@team.example/mcp', 'https://team.example:99999/mcp',
+                    'https:///mcp', 'https://?server=mcp'):
             with self.subTest(url=url), self.assertRaises(ValueError):
                 adapter.plan(Path('.'), service_url=url)
         with self.assertRaises(ValueError):

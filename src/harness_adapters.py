@@ -62,7 +62,7 @@ def _remote_url(url):
     parsed = urlsplit(url)
     host = (parsed.hostname or '').lower()
     loopback = host in ('127.0.0.1', 'localhost', '::1')
-    if not (parsed.scheme == 'https' or (parsed.scheme == 'http' and loopback)):
+    if not host or not (parsed.scheme == 'https' or (parsed.scheme == 'http' and loopback)):
         raise ValueError('MCP URL must be HTTPS or loopback HTTP')
     if parsed.username or parsed.password or parsed.port is not None and not 1 <= parsed.port <= 65535:
         raise ValueError('MCP URL is invalid')

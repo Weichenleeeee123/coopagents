@@ -9,7 +9,7 @@ Status: 0.9 implementation and local acceptance complete. The release is ready f
 - `d3431f9`: explicit project asset storage, SHA-256 metadata, project/member isolation, paired SQLite/asset backup and restore.
 - `4235fa2`: authenticated multipart HTTP upload/list/download and MCP `list_assets`/`read_asset` operations.
 - `8c3cf12`: self-hosted asset workbench, explicit upload UI, source references, activity filters, stale/unavailable labels, task navigation, static resource allowlist fixes and deployment limits.
-- `d23023f`, `fcc8d19`: shared harness adapter contract, official auth interpolation and project MCP configuration adapters for Cursor, OpenCode, Pi, Kimi Code and ZCode.
+- `d23023f`, `fcc8d19`, `5957954`: shared harness adapter contract, official auth interpolation, bounded MCP asset reads, permission hardening and project MCP configuration adapters for Cursor, OpenCode, Pi, Kimi Code and ZCode.
 
 ## Acceptance evidence
 
