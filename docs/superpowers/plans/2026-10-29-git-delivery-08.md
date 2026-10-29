@@ -2,55 +2,56 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add read-only GitHub Release evidence, explicit task-to-release associations, and a bounded project activity feed derived only from structured Coopagents records.
+**Goal:** Add read-only GitHub Release evidence, explicit task-to-release associations, and a bounded project activity feed made only from structured Coopagents records.
 
-**Architecture:** Extend the existing `GitHubApp` read-only provider and `GitHubSync` snapshot rather than adding another GitHub client or event store. Store release associations in a separate additive table so existing branch/PR and commit records remain intact; build activity as a bounded read model from already-authorized project snapshots. Both the authenticated hosted GUI and loopback-only board render the same Git and activity data. Agent-private conversations, prompts, assistant responses, hidden reasoning, tool arguments/results, and transcript files are never read or stored.
+**Architecture:** Extend the existing `GitHubApp` and `GitHubSync` read-only integration. Keep release associations in a separate additive table so existing branch/PR and commit rows remain intact. Derive activity from the already-authorized service snapshot without persisting a second copy of event data. The authenticated hosted GUI and loopback-only board use the same snapshot and renderer. Agent-private conversations, prompts, assistant responses, hidden reasoning, tool arguments/results, and transcript files are never read, stored, or rendered.
 
-**Tech Stack:** Python 3.11+, SQLite, Starlette, official GitHub REST App installation tokens, plain JavaScript, Node regression scripts, unittest.
+**Tech Stack:** Python 3.11+, SQLite, Starlette, GitHub App REST API with read-only installation token, plain JavaScript, Node regression scripts, unittest.
 
 ---
 
-## Validation Environment
+## Worktree and Validation Environment
 
-Use the persistent D-drive interpreter below so this worktree does not install dependencies onto the nearly full C drive:
+Worktree branch: `feat/git-delivery-08`, rooted at `C:\Users\Weichen Li\.codex\worktrees\git-delivery-08\wo-zhe`.
+
+Use a persistent D-drive venv to avoid filling C:. From the worktree root, create it once and install the pinned service/space dependencies:
 
 ```powershell
 & 'D:\coop-e2e\tools\Scripts\python.exe' -m venv 'D:\coop-e2e\git-delivery-08-venv'
-& 'D:\coop-e2e\git-delivery-08-venv\Scripts\python.exe' -m pip install -c 'C:\Users\Weichen Li\.codex\worktrees\git-delivery-08\wo-zhe\deploy\constraints.txt' -e 'C:\Users\Weichen Li\.codex\worktrees\git-delivery-08\wo-zhe[service,space]'
-& 'D:\coop-e2e\git-delivery-08-venv\Scripts\python.exe' -c "import importlib.metadata as m,coopagents; print(m.version('coopagents'), coopagents.__file__)"
+& 'D:\coop-e2e\git-delivery-08-venv\Scripts\python.exe' -m pip install -c "$((Get-Location).Path)\deploy\constraints.txt" -e "$((Get-Location).Path)[service,space]" build twine
+& 'D:\coop-e2e\git-delivery-08-venv\Scripts\python.exe' -c "import importlib.metadata as m,coopagents; print(m.version('coopagents')); print(coopagents.__file__)"
 ```
 
-Expected version is `0.7.4`, and the import path must point into the `git-delivery-08` worktree. Unless a command explicitly writes build output to D:, tests retain their normal `.local/` evidence in the worktree and must not clean it.
+Expected: version `0.7.4`; the import path points into the `git-delivery-08` worktree. Tests retain their normal `.local/` evidence in this worktree. Never remove or clean old evidence.
 
 ## File Map
 
-- `src/github_app.py`: bounded read-only GitHub release discovery and explicit release lookup.
-- `src/github_sync.py`: additive `github_release_refs`, release normalization, evidence/snapshot filtering, release webhook invalidation.
-- `src/coordination.py`: expose release association and the activity read model through the common service.
-- `src/git_routes.py`: strict HTTP schema for release linking.
-- `src/git_adapter.py`: expose the same `release_id` field through the local Git MCP adapter.
-- `src/task_lifecycle.py`: retain and retire release associations with existing task ownership epochs.
-- `src/project_activity.py`: new pure bounded activity projection from authorized structured snapshot records.
-- `src/api.py`: expose the activity read to the hosted GUI.
-- `src/space_board.py`: activity is returned by its existing shared service snapshot; no remote board management route is added.
-- `src/static/git.js`: display releases and allow an authorized task owner/manager to associate a discovered release.
-- `src/static/project_activity.js`: new safe-DOM renderer for structured project activity.
-- `src/static/index.html`, `src/static/app.js`, `src/static/board.html`, `src/static/space_board.js`, `src/static/styles.css`: mount the shared activity renderer in hosted and local read-only views.
-- `tests/test_github_app.py`, `tests/test_github_sync.py`, `tests/test_git_routes.py`: provider, persistence, authorization, webhook and snapshot behavior.
-- `tests/test_project_activity.py`: source allowlist, ordering, bounds and transcript exclusion.
-- `tests/git_ui_regression.js`, `tests/project_activity_ui_regression.js`: release rendering/link payload and safe activity rendering.
-- `.github/workflows/ci.yml`: run the activity UI regression in CI.
-- `docs/git-github-setup.md`, `docs/git-integration-report.md`: document Release event subscription, read-only behavior, evidence and limits after verification.
+- `src/github_app.py`: bounded read-only release discovery and explicit release lookup.
+- `src/github_sync.py`: additive `github_release_refs`, release normalization/evidence, release webhook invalidation, snapshot filtering.
+- `src/coordination.py`: common `link_delivery.release_id` and bounded activity snapshot.
+- `src/git_routes.py`: strict web schema for release associations.
+- `src/git_adapter.py`, `src/mcp_service.py`: local adapter schema and user-facing agent instructions.
+- `src/task_lifecycle.py`: archive and retire release refs alongside existing branch/commit/PR refs.
+- `src/project_activity.py`: pure allowlisted activity projection.
+- `src/api.py`: expose shared activity read to the hosted GUI and serve the new asset.
+- `src/static/git.js`: render release evidence and explicitly link a discovered release to a task.
+- `src/static/project_activity.js`: safe-DOM renderer for bounded project activity.
+- `src/static/index.html`, `src/static/app.js`, `src/static/board.html`, `src/static/space_board.js`, `src/space_board.py`, `src/static/styles.css`: mount the same activity view in hosted and loopback-only board surfaces.
+- `tests/test_github_app.py`, `tests/test_github_sync.py`, `tests/test_git_routes.py`, `tests/test_task_lifecycle.py`: provider, authorization, persistence, webhook and ownership epoch behavior.
+- `tests/test_project_activity.py`: allowlisted event fields, ordering, truncation and transcript exclusion.
+- `tests/git_ui_regression.js`, `tests/project_activity_ui_regression.js`: release linking and activity privacy/safe DOM.
+- `.github/workflows/ci.yml`: run the new UI regression.
+- `docs/git-github-setup.md`, `docs/git-integration-report.md`, `docs/product-1.0-design.md`, `docs/README.md`: release subscription, observed behavior, evidence and phase status.
 
-## Task 1: Read-Only GitHub Release Provider
+## Task 1: GitHub Release Read API
 
 **Files:**
 - Modify: `tests/test_github_app.py`
 - Modify: `src/github_app.py`
 
-- [ ] **Step 1: Add a failing test for bounded recent release discovery**
+- [ ] **Step 1: Write failing discovery and identity tests**
 
-Add an HTTP mock test returning one published release from `GET /repos/acme/demo/releases`. Assert `repository_state` returns only the allowlisted fields `id`, `tag_name`, `name`, `draft`, `prerelease`, `created_at`, `published_at`, and a URL constructed under `https://github.com/acme/demo/releases/tag/<quoted-tag>`. Do not return the provider's arbitrary `html_url`, body text, upload URL, or asset download URL.
+Use the existing `httpx.MockTransport` helper. Return one release from `/repos/acme/demo/releases`; assert page size is 20 and the normalized release contains safe fields only. Include malicious `html_url`, release body, and asset download URL in the fake response and assert none are returned. Add a second test for a requested release ID fetched outside the first page and a 404 ID reported as unavailable.
 
 ```python
 def test_release_discovery_returns_bounded_safe_metadata(self):
@@ -66,7 +67,8 @@ def test_release_discovery_returns_bounded_safe_metadata(self):
             return httpx.Response(200, json=[{'id': 42, 'tag_name': 'v1.2.3', 'name': '1.2.3',
                 'draft': False, 'prerelease': False, 'created_at': '2026-01-01T00:00:00Z',
                 'published_at': '2026-01-02T00:00:00Z', 'html_url': 'https://evil.example/x',
-                'body': 'untrusted release notes'}])
+                'body': 'private-notes', 'assets': [{'name': 'app.zip', 'size': 17,
+                    'digest': 'sha256:abc', 'browser_download_url': 'https://evil.example/file'}]}])
         if request.url.path == '/repos/acme/demo/pulls':
             return httpx.Response(200, json=[])
         raise AssertionError(request.url.path)
@@ -74,54 +76,51 @@ def test_release_discovery_returns_bounded_safe_metadata(self):
     release = state['releases'][0]
     self.assertEqual(release['release_id'], 42)
     self.assertEqual(release['url'], 'https://github.com/acme/demo/releases/tag/v1.2.3')
-    self.assertNotIn('body', release)
-    self.assertNotIn('evil.example', json.dumps(release))
+    self.assertEqual(release['assets'], [{'name': 'app.zip', 'size': 17, 'digest': 'sha256:abc'}])
+    self.assertNotIn('private-notes', json.dumps(state))
+    self.assertNotIn('evil.example', json.dumps(state))
 ```
 
-- [ ] **Step 2: Run the test and confirm the missing release field fails**
+- [ ] **Step 2: Run the tests and verify the current provider fails them**
 
-Run: `& 'D:\coop-e2e\git-delivery-08-venv\Scripts\python.exe' -m unittest discover -s tests -p test_github_app.py -k release_discovery_returns_bounded_safe_metadata -v`
+Run: `& 'D:\coop-e2e\git-delivery-08-venv\Scripts\python.exe' -m unittest discover -s tests -p test_github_app.py -k release_discovery -v`
 
-Expected: FAIL because the current provider response has no `releases` field.
+Expected: FAIL because the current provider does not return a `releases` field.
 
-- [ ] **Step 3: Implement bounded release discovery and normalization**
+- [ ] **Step 3: Implement bounded release discovery**
 
-Add `RELEASE_DISCOVERY_LIMIT = 20`. Extend `repository_state(..., release_ids=())`; count release IDs against the existing 100-reference operation limit. Fetch one bounded page from `/repos/{owner}/{repo}/releases?per_page=20&page=1`, and explicit IDs from `/releases/{id}` even when they are outside the discovery page. Validate positive integer ID equality, bounded nonempty tag/name strings, exact booleans, timestamp types, and at most 20 assets. Return `release_discovery: {limit, truncated}` and `unavailable_release_ids`. Normalize only the fields in Step 1 plus asset `{name,size,digest}` metadata; build links from the already-verified repository name and a URL-quoted tag.
+Add `RELEASE_DISCOVERY_LIMIT = 20` and `RELEASE_ASSET_LIMIT = 20`. Extend `repository_state(..., release_ids=())`; count release IDs against the existing 100-reference operation budget. Fetch one page with `bounded_page(path + '/releases', token, limit=RELEASE_DISCOVERY_LIMIT)`. Fetch explicitly linked IDs through `/releases/{id}` even outside discovery. Validate matching positive ID, nonempty tag/name bounded to 250 characters, exact boolean `draft` and `prerelease`, nullable bounded timestamps, and a list of release assets. Return at most 20 asset records with `{name,size,digest}` plus `assets_truncated`. Return release fields `release_id`, `tag_name`, `name`, `draft`, `prerelease`, `created_at`, `published_at`, `target_commitish`, `assets`, and a URL constructed from the verified repository name plus URL-quoted tag. Never return body text, arbitrary provider URLs or credentials. Return `release_discovery: {limit, truncated}` and `unavailable_release_ids`.
 
-```python
-def _release_url(full_name, tag):
-    return f"https://github.com/{full_name}/releases/tag/{quote(tag, safe='')}"
-```
-
-- [ ] **Step 4: Run provider release tests**
+- [ ] **Step 4: Verify all provider tests**
 
 Run: `& 'D:\coop-e2e\git-delivery-08-venv\Scripts\python.exe' -m unittest discover -s tests -p test_github_app.py -v`
 
-Expected: all GitHub App tests pass, including the new bounded release case.
+Expected: all provider tests pass, including bounded release discovery, explicit lookup, unavailable ID, response cap, redirects and repository identity checks.
 
-- [ ] **Step 5: Commit provider support**
+- [ ] **Step 5: Commit the provider layer**
 
 ```powershell
 git add src/github_app.py tests/test_github_app.py
 git commit -m "feat: read bounded GitHub release metadata"
 ```
 
-## Task 2: Explicit Task-to-Release Associations
+## Task 2: Explicit Task-to-Release Relations
 
 **Files:**
 - Modify: `tests/test_github_sync.py`
 - Modify: `src/github_sync.py`
 
-- [ ] **Step 1: Add a failing test for explicit release association**
+- [ ] **Step 1: Write a failing task-scoped association test**
 
-Extend `FakeProvider.current` with one normalized release. Test an agent that owns the claimed task can link `release_id=42`; assert the saved row contains room/task/release IDs, linking member, timestamp, and ownership epoch. Repeat is idempotent. An agent without visibility to the task and a different room must be rejected.
+Extend `FakeProvider.current` with a normalized release. Test that the claimed task owner can link release ID 42, repeating the same request is idempotent, and a different project cannot link that task.
 
 ```python
 def test_release_link_is_task_scoped_and_idempotent(self):
     self.connect()
     self.app.current['releases'] = [{'release_id': 42, 'tag_name': 'v1.2.3', 'name': '1.2.3',
         'draft': False, 'prerelease': False, 'created_at': '2026-01-01T00:00:00Z',
-        'published_at': '2026-01-02T00:00:00Z', 'assets': [], 'url': 'https://github.com/acme/demo/releases/tag/v1.2.3'}]
+        'published_at': '2026-01-02T00:00:00Z', 'assets': [],
+        'url': 'https://github.com/acme/demo/releases/tag/v1.2.3'}]
     first = self.sync.associate(self.member['agent_token'], self.task['id'], release_id=42)
     second = self.sync.associate(self.member['agent_token'], self.task['id'], release_id=42)
     self.assertEqual(first['id'], second['id'])
@@ -130,76 +129,77 @@ def test_release_link_is_task_scoped_and_idempotent(self):
         self.sync.associate(self.other['agent_token'], self.task['id'], release_id=42)
 ```
 
-- [ ] **Step 2: Run the test and confirm it fails before implementation**
+- [ ] **Step 2: Run the test and verify it fails for the missing release field**
 
 Run: `& 'D:\coop-e2e\git-delivery-08-venv\Scripts\python.exe' -m unittest discover -s tests -p test_github_sync.py -k release_link_is_task_scoped_and_idempotent -v`
 
-Expected: FAIL because `associate` does not yet accept `release_id`.
+Expected: FAIL because `associate` does not accept `release_id`.
 
-- [ ] **Step 3: Add an additive release-reference table**
+- [ ] **Step 3: Add an additive reference table**
 
-Create `github_release_refs` in `GitHubSync.__init__` with `id`, `room_id`, `task_id`, `release_id`, `linked_by`, `linked_at`, `ownership_epoch`, unique `(room_id, task_id, release_id)`, and the existing composite task/room foreign key. Do not rewrite or rename existing branch/PR or commit tables.
+Create `github_release_refs` in `GitHubSync.__init__` with `id`, `room_id`, `task_id`, `release_id`, `linked_by`, `linked_at`, `ownership_epoch`, unique `(room_id, task_id, release_id)`, and the existing composite task/room foreign key. Preserve `github_refs` and `github_commit_refs` without rewrite or row copying.
 
-- [ ] **Step 4: Extend association validation and the shared reference cap**
+- [ ] **Step 4: Extend association validation and the project reference cap**
 
-Extend `associate(..., release_id=None, ...)`. Require exactly one of branch, PR number, commit SHA, or release ID. Validate `release_id` with `positive_id`, use an idempotent lookup/insert, increment the GitHub connection revision on a new association, and include release refs in `MAX_REFS` accounting.
+Extend `associate(..., release_id=None, ...)`. Exactly one reference kind must be present among nonempty branch, PR number, commit SHA and release ID. Validate release ID with `positive_id`; add release lookup/insert, idempotency, connection revision increment, and count `github_release_refs` in the existing `MAX_REFS` total.
 
 ```python
-references = sum(value is not None for value in (bool(branch), pr_number, bool(commit_sha), release_id))
-if references != 1:
+reference_count = sum((bool(branch), pr_number is not None, bool(commit_sha), release_id is not None))
+if reference_count != 1:
     raise ValidationError('Specify exactly one branch, PR, commit or release')
+if release_id is not None:
+    positive_id(release_id)
 ```
 
-- [ ] **Step 5: Verify the focused sync tests**
+- [ ] **Step 5: Verify release relation authorization and idempotency**
 
 Run: `& 'D:\coop-e2e\git-delivery-08-venv\Scripts\python.exe' -m unittest discover -s tests -p test_github_sync.py -k release_link -v`
 
-Expected: release ownership, duplicate idempotency, and cross-room denial pass.
+Expected: owner and current task agent succeed; duplicate link returns the original row; cross-room, nonowner-task, boolean ID, and cap-overflow requests fail.
 
-- [ ] **Step 6: Commit release association persistence**
+- [ ] **Step 6: Commit the domain table and association**
 
 ```powershell
 git add src/github_sync.py tests/test_github_sync.py
 git commit -m "feat: link GitHub releases to tasks"
 ```
 
-## Task 3: Release Evidence, Webhook Invalidation, and Lifecycle Retention
+## Task 3: Release Evidence, Signed Events, and Task History
 
 **Files:**
 - Modify: `tests/test_github_sync.py`
 - Modify: `tests/test_github_app.py`
 - Modify: `tests/test_git_routes.py`
 - Modify: `src/github_sync.py`
-- Modify: `src/github_app.py`
 - Modify: `src/task_lifecycle.py`
 
-- [ ] **Step 1: Add failing tests for linked release evidence and release webhook acceptance**
+- [ ] **Step 1: Add failing release snapshot and webhook tests**
 
-After refresh, assert the linked release appears in `snapshot()['deliveries']` with `source='github_verified'`, `release_id`, `tag_name`, published/draft/prerelease state, repository identity, sync time, and the safe constructed URL. Assert a missing linked release is `unavailable` without revoking other delivery evidence. Sign a release webhook with the existing test HMAC and assert it is queued; a forged signature remains rejected.
+Assert refresh projects a linked release into `deliveries` with release ID, tag, draft/prerelease/published state, safe URL, repository ID, source, sync time, asset truncation state and stale flag. A missing release becomes `unavailable` and does not revoke branch/PR evidence. A valid signed `release` webhook is queued; an invalid signature remains rejected; webhook body text is not persisted.
 
-- [ ] **Step 2: Run the focused tests and verify red**
+- [ ] **Step 2: Run and verify the new release evidence test fails**
 
 Run: `& 'D:\coop-e2e\git-delivery-08-venv\Scripts\python.exe' -m unittest discover -s tests -p test_github_sync.py -k release_evidence -v`
 
-Expected: FAIL because release refs and the release webhook event are not represented in current evidence.
+Expected: FAIL because release references are not included in reconciliation, evidence or event allowlisting.
 
-- [ ] **Step 3: Normalize releases into delivery evidence**
+- [ ] **Step 3: Normalize only linked releases into task delivery evidence**
 
-Add `releases` and `unavailable_release_ids` validation to `GitHubSync._evidence`. Merge only linked releases into delivery rows; do not infer release membership from branch names, commit messages, unverified notes, or dates. Preserve the connection revision guard and total `MAX_EVIDENCE_BYTES` limit.
+Extend `_evidence` to validate `state['releases']`, discovery bounds and unavailable IDs. For each `github_release_refs` row, emit one `source='github_verified'` delivery with the stable reference ID and `ownership_epoch`. Draft, prerelease and published remain distinct states. Use the provider-safe URL from `GitHubApp`; do not infer task links from release body, tag text, commit message or proximity.
 
-- [ ] **Step 4: Include release references in reconciliation and snapshots**
+- [ ] **Step 4: Reconcile linked releases and filter active snapshot rows**
 
-Load `github_release_refs` in `_reconcile`, pass sorted unique release IDs to `repository_state`, and filter snapshot rows against active release refs, task ownership epoch, task cancellation, connection status, association time, and stale evidence exactly as existing Git/commit deliveries are filtered.
+Load the release-reference table in `_reconcile`, pass sorted unique release IDs to `repository_state`, and include its JSON in the existing evidence-size check. In `snapshot`, retain a release delivery only if its reference exists, its task is visible and not cancelled, its ownership epoch matches, and sync evidence is not older than the link. Preserve revision guards and stale evidence semantics.
 
-- [ ] **Step 5: Accept the signed release webhook as an invalidation event**
+- [ ] **Step 5: Add signed release-event invalidation**
 
-Add only the GitHub `release` event to `EVENTS`. Reuse the existing signature verification, size bounds, repository/installation identity checks, durable inbox, retry, and reconciliation path. Do not store the webhook body or release notes.
+Add only `release` to the existing `EVENTS` allowlist. Reuse the same signature, byte limit, delivery-id idempotency, installation/repository validation, retry and reconciliation path. Do not store webhook bodies or release notes.
 
-- [ ] **Step 6: Preserve release references in lifecycle history**
+- [ ] **Step 6: Preserve association history across task ownership changes**
 
-Add `github_release_refs` to `task_lifecycle.context_for` and `retire_execution`. Ownership change must detach active associations as the existing Git refs are detached, while lifecycle history retains the bounded reference metadata. Update tests to prove a handoff preserves prior history but does not make stale release evidence current for the new owner epoch.
+Add `github_release_refs` to `task_lifecycle.context_for` and `retire_execution`. Preserve the old relation in lifecycle history and detach it from the current execution epoch exactly as branch and commit refs are handled. Add a regression proving an old owner epoch cannot surface as current release evidence.
 
-- [ ] **Step 7: Verify provider, sync, webhook, and lifecycle tests**
+- [ ] **Step 7: Verify provider, sync and lifecycle suites**
 
 Run: `& 'D:\coop-e2e\git-delivery-08-venv\Scripts\python.exe' -m unittest discover -s tests -p test_github_app.py -v`
 
@@ -207,16 +207,16 @@ Run: `& 'D:\coop-e2e\git-delivery-08-venv\Scripts\python.exe' -m unittest discov
 
 Run: `& 'D:\coop-e2e\git-delivery-08-venv\Scripts\python.exe' -m unittest discover -s tests -p test_task_lifecycle.py -v`
 
-Expected: all selected tests pass; existing branch/PR/commit and revoked-install behavior is unchanged.
+Expected: selected suites pass and existing PR/branch/commit behavior is unchanged.
 
 - [ ] **Step 8: Commit evidence and lifecycle behavior**
 
 ```powershell
-git add src/github_app.py src/github_sync.py src/task_lifecycle.py tests/test_github_app.py tests/test_github_sync.py tests/test_git_routes.py
-git commit -m "feat: reconcile release evidence and preserve task history"
+git add src/github_sync.py src/task_lifecycle.py tests/test_github_sync.py tests/test_github_app.py tests/test_git_routes.py
+git commit -m "feat: reconcile GitHub release evidence"
 ```
 
-## Task 4: Expose Release Linking Through HTTP and Agent MCP
+## Task 4: HTTP and MCP Contract
 
 **Files:**
 - Modify: `tests/test_git_routes.py`
@@ -226,89 +226,93 @@ git commit -m "feat: reconcile release evidence and preserve task history"
 - Modify: `src/git_adapter.py`
 - Modify: `src/mcp_service.py`
 
-- [ ] **Step 1: Add failing HTTP and MCP schema tests**
+- [ ] **Step 1: Add failing strict-schema tests**
 
-Verify `/api/git/github/link` accepts `release_id` only as a positive integer, rejects booleans, unknown keys, and mixed release+PR arguments, and the authenticated MCP `link_delivery` schema exposes optional `release_id` without adding any management permission.
+Verify `/api/git/github/link` accepts a positive integer `release_id`, rejects boolean IDs, unknown fields and mixed release+PR fields, and the MCP `link_delivery` schema exposes the same optional integer without widening authorization.
 
-- [ ] **Step 2: Run focused tests and verify red**
+- [ ] **Step 2: Run and verify the request is rejected by the current schema**
 
 Run: `& 'D:\coop-e2e\git-delivery-08-venv\Scripts\python.exe' -m unittest discover -s tests -p test_git_routes.py -v`
 
-Expected: the request containing `release_id` is rejected by the current strict schema.
+Expected: the valid release request currently receives HTTP 400.
 
-- [ ] **Step 3: Extend the common operation schema and route**
+- [ ] **Step 3: Extend the shared operation and HTTP schema**
 
-Add `'release_id': (int, False, None)` to the common `link_delivery` operation and HTTP body schema. Preserve the existing agent task-owner check and manager-only web authorization performed by `GitHubSync.associate`.
+Add `release_id: (int, False, None)` to `link_delivery` in `CoordinationService` and the exact HTTP body schema. Leave route roles unchanged; the domain `associate` remains responsible for current task ownership, manager permission, repository authorization and reference cap.
 
-- [ ] **Step 4: Extend the local Git adapter and tool description**
+- [ ] **Step 4: Extend the local adapter schema and description**
 
-Add optional integer `release_id` to the adapter's `link_delivery` request schema and document that a release is linked by ID from the verified project release list. Do not let the adapter create or publish a release. Keep tool inputs limited to schema-approved scalar identifiers.
+Add optional `release_id` to `git_adapter`'s `link_delivery` schema. Update `mcp_service.py` to explain that agents may associate a discovered Release ID with a task; the operation does not create or publish releases. Preserve the “exactly one reference kind” rule.
 
-- [ ] **Step 5: Verify route, MCP forwarding, and auth tests**
+- [ ] **Step 5: Verify web/MCP contract**
 
 Run: `& 'D:\coop-e2e\git-delivery-08-venv\Scripts\python.exe' -m unittest discover -s tests -p test_git_routes.py -v`
 
 Run: `& 'D:\coop-e2e\git-delivery-08-venv\Scripts\python.exe' -m unittest discover -s tests -p test_git_adapter.py -v`
 
-Expected: valid association reaches the same domain method; invalid schemas and unauthorized member/task cases are rejected.
+Expected: valid release association reaches the common domain operation; invalid fields and unauthorized principals fail.
 
-- [ ] **Step 6: Commit the API contract**
+- [ ] **Step 6: Commit the public contract**
 
 ```powershell
 git add src/coordination.py src/git_routes.py src/git_adapter.py src/mcp_service.py tests/test_git_routes.py tests/test_github_sync.py
-git commit -m "feat: expose task release linking to web and agents"
+git commit -m "feat: expose task release linking to agents and web"
 ```
 
-## Task 5: Bounded Structured Project Activity Read Model
+## Task 5: Bounded Activity Projection
 
 **Files:**
 - Create: `src/project_activity.py`
 - Create: `tests/test_project_activity.py`
 - Modify: `src/coordination.py`
 
-- [ ] **Step 1: Add failing tests for approved activity sources and transcript exclusion**
+- [ ] **Step 1: Add a failing privacy/ordering test**
 
-Build a fixture with a task lifecycle event, explicit `report_progress`, request/reply receipt states, contract decision, local Git observation, and a verified release delivery. Assert each feed item contains only `id`, `type`, `occurred_at`, `actor_member_id`, `task_id`, `source`, `summary`, and safe object references. Assert raw request body, arbitrary tool arguments, fake `prompt`, `assistant_response`, `transcript_path`, and `tool_result` fields never appear even if present in the input snapshot.
+Use fixtures for lifecycle event, explicit progress report, session registration, request/reply status, contract decision, Git observation and verified release. Assert the output is timestamp ordered, bounded, uses only the declared fields and drops arbitrary transcript/prompt/tool payload properties.
 
 ```python
-def test_activity_uses_only_allowlisted_structured_facts():
-    snapshot = {'progress': [{'task_id': 1, 'member_id': 'm', 'state': 'working',
-        'summary': 'Tests pass', 'evidence': 'ci run 12', 'updated_at': '2026-01-01T00:00:00Z',
-        'prompt': 'PRIVATE-PROMPT'}], 'private_transcript': 'DO-NOT-EXPORT'}
-    feed = project_activity(snapshot)
-    encoded = json.dumps(feed)
-    assert 'Tests pass' in encoded
-    assert 'PRIVATE-PROMPT' not in encoded
-    assert 'DO-NOT-EXPORT' not in encoded
+import json
+import unittest
+from coopagents.project_activity import project_activity
+
+class ProjectActivityTests(unittest.TestCase):
+    def test_explicit_progress_is_visible_but_transcript_fields_are_not(self):
+        snapshot = {'progress': [{'task_id': 1, 'member_id': 'm', 'state': 'working',
+            'summary': 'Tests pass', 'evidence': 'CI run 12', 'updated_at': '2026-01-01T00:00:00Z',
+            'prompt': 'PRIVATE-PROMPT'}], 'transcript': 'PRIVATE-TRANSCRIPT'}
+        output = json.dumps(project_activity(snapshot))
+        self.assertIn('Tests pass', output)
+        self.assertNotIn('PRIVATE-PROMPT', output)
+        self.assertNotIn('PRIVATE-TRANSCRIPT', output)
 ```
 
-- [ ] **Step 2: Run the new activity test and verify red**
+- [ ] **Step 2: Verify red**
 
 Run: `& 'D:\coop-e2e\git-delivery-08-venv\Scripts\python.exe' -m unittest discover -s tests -p test_project_activity.py -v`
 
-Expected: FAIL because `project_activity` does not exist.
+Expected: FAIL because the projection module does not exist.
 
-- [ ] **Step 3: Implement a pure allowlisted event projection**
+- [ ] **Step 3: Implement a pure allowlisted projection**
 
-Implement `project_activity(snapshot, limit=100)` as a pure function. It consumes only the explicit source collections listed in this task, maps each source with hand-written field allowlists, emits no bodies or arbitrary nested payloads, sorts by timestamp descending then stable source/id, caps the output at 100, and returns a `truncated` flag. Progress text is included only from the explicit `report_progress` record. Team request/reply bodies remain accessible solely through the existing explicit collaboration tools/UI, not duplicated into activity.
+Define `project_activity(snapshot, limit=100)`. Convert each approved source into `{id,type,occurred_at,actor_member_id,task_id,source,summary,reference}` using hand-written field mapping. Sort newest first with stable tie-breaks; cap at 100 and return `truncated`. Allowed source values are `lifecycle`, explicit `agent_report` progress, session registration metadata, collaboration request/reply/read/processed/resolved status, contract events, local Git observations and verified GitHub deliveries. Never copy message bodies, contract bodies, arbitrary nested source dictionaries, webhook payloads, prompt/response fields or transcript paths. Only the explicit progress summary/evidence fields may appear as agent-authored text.
 
-- [ ] **Step 4: Add activity to the shared authorized service snapshot**
+- [ ] **Step 4: Attach activity to the common authorized snapshot**
 
-In `CoordinationService.snapshot`, build the existing authorized snapshot first, then attach `activity` from that already-filtered result. Do not query private files, harness session logs, chat history, webhooks' raw bodies, or transcript paths. Keep one implementation so hosted API, authenticated MCP snapshot, and loopback-only board receive identical activity semantics.
+After `CoordinationService.snapshot` has assembled all existing role-filtered reads, compute `result['activity'] = project_activity(result)`. Do not add a persistent duplicate activity table or a new privilege. Existing service, MCP and board callers then receive the same bounded data.
 
-- [ ] **Step 5: Verify activity ordering, bounds, and privacy tests**
+- [ ] **Step 5: Verify read-only board and privacy**
 
 Run: `& 'D:\coop-e2e\git-delivery-08-venv\Scripts\python.exe' -m unittest discover -s tests -p test_project_activity.py -v`
 
 Run: `& 'D:\coop-e2e\git-delivery-08-venv\Scripts\python.exe' -m unittest discover -s tests -p test_space_board.py -v`
 
-Expected: ordered page is at most 100, `truncated` is correct, secrets/transcripts are absent, and the board snapshot remains read-only without writing message receipts.
+Expected: no inbox receipts are written by snapshots; activity is bounded and transcript values are absent.
 
 - [ ] **Step 6: Commit the read model**
 
 ```powershell
 git add src/project_activity.py src/coordination.py tests/test_project_activity.py
-git commit -m "feat: expose bounded structured project activity"
+git commit -m "feat: add bounded structured project activity"
 ```
 
 ## Task 6: Shared Git and Activity UI
@@ -327,27 +331,27 @@ git commit -m "feat: expose bounded structured project activity"
 - Create: `tests/project_activity_ui_regression.js`
 - Modify: `.github/workflows/ci.yml`
 
-- [ ] **Step 1: Add failing Git UI tests for release metadata and linking**
+- [ ] **Step 1: Add failing release UI tests**
 
-Extend `tests/git_ui_regression.js` with a verified release delivery containing `release_id`, `tag_name`, `state`, and a safe release URL. Assert the detail shows the tag, published/draft/prerelease state and source freshness. Assert the task link form sends `release_id` as a number and never includes release notes, asset contents, or arbitrary provider URL.
+Extend `tests/git_ui_regression.js` with release delivery fields. Assert task detail displays tag and draft/prerelease/published status, uses only a safe GitHub release URL, shows sync source/time, and the link form sends numeric `release_id` without release notes or asset bodies.
 
 - [ ] **Step 2: Add failing activity UI tests**
 
-Create `tests/project_activity_ui_regression.js` using the repository's existing minimal DOM stubs. Assert event summary and source render as text nodes, chronological ordering is stable, missing timestamps are labeled unknown, and prompt/transcript/tool payload fields are not rendered.
+Use the existing minimal DOM test harness style. Assert event text is rendered with text nodes, newest-first order is stable, truncation is shown, and arbitrary `prompt`, `assistant_response`, `tool_input`, `tool_result` and transcript properties are ignored.
 
-- [ ] **Step 3: Implement release rendering and explicit association**
+- [ ] **Step 3: Render discovered releases and associate explicitly**
 
-Extend shared `Git.renderDetails` and `renderPanel` to show bounded discovered releases and explicit task release links. Add an accessible numeric release picker/list that sends only `{task_id, release_id}` to the existing link route. Build release links from validated GitHub repository/tag data or accept only the already-sanitized server URL. Do not make releases imply task acceptance.
+Extend shared `Git.renderDetails` to display verified Release metadata. Add a release selector using numeric IDs from the bounded discovered list; its submit payload contains only `{task_id, release_id}`. Render provider strings using `textContent`; link only the server-constructed GitHub release URL. A published release remains delivery evidence and never sets task state to accepted.
 
-- [ ] **Step 4: Implement the shared activity renderer**
+- [ ] **Step 4: Implement shared activity renderer**
 
-Create a renderer that accepts the allowlisted `snapshot.activity` shape, builds all content with `textContent`, labels actor/time/source, links only safe task and Git object URLs, and displays the truncation state. Never render arbitrary raw event JSON or text fields not defined by the read model.
+Create `ProjectActivity.render(root, activity)` that accepts only the declared event properties, creates nodes with `document.createElement`, writes all text through `textContent`, and displays the projection's truncation indicator. It must not use `innerHTML` or read any browser/session transcript source.
 
-- [ ] **Step 5: Mount the renderer in hosted and local views**
+- [ ] **Step 5: Mount the same activity view in both deployment modes**
 
-Add the activity section to the authenticated hosted workspace and the host loopback board. Add the script to the HTTP asset allowlist and the board static allowlist. Both surfaces use the same renderer and same snapshot; the local board remains read-only and no public management route is added.
+Add the hosted panel to `index.html` and call it from the existing snapshot render in `app.js`. Add the renderer asset to `api.py`'s explicit allowlist. Add the activity section and script to `board.html`, add it to `space_board.py`'s existing static allowlist, and render from the common board snapshot in `space_board.js`. Preserve the local board's narrow read-only route set.
 
-- [ ] **Step 6: Verify JavaScript regressions**
+- [ ] **Step 6: Run UI regressions**
 
 Run: `node tests/git_ui_regression.js`
 
@@ -357,16 +361,16 @@ Run: `node tests/board_ui_regression.js`
 
 Run: `node tests/web_session_regression.js src/static/app.js`
 
-Expected: release links, activity privacy, project switching, and existing Git checks pass with no unsafe HTML nodes.
+Expected: all pass; no unsafe DOM node is created from GitHub/provider/activity text.
 
 - [ ] **Step 7: Commit shared UI**
 
 ```powershell
 git add src/static/git.js src/static/project_activity.js src/static/index.html src/static/app.js src/static/board.html src/static/space_board.js src/space_board.py src/api.py src/static/styles.css tests/git_ui_regression.js tests/project_activity_ui_regression.js .github/workflows/ci.yml
-git commit -m "feat: show release delivery and project activity"
+git commit -m "feat: show GitHub releases and project activity"
 ```
 
-## Task 7: Documentation and End-to-End Regression
+## Task 7: Documentation and Release Checks
 
 **Files:**
 - Modify: `docs/git-github-setup.md`
@@ -374,15 +378,15 @@ git commit -m "feat: show release delivery and project activity"
 - Modify: `docs/product-1.0-design.md`
 - Modify: `docs/README.md`
 
-- [ ] **Step 1: Document the release read scope**
+- [ ] **Step 1: Document the GitHub Release read model**
 
-Document the GitHub `release` webhook subscription, the Contents-read-only requirement, how to find and explicitly link a discovered release ID to a task, allowed release metadata, stale/unavailable states, and that no release is created or published by Coopagents.
+Document the `release` webhook subscription, that Contents-read access is used, how to associate a discovered release ID, the 20-release discovery/asset metadata bounds, stale/unavailable statuses, and that Coopagents never creates or publishes releases.
 
-- [ ] **Step 2: Document the activity privacy contract**
+- [ ] **Step 2: Document project activity privacy**
 
-Document which structured collaboration/Git facts appear in the feed, the 100-event bound, how truncated/stale evidence is labeled, and the hard prohibition on reading or storing harness transcripts, private prompts, tool arguments/results, and raw webhook bodies.
+Document the allowlisted structured sources, timestamp/source/stale fields, 100-item cap, and the invariant that private harness transcripts, prompts, responses, hidden reasoning, tool inputs/results and raw webhook bodies are never read, stored or rendered.
 
-- [ ] **Step 3: Run the full Python, browser, and package checks**
+- [ ] **Step 3: Run complete verification from the worktree**
 
 Run: `$env:CODEX_THREAD_ID=''; $env:CODEX_SESSION_ID=''; $env:CLAUDECODE=''; & 'D:\coop-e2e\git-delivery-08-venv\Scripts\python.exe' -m unittest discover -s tests -v`
 
@@ -400,21 +404,22 @@ Run: `& 'D:\coop-e2e\git-delivery-08-venv\Scripts\python.exe' -m build --outdir 
 
 Run: `& 'D:\coop-e2e\git-delivery-08-venv\Scripts\python.exe' -m twine check 'D:\coop-e2e\git-delivery-08-build\dist\*'`
 
-Expected: every command exits 0. Keep generated databases and logs under `.local/`; do not delete prior evidence.
+Expected: all commands exit 0. Docker validation is recorded only if a Docker Engine is available; local unit/JS tests are not described as live GitHub App acceptance.
 
-- [ ] **Step 4: Commit documentation and final checks**
+- [ ] **Step 4: Commit docs and verify the final tree**
 
 ```powershell
 git add docs/git-github-setup.md docs/git-integration-report.md docs/product-1.0-design.md docs/README.md
-git commit -m "docs: record 0.8 Git delivery and activity behavior"
+git commit -m "docs: record 0.8 Git delivery and activity"
 git diff --check
 ```
 
 ## Completion Criteria
 
-- A task can be explicitly linked to a verified GitHub Release through both the web route and agent `link_delivery`; authorization, room isolation, ownership epoch, idempotency, and reference caps remain enforced.
-- Release evidence is read-only, bounded, sanitized, tied to the configured repository ID, and updated by signed `release` webhooks plus existing reconciliation.
-- Hosted GUI and local read-only board show the same Release and activity records.
-- Activity is a read-only projection of structured project records. No prompt, private assistant response, hidden reasoning, raw tool payload/result, transcript path, or raw webhook body is queried or displayed.
-- Existing branch/commit/PR behavior and task delivery/acceptance semantics are unchanged.
-- Focused tests, full Python/experiment suites, web regressions, package build and `twine check` pass.
+- A task can be linked to exactly one discovered Release ID via web or agent `link_delivery`; all existing role, task owner, idempotency, cap and ownership epoch checks remain enforced.
+- Release data is read-only, size-bounded, tied to the configured repository ID, and only GitHub-authenticated evidence is labeled verified.
+- Signed `release` webhook events enter the same durable bounded inbox and trigger reconciliation without persisting raw bodies.
+- Hosted GUI and loopback-only local board show the same Release and bounded activity projection.
+- Activity comes only from structured project records; no private transcript material is queried or persisted.
+- Existing branch/PR/commit behavior and task acceptance semantics are unchanged.
+- Focused and full Python suites, experiment suites, browser regressions, build and twine checks pass.

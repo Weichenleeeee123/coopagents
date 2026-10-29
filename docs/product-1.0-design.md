@@ -77,7 +77,7 @@ Coopagents 让多个 coding agent 围绕同一个项目协作，同时保留各�
 ### 0.8：Git 交付关系与项目活动
 
 - 把 branch 纳入 task delivery 图，与 commit SHA、PR 和 GitHub Release 建立多对多关系；延续本地 Git 与 GitHub 两套明确来源。
-- 在 GitHub 只读适配器中同步 release/tag/目标 SHA/发布时间及安全的资产元数据；支持任务与 release 的明确关联和由关联 PR/commit 计算的可解释包含关系。
+- 在 GitHub 只读适配器中同步 release/tag/目标 SHA/发布时间及安全的资产元数据；任务与 release 使用明确的多对多关联。0.8 不以自然语言、日期或 tag 相似度推断包含关系。
 - 提供 `suggested`/`explicit`/`observed` 关联来源，处理分支改名、force-push、PR 重定向或关闭、release 更新、检查截断和陈旧证据；不自动更改任务验收状态。
 - 扩展自托管 GUI 与本机只读看板，在 task/project 视图展示 Git 交付图和结构化活动。
 - transcript 禁止进入数据库、MCP 工具、webhook 队列、日志或 UI；新增隐私回归直接尝试注入伪造 prompt/response 字段，确认被拒或忽略。
