@@ -10,13 +10,17 @@ class AssetHTTPTests(unittest.TestCase):
         self.addCleanup(self.live.close)
         self.owner, self.member = self.live.bootstrap()
 
-    def multipart(self, filename='guide.md', media_type='text/markdown', content=b'asset body', extra=''):
+    def multipart(self, filename='guide.md', media_type='text/markdown', content=b'asset body', source=None):
         boundary = 'coopagents-test-boundary'
         chunks = [
             ('--' + boundary + '\r\nContent-Disposition: form-data; name="file"; filename="' + filename + '"\r\nContent-Type: ' + media_type + '\r\n\r\n').encode(),
             content,
-            ('\r\n--' + boundary + '--\r\n').encode(),
+            b'\r\n',
         ]
+        if source:
+            for name, value in source.items():
+                chunks.extend([('--' + boundary + '\r\nContent-Disposition: form-data; name="' + name + '"\r\n\r\n' + value + '\r\n').encode()])
+        chunks.append(('--' + boundary + '--\r\n').encode())
         return b''.join(chunks), {'Content-Type': 'multipart/form-data; boundary=' + boundary}
 
     def test_explicit_upload_list_download_and_hash_headers(self):
@@ -56,6 +60,16 @@ class AssetHTTPTests(unittest.TestCase):
                                                headers=headers, raw=body)
         self.assertEqual(status, 413, result)
         self.assertEqual(self.live.request('GET', '/api/assets', self.owner['web_token'])[1]['assets'], [])
+
+    def test_upload_keeps_an_explicit_safe_repository_path_reference(self):
+        body, headers = self.multipart(source={'source_type':'path','source_ref':'docs/guide.md'})
+        status, uploaded, _ = self.live.request('POST', '/api/assets', self.owner['web_token'],
+                                                 headers=headers, raw=body)
+        self.assertEqual(status, 201, uploaded)
+        self.assertEqual((uploaded['source_type'],uploaded['source_ref']),('path','docs/guide.md'))
+        body, headers = self.multipart(filename='private.md',source={'source_type':'path','source_ref':'../private.md'})
+        self.assertEqual(self.live.request('POST', '/api/assets', self.owner['web_token'],
+            headers=headers, raw=body)[0],400)
 
 
 if __name__ == '__main__':

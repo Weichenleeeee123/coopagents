@@ -52,6 +52,8 @@ docker compose cp app:/data/backups/coopagents-20261010-01.sqlite3 .local/coopag
 
 项目资产内容存于 `/data/coopagents.sqlite3.assets/`，SQLite 单文件备份不包含这些内容。含项目资产时必须成对备份数据库和资产目录，并将两份产物一起复制到受保护的独立介质：
 
+容量配置使用 `.env` 中的 `COOPAGENTS_ASSET_MAX_FILE_BYTES`、`COOPAGENTS_ASSET_MAX_PROJECT_BYTES` 和 `COOPAGENTS_ASSET_MAX_TOTAL_BYTES`，以字节计，默认 10 MiB / 100 MiB / 1 GiB；文件上限必须小于等于项目上限，项目上限必须小于等于服务总上限。配置无效时服务拒绝启动。
+
 ```bash
 docker compose exec app python -m coopagents.backup backup /data/coopagents.sqlite3 /data/backups/coopagents-20261010-01.sqlite3 --assets-source /data/coopagents.sqlite3.assets --assets-destination /data/backups/coopagents-20261010-01.sqlite3.assets
 docker compose cp app:/data/backups/coopagents-20261010-01.sqlite3 .local/coopagents-20261010-01.sqlite3

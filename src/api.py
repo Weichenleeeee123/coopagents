@@ -378,8 +378,11 @@ def create_app(database_path='.local/coopagents.sqlite3', *, base_url=None, publ
         assets = {'/': ('index.html', 'text/html'),
                   '/static/styles.css': ('styles.css', 'text/css'),
                   '/static/app.js': ('app.js', 'text/javascript'),
+                  '/static/board.js': ('board.js', 'text/javascript'),
                   '/static/git.js': ('git.js', 'text/javascript'),
+                  '/static/realtime_client.js': ('realtime_client.js', 'text/javascript'),
                   '/static/project_activity.js': ('project_activity.js', 'text/javascript'),
+                  '/static/project_assets.js': ('project_assets.js', 'text/javascript'),
                   '/static/collaboration.js': ('collaboration.js', 'text/javascript'),
                   '/static/dependencies.js': ('dependencies.js', 'text/javascript'),
                   '/static/task_lifecycle.js': ('task_lifecycle.js', 'text/javascript'),
@@ -393,7 +396,7 @@ def create_app(database_path='.local/coopagents.sqlite3', *, base_url=None, publ
         resource, mime = assets[request.url.path]
         return Response(files('coopagents').joinpath('static', resource).read_bytes(), media_type=mime, headers=headers)
 
-    routes = [Route(path, web_asset, methods=['GET']) for path in ('/', '/static/styles.css', '/static/app.js', '/static/git.js', '/static/project_activity.js', '/static/collaboration.js', '/static/task_lifecycle.js', '/static/dependencies.js', '/static/accounts.js', '/static/invitations.js', '/static/billing.js', '/static/icon.png', '/favicon.ico')]
+    routes = [Route(path, web_asset, methods=['GET']) for path in ('/', '/static/styles.css', '/static/app.js', '/static/board.js', '/static/realtime_client.js', '/static/git.js', '/static/project_activity.js', '/static/project_assets.js', '/static/collaboration.js', '/static/task_lifecycle.js', '/static/dependencies.js', '/static/accounts.js', '/static/invitations.js', '/static/billing.js', '/static/icon.png', '/favicon.ico')]
     routes += [Route('/api/assets', asset_list, methods=['GET']), Route('/api/assets', asset_upload, methods=['POST']),
                Route('/api/assets/{asset_id:str}', asset_read, methods=['GET'])]
     routes += [route('/health', ['GET']), route('/ready', ['GET']), route('/api/rooms', ['POST'], operation='create_room'), route('/api/join', ['POST'], operation='join'),

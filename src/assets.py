@@ -1,7 +1,10 @@
 """Explicit, project-scoped file sharing with content-address verification."""
 from datetime import datetime, timezone
 import hashlib
+import os
 from pathlib import Path
+from pathlib import PurePosixPath, PureWindowsPath
+import stat
 from uuid import uuid4
 
 from .errors import AccessDenied, NotFound, ValidationError
@@ -11,9 +14,37 @@ SAFE_MEDIA_TYPES = frozenset({
     'application/json', 'application/octet-stream', 'application/pdf',
     'image/jpeg', 'image/png', 'image/webp', 'text/markdown', 'text/plain',
 })
-SAFE_SOURCE_TYPES = frozenset({'upload', 'commit', 'pull_request', 'release'})
+SAFE_SOURCE_TYPES = frozenset({'upload', 'path', 'commit', 'pull_request', 'release'})
 MAX_FILENAME_BYTES = 255
 MAX_SOURCE_REF = 500
+DEFAULT_ASSET_LIMITS = {
+    'max_file_bytes': 10 * 1024 * 1024,
+    'max_project_bytes': 100 * 1024 * 1024,
+    'max_total_bytes': 1024 * 1024 * 1024,
+}
+ASSET_LIMIT_ENV = {
+    'max_file_bytes': 'COOPAGENTS_ASSET_MAX_FILE_BYTES',
+    'max_project_bytes': 'COOPAGENTS_ASSET_MAX_PROJECT_BYTES',
+    'max_total_bytes': 'COOPAGENTS_ASSET_MAX_TOTAL_BYTES',
+}
+
+
+def asset_limits_from_env(environ=None):
+    environ = os.environ if environ is None else environ
+    limits = dict(DEFAULT_ASSET_LIMITS)
+    for name, key in ASSET_LIMIT_ENV.items():
+        raw = environ.get(key)
+        if raw is None:
+            continue
+        if not isinstance(raw, str) or not raw.isdecimal():
+            raise ValueError('Asset storage limits must be positive integer byte counts')
+        value = int(raw)
+        if not 1 <= value <= 1024 * 1024 * 1024 * 1024:
+            raise ValueError('Asset storage limits must be between 1 byte and 1 TiB')
+        limits[name] = value
+    if limits['max_file_bytes'] > limits['max_project_bytes'] or limits['max_project_bytes'] > limits['max_total_bytes']:
+        raise ValueError('Asset limits must satisfy file <= project <= total')
+    return limits
 
 
 def _bounded_positive(name, value):
@@ -24,12 +55,15 @@ def _bounded_positive(name, value):
 
 class AssetStore:
     def __init__(self, identity, data_root, *, max_file_bytes=10 * 1024 * 1024,
-                 max_project_bytes=100 * 1024 * 1024):
+                 max_project_bytes=100 * 1024 * 1024, max_total_bytes=1024 * 1024 * 1024):
         self.identity = identity
         self.db = identity.db
         self.data_root = Path(data_root)
         self.max_file_bytes = _bounded_positive('max_file_bytes', max_file_bytes)
         self.max_project_bytes = _bounded_positive('max_project_bytes', max_project_bytes)
+        self.max_total_bytes = _bounded_positive('max_total_bytes', max_total_bytes)
+        if self.max_file_bytes > self.max_project_bytes or self.max_project_bytes > self.max_total_bytes:
+            raise ValueError('Asset limits must satisfy file <= project <= total')
         self.data_root.mkdir(parents=True, exist_ok=True)
 
     @staticmethod
@@ -53,12 +87,27 @@ class AssetStore:
             raise ValidationError('Uploaded assets cannot claim a repository source reference')
         if source_type != 'upload' and not source_ref.strip():
             raise ValidationError('Repository assets require an explicit source reference')
+        if source_type == 'path' and (PurePosixPath(source_ref).is_absolute()
+                or PureWindowsPath(source_ref).is_absolute() or PureWindowsPath(source_ref).drive or '\\' in source_ref
+                or any(part in ('.', '..') for part in PurePosixPath(source_ref).parts)):
+            raise ValidationError('Repository paths must be relative and remain inside the project')
 
     @staticmethod
     def _metadata(row):
         result = dict(row)
         result.pop('blob_key', None)
         return result
+
+    def _stored_blob_bytes(self):
+        total = 0
+        for path in self.data_root.iterdir():
+            if path.suffix != '.blob':
+                continue
+            info = path.lstat()
+            if not stat.S_ISREG(info.st_mode):
+                raise ValidationError('Asset storage contains a non-regular blob')
+            total += info.st_size
+        return total
 
     def upload(self, token, filename, media_type, content, *, source_type='upload', source_ref=''):
         self._validate(filename, media_type, content, source_type, source_ref)
@@ -74,6 +123,10 @@ class AssetStore:
                                       (principal.room_id,)).fetchone()[0]
             if used + len(content) > self.max_project_bytes:
                 raise ValidationError('Project asset storage limit exceeded')
+            total = connection.execute('SELECT COALESCE(SUM(size_bytes), 0) FROM project_assets').fetchone()[0]
+            total = max(total, self._stored_blob_bytes())
+            if total + len(content) > self.max_total_bytes:
+                raise ValidationError('Service asset storage limit exceeded')
             with blob_path.open('xb') as blob:
                 blob.write(content)
                 blob.flush()

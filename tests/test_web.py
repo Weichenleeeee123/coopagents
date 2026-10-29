@@ -20,8 +20,11 @@ class WebTests(unittest.TestCase):
         for path, mime, resource in [('/', 'text/html', 'index.html'),
                                     ('/static/styles.css', 'text/css', 'styles.css'),
                                     ('/static/app.js', 'text/javascript', 'app.js'),
+                                    ('/static/board.js', 'text/javascript', 'board.js'),
                                     ('/static/git.js', 'text/javascript', 'git.js'),
+                                    ('/static/realtime_client.js', 'text/javascript', 'realtime_client.js'),
                                     ('/static/project_activity.js', 'text/javascript', 'project_activity.js'),
+                                    ('/static/project_assets.js', 'text/javascript', 'project_assets.js'),
                                     ('/static/accounts.js', 'text/javascript', 'accounts.js'),
                                     ('/static/billing.js', 'text/javascript', 'billing.js'),
                                     ('/static/icon.png', 'image/png', 'icon.png')]:
@@ -56,6 +59,13 @@ class WebTests(unittest.TestCase):
         result = subprocess.run(['node', str(root / 'tests/web_session_regression.js'),
                                  str(root / 'src/static/app.js')], capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    @unittest.skipUnless(shutil.which('node'), 'Node is needed for project asset UI regression checks')
+    def test_project_asset_panel_requires_explicit_action_and_scopes_project_data(self):
+        root = Path(__file__).resolve().parent.parent
+        result = subprocess.run(['node', str(root / 'tests/project_assets_ui_regression.js')], capture_output=True,
+                                text=True, encoding='utf-8', errors='replace')
+        self.assertEqual(result.returncode, 0, result.stdout + (result.stderr or ''))
 
 
     @unittest.skipUnless(shutil.which('node'), 'Node is needed for account UI regression checks')

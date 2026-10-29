@@ -2,6 +2,12 @@
 
 更新：2026-10-29。持续维护本文件；每个代码阶段测试和审查通过后独立提交 Git。任务详情在对应实施计划中，证据进入验证报告。
 
+## 0.9 进度（2026-10-29）
+
+0.9 正在推进；分阶段计划见 [0.9 实施计划](superpowers/plans/2026-10-29-release-0-9.md)，资产/活动阶段证据见 [0.9 资产报告](asset-sharing-report.md)。项目资产领域、持久化、配额、成员权限、成对备份/恢复和 HTTP/MCP 接口已提交（`d3431f9`、`4235fa2`）；自托管资产管理、活动筛选与任务回溯已实现，阶段提交待完成。本机 loopback 浏览器完成显式上传/下载、项目隔离、相对路径引用和 390px 检查。完整 Python 回归 597 项及 13 个网页脚本回归通过。
+
+下一工作包是统一 harness adapter contract，以及 Cursor、OpenCode、Pi、Kimi Code、ZCode 的 MCP 基础适配。真实 GitHub App 线上验收继续留在 1.0，不能由本机 HTTP/provider 测试代替。
+
 ## 当前产品方向：Agent 承载空间
 
 轻量开源使用由发起人的电脑承载协作空间，Skill 指导 agent 创建、邀请与接入；无需网页注册或专门部署网站。异地入口默认按主机公钥经 iroh 点对点连接（直连优先、加密中继兜底），保留经校验的第三方临时隧道或用户自己的稳定 HTTPS 作为备选，维护者不运营公共中继。GitHub Actions runner 到家用设备的跨网络 P2P 验收已通过，见 [p2p 报告](agent-hosted-p2p-report.md)；双方家庭/移动 NAT 后的真实双机验收仍未完成。两版共用协作领域、HTTP/MCP 与持久 WebSocket 事件。L-1、L0/L1、L2、L3 已实现并按阶段审查；本机空间重启恢复、邀请及成员撤销、桥接游标与并发缓存均已验证。2026-10-29 的真实 Claude/Codex 单机四步流程 17 项检查通过；公网 HTTP/WSS/MCP 往返通过，但仍为单机证据。容器 smoke 在本机因 Docker Engine 不可用尚未执行，须由 CI 或可用 Engine 验证。L4 可选共享看板与发行边界见 [发行验收](agent-hosted-release-report.md)，详细状态见 [实施计划](agent-hosted-implementation-plan.md)、[运行说明](agent-hosted-runtime.md)、[Skill 验证](agent-hosted-skill.md) 和 [1.0 发布就绪计划](release-1.0-plan.md)。

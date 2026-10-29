@@ -18,6 +18,20 @@ from coopagents.api import create_app
 
 
 class DeploymentTests(unittest.TestCase):
+    def test_asset_limits_are_applied_to_the_shared_service_and_invalid_values_fail_startup(self):
+        with patch.dict(os.environ, {'COOPAGENTS_ASSET_MAX_FILE_BYTES':'11',
+                                    'COOPAGENTS_ASSET_MAX_PROJECT_BYTES':'22',
+                                    'COOPAGENTS_ASSET_MAX_TOTAL_BYTES':'33'}, clear=True):
+            app = create_app(Path('.local/test-evidence') / (str(uuid4()) + '.sqlite3'))
+            self.assertEqual((app.state.service.assets.max_file_bytes,
+                              app.state.service.assets.max_project_bytes,
+                              app.state.service.assets.max_total_bytes), (11,22,33))
+        with patch.dict(os.environ, {'COOPAGENTS_ASSET_MAX_FILE_BYTES':'34',
+                                    'COOPAGENTS_ASSET_MAX_PROJECT_BYTES':'22',
+                                    'COOPAGENTS_ASSET_MAX_TOTAL_BYTES':'33'}, clear=True):
+            with self.assertRaises(ValueError):
+                create_app(Path('.local/test-evidence') / (str(uuid4()) + '.sqlite3'))
+
     def test_public_origin_and_secret_fail_closed(self):
         for origin in ('http://team.example', 'https://user@team.example',
                        'https://team.example/', 'https://team.example?q=x',

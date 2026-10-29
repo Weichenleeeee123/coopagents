@@ -1567,7 +1567,35 @@ dialog > p {
 }
 .activity-item p { margin: 4px 0; }
 .activity-item a { color: #245f54; font-weight: 600; }
+.activity-item button { margin-top: 6px; }
 .activity-summary { font-weight: 600; }
+.activity-filters,
+.asset-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 12px;
+  margin: 12px 0;
+}
+.activity-filter,
+.asset-controls label {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.activity-filter select { min-width: 150px; }
+.activity-freshness { font-weight: 600; }
+.activity-freshness.stale { color: #9a4b16; }
+.activity-freshness.unavailable { color: #8d3434; }
+.project-assets { margin: 28px 0; border-top: 1px solid var(--line); padding-top: 20px; }
+.project-assets h2 { font-size: 21px; margin: 0; }
+.asset-controls input[type="file"] { max-width: 100%; }
+.asset-status { min-height: 1.5em; color: var(--muted); }
+.asset-row { border-bottom: 1px solid var(--line); padding: 12px 0; overflow-wrap: anywhere; }
+.asset-row h3 { font-size: 16px; margin: 0 0 6px; }
+.asset-row p { margin: 5px 0; }
+.asset-row button { margin-top: 4px; }
 /* Project totals use the full snapshot, independently of board filters. */
 .board-summary {
   grid-template-columns: repeat(4, minmax(0, 1fr));

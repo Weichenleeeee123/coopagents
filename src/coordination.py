@@ -16,8 +16,8 @@ class CoordinationService:
         path = Path(database_path)
         path.parent.mkdir(parents=True, exist_ok=True)
         self.identity = IdentityStore(path)
-        from .assets import AssetStore
-        self.assets = AssetStore(self.identity, path.parent / (path.name + '.assets'))
+        from .assets import AssetStore, asset_limits_from_env
+        self.assets = AssetStore(self.identity, path.parent / (path.name + '.assets'), **asset_limits_from_env())
         self.tasks = TaskStore(self.identity)
         from .task_lifecycle import TaskLifecycleStore, ACTIONS
         self.lifecycle = TaskLifecycleStore(self.identity)

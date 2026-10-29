@@ -171,8 +171,10 @@ def project_activity(snapshot, limit=MAX_ITEMS):
                     continue
                 kind = 'release_verified' if row.get('release_id') is not None else 'github_delivery_verified'
                 summary = 'GitHub release '+_text(row.get('tag_name'), 100)+' '+_text(row.get('state'), 40) if kind == 'release_verified' else 'GitHub delivery '+_text(row.get('state'), 40)
-                reference = {key: row[key] for key in ('release_id', 'tag_name', 'state', 'pr_number', 'branch', 'commit_sha')
+                reference = {key: row[key] for key in ('release_id', 'tag_name', 'state', 'pr_number', 'branch', 'commit_sha', 'stale')
                              if key in row}
+                if row.get('state') == 'unavailable':
+                    reference['unavailable'] = True
                 if _release_url(row.get('url')):
                     reference['url'] = row['url']
                 items.append(_item('github:'+str(row.get('ref_id', row.get('release_id', ''))), kind,
