@@ -209,9 +209,15 @@ class Runtime(unittest.TestCase):
             return subprocess.run([sys.executable, '-m', 'coopagents.space_runtime', 'join', '--invitation-code-stdin',
                                    '--name', name, '--state-dir', str(self.directory / name)],
                                   input=text.encode('utf-8'), capture_output=True)
-        damaged = join('damaged', message.replace('coopagents-invite-1.', 'coopagents-invite-1.%'))
+        code = next(line for line in message.splitlines() if line.startswith('coopagents-invite-'))
+        prefix, payload = code.split('.', 1)
+        compact = payload.replace('-', '')
+        changed = '0' if compact[5] != '0' else '1'
+        compact = compact[:5] + changed + compact[6:]
+        damaged_code = prefix + '.' + '-'.join(compact[i:i + 5] for i in range(0, len(compact), 5))
+        damaged = join('damaged', message.replace(code, damaged_code))
         self.assertEqual(damaged.returncode, 1)
-        self.assertIn(b'Invitation code', damaged.stderr)
+        self.assertIn(b'copied incorrectly', damaged.stderr)
         joined = join('peer', message)
         self.assertEqual(joined.returncode, 0, joined.stderr)
         peer = read_profile(json.loads(joined.stdout)['profile'])

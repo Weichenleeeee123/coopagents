@@ -21,7 +21,110 @@ CODE_PATTERN = re.compile('(?:' + '|'.join(re.escape(p) for p in (CODE_PREFIX,) 
 class InvitationCodeError(ValueError):
     """A fixed, secret-free explanation that the CLI may show to the user."""
 
+
+# Version 2: agents copy a pasted code by retyping it, and real runs inserted a space or changed one
+# character of the long version-1 code. Version 2 is a compact binary record with a CRC-32, written in
+# Crockford base32 in dash-separated groups: about 40% of the length, case-insensitive, and blind to
+# spaces, line breaks and dashes; a changed character is reported as a copying error, never decoded.
+CODE_PREFIX_2 = 'coopagents-invite-2.'
+CROCKFORD = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'
+CROCKFORD_VALUES = {c: i for i, c in enumerate(CROCKFORD)} | {'O': 0, 'I': 1, 'L': 1}
+COPY_ERROR = ('The invitation code was copied incorrectly ({}). Save the message again exactly as the user pasted '
+              'it, or ask them to paste it again; never edit or repair the code by hand.')
+
+
+def _base32(data):
+    bits = int.from_bytes(data, 'big') << (-len(data) * 8 % 5)
+    count = -(-len(data) * 8 // 5)
+    return ''.join(CROCKFORD[(bits >> 5 * (count - 1 - i)) & 31] for i in range(count))
+
+
+def _unbase32(values, size):
+    bits = 0
+    for value in values:
+        bits = bits << 5 | value
+    return (bits >> (len(values) * 5 - size * 8)).to_bytes(size, 'big')
+
+
+def _encode_2(descriptor):
+    import uuid
+    import zlib
+    origin = urlsplit(descriptor['origin'])
+    if (origin.scheme == 'http' and origin.hostname == '127.0.0.1' and origin.port and not origin.path
+            and not origin.query and not origin.fragment and origin.username is None and origin.password is None):
+        place = bytes([0]) + origin.port.to_bytes(2, 'big')
+    else:
+        text = descriptor['origin'].encode()
+        if len(text) > 200:
+            raise ValueError('Origin too long')
+        place = bytes([1, len(text)]) + text
+    room = uuid.UUID(descriptor['room_id'])
+    token = base64.urlsafe_b64decode(descriptor['invite_token'] + '=' * (-len(descriptor['invite_token']) % 4))
+    if str(room) != descriptor['room_id'] or base64.urlsafe_b64encode(token).decode().rstrip('=') != descriptor['invite_token']:
+        raise ValueError('Not a compact descriptor')
+    expires = int(datetime.fromisoformat(descriptor['expires_at']).timestamp())
+    link = b''
+    if 'p2p' in descriptor:
+        link = bytes.fromhex(descriptor['p2p']['endpoint_id'])
+        if len(link) != 32 or link.hex() != descriptor['p2p']['endpoint_id']:
+            raise ValueError('Not a compact descriptor')
+    body = (bytes([1 if link else 0]) + place + room.bytes + bytes([len(token)]) + token
+            + expires.to_bytes(5, 'big') + link)
+    record = bytes([2, len(body) + 6]) + body
+    record += zlib.crc32(record).to_bytes(4, 'big')
+    text = _base32(record)
+    return CODE_PREFIX_2 + '-'.join(text[i:i + 5] for i in range(0, len(text), 5))
+
+
+def _decode_2(text, start):
+    import uuid
+    import zlib
+    from datetime import timezone
+    values = []
+    for char in text[start:start + 1024]:
+        if char in ' \t\r\n-':
+            continue
+        value = CROCKFORD_VALUES.get(char.upper())
+        if value is None:
+            break
+        values.append(value)
+    if len(values) < 4:
+        raise InvitationCodeError(COPY_ERROR.format('it is incomplete'))
+    version, size = _unbase32(values[:4], 2)
+    needed = -(-size * 8 // 5)
+    if version != 2 or size < 30 or len(values) < needed:
+        raise InvitationCodeError(COPY_ERROR.format('it is incomplete'))
+    record = _unbase32(values[:needed], size)
+    if zlib.crc32(record[:-4]).to_bytes(4, 'big') != record[-4:]:
+        raise InvitationCodeError(COPY_ERROR.format('its checksum does not match'))
+    try:
+        flags, kind, at = record[2], record[3], 4
+        if kind == 0:
+            origin, at = 'http://127.0.0.1:%d' % int.from_bytes(record[at:at + 2], 'big'), at + 2
+        else:
+            length = record[at]
+            origin, at = record[at + 1:at + 1 + length].decode(), at + 1 + length
+        room, at = str(uuid.UUID(bytes=record[at:at + 16])), at + 16
+        length = record[at]
+        token, at = base64.urlsafe_b64encode(record[at + 1:at + 1 + length]).decode().rstrip('='), at + 1 + length
+        expires = datetime.fromtimestamp(int.from_bytes(record[at:at + 5], 'big'), timezone.utc).isoformat()
+        at += 5
+        descriptor = dict(schema_version=1, origin=origin, room_id=room, invite_token=token, expires_at=expires)
+        if flags & 1:
+            descriptor['p2p'] = {'endpoint_id': record[at:at + 32].hex()}
+            at += 32
+        if at != size - 4:
+            raise ValueError('Unexpected record length')
+    except (ValueError, IndexError, UnicodeDecodeError):
+        raise InvitationCodeError('Invitation code is incomplete or damaged') from None
+    return descriptor
+
+
 def encode(descriptor):
+    try:
+        return _encode_2(descriptor)
+    except (ValueError, KeyError, TypeError, OverflowError):
+        pass  # Descriptors that do not fit the compact record keep the version-1 form.
     data = {key: descriptor[key] for key in DESCRIPTOR_FIELDS}
     if 'p2p' in descriptor:
         data['p2p'] = descriptor['p2p']
@@ -33,6 +136,12 @@ def decode(text):
     """Find the code in a code or a whole pasted message and return its descriptor."""
     if not isinstance(text, str) or len(text) > 64 * 1024:
         raise InvitationCodeError('Invitation code not found')
+    starts = [m.end() for m in re.finditer(re.escape(CODE_PREFIX_2), text, re.I)]
+    if starts:
+        found = {json.dumps(_decode_2(text, start), sort_keys=True) for start in starts}
+        if len(found) > 1 or CODE_PATTERN.search(text):
+            raise InvitationCodeError('Expected exactly one invitation code')
+        return json.loads(found.pop())
     found = set(CODE_PATTERN.findall(text))
     if not found:
         raise InvitationCodeError('Invitation code not found')
@@ -126,7 +235,8 @@ TEXT = {
                    'the repository; then, from the repository folder, run `<python> -m coopagents.space_runtime join '
                    '--invitation-file <that file> --name <name> --connect claude` if you are Claude Code, or '
                    '`--connect codex` if you are Codex. Never '
-                   'put the code in a command argument. If you do not know which display name to join with, ask me. '
+                   'put the code in a command argument, and never edit or repair the code by hand. If you do not know '
+                   'which display name to join with, ask me. '
                    'The command creates its own private folder, registers the MCP server, installs the skill and '
                    'verifies them; tell me its `next` step. Do not edit agent configuration files yourself.'),
         'warning': ('This invitation works once and expires at {expires}. It contains a key: send it only to the '
@@ -147,7 +257,8 @@ TEXT = {
                    '用你的写文件工具把这整段信息存一次，存到仓库外面的一个私有文件里；然后在仓库目录里运行 '
                    '`<python> -m coopagents.space_runtime join --invitation-file <那个文件> --name <名字> --connect claude`'
                    '（你是 Claude Code）或 `--connect codex`（你是 Codex）。'
-                   '不要把邀请码放进命令参数。如果不知道该用什么名字加入，先问我。这条命令会自己建私有目录、注册 MCP、'
+                   '不要把邀请码放进命令参数，也不要手动修改或修补邀请码。如果不知道该用什么名字加入，先问我。'
+                   '这条命令会自己建私有目录、注册 MCP、'
                    '安装 Skill 并核验；把它返回的 `next` 下一步告诉我。不要自己改 agent 的配置文件。'),
         'warning': '这条邀请只能用一次，{expires} 过期。里面含有密钥：只发给你要邀请的人，不要发到群里或任何公开的地方。',
     },

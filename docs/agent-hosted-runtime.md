@@ -56,7 +56,9 @@ trusted private channel.
 
 `invite --message en|zh` additionally returns `message`, a text to paste into a private chat: a short
 pitch, the project and Skill links, a prompt for the invitee's own agent and a one-time code
-`coopagents-invite-1.<base64url>` carrying the same descriptor as the file. The invitee's agent saves the
+`coopagents-invite-2.<Crockford-base32>` carrying the same descriptor as the file. The compact code ignores
+case, spaces, line breaks and dashes, and includes a checksum to detect copying errors; older
+`coopagents-invite-1.<base64url>` codes remain accepted. The invitee's agent saves the
 whole message to a private file and passes that file to `join --invitation-file`, never the code as an
 argument (`--invitation-code-stdin` also accepts piped text and gives up after 15 seconds without input):
 
