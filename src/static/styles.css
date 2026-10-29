@@ -1551,6 +1551,23 @@ dialog > p {
 .git-overlap {
   border-left: 3px solid #171717;
 }
+.project-activity {
+  margin: 24px 0;
+  border-top: 1px solid var(--line);
+  padding-top: 20px;
+}
+.project-activity h2 {
+  font-size: 21px;
+  margin: 0 0 14px;
+}
+.activity-item {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+  overflow-wrap: anywhere;
+}
+.activity-item p { margin: 4px 0; }
+.activity-item a { color: #245f54; font-weight: 600; }
+.activity-summary { font-weight: 600; }
 /* Project totals use the full snapshot, independently of board filters. */
 .board-summary {
   grid-template-columns: repeat(4, minmax(0, 1fr));

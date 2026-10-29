@@ -21,6 +21,7 @@ class WebTests(unittest.TestCase):
                                     ('/static/styles.css', 'text/css', 'styles.css'),
                                     ('/static/app.js', 'text/javascript', 'app.js'),
                                     ('/static/git.js', 'text/javascript', 'git.js'),
+                                    ('/static/project_activity.js', 'text/javascript', 'project_activity.js'),
                                     ('/static/accounts.js', 'text/javascript', 'accounts.js'),
                                     ('/static/billing.js', 'text/javascript', 'billing.js'),
                                     ('/static/icon.png', 'image/png', 'icon.png')]:

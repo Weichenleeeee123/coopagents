@@ -35,6 +35,7 @@
 | [任务交接与恢复](task-lifecycle.md) | 释放、转交、取消恢复、执行会话隔离和审计协议 |
 | [协作闭环计划](collaboration-flow-plan.md) | F1 接入检查点、F2 生命周期与 F3 依赖阶段 |
 | [Git 集成验收](git-integration-report.md) | G1/G2/G3 实现、真实克隆及 HTTP/stdio 验证、外部验收边界 |
+| [0.8 Git Delivery 实施计划](superpowers/plans/2026-10-29-git-delivery-08.md) | GitHub Release、任务关联、项目活动、UI 与阶段验证清单 |
 | [本地 Git 接入](git-local-setup.md) | 原有 agent 工具的 stdio 配置、检查点、项目约定与离线队列 |
 | [GitHub App 接入](git-github-setup.md) | 独立仓库授权、只读权限、签名事件、重试与部署配置 |
 | [Git 集成设计](git-integration-proposal.md) | 已批准的本地 Git + GitHub 协作范围 |

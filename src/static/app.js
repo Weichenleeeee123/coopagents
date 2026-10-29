@@ -90,6 +90,7 @@ function render() {
   $('room-name').textContent=snapshot.room.name; $('room-repository').textContent=snapshot.git?.binding?.repository || snapshot.room.repository || '未声明仓库'; $('identity').textContent=snapshot.me.display_name+' / '+(snapshot.me.role==='owner'?'项目创建者':'项目成员'); $('invite-button').hidden=accountManaged || snapshot.me.role!=='owner';
   renderOverview(); renderTasks(); renderRequests(); renderContracts();
   gitUI()?.renderPanel($('git-connection'),snapshot,gitContext());
+  window.CoopagentsProjectActivity?.render($('project-activity'),snapshot.activity);
   collaborationUI()?.renderPanel($('collaboration-status'),snapshot,gitContext());
   expanded.forEach(item=>{ const record=$(item.record); record?.querySelectorAll('details').forEach(d=>{if(d.querySelector('summary').textContent===item.label)d.open=true;}); });
   if(focus)restoreRecordFocus(focus);
