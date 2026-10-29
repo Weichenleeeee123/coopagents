@@ -165,10 +165,15 @@ def bounded(command, path, timeout, **options):
             return 'timeout'
 
 
-def run_claude(run, name, prompt, cwd, timeout=1500):
+def claude_model_args(model):
+    return ['--model', model] if model else []
+
+
+def run_claude(run, name, prompt, cwd, model, timeout=1500):
     started = time.time()
     path = run / (name + '.json')
-    code = bounded([find_claude(), '-p', prompt, '--permission-mode', 'bypassPermissions', '--output-format', 'json'],
+    code = bounded([find_claude(), *claude_model_args(model), '-p', prompt, '--permission-mode', 'bypassPermissions',
+                    '--output-format', 'json'],
                    path, timeout, cwd=cwd, env=claude_env(run), stdin=subprocess.DEVNULL)
     output = path.read_text(encoding='utf-8', errors='replace')
     try:
@@ -193,10 +198,11 @@ def run_codex(run, name, prompt, cwd, model, timeout=1500):
 
 class IdleClaude:
     """An interactive Claude Code session left idle in a pseudo terminal, as a user would leave it."""
-    def __init__(self, run, cwd, server):
+    def __init__(self, run, cwd, server, model):
         from winpty import PtyProcess
         self.screen = []
-        self.process = PtyProcess.spawn([find_claude(), '--allowedTools', 'mcp__' + server], cwd=str(cwd),
+        self.process = PtyProcess.spawn([find_claude(), *claude_model_args(model), '--allowedTools', 'mcp__' + server],
+                                        cwd=str(cwd),
                                         env=claude_env(run), dimensions=(40, 160))
         threading.Thread(target=self._pump, daemon=True).start()
         self.path = run / 'step4-claude-screen.txt'
@@ -347,7 +353,7 @@ def one_run(root, index, version, args):
     try:
         if '1' in args.steps:
             log('step 1: Claude creates, connects with wake-up and invites')
-            out = run_claude(run, 'step1-claude', readme_step1(version, SKILL.as_posix()), repo)
+            out = run_claude(run, 'step1-claude', readme_step1(version, SKILL.as_posix()), repo, args.claude_model)
             report['agents']['step1'] = {k: out[k] for k in ('exit', 'seconds')}
             found = claude_bridges(run)
             check(report, 1, 'one Coopagents server registered with Claude Code', len(found) == 1, found)
@@ -385,7 +391,7 @@ def one_run(root, index, version, args):
 
         if '3' in args.steps and host:
             log('step 3: a new session turns wake-up on by itself')
-            out = run_claude(run, 'step3-claude', STEP3, other)
+            out = run_claude(run, 'step3-claude', STEP3, other, args.claude_model)
             report['agents']['step3_claude'] = {k: out[k] for k in ('exit', 'seconds')}
             installed = hooks(other / '.claude' / 'settings.local.json')
             check(report, 3, 'Claude installed hooks in the session folder', installed == ['SessionStart', 'Stop'],
@@ -399,7 +405,7 @@ def one_run(root, index, version, args):
 
         if '4' in args.steps and host and member:
             log('step 4: idle Claude is woken by a question from Codex')
-            idle = IdleClaude(run, repo, host['server'])
+            idle = IdleClaude(run, repo, host['server'], args.claude_model)
             deadline = time.time() + 90
             armed = False
             while time.time() < deadline and not armed:
@@ -438,6 +444,8 @@ def main():
     parser.add_argument('--repeat', type=int, default=1)
     parser.add_argument('--steps', default='1234')
     parser.add_argument('--codex-model', default='gpt-6-luna')
+    parser.add_argument('--claude-model', default=None,
+                        help='Override the configured Claude model (for example: sonnet5)')
     args = parser.parse_args()
     root = Path(args.root).resolve()
     root.mkdir(parents=True, exist_ok=True)

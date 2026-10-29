@@ -11,6 +11,10 @@ SPEC.loader.exec_module(solo_acceptance)
 
 
 class SoloAcceptanceHarnessTests(unittest.TestCase):
+    def test_real_claude_commands_pin_the_requested_model(self):
+        self.assertEqual(solo_acceptance.claude_model_args('sonnet5'), ['--model', 'sonnet5'])
+        self.assertEqual(solo_acceptance.claude_model_args(None), [])
+
     def test_extracts_v2_invitation_message_from_realistic_claude_output(self):
         message = '\n'.join((
             'Alice invited you to the Coopagents space "Team".',
