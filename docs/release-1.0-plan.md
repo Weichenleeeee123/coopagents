@@ -7,7 +7,7 @@
 ## 1.0 范围
 
 1. Coopagents 继续作为由用户设备承载的协作空间；不把托管 SaaS、Stripe 订阅或 OAuth 纳入 1.0 的必要条件。
-2. Claude Code 与 Codex 使用各自凭据独立加入，能交换邀请、读取定向请求、回复并确认处理。
+2. Claude Code、Codex、Cursor、OpenCode、Pi、Kimi Code 和 ZCode 通过共同 MCP 协作协议使用各自身份加入；按 capability matrix 如实区分 MCP 基础能力与各 harness 原生 hook/唤醒能力。
 3. P2P 优先；连接失败时明确显示直连/中继/离线状态。主机停止、重启后，成员不需要重复加入。
 4. Claude 空闲唤醒和 Codex 待命是可选能力，分别通过真实原生 hook 流程验收，权限与中断方式清楚。
 5. Windows、macOS、Linux 的安装与核心协作路径有可重复的 CI 或人工证据；不以单机模拟代替双机证据。
@@ -20,7 +20,8 @@
 | 不同网络间 P2P | GitHub Actions runner 到家用设备的既有报告 | 至少两位用户、两台设备；分别记录 direct/relay 与无代理结果 |
 | 双方都在 NAT 后 | 尚无证据 | 家庭 Wi-Fi/移动热点至少一组；验证邀请、双向问答、重启恢复 |
 | 跨电脑唤醒 | 单机 Claude 闲置唤醒通过 | 远端 Claude 与 Codex 各自完成一次；区分通知到达和模型实际回复 |
-| Windows shell 兼容 | Git Bash、PowerShell、cmd hook 测试通过 | 在真实安装环境复验升级和卸载；将 macOS/Linux 原生接入加入 CI/试用 |
+| Multi-harness | Claude Code/Codex 单机完整闭环；Cursor/OpenCode/Pi/Kimi Code/ZCode 官方 MCP/hook/ACP 能力已拆分 | 七个 harness 的 MCP 基础加入和任务闭环；各自 native hook 只在官方提供且真实验收通过时声明 |
+| Windows/macOS/Linux | Windows Git Bash、PowerShell、cmd hook 测试通过 | 三个平台按 harness capability matrix 完成 CLI/MCP 安装和闭环；native hook 逐组合单测，不跨平台外推 |
 | 发行包与容器 | Python/网页 CI 已覆盖；本机 Docker Engine 当前不可用 | 新 v0.7.4 GitHub CI 全绿；干净 wheel 安装；容器 smoke 由 CI 提供新证据 |
 | 运维与安全 | 邀请/成员撤销、备份恢复有单元和单机证据 | 两设备运行手册、恢复/撤销演练、威胁模型和已知网络限制同步 |
 

@@ -15,6 +15,22 @@ Coopagents 让多个 coding agent 围绕同一个项目协作，同时保留各�
 
 本机 P2P 是默认上手路径。自托管是同一协作领域的部署模式，不是另一套任务、Git 或权限实现；它额外提供账号、多项目和网页管理。用户负责服务器运行、域名、备份和外部凭据，维护者不运营 SaaS 或付款平台。
 
+1.0 首批重点支持七个 harness：Claude Code、Codex、Cursor、OpenCode、Pi、Kimi Code 和 ZCode。支持按能力分层，而不是宣称每个 harness 都有相同的 hook 或唤醒行为：
+
+| Harness | 1.0 基础接入 | 可用的原生扩展面 | 设计约束 |
+| --- | --- | --- | --- |
+| Claude Code | stdio MCP、Skill、原生配置核验 | session hooks、空闲唤醒 | 延续当前已验证流程 |
+| Codex | stdio MCP、Skill、原生配置核验 | Stop hooks、待命 | 延续当前已验证流程和 `/hooks` 信任提示 |
+| Cursor | project/user MCP 配置 | hooks（含 session lifecycle）、插件 | 只写当前官方支持的项目或用户配置 |
+| OpenCode | local/remote MCP 配置 | plugin hooks、session events | 由官方插件接口补 session identity 和事件映射 |
+| Pi | MCP server | TypeScript extension lifecycle、`registerMcpServer` | adapter 通过 Pi extension API 注册，不解析 Pi 私有会话记录 |
+| Kimi Code | CLI MCP 配置 | ACP IDE transport | 1.0 保证 MCP CLI 接入；ACP 是可选 IDE 入口，不能把 ACP 本身当成 MCP server |
+| ZCode | 配置或插件提供 MCP | 插件/user-level hooks | 当前官方文档说明 project-level hooks 不执行；不得向用户承诺项目级唤醒 hook |
+
+每个 harness adapter 只负责安装/更新 MCP 配置、确认 project root、声明能力和把安全的结构化生命周期事件映射到共同协议。核心任务、权限、Git 关联、资产和活动模型不得复制到 harness 插件里。能力矩阵按具体 harness 与版本报告 `mcp`、`project_context`、`session_lifecycle`、`native_hook`、`idle_wake`；未实际测试的格子保持 unsupported/unknown。
+
+平台目标是 Windows、macOS、Linux，但支持声明以矩阵为单位，不把“CLI 可启动”扩大成“所有 GUI/hook 都可用”。每个宣称支持的组合须至少完成安装/更新配置不覆盖原文件、MCP 握手、身份/项目上下文核验、任务与消息闭环；宣称 native hook 的组合还要单独验证触发、输入字段 allowlist、stdin/stdout 和卸载。CI 测可自动化的 CLI/协议组合；GUI-only 或依赖真实登录的组合保留带版本与证据的人工验收。
+
 ## 协作信息模型
 
 项目是协作和 Git 身份的归属单位。任务是 agent 认领、分工、阻塞、交接和验收的主要工作对象。每个协作事实带有空间、项目、任务（适用时）、成员、工具、时间、来源和新鲜度，托管模式与 P2P 模式复用共同领域权限。
@@ -77,10 +93,14 @@ Coopagents 让多个 coding agent 围绕同一个项目协作，同时保留各�
 
 **0.9 验收：** 文件大小/配额/哈希/权限/成员撤销/重启恢复/备份恢复回归；绝不递归扫描上传仓库；未经明确分享的文件不可见；全文 transcript 跨 API、DB、日志和浏览器测试均不存在；真实浏览器测试项目切换、撤销和过期状态。
 
+同时建立统一 harness adapter contract，并完成 Cursor、OpenCode、Pi、Kimi Code、ZCode 的 MCP 基础接入。各 adapter 只支持该 harness 官方允许的安装范围；没有官方 lifecycle/hook API 的保持 MCP-only。每个实现都必须在启动样例中验证 agent、项目、工具版本和能力报告。
+
 ### 1.0：稳定版与真实部署验证
 
 - 冻结新功能，完成领域/HTTP/MCP/UI 测试、升级迁移、发行 wheel/sdist、部署资产、备份恢复和安全审查。
 - CI 覆盖 Linux Python 3.11/3.13、Windows native hook、macOS package/import 和容器运行。
+- 对 Claude Code、Codex、Cursor、OpenCode、Pi、Kimi Code、ZCode 发布逐组合 capability matrix；七个 harness 的基础 MCP 邀请/接入/任务/消息流程有可审计结果，native hook 与自动唤醒只对通过原生验收的组合标为支持。
+- 在 Windows、macOS、Linux 上分别验证各受支持 CLI 安装配置与 MCP 传输；平台或 harness 不提供稳定官方 hook 时，明确降级到 MCP 检查点，不模拟出自动唤醒。
 - 真实双设备验收至少覆盖 home device ↔ 有公网地址 server/VPS 的加入、任务/Git/资产/重启恢复；双方 NAT 或 CGNAT 另记 direct/relay 结果。若无法覆盖双方 NAT，不将该场景写成已支持保证。
 - 真实 GitHub App 在专用测试仓库完成 install、branch push、PR checks、release/tag、撤权和恢复验证；agent 无发布/合并权限，除非用户明确赋权。
 - 发布说明准确写明任何尚未覆盖的操作系统、网络拓扑、GitHub 组织策略和服务器环境。
@@ -94,4 +114,12 @@ Coopagents 让多个 coding agent 围绕同一个项目协作，同时保留各�
 - 维护者代管的云服务、计费体系或公共文件云盘。
 - 无限制的大文件 P2P 同步、自动递归仓库上传、任意 URL 抓取。
 - 用同机多进程或单个高可达 VPS 的测试声称双方 NAT/CGNAT 已覆盖。
+
+## 官方 harness 接口依据
+
+- [Cursor MCP](https://cursor.com/docs/context/mcp) 与 [Cursor hooks](https://cursor.com/docs/agent/third-party-hooks)
+- [OpenCode MCP servers](https://opencode.ai/docs/mcp-servers/) 与 [OpenCode plugins](https://opencode.ai/docs/plugins)
+- [Pi MCP servers](https://pi.dev/docs/latest/mcp) 与 [Pi extensions](https://pi.dev/docs/latest/extensions)
+- [Kimi Code MCP](https://www.kimi.com/code/docs/en/kimi-code-cli/customization/mcp.html) 与 [Kimi ACP](https://www.kimi.com/code/docs/en/kimi-code-cli/reference/kimi-acp.html)
+- [ZCode MCP](https://zcode.z.ai/en/docs/mcp-services) 与 [ZCode hooks](https://zcode.z.ai/en/docs/hooks)
 
