@@ -23,4 +23,3 @@ console.log('Workspace navigation, view ownership, overview density, project swi
 
 assert.doesNotMatch(app,/\['members','tasks','requests','contracts'/,'Logout cleanup must not require removed members container');
 console.log('Logout cleanup stays aligned with the served markup passed');
-console.log('Logout cleanup stays aligned with the served markup passed');
