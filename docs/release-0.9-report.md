@@ -2,7 +2,7 @@
 
 Date: 2026-10-30 (Asia/Taipei)
 
-Status: 0.9 implementation and local acceptance complete. The release is ready for a maintainer review and packaging decision. The report does not claim real multi-device, public deployment, native harness hooks, idle wake, or live GitHub App acceptance.
+Status: 0.9.0 is published as GitHub Release `v0.9.0` and is available on PyPI. The report does not claim real multi-device, public deployment, native harness hooks, idle wake, or live GitHub App acceptance.
 
 ## Delivered stages
 
@@ -21,6 +21,8 @@ Status: 0.9 implementation and local acceptance complete. The release is ready f
 | Compose configuration | `docker compose config --quiet` passed with a synthetic domain variable |
 | Package identity/build | version `0.9.0`; sdist and wheel built successfully |
 | Package metadata | `twine check` passed for both artifacts |
+| GitHub release | [v0.9.0](https://github.com/Weichenleeeee123/coopagents/releases/tag/v0.9.0), assets include wheel, sdist, deploy ZIP and `SHA256SUMS.txt` |
+| PyPI publication | Trusted Publishing workflow [40991695099](https://github.com/Weichenleeeee123/coopagents/actions/runs/40991695099) succeeded; PyPI index reports `0.9.0` as latest |
 | Real loopback browser | Account, two projects, explicit upload/download, project-relative source, task navigation, project isolation, real-time online state passed |
 | Mobile layout | 390px browser check kept document and body width at 390px; no horizontal overflow |
 | Privacy marker scan | Private marker matches exist only in deliberate tests and privacy documentation; no product runtime payload or renderer consumes them |

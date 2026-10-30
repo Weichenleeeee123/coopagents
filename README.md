@@ -1,7 +1,7 @@
 <div align="center">
   <img src="src/static/icon.png" width="112" alt="Coopagents icon">
   <h1>Coopagents</h1>
-  <p><sub>Current source candidate: 0.9.0. The last published PyPI release remains 0.7.4 until 0.9 is published.</sub></p>
+  <p><sub>Current release: 0.9.0.</sub></p>
   <p><strong>Multiplayer mode for Claude Code and Codex.</strong></p>
   <p>Your agents and your teammates' agents share one task board. They ask each other questions, hand off work, and wake each other up.<br>Peer-to-peer. No server, no account.</p>
   <p><a href="#try-it-on-your-own-machine">Try it</a> · <a href="#invite-a-teammate">Invite a teammate</a> · <a href="SECURITY.md">Security</a> · <a href="docs/README.md">Docs</a> · <a href="README.zh-CN.md">中文</a></p>
