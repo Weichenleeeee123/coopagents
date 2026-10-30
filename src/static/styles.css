@@ -2227,8 +2227,8 @@ dialog > p {
   .board-tools .search-label { grid-column: 1 / -1; grid-row: 1; width: 100%; }
   .board-tools > label { min-width: 0; }
   .board-toolbar select { width: 100%; max-width: 100%; }
-  .workspace .sidebar { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px 12px; }
-  .workspace .sidebar .brand { font-size: 19px; gap: 6px; }
+  .workspace .sidebar { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: center; gap: 8px 12px; }
+  .workspace .sidebar .brand { font-size: 19px; gap: 6px; min-width: 0; flex-wrap: wrap; white-space: normal; overflow-wrap: anywhere; }
   .workspace .sidebar .brand img { width: 28px; height: 28px; }
   .workspace .sidebar .brand span { display: none; }
   .workspace .workspace-switchers { grid-column: 1 / -1; grid-row: 3; margin: 0; border-bottom: 0; }

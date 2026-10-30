@@ -26,7 +26,8 @@
 | [唤醒与点对点原型](wake-and-p2p-prototype-report.md) | Claude asyncRewake 空闲唤醒、Codex Stop 待命续跑、iroh 公钥直连异地实测 |
 | [共同核心实施计划](agent-hosted-core-plan.md) | 两版共用协作与协议，完整入口组合账号，L-1 回归与阶段提交 |
 | [共同核心阶段记录](agent-hosted-core-report.md) | L-1 提取完成、428 项回归及后续联网阶段边界 |
-| [当前黑白工业前端](frontend-monochrome-validation.md) | 01 配色 × 05 布局的源码交付、真实指标、回归与浏览器验收 |
+| [轻量黑白前端](frontend-refinement-validation.md) | 当前页面设计、三项能力展示、手机布局、回归与真实浏览器验收 |
+| [黑白工业前端历史](frontend-monochrome-validation.md) | 01 配色 × 05 布局的源码交付、真实指标、回归与浏览器验收 |
 | [黑白工业实施计划](frontend-monochrome-plan.md) | 用户确认方向的实施清单 |
 | [十套视觉方向](frontend-visual-directions.md) | 配色与布局探索、用户选定的组合 |
 | [整体前端设计](frontend-design-proposal.md) | 已确认的视觉统一、页面布局、移动适配与分阶段验收范围 |
