@@ -19,6 +19,7 @@
 | [双机验收清单](two-machine-acceptance.md) | 0.7.4 真人双机、双方 NAT 后的点对点与跨电脑唤醒验收步骤和取证脚本 |
 | [1.0 发布就绪计划](release-1.0-plan.md) | 1.0 稳定版的范围、真实验收门槛和阶段顺序 |
 | [1.0 产品设计](product-1.0-design.md) | 本机 P2P、自托管 GUI、Git 交付关系、活动隐私和项目资产的分阶段设计 |
+| [1.0 前产品方向](superpowers/specs/2026-10-30-pre-1-0-product-direction-design.md) | 共享上下文、成员与能力发现、交付关联优化、Harness 验收和产品化准备 |
 | [单机真实 agent 验收（2026-10-29）](solo-acceptance-2026-10-29.md) | Claude Opus 5 与 Codex 桌面版完成的 17 项单机闭环检查 |
 | [Agent 唤醒](agent-wake.md) | 可选唤醒 hook：Claude 空闲唤醒、Codex 每轮检查与待命、唤醒规则、限频、可靠性与原生验收 |
 | [唤醒与点对点原型](wake-and-p2p-prototype-report.md) | Claude asyncRewake 空闲唤醒、Codex Stop 待命续跑、iroh 公钥直连异地实测 |

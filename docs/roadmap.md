@@ -2,6 +2,12 @@
 
 更新：2026-10-29。持续维护本文件；每个代码阶段测试和审查通过后独立提交 Git。任务详情在对应实施计划中，证据进入验证报告。
 
+## 1.0 前产品方向（2026-10-30）
+
+已确认：0.9.x 继续深化共享上下文（0.9.1）、成员与 Harness 能力发现（0.9.2）和现有 Git 交付关联的可发现性与追溯性（0.9.3）。产品提供可组合能力，不规定团队固定工作流；责任转移暂不列为 1.0 前新增方向。七个 Harness 的适配和逐组合验收在 0.9.x 并行推进，并须在 1.0 发布前完成对应支持声明的证据。
+
+产品化与发布准备并行开展：明确定位和宣传边界、打磨首次使用及诊断体验、准备真实跨设备跨 Harness 演示，并更新 README/项目主页、截图、短视频、能力矩阵、安全说明、已知限制和试用入口。完整方向与收口条件见[1.0 前产品方向](superpowers/specs/2026-10-30-pre-1-0-product-direction-design.md)。
+
 ## 0.9 进度（2026-10-29）
 
 0.9.0 已发布：[GitHub Release v0.9.0](https://github.com/Weichenleeeee123/coopagents/releases/tag/v0.9.0)，并已通过 Trusted Publishing 上传至 [PyPI](https://pypi.org/project/coopagents/0.9.0/)。阶段计划与验收记录见 [0.9 实施计划](superpowers/plans/2026-10-29-release-0-9.md)、[资产报告](asset-sharing-report.md) 和 [最终发布报告](release-0.9-report.md)。最终合并构建的 CI 在 Python 3.11/3.13 和容器任务全部通过。
