@@ -16,6 +16,8 @@ class CoordinationService:
         path = Path(database_path)
         path.parent.mkdir(parents=True, exist_ok=True)
         self.identity = IdentityStore(path)
+        from .assets import AssetStore, asset_limits_from_env
+        self.assets = AssetStore(self.identity, path.parent / (path.name + '.assets'), **asset_limits_from_env())
         self.tasks = TaskStore(self.identity)
         from .task_lifecycle import TaskLifecycleStore, ACTIONS
         self.lifecycle = TaskLifecycleStore(self.identity)
@@ -65,7 +67,8 @@ class CoordinationService:
             'repo_checkpoint': ('agent', self.repo_checkpoint, {'task_id': (int, True, None), 'observation': (dict, True, None)}),
             'read_git_team': ('agent', lambda token: self.snapshot(token, web=False), fields()),
             'link_delivery': ('any', self.github.associate, {'task_id': (int, True, None),
-                'branch': (str, False, ''), 'pr_number': (int, False, None), 'commit_sha': (str, False, '')}),
+                'branch': (str, False, ''), 'pr_number': (int, False, None), 'commit_sha': (str, False, ''),
+                'release_id': (int, False, None)}),
         }
         for name, schema in dependency_schemas(fields).items():
             self.operations[name] = ('any', getattr(self.dependencies, name), schema)
@@ -106,6 +109,8 @@ class CoordinationService:
         self.identity.authenticate(token, required_kind='web' if web else 'agent')
         result = self.me(token)
         result.update({name: read(token) for name, read in self.reads.items()})
+        from .project_activity import project_activity
+        result['activity'] = project_activity(result)
         result['server_time'] = datetime.now(timezone.utc).isoformat()
         return result
 

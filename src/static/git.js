@@ -20,6 +20,9 @@
   function safeURL(value){
     try {const u=new URL(value);return u.protocol==='https:'&&u.hostname==='github.com'&&!u.username&&!u.password&&!u.port&&/^\/[\w.-]+\/[\w.-]+\/(pull\/\d+|commit\/[a-f0-9]{40,64})$/.test(u.pathname)&&!u.search&&!u.hash?u.href:null;}catch{return null;}
   }
+  function safeReleaseURL(value){
+    try {const u=new URL(value);return u.protocol==='https:'&&u.hostname==='github.com'&&!u.username&&!u.password&&!u.port&&/^\/[\w.-]+\/[\w.-]+\/releases\/tag\/[^/]+$/.test(u.pathname)&&!u.search&&!u.hash?u.href:null;}catch{return null;}
+  }
   function checks(delivery){
     const head=delivery.head_sha||delivery.head;
     if(!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(head||'')||delivery.checks_truncated||delivery.statuses_truncated)return '检查未知';
@@ -51,25 +54,28 @@
     const remote=(git?.deliveries||[]).filter(d=>d.task_id===task.id);
     remote.forEach(d=>{
       const row=element('article','','git-evidence');
-      const label=(d.pr_number?'PR #'+d.pr_number:(d.commit_sha?'提交 '+d.commit_sha.slice(0,12):(d.branch||'分支')))+' · '+({open:'PR 已打开',closed_unmerged:'PR 已关闭，未合并',merged:'已合并',pushed:'已推送',unavailable:'关联不可用'}[d.state]||d.state);
-      const url=safeURL(d.url); const heading=element(url?'a':'p',label);
+      const isRelease=d.release_id!==undefined&&d.release_id!==null;
+      const label=isRelease?'GitHub Release '+(d.tag_name||'')+' · '+({draft:'草稿',prerelease:'预发布',published:'已发布',unavailable:'关联不可用'}[d.state]||d.state):(d.pr_number?'PR #'+d.pr_number:(d.commit_sha?'提交 '+d.commit_sha.slice(0,12):(d.branch||'分支')))+' · '+({open:'PR 已打开',closed_unmerged:'PR 已关闭，未合并',merged:'已合并',pushed:'已推送',unavailable:'关联不可用'}[d.state]||d.state);
+      const url=isRelease?safeReleaseURL(d.url):safeURL(d.url); const heading=element(url?'a':'p',label);
       if(url){heading.href=url;heading.target='_blank';heading.rel='noopener noreferrer';}
-      append(row,heading,element('p',checks(d)+' · HEAD '+(d.head_sha||d.head||'').slice(0,12),'meta'),
+      append(row,heading,...(isRelease?[element('p',(d.name||d.tag_name||'')+' · '+(d.assets?.length||0)+' 项资产元数据'+(d.assets_truncated?'（仅显示部分）':''),'detail-value')]:[element('p',checks(d)+' · HEAD '+(d.head_sha||d.head||'').slice(0,12),'meta')]),
         element('p',caption(d)+' · '+when(d.sync_at||d.verified_at)+(d.stale?' · 同步过期':'')+(!connected(git)?' · 仓库授权不可用':''),'meta'));
       container.append(row);
     });
     const events=(git?.events||[]).filter(e=>e.task_id===task.id).sort((a,b)=>Date.parse(b.captured_at)-Date.parse(a.captured_at)||b.id-a.id).slice(0,12);
     if(events.length){const history=element('details');append(history,element('summary','Git 检查点记录 · '+events.length));events.forEach(e=>append(history,element('p',when(e.captured_at)+' · '+(e.branch||'detached HEAD')+' · '+(e.head||'无提交').slice(0,12),'meta')));container.append(history);}
     if(!task.cancelled_at&&git?.binding&&connected(git)&&git.can_manage){
-      const form=element('form','','git-link-form'),branch=element('input'),pr=element('input'),commit=element('input'),submit=element('button','关联交付'),feedback=element('p','','meta');
+      const form=element('form','','git-link-form'),branch=element('input'),pr=element('input'),commit=element('input'),release=element('select'),submit=element('button','关联交付'),feedback=element('p','','meta');
       branch.name='branch';branch.placeholder='分支，例如 feature/login';pr.name='pr_number';pr.type='number';pr.min='1';pr.placeholder='或 PR 编号';submit.type='submit';
       commit.name='commit_sha';commit.placeholder='或完整提交 SHA';commit.maxLength=64;
-      append(form,append(element('label','分支'),branch),append(element('label','PR 编号'),pr),append(element('label','独立提交 SHA'),commit),submit,feedback);
-      form.addEventListener('submit',async e=>{e.preventDefault();submit.disabled=true;try{const payload={task_id:task.id};if(branch.value)payload.branch=branch.value;if(pr.value)payload.pr_number=Number(pr.value);if(commit.value)payload.commit_sha=commit.value;await context.api('/api/git/github/link',payload);if(!context.isCurrent())return;document.activeElement?.blur();await context.sync();feedback.textContent='关联已保存，下次远端核对后显示证据。';}catch(error){feedback.textContent=error.message;}finally{submit.disabled=false;}});
+      release.name='release_id';const emptyRelease=element('option','选择已发现的 Release');emptyRelease.value='';release.append(emptyRelease);
+      (git.releases||[]).slice(0,20).forEach(item=>{const option=element('option',item.tag_name+' · '+(item.name||item.tag_name));option.value=String(item.release_id);release.append(option);});
+      append(form,append(element('label','分支'),branch),append(element('label','PR 编号'),pr),append(element('label','独立提交 SHA'),commit),append(element('label','GitHub Release'),release),submit,feedback);
+      form.addEventListener('submit',async e=>{e.preventDefault();submit.disabled=true;try{const payload={task_id:task.id};if(branch.value)payload.branch=branch.value;if(pr.value)payload.pr_number=Number(pr.value);if(commit.value)payload.commit_sha=commit.value;if(release.value)payload.release_id=Number(release.value);await context.api('/api/git/github/link',payload);if(!context.isCurrent())return;document.activeElement?.blur();await context.sync();feedback.textContent='关联已保存，下次远端核对后显示证据。';}catch(error){feedback.textContent=error.message;}finally{submit.disabled=false;}});
       container.append(form);
     }
     append(container,element('p','合并记录属于交付证据；任务验收仍由团队确认。','muted'));
-    if(task.owner_member_id===context.me.member_id)append(container,element('p','自己的 agent 可用 link_delivery(task_id, branch / pr_number / commit_sha) 关联交付。','muted'));
+    if(task.owner_member_id===context.me.member_id)append(container,element('p','自己的 agent 可用 link_delivery(task_id, branch / pr_number / commit_sha / release_id) 明确关联交付。','muted'));
   }
   let room=null,authorization=null;
   function clear(){room=null;authorization=null;}
@@ -113,13 +119,14 @@
     if(connected(git)){const refresh=element('button','核对远端状态 ↻');refresh.type='button';refresh.addEventListener('click',async()=>{refresh.disabled=true;try{await context.api('/api/git/github/refresh',{});document.activeElement?.blur();await context.sync();}catch(error){status.textContent=error.message;}finally{refresh.disabled=false;}});root.append(refresh);}
     root.append(status);
     if((git.github_pending||[]).length)append(root,element('p',git.github_pending.length+' 个开放 PR 尚未关联任务；在任务详情中指定 PR 编号。','muted'));
-    if(git.github_discovery?.truncated)append(root,element('p','仅发现近期最多 '+git.github_discovery.limit+' 个开放 PR。其他 PR 可通过编号明确关联。','muted'));
+    if(git.github_discovery?.truncated)append(root,element('p','开放 PR 列表仅展示最近 '+git.github_discovery.limit+' 条，其他 PR 可按编号明确关联。','muted'));
+    if(git.github_discovery?.releases?.truncated)append(root,element('p','Release 列表仅展示最近 '+git.github_discovery.releases.limit+' 条，其他 Release 可按 ID 明确关联。','muted'));
     if((git.github_events||[]).some(e=>e.status!=='completed'))append(root,element('p','有事件等待同步或重试；最后成功记录保留。','muted'));
   }
   function renderOverlaps(root,git,taskName){
     (git?.overlaps||[]).forEach(o=>append(root,append(element('article','','record git-overlap'),element('h3',o.task_ids.map(taskName).join(' × ')),element('p','实际变更路径：'+o.paths.join('、')+(o.path_count>o.paths.length?'（共 '+o.path_count+' 条）':'')),element('p','本地 Git 观测 · '+o.captured_at.map(when).join(' / ')+' · 路径重叠需要协商','meta'))));
   }
-  const api={state,safeURL,caption,checks,summarize,renderDetails,renderPanel,renderOverlaps,clear};
+  const api={state,safeURL,safeReleaseURL,caption,checks,summarize,renderDetails,renderPanel,renderOverlaps,clear};
   if(typeof module!=='undefined'&&module.exports)module.exports=api;
   if(typeof window!=='undefined')window.CoopagentsGit=api;
 })();

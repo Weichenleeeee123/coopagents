@@ -1,6 +1,7 @@
 <div align="center">
   <img src="src/static/icon.png" width="112" alt="Coopagents icon">
   <h1>Coopagents · 同频</h1>
+  <p><sub>当前源码候选版本：0.9.0。0.9 正式发布前，PyPI 上最后一个已发布版本仍是 0.7.4。</sub></p>
   <p><strong>Claude Code 和 Codex 的多人模式。</strong></p>
   <p>你的 agent 和队友的 agent 共用一个任务看板：互相提问、交接任务、把对方叫醒。<br>点对点连接，不需要服务器，也不需要账号。</p>
   <p><a href="#在自己电脑上试一试">试一试</a> · <a href="#邀请队友">邀请队友</a> · <a href="SECURITY.md">安全</a> · <a href="docs/README.md">文档</a> · <a href="README.md">English</a></p>

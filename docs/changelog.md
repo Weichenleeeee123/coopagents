@@ -1,5 +1,15 @@
 # 版本记录
 
+## 0.9.0 — 项目资产、自托管工作台与多 Harness MCP 接入（2026-10-30）
+
+0.9.0 增加了面向多人和多 agent 协作的项目资产与活动工作流，并为 Cursor、OpenCode、Pi、Kimi Code 和 ZCode 提供保守的项目级 MCP 配置适配。完整验收记录见 [0.9 发布验收报告](release-0.9-report.md)。
+
+- 项目成员可以明确上传、查看和下载共享资产；资产有项目权限、成员撤销、SHA-256、文件/项目/服务配额和成对备份恢复。系统不会递归扫描工作区或上传完整仓库。
+- 自托管工作台展示资产来源、大小、上传者和摘要，支持项目切换隔离、来源引用、活动类型/来源/任务筛选、过期远端事实提示和任务回溯。
+- HTTP 与 authenticated MCP 提供有界资产访问；MCP 不读取完整 prompt、回复、hidden reasoning、tool I/O 或 transcript。
+- 五个 harness adapter 写入官方项目级 MCP 配置，保留无关设置、拒绝冲突覆盖和路径逃逸，并只引用 `COOPAGENTS_AGENT_TOKEN` 环境变量。native hook、ACP 和 idle wake 未在 0.9 中宣称支持。
+- 包版本为 `0.9.0`；真实双机、真实 GitHub App 和 harness 原生验收仍属于 1.0 门槛。
+
 ## 0.7.4 — 邀请可靠性与 Windows 唤醒 hook（2026-10-29）
 
 修复真实单机验收里邀请码易被 agent 复制时改写，以及 Windows Git Bash 无法启动唤醒 hook 的问题。当前版本的真实 Claude Code / Codex 单机闭环 17 项检查通过，边界见[验收报告](solo-acceptance-2026-10-29.md)。

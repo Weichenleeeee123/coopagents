@@ -52,6 +52,12 @@ $env:COOPAGENTS_BOOTSTRAP_SECRET_FILE = (Resolve-Path .local/bootstrap-secret.tx
 
 恢复同样写入新文件：将 `backup` 改为 `restore`，指定备份来源和新的数据库路径，停止服务后用 `--database` 指向恢复文件。详细验收、备份权限及恢复后令牌状态见 [部署与运维](deployment.md)。不要删除原数据库。测试生成独立 UUID 数据库，保留在 `.local/test-evidence/`。
 
+数据库旁的 `<数据库文件名>.assets/` 存放项目资产。含资产的空间须按[部署与运维](deployment.md)使用 `--assets-source` 与 `--assets-destination` 成对备份和恢复；SQLite 单文件副本不含资产字节。
+
+项目成员通过 `POST /api/assets` 显式上传一个文件（multipart 字段 `file`，单文件上限 10 MiB），用 `GET /api/assets` 查看清单、`GET /api/assets/{asset_id}` 下载。网页/API 下载只允许当前项目有效凭据，返回附件并带 SHA-256。连接的 agent 可通过 MCP `list_assets` 和 `read_asset` 查阅；后者返回 base64 字节和同一摘要。上传不扫描文件夹或仓库，支持类型限于纯文本、Markdown、JSON、PDF、PNG、JPEG、WebP 和二进制文件。
+
+存储上限可通过 `COOPAGENTS_ASSET_MAX_FILE_BYTES`、`COOPAGENTS_ASSET_MAX_PROJECT_BYTES` 与 `COOPAGENTS_ASSET_MAX_TOTAL_BYTES` 设置，单位为字节；默认分别为 10 MiB、100 MiB、1 GiB，必须满足文件上限不大于项目上限、项目上限不大于服务总上限。容器部署可在 `.env` 配置这三项。
+
 已有原生接入实验使用端口 `8768` 和 `.local/agent-integration/runtime/`，与正式服务相互独立。不要把实验消息当作正式房间任务或约定。
 
 ## 验证

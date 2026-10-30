@@ -4,6 +4,7 @@ let token = sessionStorage.getItem('coopagents_web_token') || '';
 let generation = 0, snapshot = null, pollTimer = null, syncing = false, lastSuccess = null;
 let accountManaged = false, realtime=null, syncDirty=false;
 const boardUI = () => typeof window!=='undefined' ? window.CoopagentsBoard : null;
+const assetsUI = () => typeof window!=='undefined' ? window.CoopagentsProjectAssets : null;
 function startRealtime(){realtime?.close();realtime=null;const epoch=generation;if(typeof window==='undefined'||!window.CoopagentsRealtime||!token)return;realtime=window.CoopagentsRealtime.connect({token,refresh:()=>epoch===generation?sync():Promise.resolve(),status:value=>{if(epoch===generation&&$('transport-status'))$('transport-status').textContent=value==='online'?'实时在线':'实时中断 · 轮询恢复';}});}
 const projectRequests = new Set();
 const gitUI = () => typeof window!=='undefined' ? window.CoopagentsGit : null;
@@ -11,6 +12,7 @@ const dependencyUI = () => typeof window!=='undefined' ? window.CoopagentsDepend
 const lifecycleUI = () => typeof window!=='undefined' ? window.CoopagentsTaskLifecycle : null;
 const collaborationUI = () => typeof window!=='undefined' ? window.CoopagentsCollaboration : null;
 function gitContext(){const epoch=generation;return {api,sync,me:snapshot.me,memberName,origin:location.origin,isCurrent:()=>epoch===generation};}
+function assetContext(){const epoch=generation;return {api,roomId:snapshot.me.room_id,isCurrent:()=>epoch===generation};}
 const states = {cancelled:'已取消',open:'待认领', claimed:'已认领', working:'推进中', blocked:'受阻', local_done:'本地完成', pushed:'已推送', pr_open:'PR 已打开', merged:'已合并', approved:'已批准', rejected:'已拒绝'};
 const views = {overview:['01 / TEAM FIELD','团队现场','理解每个人正在推进的工作。'],tasks:['TEAM OPERATIONS / 任务协作','任务看板','每一项工作，都有清晰的去向。'],requests:['03 / TECHNICAL REQUESTS','技术请求','让依赖有去处，让答复有记录。'],contracts:['04 / SHARED AGREEMENTS','公共约定','把技术共识变成明确生效的版本。'],repository:['05 / REPOSITORY','仓库接入','让实际开发和远端交付成为可追溯的协作证据。']};
 const text = (tag, value, cls) => { const e = document.createElement(tag); e.textContent = value == null ? '' : String(value); if(cls) e.className = cls; return e; };
@@ -32,16 +34,16 @@ document.querySelectorAll('[data-view]').forEach(b => b.addEventListener('click'
 const tabs = Array.from(document.querySelectorAll('[data-entry]'));
 function entryTab(b) { if(b.hidden)return;tabs.forEach(t => { const active=t===b; t.setAttribute('aria-selected',String(active)); t.tabIndex=active?0:-1; $('form-'+t.dataset.entry).hidden=!active; }); }
 tabs.forEach((b,i) => { b.tabIndex=i? -1:0; b.addEventListener('click',() => entryTab(b)); b.addEventListener('keydown',e => { if(['ArrowLeft','ArrowRight','Home','End'].includes(e.key)){ e.preventDefault(); const visible=tabs.filter(t=>!t.hidden),current=visible.indexOf(b); const next=e.key==='Home'?0:e.key==='End'?visible.length-1:(current+(e.key==='ArrowRight'?1:visible.length-1))%visible.length; entryTab(visible[next]); visible[next].focus(); } }); });
-async function api(path, data, authenticated = true, extraHeaders = {}) {
+async function api(path, data, authenticated = true, extraHeaders = {}, responseMode='json') {
   const epoch=generation, credential=token, controller=new AbortController();
   projectRequests.add(controller);
-  const timeout=setTimeout(() => controller.abort(),10000);
+  const timeout=setTimeout(() => controller.abort(),path==='/api/assets'&&data!==undefined?120000:10000);
   try {
-    const headers={...extraHeaders}; if(authenticated) headers.Authorization='Bearer '+credential;
-    if(data!==undefined) headers['Content-Type']='application/json';
-    const response=await fetch(path,{method:data===undefined?'GET':'POST',headers,body:data===undefined?undefined:JSON.stringify(data),signal:controller.signal,cache:'no-store'});
+    const headers={...extraHeaders},formData=typeof FormData!=='undefined'&&data instanceof FormData; if(authenticated) headers.Authorization='Bearer '+credential;
+    if(data!==undefined&&!formData) headers['Content-Type']='application/json';
+    const response=await fetch(path,{method:data===undefined?'GET':'POST',headers,body:data===undefined?undefined:formData?data:JSON.stringify(data),signal:controller.signal,cache:'no-store'});
     if(epoch!==generation) throw new Error('访问已切换');
-    let result; try { result=await response.json(); } catch { throw new Error('服务返回了无法读取的响应'); }
+    let result; try { result=responseMode==='blob'&&response.ok?await response.blob():await response.json(); } catch { throw new Error('服务返回了无法读取的响应'); }
     if(epoch!==generation) throw new Error('访问已切换');
     if(response.status===401){ if(authenticated){if(accountManaged && typeof window!=='undefined')window.CoopagentsAccounts.denied();else logout('网页凭据已失效，请恢复访问或重新加入。');} throw new Error(authenticated?'网页凭据已失效':(result.message || '邀请或凭据不可用')); }
     if(!response.ok) throw new Error(result.message || '操作未完成');
@@ -53,6 +55,7 @@ function logout(message='') {
   realtime?.close();realtime=null;syncDirty=false;generation++; token=''; snapshot=null; sessionStorage.removeItem('coopagents_web_token'); clearTimeout(pollTimer);
   projectRequests.forEach(controller=>controller.abort()); projectRequests.clear(); syncing=false;
   gitUI()?.clear(); $('git-connection')?.replaceChildren(); $('git-overlaps')?.replaceChildren();
+  assetsUI()?.clear($('project-assets'));
   collaborationUI()?.clear(); lifecycleUI()?.clear(); dependencyUI()?.clear();
   renderSignature=''; closePrivate(); closeTaskDetail(); $('task-search').value=''; $('task-owner').value=''; if($('task-status'))$('task-status').value='active'; $('workspace').hidden=true; $('login').hidden=false; $('login-error').textContent=message;document.title='Coopagents · 同频';
   $('board-empty').hidden=true;
@@ -90,6 +93,8 @@ function render() {
   $('room-name').textContent=snapshot.room.name; $('room-repository').textContent=snapshot.git?.binding?.repository || snapshot.room.repository || '未声明仓库'; $('identity').textContent=snapshot.me.display_name+' / '+(snapshot.me.role==='owner'?'项目创建者':'项目成员'); $('invite-button').hidden=accountManaged || snapshot.me.role!=='owner';
   renderOverview(); renderTasks(); renderRequests(); renderContracts();
   gitUI()?.renderPanel($('git-connection'),snapshot,gitContext());
+  window.CoopagentsProjectActivity?.render($('project-activity'),snapshot.activity,{openTask:openTaskDetail});
+  assetsUI()?.render($('project-assets'),assetContext());
   collaborationUI()?.renderPanel($('collaboration-status'),snapshot,gitContext());
   expanded.forEach(item=>{ const record=$(item.record); record?.querySelectorAll('details').forEach(d=>{if(d.querySelector('summary').textContent===item.label)d.open=true;}); });
   if(focus)restoreRecordFocus(focus);

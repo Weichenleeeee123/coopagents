@@ -11,8 +11,10 @@ from mcp.server.auth.provider import AccessToken
 from mcp.types import CallToolResult, TextContent
 from starlette.middleware.authentication import AuthenticationMiddleware
 
-from .errors import AccessDenied
+from .errors import AccessDenied, ValidationError
 from .api import error_payload, validate
+
+MAX_MCP_ASSET_BYTES = 10 * 1024 * 1024
 
 
 def tool_error(error):
@@ -39,8 +41,12 @@ TOOL_DESCRIPTIONS = {
     'resolve_request': 'Close a request you sent once its answer is enough.',
     'claim_task': 'Claim an unowned task; only one member can win. Pass a fresh session_key.',
     'report_progress': 'Report progress on a task you own.',
+    'link_delivery': ('Explicitly associate one task with exactly one branch, PR number, full commit SHA, or discovered '
+                      'GitHub release ID. Release linking records a relationship only; it never creates or publishes a release.'),
     'register_session': ('Record which tool, repository and branch this session works in. It does not turn on '
                          'wake-up: in an agent-hosted space call install_wake for that.'),
+    'list_assets': 'List files explicitly shared with this project. No workspace scanning occurs.',
+    'read_asset': 'Read one explicitly shared project asset. The result includes bounded base64 content and SHA-256.',
 }
 NOT_DELIVERED = ('Not delivered: no receiver_member_id was given, so nobody receives or is woken by this request '
                  'until a person assigns it. To ask a teammate directly, send a new request with their member_id '
@@ -54,7 +60,8 @@ def create_mcp_app(service, *, origin=None):
              'checkpoint', 'diagnostic_start', 'diagnostic_read', 'diagnostic_complete')
     names += ('lookup_owner', 'create_dependency', 'read_dependency', 'reply_dependency', 'resolve_dependency', 'cancel_dependency')
     schemas = {name: service.operations[name][2] for name in names}
-    schemas.update({'whoami': {}, 'read_team': {}})
+    schemas.update({'whoami': {}, 'read_team': {}, 'list_assets': {},
+                    'read_asset': {'asset_id': (str, True, None)}})
 
     async def validate_arguments(ctx, call_next):
         if ctx.method == 'tools/call':
@@ -91,6 +98,14 @@ def create_mcp_app(service, *, origin=None):
                     result = service.me(token)
                 elif name == 'read_team':
                     result = service.snapshot(token, web=False)
+                elif name == 'list_assets':
+                    result = {'assets': service.assets.list_assets(token)}
+                elif name == 'read_asset':
+                    import base64
+                    metadata, content = service.assets.read_asset(token, kwargs['asset_id'])
+                    if len(content) > MAX_MCP_ASSET_BYTES:
+                        raise ValidationError('Asset exceeds the MCP read limit; use the authenticated HTTP download')
+                    result = {'asset': metadata, 'content_base64': base64.b64encode(content).decode('ascii')}
                 else:
                     result = service.call(name, token, kwargs)
                     if name == 'send_request' and result.get('receiver_member_id') is None:

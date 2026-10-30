@@ -79,7 +79,7 @@ def board_routes(service, source_token, control_origin, control_token, room_id):
     if access._source().room_id != room_id:
         raise AccessDenied('Board space does not match host')
     static = Path(__file__).parent / 'static'
-    allowed = {'board.js', 'realtime_client.js', 'space_board.js', 'styles.css', 'git.js', 'dependencies.js'}
+    allowed = {'board.js', 'realtime_client.js', 'space_board.js', 'styles.css', 'git.js', 'project_activity.js', 'dependencies.js'}
     headers = {'Content-Security-Policy': "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'",
                'Referrer-Policy': 'no-referrer', 'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'no-store'}
 

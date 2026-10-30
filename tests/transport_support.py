@@ -37,7 +37,7 @@ class LiveService:
         if self.thread.is_alive():
             raise RuntimeError('Loopback service failed to stop')
 
-    def request(self, method, path, token=None, data=None, headers=None, raw=None):
+    def request(self, method, path, token=None, data=None, headers=None, raw=None, parse_json=True):
         headers = dict(headers or {})
         if token:
             headers['Authorization'] = 'Bearer ' + token
@@ -51,7 +51,8 @@ class LiveService:
             response = error
         with response:
             body = response.read()
-            return response.status, json.loads(body) if body else None, response.headers
+            result = json.loads(body) if body and parse_json else body if body else None
+            return response.status, result, response.headers
 
     def bootstrap(self):
         status, owner, _ = self.request('POST', '/api/rooms', data={'name': 'Team', 'owner_name': 'Owner'})

@@ -39,7 +39,8 @@ class EventStore:
             'collaboration_diagnostics': ('collaboration', 'diagnostic_id'),
             'repo_bindings': ('git', 'room_id'), 'git_observations': ('git', 'id'),
             'github_connections': ('git', 'room_id'), 'github_refs': ('git', 'id'),
-            'github_commit_refs': ('git', 'id'), 'github_evidence': ('git', 'room_id'),
+            'github_commit_refs': ('git', 'id'), 'github_release_refs': ('git', 'id'),
+            'github_evidence': ('git', 'room_id'),
             'project_members': ('identity', 'member_id'),
         }
         with self.db.connect(write=True) as c:

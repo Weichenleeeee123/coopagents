@@ -49,3 +49,18 @@ class GitRoutesTests(unittest.TestCase):
         self.assertEqual(response.status_code,200)
         response=self.client.post('/api/git/github/link',headers=self.headers,json={'task_id':task['id'],'commit_sha':'abc'})
         self.assertEqual(response.status_code,400)
+
+    def test_explicit_release_link_uses_positive_integer_and_exactly_one_reference(self):
+        schema=self.service.operations['link_delivery'][2]
+        self.assertEqual(schema['release_id'],(int,False,None))
+        begun=self.sync.begin_authorization(self.owner['web_token'])
+        self.sync.complete_authorization(begun['state'],'code')
+        self.sync.finish_authorization(self.owner['web_token'],begun['state'])
+        task=self.service.tasks.create_task(self.owner['web_token'],'release','Release','src')
+        response=self.client.post('/api/git/github/link',headers=self.headers,json={'task_id':task['id'],'release_id':42})
+        self.assertEqual(response.status_code,200)
+        self.assertEqual(response.json()['release_id'],42)
+        response=self.client.post('/api/git/github/link',headers=self.headers,json={'task_id':task['id'],'release_id':True})
+        self.assertEqual(response.status_code,400)
+        response=self.client.post('/api/git/github/link',headers=self.headers,json={'task_id':task['id'],'release_id':42,'pr_number':7})
+        self.assertEqual(response.status_code,400)

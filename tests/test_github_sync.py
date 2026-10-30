@@ -28,7 +28,7 @@ class FakeProvider:
                 'number': 7, 'state': 'closed', 'merged': False,
                 'head_sha': 'b'*40, 'head_repository_id': 99, 'head_branch': 'feature',
                 'checks': [{'head_sha': 'b'*40, 'status': 'completed', 'conclusion': 'success'}],
-                'statuses': []}]}
+                'statuses': []}], 'releases': [], 'unavailable_release_ids': []}
     def authorization_url(self, state):
         return 'https://github.com/login/oauth/authorize?state=' + state
     def exchange_code(self, code):
@@ -41,11 +41,19 @@ class FakeProvider:
         if self.denied:
             raise AccessDenied('GitHub repository access not accepted')
         return {'id': 11, 'full_name': 'acme/demo'}
-    def repository_state(self, installation_id, repository_id, full_name, branches=(), pr_numbers=(),commit_shas=()):
+    def repository_state(self, installation_id, repository_id, full_name, branches=(), pr_numbers=(),commit_shas=(),release_ids=()):
         if self.fail:
             raise GitHubError('GitHub unavailable', retryable=True)
         self.verify_repository(installation_id, repository_id, full_name)
-        return deepcopy(self.current)
+        state=deepcopy(self.current)
+        by_id={release['release_id']:release for release in state['releases']}
+        for release_id in release_ids:
+            if release_id not in by_id and release_id not in state['unavailable_release_ids']:
+                state['unavailable_release_ids'].append(release_id)
+        if release_ids:
+            state['releases']=[release for release in state['releases'] if release['release_id'] in release_ids]
+        state.setdefault('release_discovery',{'limit':20,'truncated':False})
+        return state
 
 
 class GitHubSyncTests(unittest.TestCase):
@@ -204,6 +212,52 @@ class GitHubSyncTests(unittest.TestCase):
             with self.subTest(value=value),self.assertRaises(ValidationError):
                 self.sync.associate(self.member['agent_token'],self.task['id'],commit_sha=value)
 
+    def test_release_reference_is_explicit_task_scoped_and_idempotent(self):
+        self.connect()
+        first=self.sync.associate(self.member['agent_token'],self.task['id'],release_id=42)
+        second=self.sync.associate(self.member['agent_token'],self.task['id'],release_id=42)
+        self.assertEqual(first['id'],second['id'])
+        self.assertEqual(first['release_id'],42)
+        self.assertEqual(first['linked_by'],self.member['member_id'])
+        with self.identity.db.connect() as c:
+            row=c.execute('SELECT * FROM github_release_refs WHERE room_id=? AND task_id=? AND release_id=?',
+                          (self.owner['room_id'],self.task['id'],42)).fetchone()
+        self.assertEqual(row['ownership_epoch'],1)
+        with self.assertRaises(NotFound):
+            self.sync.associate(self.other['agent_token'],self.task['id'],release_id=42)
+        with self.assertRaises(ValidationError):
+            self.sync.associate(self.member['agent_token'],self.task['id'],release_id=42,pr_number=7)
+
+    def test_release_evidence_and_webhook_are_bounded_and_body_is_not_stored(self):
+        self.connect()
+        self.app.current['releases']=[{'release_id':42,'tag_name':'v1.2.3','name':'1.2.3','state':'published',
+            'draft':False,'prerelease':False,'created_at':'2026-01-01T00:00:00Z',
+            'published_at':'2026-01-02T00:00:00Z','target_commitish':'main',
+            'assets':[{'name':'app.zip','size':17,'digest':'sha256:abc'}],'assets_truncated':False,
+            'url':'https://github.com/acme/demo/releases/tag/v1.2.3'}]
+        self.sync.associate(self.member['agent_token'],self.task['id'],release_id=42)
+        self.sync.associate(self.member['agent_token'],self.task['id'],release_id=99)
+        self.sync.associate(self.member['agent_token'],self.task['id'],branch='feature')
+        self.sync.refresh(self.owner['web_token'])
+        view=self.sync.snapshot(self.owner['web_token'])
+        linked=next(d for d in view['deliveries'] if d.get('release_id')==42)
+        unavailable=next(d for d in view['deliveries'] if d.get('release_id')==99)
+        self.assertEqual(linked['state'],'published')
+        self.assertEqual(linked['tag_name'],'v1.2.3')
+        self.assertEqual(linked['assets'][0]['name'],'app.zip')
+        self.assertEqual(unavailable['state'],'unavailable')
+        self.assertEqual(view['connection']['status'],'active')
+        self.assertEqual(next(d for d in view['deliveries'] if d.get('branch')=='feature')['state'],'pushed')
+        payload={'installation':{'id':22},'repository':{'id':11},'release':{'body':'PRIVATE-RELEASE-NOTES'}}
+        self.assertFalse(self.webhook('release-delivery','release',payload).get('ignored',False))
+        with self.identity.db.connect() as c:
+            row=c.execute("SELECT * FROM github_inbox WHERE delivery_id='release-delivery'").fetchone()
+        self.assertEqual(row['event'],'release')
+        self.assertNotIn('PRIVATE-RELEASE-NOTES',self.root.joinpath('github.sqlite3').read_bytes().decode(errors='ignore'))
+        for invalid in (True,0,-1,'42'):
+            with self.subTest(release_id=invalid),self.assertRaises(ValidationError):
+                self.sync.associate(self.member['agent_token'],self.task['id'],release_id=invalid)
+
     def test_unavailable_refs_do_not_revoke_other_deliveries(self):
         self.connect()
         self.sync.associate(self.member['agent_token'],self.task['id'],branch='feature')
@@ -250,6 +304,7 @@ class GitHubSyncTests(unittest.TestCase):
             self.sync.associate(self.member['agent_token'],self.task['id'],branch='feature'+str(index))
         self.sync.associate(self.member['agent_token'],self.task['id'],branch='feature0')
         with self.assertRaises(ValidationError): self.sync.associate(self.member['agent_token'],self.task['id'],commit_sha='a'*40)
+        with self.assertRaises(ValidationError): self.sync.associate(self.member['agent_token'],self.task['id'],release_id=42)
 
     def test_discovery_and_check_truncation_are_visible_in_snapshot(self):
         self.connect();self.sync.associate(self.member['agent_token'],self.task['id'],branch='feature')

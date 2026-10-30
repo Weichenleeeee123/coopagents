@@ -74,7 +74,7 @@ class EventsTests(unittest.TestCase):
             for table in ('tasks', 'progress', 'sessions', 'message_requests', 'message_replies',
                           'contracts', 'contract_versions', 'task_lifecycle_events', 'task_handoffs',
                           'task_dependencies', 'dependency_reads', 'repo_bindings', 'git_observations',
-                          'github_connections', 'github_evidence', 'credentials'):
+                          'github_connections', 'github_release_refs', 'github_evidence', 'credentials'):
                 self.assertIn('change_' + table + '_update', triggers)
         before = self.service.change_events.read(self.token)
         self.service.change_events.install_triggers()
