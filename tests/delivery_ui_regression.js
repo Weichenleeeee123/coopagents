@@ -10,7 +10,7 @@ const graph={items:[{object_key:'pr:7',kind:'pr',value:7,task_ids:[1,2],associat
 const context={openTask:id=>opened=id,canManage:true,memberName:id=>id,isCurrent:()=>current,api:(path,body)=>{calls.push({path,body});return new Promise(r=>resolve=r);},sync:async()=>{}};
 (async()=>{
 Delivery.render(root,graph,context);let text=all(root).map(n=>n.textContent).join(' ');
-assert.match(text,/明确关联/);assert.match(text,/待确认建议/);assert.match(text,/证据已过期/);assert.match(text,/closed_unmerged/);
+assert.match(text,/明确关联/);assert.match(text,/待确认建议/);assert.match(text,/证据已过期/);assert.match(text,/已关闭未合并/);
 assert.ok(!all(root).some(n=>['IMG','SCRIPT'].includes(n.tagName)));
 all(root).find(n=>n.textContent==='任务 #1').listeners.click();assert.equal(opened,1);
 const pending=all(root).find(n=>n.textContent==='确认关联').listeners.click();assert.equal(calls[0].body.suggestion_id,4);

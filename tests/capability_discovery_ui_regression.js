@@ -12,4 +12,18 @@ assert.match(text,/agent 自报/);assert.doesNotMatch(text,/模型正在工作|�
 assert.ok(!all(root).some(n=>['IMG','SCRIPT'].includes(n.tagName)));
 all(root).find(n=>n.tagName==='BUTTON'&&n.textContent==='任务 #3').listeners.click();assert.equal(opened,3);
 Discovery.render(root,null);assert.doesNotMatch(all(root).map(n=>n.textContent).join(' '),/member|PRIVATE/);
+const data={members:[{member_id:'one',display_name:'Alex',agents:[{session_key:'same',tool:'codex-cli',harness:'codex',capabilities:{mcp:'unknown'}},{session_key:'same',tool:'cursor',harness:'cursor',capabilities:{mcp:'unknown'}}]}],harnesses:[]};
+Discovery.render(root,data,{roomId:'a'});
+let disclosures=all(root).filter(n=>n.tagName==='DETAILS');
+assert.equal(disclosures.length,3,'Each session and the matrix expose separate evidence disclosures');
+disclosures[0].open=true;disclosures[0].listeners.toggle();
+disclosures[2].open=true;disclosures[2].listeners.toggle();
+Discovery.render(root,data,{roomId:'a'});
+disclosures=all(root).filter(n=>n.tagName==='DETAILS');
+assert.equal(disclosures[0].open,true,'Evidence stays open on snapshot refresh');
+assert.notEqual(disclosures[1].open,true,'Same session key on another tool stays independent');
+assert.equal(disclosures[2].open,true,'Matrix stays open on refresh');
+Discovery.render(root,data,{roomId:'b'});
+assert.ok(all(root).filter(n=>n.tagName==='DETAILS').every(n=>!n.open),'Another project does not inherit disclosure state');
+Discovery.render(root,null);
 console.log('Capability discovery evidence, safe DOM and replacement regressions passed');

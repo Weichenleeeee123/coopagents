@@ -33,7 +33,7 @@
     $('requests').replaceChildren(...snapshot.requests.map(r=>board.request(r,snapshot)));$('contracts').replaceChildren(...snapshot.contracts.map(board.contract));
     const epoch=generation;window.CoopagentsSharedContext?.render($('shared-context'),snapshot.shared_context,{roomId:snapshot.me.room_id,tasks:snapshot.tasks,members:snapshot.members,openTask,isCurrent:()=>epoch===generation&&!stopped,query:filters=>request('/board/context?'+new URLSearchParams(filters))});
     window.CoopagentsDelivery?.render($('delivery-traceability'),snapshot.git?.delivery_graph,{openTask});
-    window.CoopagentsCapabilities?.render($('capability-discovery'),snapshot.capabilities,{openTask});
+    window.CoopagentsCapabilities?.render($('capability-discovery'),snapshot.capabilities,{roomId:snapshot.me.room_id,openTask});
     window.CoopagentsProjectActivity?.render($('project-activity'),snapshot.activity);
   }
   function renderTasks(){

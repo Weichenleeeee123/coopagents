@@ -9,6 +9,24 @@ const data={items:[{id:'contract:1:1',kind:'contract',source:'contract',scope:'p
 const context={roomId:'one',tasks:[{id:3,title:'API'}],members:[],isCurrent:()=>current,openTask:id=>opened=id,query:()=>new Promise(r=>resolve=r)};
 (async()=>{
 UI.render(root,data,context);assert.match(text(root),/成员已确认/);
+let advanced=all(root).find(n=>n.tagName==='DETAILS');
+assert.ok(advanced,'Advanced filters must be available without filling the primary toolbar');
+assert.notEqual(advanced.open,true);
+advanced.open=true;advanced.listeners.toggle();
+let scope=all(root).find(n=>n.name==='scope');
+scope.value='src/pending';scope.listeners.input();
+UI.render(root,data,context);
+assert.equal(all(root).find(n=>n.tagName==='DETAILS').open,true,'Refresh preserves the advanced disclosure');
+assert.equal(all(root).find(n=>n.name==='scope').value,'src/pending','Refresh preserves unsubmitted filter text');
+const form=all(root).find(n=>n.tagName==='FORM');
+const applied=form.listeners.submit({preventDefault(){}});
+resolve({...data,filters:{scope:'src/pending'},items:[]});await applied;
+UI.render(root,data,context);
+assert.equal(all(root).find(n=>n.tagName==='DETAILS').open,true);
+assert.equal(all(root).find(n=>n.name==='scope').value,'src/pending');
+UI.render(root,null);UI.render(root,data,context);
+assert.notEqual(all(root).find(n=>n.tagName==='DETAILS').open,true,'New session does not inherit private filters');
+assert.equal(all(root).find(n=>n.name==='scope').value,'');
 assert.ok(!all(root).some(n=>n.tagName==='SCRIPT'));
 all(root).find(n=>n.textContent==='任务 #3').listeners.click();assert.equal(opened,3);
 const pending=all(root).find(n=>n.tagName==='FORM').listeners.submit({preventDefault(){}});

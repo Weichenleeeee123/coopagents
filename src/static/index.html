@@ -440,12 +440,11 @@
         <section id="view-overview" hidden>
           <section id="needs-attention" class="needs-attention"></section>
           <div class="summary-strip" id="summary"></div>
-          <div class="section-heading">
-            <h2>成员与工作现场</h2>
-            <span>会话记录 · agent 自述进展</span>
-          </div>
-          <div id="members"></div>
           <div id="capability-discovery"></div>
+          <details class="overview-details"><summary>成员工作进展</summary><div id="members"></div></details>
+          <div id="shared-context"></div>
+          <div id="delivery-traceability"></div>
+          <details class="overview-details"><summary>范围与变更交叠</summary>
           <div class="section-heading">
             <h2>范围交叠</h2>
             <span>基于任务声明</span>
@@ -462,8 +461,7 @@
             仅比较已上报的工作区；未上报的变更无法覆盖。请在开始与提交前拉取检查点。
           </p>
           <div id="git-overlaps"></div>
-          <div id="shared-context"></div>
-          <div id="delivery-traceability"></div>
+          </details>
           <div id="project-activity"></div>
           <div id="project-assets"></div>
         </section>

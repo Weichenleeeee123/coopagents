@@ -8,24 +8,29 @@
     if(!root)return;
     if(!result){sessions.delete(root);root.replaceChildren();return;}
     let state=sessions.get(root);
-    if(!state||state.room!==context.roomId){state={room:context.roomId,filters:{},data:null,request:0};sessions.set(root,state);}
+    const sameRoom=state?.room===context.roomId;
+    if(!state||state.room!==context.roomId){state={room:context.roomId,filters:{},draft:{},expanded:false,data:null,request:0};sessions.set(root,state);}
     if(state.inflight)return;
-    if(root.contains(document.activeElement)&&['INPUT','SELECT'].includes(document.activeElement?.tagName))return;
+    if(sameRoom&&root.contains(document.activeElement)&&['INPUT','SELECT','SUMMARY','BUTTON'].includes(document.activeElement?.tagName))return;
     root.replaceChildren();
     const section=el('section','','shared-context');section.setAttribute('aria-label','共享上下文');
-    section.append(el('h2','共享上下文'),el('p','按需查询项目共享信息，保留来源、版本、范围、新鲜度和可引用标识。','muted'));
-    const controls=el('form','','context-filters'),fields={},body=el('div'),feedback=el('p','','meta');
-    function input(name,label,options){
+    section.append(el('h2','共享上下文'));
+    const controls=el('form','','context-filters'),primary=el('div','','context-primary'),advanced=el('details','','context-advanced'),extra=el('div','','context-extra'),fields={},body=el('div','','context-results'),feedback=el('p','','meta');
+    advanced.append(el('summary','更多筛选'),extra);advanced.open=state.expanded;
+    advanced.addEventListener('toggle',()=>{if(advanced.isConnected!==false&&sessions.get(root)===state)state.expanded=advanced.open;});
+    function input(name,label,options,target=primary){
       const n=el(options?'select':'input');n.name=name;
       if(options)for(const [value,title] of [['','全部'],...options]){const option=el('option',title);option.value=String(value);n.append(option);}
-      n.value=state.filters[name]||'';if(!options)n.maxLength=500;
-      const container=el('label',label);container.append(n);controls.append(container);fields[name]=n;
+      n.value=state.draft[name]||'';if(!options)n.maxLength=500;
+      n.addEventListener(options?'change':'input',()=>{state.draft[name]=n.value;});
+      const container=el('label',label);container.append(n);target.append(container);fields[name]=n;
     }
+    input('query','搜索');fields.query.type='search';fields.query.placeholder='搜索共享记录';
     input('task_id','任务',(context.tasks||[]).map(t=>[t.id,'#'+t.id+' '+t.title]));
     input('member_id','成员',(context.members||[]).map(m=>[m.member_id,m.display_name]));
-    input('scope','声明范围');input('branch','分支');input('delivery_kind','交付类型',[['branch','Branch'],['commit','Commit'],['pr','PR'],['release','Release']]);
-    input('delivery_value','交付标识');input('query','搜索');
-    const submit=el('button','查询');submit.type='submit';controls.append(submit);section.append(controls,feedback,body);
+    input('scope','声明范围',null,extra);input('branch','分支',null,extra);input('delivery_kind','交付类型',[['branch','Branch'],['commit','Commit'],['pr','PR'],['release','Release']],extra);
+    input('delivery_value','交付标识',null,extra);
+    const submit=el('button','查询');submit.type='submit';primary.append(submit);controls.append(primary,advanced);section.append(controls,feedback,body);
     const current=()=>sessions.get(root)===state&&(!context.isCurrent||context.isCurrent());
     function show(data){
       body.replaceChildren();
@@ -37,15 +42,15 @@
         if(d.evidence)row.append(el('p','依据：'+d.evidence,'meta'));
         if(d.version)row.append(el('p','版本 v'+d.version+(d.effective?' · 当前生效':''),'meta'));
         if(d.task_id&&context.openTask){const b=el('button','任务 #'+d.task_id);b.type='button';b.addEventListener('click',()=>context.openTask(d.task_id));row.append(b);}
-        row.append(el('p','来源 '+item.source+' · 范围 '+item.scope+' · 引用 '+item.id,'meta'));
+        row.append(el('p','来源 '+item.source+' · 范围 '+item.scope+' · 引用 '+item.id,'meta context-reference'));
         body.append(row);
       }
-      if(!(data.items||[]).length)body.append(el('p','当前范围没有共享记录。','muted'));
+      if(!(data.items||[]).length)body.append(el('p','当前范围没有共享记录。','empty'));
       if(data.source_truncated)body.append(el('p','部分上游来源已截断；可打开原始任务或交付对象查看完整证据。','muted'));
       if(context.query){
         for(const [label,offset] of [['上一页',data.offset>0?Math.max(0,data.offset-(data.limit||50)):null],['下一页',data.next_offset]]){
           if(offset==null)continue;
-          const b=el('button',label);b.type='button';b.addEventListener('click',()=>load(offset));body.append(b);
+          const b=el('button',label);b.type='button';b.className='context-page';b.addEventListener('click',()=>load(offset));body.append(b);
         }
       }
     }

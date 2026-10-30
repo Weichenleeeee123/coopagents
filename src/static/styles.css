@@ -973,13 +973,13 @@ details[open] > summary {
   display: inline-block;
   max-width: 100%;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
   font-family: Consolas, monospace;
   font-size: 12px;
   color: #555;
   background: #f1f1f1;
-  border-radius: 0;
+  border-radius: 3px;
   padding: 2px 6px;
   margin: 14px 0 12px;
 }
@@ -998,7 +998,7 @@ details[open] > summary {
   width: 24px;
   height: 24px;
   flex: none;
-  border-radius: 0;
+  border-radius: 50%;
   background: #e0e0e0;
   color: #171717;
   font-size: 12px;
@@ -1569,6 +1569,10 @@ dialog > p {
   margin: 24px 0;
   border-top: 1px solid var(--line);
   padding-top: 20px;
+  max-height: 640px;
+  overflow: auto;
+  scrollbar-width: thin;
+  scrollbar-gutter: stable;
 }
 .project-activity h2 {
   font-size: 18px;
@@ -1610,6 +1614,69 @@ dialog > p {
 .asset-row h3 { font-size: 16px; margin: 0 0 6px; }
 .asset-row p { margin: 5px 0; }
 .asset-row button { margin-top: 4px; }
+/* Capability tools share the same unframed section and record hierarchy. */
+.shared-context,
+.capability-discovery,
+.delivery-traceability {
+  min-width: 0;
+  margin: 32px 0;
+  padding-top: 24px;
+  border-top: 1px solid var(--line);
+}
+.shared-context > h2,
+.capability-discovery > h2,
+.delivery-traceability > h2 { margin-bottom: 16px; }
+.context-primary { display: grid; grid-template-columns: minmax(160px, 2fr) repeat(2, minmax(120px, 1fr)) auto; gap: 12px; align-items: end; }
+.context-filters label { margin: 0; min-width: 0; font-size: 12px; color: var(--muted); font-weight: 500; }
+.context-filters select { text-overflow: ellipsis; }
+.context-filters input,
+.context-filters select { margin-top: 6px; }
+.context-primary > button { margin-bottom: 0; }
+.context-advanced { margin: 8px 0 16px; }
+.context-advanced > summary { width: fit-content; color: var(--muted); font-size: 12px; }
+.context-extra { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; padding: 8px 0 16px; }
+.context-results { max-height: 560px; overflow: auto; scrollbar-width: thin; scrollbar-gutter: stable; padding-right: 12px; }
+.context-item,
+.delivery-item { min-width: 0; padding: 18px 0; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.context-item h3,
+.delivery-item h3 { font-size: 15px; margin-bottom: 6px; }
+.context-item > p,
+.delivery-item > p { margin: 6px 0; white-space: pre-wrap; }
+.context-reference { font-family: Consolas, monospace; font-size: 12px; }
+.context-item button,
+.delivery-item button { font-size: 12px; margin: 8px 8px 0 0; }
+.context-page { margin: 16px 8px 8px 0; }
+.capability-member { display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: 24px; padding: 20px 0; border-bottom: 1px solid var(--line); }
+.capability-profile h3 { font-size: 15px; }
+.capability-agents { min-width: 0; }
+.capability-session { padding: 0 0 16px; overflow-wrap: anywhere; }
+.capability-session + .capability-session { border-top: 1px solid var(--line); padding-top: 16px; }
+.capability-session:last-child { padding-bottom: 0; }
+.capability-session > strong { font-size: 14px; font-weight: 600; }
+.capability-session > button { font-size: 12px; margin-top: 4px; }
+.capability-evidence > summary { color: var(--muted); font-size: 12px; padding: 10px 0; }
+.capability-discovery > .capability-evidence { margin-top: 16px; max-height: 560px; overflow: auto; scrollbar-width: thin; }
+.capability-evidence .record { margin: 0; }
+.overview-details { margin: 24px 0; border-top: 1px solid var(--line); padding-top: 8px; }
+.overview-details > summary { color: var(--muted); font-size: 13px; }
+.needs-attention:empty { display: none; }
+@media (max-width: 900px) {
+  .context-primary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .context-extra { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .context-primary > button { justify-self: start; }
+  .capability-member { grid-template-columns: 140px minmax(0, 1fr); gap: 16px; }
+}
+@media (max-width: 767px) {
+  .capability-member { grid-template-columns: minmax(0, 1fr); }
+  .context-primary > label:first-child { grid-column: 1 / -1; }
+  .context-primary > button { grid-column: 1 / -1; }
+  .context-extra { grid-template-columns: minmax(0, 1fr); }
+  .context-results { padding-right: 6px; }
+  .activity-filter,
+  .asset-controls > label { flex: 1 1 100%; min-width: 0; margin: 6px 0; }
+  .activity-filter select { min-width: 0; width: 100%; }
+  .icon-button { width: 44px; height: 44px; }
+}
 /* Project totals use the full snapshot, independently of board filters. */
 .board-summary {
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1639,6 +1706,13 @@ dialog > p {
   border-left: 2px solid #bc786c;
 }
 /* Responsive layout */
+@media (min-width: 1280px) {
+  .kanban-board {
+    grid-template-columns: repeat(5, minmax(180px, 1fr));
+    gap: 16px;
+    overflow-x: auto;
+  }
+}
 @media (min-width: 1600px) {
   .workspace main,
   .account-hub main {
@@ -1700,9 +1774,6 @@ dialog > p {
   }
   .entry-action {
     animation: arrive 0.35s ease-out;
-  }
-  .page-heading {
-    animation: arrive 0.25s ease-out;
   }
 }
 @media (max-width: 767px) {
@@ -1780,7 +1851,7 @@ dialog > p {
     position: static;
     height: auto;
     overflow: visible;
-    padding: 18px 20px;
+    padding: 16px 20px;
   }
   .sidebar .brand {
     font-size: 21px;
@@ -1827,7 +1898,7 @@ dialog > p {
     min-height: 44px;
   }
   .sidebar-foot {
-    padding-top: 12px;
+    padding-top: 4px;
     display: flex;
     flex-wrap: wrap;
     gap: 4px 12px;
@@ -1839,6 +1910,7 @@ dialog > p {
     padding: 6px 0;
   }
   .sidebar-foot p {
+    display: none;
     margin: 0;
     padding: 0;
     border: 0;
@@ -1887,7 +1959,7 @@ dialog > p {
   }
   .page-heading {
     display: block;
-    margin: 24px 0;
+    margin: 20px 0;
   }
   .page-heading h1 {
     font-size: 24px;
@@ -1956,10 +2028,10 @@ dialog > p {
     gap: 0;
   }
   .metric {
-    padding: 16px 14px;
+    padding: 10px 14px;
   }
   .metric strong {
-    font-size: 24px;
+    font-size: 22px;
   }
   .metric span {
     font-size: 12px;
@@ -2110,7 +2182,7 @@ dialog > p {
     gap: 0;
   }
   .metric {
-    padding: 16px 12px;
+    padding: 10px 12px;
   }
   .card-bottom {
     gap: 6px;
@@ -2150,4 +2222,22 @@ dialog > p {
 
 /* Status and owner filters wrap within the narrow task toolbar. */
 .board-tools {flex-wrap:wrap}
-@media(max-width:760px){.board-tools .search-label{flex:1 1 100%}.board-tools>label:not(.search-label){flex:1 1 110px}.board-toolbar select{width:100%;max-width:100%}}
+@media(max-width:760px){
+  .board-tools { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .board-tools .search-label { grid-column: 1 / -1; grid-row: 1; width: 100%; }
+  .board-tools > label { min-width: 0; }
+  .board-toolbar select { width: 100%; max-width: 100%; }
+  .workspace .sidebar { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px 12px; }
+  .workspace .sidebar .brand { font-size: 19px; gap: 6px; }
+  .workspace .sidebar .brand img { width: 28px; height: 28px; }
+  .workspace .sidebar .brand span { display: none; }
+  .workspace .workspace-switchers { grid-column: 1 / -1; grid-row: 3; margin: 0; border-bottom: 0; }
+  .workspace .workspace-switchers:not([open]) { width: fit-content; }
+  .workspace .workspace-switchers > summary { padding: 0; font-size: 12px; }
+  .workspace .room-label { grid-column: 2; grid-row: 1; margin: 0; padding: 0; border: 0; text-align: right; min-width: 0; }
+  .workspace .room-label h2 { font-size: 13px; }
+  .workspace .sidebar nav { grid-column: 1 / -1; grid-row: 2; margin: 0; padding-bottom: 0; }
+  .workspace .sidebar-foot { grid-column: 1 / -1; grid-row: 4; gap: 0 16px; }
+  .workspace .sidebar-foot button { min-height: 36px; }
+  .workspace .board-summary { margin-bottom: 18px; }
+}

@@ -132,7 +132,7 @@ function renderOverview(){
   renderSharedContext();
   renderDeliveryTraceability();
 }
-function renderCapabilities(){window.CoopagentsCapabilities?.render($('capability-discovery'),snapshot.capabilities,{openTask:openTaskDetail});}
+function renderCapabilities(){window.CoopagentsCapabilities?.render($('capability-discovery'),snapshot.capabilities,{roomId:snapshot.me.room_id,openTask:openTaskDetail});}
 
 function renderSharedContext(){
   const context=gitContext();window.CoopagentsSharedContext?.render($('shared-context'),snapshot.shared_context,
