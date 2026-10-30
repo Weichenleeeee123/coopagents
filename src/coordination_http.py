@@ -40,7 +40,7 @@ def coordination_routes(service, *, base_url=None, public_url=None, include_name
             principal = await run_in_threadpool(service.identity.authenticate, token)
             operation = request.scope.get('coordination_operation', request.path_params.get('operation'))
             read = request.scope.get('coordination_read')
-            if request.query_params and read != 'inbox':
+            if request.query_params and read not in ('inbox', 'context'):
                 raise ValidationError('Query parameters not accepted')
             if request.method == 'GET':
                 if read == 'me':
@@ -57,6 +57,20 @@ def coordination_routes(service, *, base_url=None, public_url=None, include_name
                     except ValueError:
                         raise ValidationError('Invalid inbox query') from None
                     result = await run_in_threadpool(service.call, 'read_inbox', token, data)
+                elif read == 'context':
+                    if any(k not in ('task_id', 'member_id', 'limit') or len(request.query_params.getlist(k)) != 1
+                           for k in request.query_params):
+                        raise ValidationError('Unsupported context query parameter')
+                    values = dict(request.query_params)
+                    try:
+                        data = {'task_id': int(values['task_id'])} if 'task_id' in values else {}
+                        if 'member_id' in values:
+                            data['member_id'] = values['member_id']
+                        if 'limit' in values:
+                            data['limit'] = int(values['limit'])
+                    except ValueError:
+                        raise ValidationError('Invalid context query parameter') from None
+                    result = await run_in_threadpool(service.read_context, token, **data)
                 else:
                     result = await run_in_threadpool(service.reads[read], token)
             else:
@@ -108,12 +122,14 @@ def coordination_routes(service, *, base_url=None, public_url=None, include_name
         return Route(path, handle, methods=[method])
 
     routes = [route('/api/operations/{operation}', 'POST'),
-              route('/api/agent-snapshot', 'GET', read='agent_snapshot')]
+              route('/api/agent-snapshot', 'GET', read='agent_snapshot'),
+              route('/api/context', 'GET', read='context')]
     if include_named:
         routes.extend(route(path, 'POST', operation=operation) for path, operation in OPERATION_PATHS.items())
         from .task_lifecycle import ACTIONS
         routes.extend(route('/api/tasks/{task_id:int}/'+action.replace('_','-'), 'POST', operation=action) for action in ACTIONS)
         routes.extend(route('/api/dependencies/{dependency_id:int}/'+action, 'POST', operation=action+'_dependency') for action in ('read','reply','resolve','cancel'))
-        routes.extend([route('/api/me','GET',read='me'), route('/api/snapshot','GET',read='snapshot'), route('/api/inbox','GET',read='inbox')])
+        routes.extend([route('/api/me','GET',read='me'), route('/api/snapshot','GET',read='snapshot'),
+                       route('/api/context','GET',read='context'), route('/api/inbox','GET',read='inbox')])
         routes.extend(route('/api/'+name, 'GET', read=name) for name in service.reads)
     return routes

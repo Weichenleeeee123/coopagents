@@ -123,6 +123,22 @@ function renderOverview(){
   const reasons={'Declared scopes are equal':'两项任务声明了相同的工作范围。','One declared scope is a slash-segment prefix of the other':'一项任务的声明范围包含另一项的子路径。'};
   snapshot.overlaps.forEach(o => add($('overlaps'),add(text('article','','record'),text('h3',o.task_ids.map(taskName).join(' × ')),text('p',o.scopes.join(' / '),'meta'),text('p',reasons[o.reason] || o.reason))));
   if($('git-overlaps')){$('git-overlaps').replaceChildren();gitUI()?.renderOverlaps($('git-overlaps'),snapshot.git,taskName);if(!snapshot.git?.overlaps?.length)empty($('git-overlaps'),'当前没有新鲜观测中的实际路径重叠。');}
+  renderSharedContext();
+}
+function renderSharedContext(){
+  const root=$('shared-context');if(!root)return;root.replaceChildren();
+  const context=snapshot.shared_context;
+  const section=text('section','','shared-context');
+  add(section,add(text('div','','section-heading'),text('h2','共享上下文'),text('span','按需查询 · 来源与新鲜度')));
+  if(!context?.items?.length){section.append(text('p','暂无可展示的共享结构化上下文。','muted'));root.append(section);return;}
+  context.items.slice(0,12).forEach(item=>{
+    const data=item.data||{}, label={task:'任务',session:'agent 会话',progress:'进度报告',request:'技术请求',contract:'公共约定',git_observation:'本地 Git 观测',delivery:'交付证据'}[item.kind]||item.kind;
+    const subject=data.title||data.summary||data.body||data.branch||data.tag_name||data.state||label;
+    const freshness={fresh:'新鲜',current:'当前',stale:'过期',unknown:'未知'}[item.freshness]||item.freshness;
+    add(section,add(text('article','','context-item'),add(text('div','','context-item-head'),text('strong',label),text('span',item.source+' · '+freshness,'meta')),text('p',String(subject).slice(0,280)),text('p',item.scope+' · '+date(item.observed_at),'meta')));
+  });
+  if(context.truncated)section.append(text('p','仅显示最近 '+context.items.length+' 条；agent 可通过 read_context 按任务或成员查询。','muted'));
+  root.append(section);
 }
 function taskLink(id) { return button('任务：'+taskName(id),()=>{setView('tasks');openTaskDetail(id);},'link-button'); }
 const taskColumns = boardUI()?.columns || [

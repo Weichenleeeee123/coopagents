@@ -86,7 +86,7 @@ class LocalBoundary:
         origins = [v.decode('latin-1') for k, v in headers if k == b'origin']
         if origins and (len(origins) != 1 or origins[0] != (self.origin or scope['scheme'] + '://' + host)):
             rejection = ('Origin not accepted', 403)
-        if scope.get('query_string') and scope['path'] != '/api/inbox' and not (scope['path'] in ('/account/oauth/github/callback','/api/git/github/callback') and scope['method'] == 'GET'):
+        if scope.get('query_string') and scope['path'] not in ('/api/inbox', '/api/context') and not (scope['path'] in ('/account/oauth/github/callback','/api/git/github/callback') and scope['method'] == 'GET'):
             rejection = ('Query parameters not accepted', 400)
         if rejection:
             # Reply after small pending bodies arrive, avoiding Windows TCP reset.
@@ -274,6 +274,20 @@ def create_app(database_path='.local/coopagents.sqlite3', *, base_url=None, publ
                     result = service.repositories.get_binding(token)
                 elif name == 'git_observation':
                     result = service.repositories.read_observation(token,request.path_params['observation_id'])
+                elif name == 'context':
+                    if any(k not in ('task_id', 'member_id', 'limit') or len(request.query_params.getlist(k)) != 1
+                           for k in request.query_params):
+                        raise ValidationError('Unsupported context query parameter')
+                    values = dict(request.query_params)
+                    try:
+                        context_args = {'task_id': int(values['task_id'])} if 'task_id' in values else {}
+                        if 'member_id' in values:
+                            context_args['member_id'] = values['member_id']
+                        if 'limit' in values:
+                            context_args['limit'] = int(values['limit'])
+                    except ValueError:
+                        raise ValidationError('Invalid context query parameter') from None
+                    result = service.read_context(token, **context_args)
                 elif name == 'inbox':
                     if any(k not in ('after_id', 'limit') or len(request.query_params.getlist(k)) != 1 for k in request.query_params):
                         raise ValidationError('Unsupported query parameter')
@@ -401,6 +415,7 @@ def create_app(database_path='.local/coopagents.sqlite3', *, base_url=None, publ
                Route('/api/assets/{asset_id:str}', asset_read, methods=['GET'])]
     routes += [route('/health', ['GET']), route('/ready', ['GET']), route('/api/rooms', ['POST'], operation='create_room'), route('/api/join', ['POST'], operation='join'),
               route('/api/me', ['GET'], read_name='me'), route('/api/snapshot', ['GET'], read_name='snapshot'),
+              route('/api/context', ['GET'], read_name='context'),
               route('/api/invites', ['POST'], operation='invite'), route('/api/agent-token', ['POST'], operation='rotate_agent'),
               route('/api/inbox', ['GET'], read_name='inbox'),
               route('/api/agent-connect', ['POST'], operation='connect_agent'),

@@ -8,6 +8,7 @@ from .tasks import TaskStore
 from .activity import ActivityStore
 from .messages import MessageStore
 from .contracts import ContractStore
+from .context import ContextStore
 from .protocol import fields, validate
 
 
@@ -26,6 +27,7 @@ class CoordinationService:
         self.activity = ActivityStore(self.identity)
         self.messages = MessageStore(self.identity)
         self.contracts = ContractStore(self.identity)
+        self.context = ContextStore()
         from .checkpoints import CheckpointStore
         self.checkpoints = CheckpointStore(self.identity)
         from .repositories import RepositoryStore
@@ -69,6 +71,9 @@ class CoordinationService:
             'link_delivery': ('any', self.github.associate, {'task_id': (int, True, None),
                 'branch': (str, False, ''), 'pr_number': (int, False, None), 'commit_sha': (str, False, ''),
                 'release_id': (int, False, None)}),
+            'read_context': ('any', self.read_context, {
+                'task_id': (int, False, None), 'member_id': (str, False, None),
+                'limit': (int, False, 50)}),
         }
         for name, schema in dependency_schemas(fields).items():
             self.operations[name] = ('any', getattr(self.dependencies, name), schema)
@@ -105,10 +110,20 @@ class CoordinationService:
     def me(self, token):
         return {'me': asdict(self.identity.authenticate(token)), 'room': self.identity.room_info(token)}
 
-    def snapshot(self, token, *, web=True):
+    def _base_snapshot(self, token, *, web=True):
         self.identity.authenticate(token, required_kind='web' if web else 'agent')
         result = self.me(token)
         result.update({name: read(token) for name, read in self.reads.items()})
+        return result
+
+    def read_context(self, token, task_id=None, member_id=None, limit=50):
+        principal = self.identity.authenticate(token)
+        return self.context.project(self._base_snapshot(token, web=principal.kind == 'web'),
+                                    task_id=task_id, member_id=member_id, limit=limit)
+
+    def snapshot(self, token, *, web=True):
+        result = self._base_snapshot(token, web=web)
+        result['shared_context'] = self.context.project(result)
         from .project_activity import project_activity
         result['activity'] = project_activity(result)
         result['server_time'] = datetime.now(timezone.utc).isoformat()

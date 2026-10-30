@@ -143,6 +143,7 @@ class LocalAdapter:
         if name=='whoami': return self.request('/api/me')
         if name=='read_team': return self.request('/api/git/team',{})
         if name=='read_inbox': return self.request('/api/inbox?'+urlencode(arguments)) if arguments else self.request('/api/inbox')
+        if name=='read_context': return self.request('/api/context?'+urlencode(arguments)) if arguments else self.request('/api/context')
         if name not in paths: raise ValidationError('Unsupported coordination tool')
         body = dict(arguments); path = paths[name]
         for field in ('task_id','request_id','dependency_id'):
@@ -159,7 +160,8 @@ def create_local_mcp(adapter):
     # Use the shared operation schemas without creating a local server/database.
     from .api import fields, validate
     schemas = {
-        'whoami':{},'read_team':{},'read_inbox':fields('',{'after_id':0,'limit':50}),
+        'whoami':{},'read_team':{},'read_context':fields('',{'task_id':None,'member_id':None,'limit':50}),
+        'read_inbox':fields('',{'after_id':0,'limit':50}),
         'checkpoint':fields('session_key tool event',{'task_id':None,'ownership_epoch':None}),
         'diagnostic_start':fields('challenge'),'diagnostic_read':fields('diagnostic_id'),
         'diagnostic_complete':fields('diagnostic_id proof'),
