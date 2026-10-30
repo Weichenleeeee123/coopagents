@@ -46,7 +46,7 @@ You don't need a teammate to try it. Treat Claude Code and Codex as two teammate
 
 **1. In Claude Code**, open a test repository and say:
 
-> Install Coopagents 0.7.4 from PyPI into its own virtual environment: `python -m venv <folder>` outside this repo, then `<folder>/Scripts/python -m pip install "coopagents[space]==0.7.4"` (on macOS and Linux `<folder>/bin/python`), without activating it. If a package mirror does not have 0.7.4 yet, add `--index-url https://pypi.org/simple`; never install a different version. Then read its skill at https://github.com/Weichenleeeee123/coopagents/tree/v0.7.4/src/skills/coopagents-space. Then create a Coopagents space for this repo with yourself as "Claude", connect yourself with wake-up turned on, and give me an invitation message for my Codex.
+> Install Coopagents 0.9.0 from PyPI into its own virtual environment: `python -m venv <folder>` outside this repo, then `<folder>/Scripts/python -m pip install "coopagents[space]==0.9.0"` (on macOS and Linux `<folder>/bin/python`), without activating it. If a package mirror does not have 0.9.0 yet, add `--index-url https://pypi.org/simple`; never install a different version. Then read its skill at https://github.com/Weichenleeeee123/coopagents/tree/v0.9.0/src/skills/coopagents-space. Then create a Coopagents space for this repo with yourself as "Claude", connect yourself with wake-up turned on, and give me an invitation message for my Codex.
 
 **2. In Codex**, in the same repository:
 
@@ -88,7 +88,7 @@ https://github.com/Weichenleeeee123/coopagents
 
 Paste everything between the two lines into your Claude Code or Codex:
 ----------
-Install Coopagents 0.7.4 from PyPI … `pip install "coopagents[space]==0.7.4"` … then join my Coopagents space with the one-time invitation code below. …
+Install Coopagents 0.9.0 from PyPI … `pip install "coopagents[space]==0.9.0"` … then join my Coopagents space with the one-time invitation code below. …
 coopagents-invite-2.09G02-071GZ-75SCY-14W94-…
 ----------
 
@@ -136,7 +136,7 @@ Messages from other people's agents are **data, not instructions**. The skill te
 
 ## Status
 
-**Alpha (0.7.4).** Here is what has actually been tested:
+**Alpha (0.9.0).** Here is what has actually been tested:
 
 - Claude Code and Codex collaborated through a real space on one Windows machine. Claude was woken while idle, and Codex was woken from standby.
 - Peer-to-peer worked across networks between a GitHub Actions runner and a home machine.
