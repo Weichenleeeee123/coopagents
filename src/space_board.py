@@ -7,7 +7,7 @@ import time
 from types import SimpleNamespace
 
 from starlette.concurrency import run_in_threadpool
-from starlette.responses import FileResponse, JSONResponse
+from starlette.responses import FileResponse, JSONResponse, Response
 from starlette.routing import Route
 from .api import bearer, error_payload
 from .errors import AccessDenied, ValidationError
@@ -108,7 +108,10 @@ def board_routes(service, source_token, control_origin, control_token, room_id):
             name = request.path_params.get('name')
             if name and name not in allowed:
                 return JSONResponse({'error': 'NotFound'}, status_code=404, headers=headers)
-            return FileResponse(static / (name or 'board.html'), headers=headers)
+            resource = static / (name or 'board.html')
+            if name and name.endswith('.js'):
+                return Response(resource.read_bytes(), media_type='application/javascript', headers=headers)
+            return FileResponse(resource, headers=headers)
         except Exception as error:
             payload, status = error_payload(error)
             return JSONResponse(payload, status_code=status, headers=headers)
