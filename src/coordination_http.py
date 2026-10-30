@@ -70,19 +70,8 @@ def coordination_routes(service, *, base_url=None, public_url=None, include_name
                 elif read == 'capabilities':
                     result = await run_in_threadpool(service.read_capabilities, token)
                 elif read == 'context':
-                    if any(k not in ('task_id', 'member_id', 'limit') or len(request.query_params.getlist(k)) != 1
-                           for k in request.query_params):
-                        raise ValidationError('Unsupported context query parameter')
-                    values = dict(request.query_params)
-                    try:
-                        data = {'task_id': int(values['task_id'])} if 'task_id' in values else {}
-                        if 'member_id' in values:
-                            data['member_id'] = values['member_id']
-                        if 'limit' in values:
-                            data['limit'] = int(values['limit'])
-                    except ValueError:
-                        raise ValidationError('Invalid context query parameter') from None
-                    result = await run_in_threadpool(service.read_context, token, **data)
+                    from .context import query_arguments
+                    result = await run_in_threadpool(service.read_context, token, **query_arguments(request.query_params))
                 else:
                     result = await run_in_threadpool(service.reads[read], token)
             else:

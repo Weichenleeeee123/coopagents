@@ -11,7 +11,7 @@ const gitUI = () => typeof window!=='undefined' ? window.CoopagentsGit : null;
 const dependencyUI = () => typeof window!=='undefined' ? window.CoopagentsDependencies : null;
 const lifecycleUI = () => typeof window!=='undefined' ? window.CoopagentsTaskLifecycle : null;
 const collaborationUI = () => typeof window!=='undefined' ? window.CoopagentsCollaboration : null;
-function gitContext(){const epoch=generation;return {api,sync,me:snapshot.me,memberName,origin:location.origin,isCurrent:()=>epoch===generation};}
+function gitContext(){const epoch=generation;return {api,sync,me:snapshot.me,memberName,openTask:openTaskDetail,origin:location.origin,isCurrent:()=>epoch===generation};}
 function assetContext(){const epoch=generation;return {api,roomId:snapshot.me.room_id,isCurrent:()=>epoch===generation};}
 const states = {cancelled:'已取消',open:'待认领', claimed:'已认领', working:'推进中', blocked:'受阻', local_done:'本地完成', pushed:'已推送', pr_open:'PR 已打开', merged:'已合并', approved:'已批准', rejected:'已拒绝'};
 const views = {overview:['01 / TEAM FIELD','团队现场','理解每个人正在推进的工作。'],tasks:['TEAM OPERATIONS / 任务协作','任务看板','每一项工作，都有清晰的去向。'],requests:['03 / TECHNICAL REQUESTS','技术请求','让依赖有去处，让答复有记录。'],contracts:['04 / SHARED AGREEMENTS','公共约定','把技术共识变成明确生效的版本。'],repository:['05 / REPOSITORY','仓库接入','让实际开发和远端交付成为可追溯的协作证据。']};
@@ -59,6 +59,11 @@ function logout(message='') {
   collaborationUI()?.clear(); lifecycleUI()?.clear(); dependencyUI()?.clear();
   renderSignature=''; closePrivate(); closeTaskDetail(); $('task-search').value=''; $('task-owner').value=''; if($('task-status'))$('task-status').value='active'; $('workspace').hidden=true; $('login').hidden=false; $('login-error').textContent=message;document.title='Coopagents · 同频';
   $('board-empty').hidden=true;
+  if(typeof window!=='undefined'){
+    window.CoopagentsSharedContext?.render($('shared-context'),null);
+    window.CoopagentsCapabilities?.render($('capability-discovery'),null);
+    window.CoopagentsDelivery?.render($('delivery-traceability'),null);
+  }
   ['members','tasks','requests','contracts','overlaps','summary','board-summary'].forEach(id => $(id).replaceChildren());
   ['room-name','room-repository','identity','network-error','action-error','board-count'].forEach(id=>$(id).textContent='');
   $('form-restore').reset(); $('form-join').reset(); $('form-create').reset(); $('task-form').reset();
@@ -130,20 +135,11 @@ function renderOverview(){
 function renderCapabilities(){window.CoopagentsCapabilities?.render($('capability-discovery'),snapshot.capabilities,{openTask:openTaskDetail});}
 
 function renderSharedContext(){
-  const root=$('shared-context');if(!root)return;root.replaceChildren();
-  const context=snapshot.shared_context;
-  const section=text('section','','shared-context');
-  add(section,add(text('div','','section-heading'),text('h2','共享上下文'),text('span','按需查询 · 来源与新鲜度')));
-  if(!context?.items?.length){section.append(text('p','暂无可展示的共享结构化上下文。','muted'));root.append(section);return;}
-  context.items.slice(0,12).forEach(item=>{
-    const data=item.data||{}, label={task:'任务',session:'agent 会话',progress:'进度报告',request:'技术请求',contract:'公共约定',git_observation:'本地 Git 观测',delivery:'交付证据'}[item.kind]||item.kind;
-    const subject=data.title||data.summary||data.body||data.branch||data.tag_name||data.state||label;
-    const freshness={fresh:'新鲜',current:'当前',stale:'过期',unknown:'未知'}[item.freshness]||item.freshness;
-    add(section,add(text('article','','context-item'),add(text('div','','context-item-head'),text('strong',label),text('span',item.source+' · '+freshness,'meta')),text('p',String(subject).slice(0,280)),text('p',item.scope+' · '+date(item.observed_at),'meta')));
-  });
-  if(context.truncated)section.append(text('p','仅显示最近 '+context.items.length+' 条；agent 可通过 read_context 按任务或成员查询。','muted'));
-  root.append(section);
+  const context=gitContext();window.CoopagentsSharedContext?.render($('shared-context'),snapshot.shared_context,
+    {...context,roomId:snapshot.me.room_id,tasks:snapshot.tasks,members:snapshot.members,openTask:openTaskDetail,
+     query:filters=>api('/api/operations/read_context',filters)});
 }
+
 function renderDeliveryTraceability(){window.CoopagentsDelivery?.render($('delivery-traceability'),snapshot.git?.delivery_graph,{...gitContext(),openTask:openTaskDetail,canManage:!!snapshot.git?.can_manage});}
 
 function taskLink(id) { return button('任务：'+taskName(id),()=>{setView('tasks');openTaskDetail(id);},'link-button'); }

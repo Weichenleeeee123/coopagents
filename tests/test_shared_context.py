@@ -61,6 +61,55 @@ class SharedContextTests(unittest.TestCase):
         self.assertEqual(result["filters"], {"task_id": task["id"], "member_id": None})
         self.assertEqual(result["items"][0]["data"]["task_id"], task["id"])
 
+    def test_effective_and_proposed_contracts_dependencies_assets_and_replies_are_queryable(self):
+        task=self.service.tasks.create_task(self.owner['web_token'],'rich','Rich context','src/api')
+        target=self.service.tasks.create_task(self.owner['web_token'],'dep','Dependency target','src/db')
+        claimed=self.service.tasks.claim_task(self.owner['agent_token'],task['id'])
+        self.service.tasks.claim_task(self.member['agent_token'],target['id'])
+        request=self.service.messages.send_request(self.owner['agent_token'],'q',self.member['member_id'],task['id'],1,'API question')
+        self.service.messages.reply(self.member['agent_token'],request['id'],'answer',1,'Shared answer','explicit evidence')
+        contract=self.service.contracts.propose(self.owner['agent_token'],'schema',0,'Approved v1','Effective API body',request['id'])
+        self.service.contracts.decide(self.owner['web_token'],contract['id'],1,'approved')
+        self.service.contracts.propose(self.owner['agent_token'],'schema',1,'Proposed v2','Pending API body',request['id'])
+        self.service.dependencies.create_dependency(self.owner['agent_token'],task['id'],target['id'],'Need schema',claimed['revision'],'need',context='Structured dependency')
+        asset=self.service.assets.upload(self.owner['web_token'],'guide.md','text/markdown',b'# explicit asset')
+        view=self.service.read_context(self.owner['agent_token'],limit=100)
+        kinds={i['kind'] for i in view['items']}
+        self.assertTrue({'contract','dependency','asset','reply'}<=kinds)
+        effective=next(i for i in view['items'] if i['kind']=='contract' and i['data'].get('version')==1)
+        proposal=next(i for i in view['items'] if i['kind']=='contract' and i['data'].get('version')==2)
+        self.assertEqual(effective['data']['confirmation'],'confirmed')
+        self.assertEqual(effective['data']['body'],'Effective API body')
+        self.assertEqual(proposal['data']['confirmation'],'suggested')
+        self.assertEqual(next(i for i in view['items'] if i['kind']=='asset')['data']['asset_id'],asset['id'])
+        scoped=self.service.read_context(self.owner['agent_token'],task_id=task['id'])
+        self.assertTrue(any(i['kind']=='contract' for i in scoped['items']))
+        self.assertTrue(any(i['kind']=='reply' for i in scoped['items']))
+        self.assertIsNone(self.service.messages.list_requests(self.owner['web_token'])[0]['read_at'])
+
+    def test_scope_branch_delivery_query_pagination_and_late_tasks(self):
+        from coopagents.context import ContextStore
+        stamp='2026-01-01T00:00:00Z'
+        tasks=[dict(id=i,title='Task '+str(i),scope='src/api' if i==250 else 'docs',created_at=stamp,owner_member_id='m') for i in range(1,251)]
+        source={'tasks':tasks,'sessions':[dict(id=1,member_id='m',tool='cursor',repository='repo',branch='feature',task_id=250,updated_at=stamp)],
+            'git':{'delivery_graph':{'items':[{'object_key':'pr:7','kind':'pr','value':7,'task_ids':[250],
+                'associations':[{'task_id':250,'linked_by':'m','linked_at':stamp,'relationship_source':'explicit','state':'pending_sync','stale':False,'unavailable':False}]}]}}}
+        for args in ({'scope':'src/api'},{'branch':'feature'},{'delivery_kind':'pr','delivery_value':'7'},{'query':'Task 250'}):
+            view=ContextStore.project(source,**args,limit=100)
+            self.assertTrue(any(i['data'].get('task_id')==250 for i in view['items']),args)
+        first=ContextStore.project(source,limit=2)
+        second=ContextStore.project(source,limit=2,offset=first['next_offset'])
+        self.assertFalse({i['id'] for i in first['items']} & {i['id'] for i in second['items']})
+        self.assertTrue(first['truncated'])
+
+    def test_projection_uses_source_freshness_and_does_not_leak_unknown_fields(self):
+        from coopagents.context import ContextStore
+        stamp='2026-01-01T00:00:00Z'
+        result=ContextStore.project({'tasks':[], 'git':{'deliveries':[dict(ref_id=1,task_id=1,source='github_verified',sync_at=stamp,state='unavailable',stale=True,transcript='PRIVATE-TEXT',prompt='PRIVATE-PROMPT')]}})
+        item=result['items'][0]
+        self.assertEqual(item['freshness'],'unavailable')
+        self.assertNotIn('PRIVATE',json.dumps(result))
+
 
 if __name__ == "__main__":
     unittest.main()

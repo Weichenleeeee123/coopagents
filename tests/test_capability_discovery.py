@@ -90,6 +90,25 @@ class CapabilityDiscoveryTests(unittest.TestCase):
         self.assertEqual({a['tool'] for a in member['agents']}, set(tools))
         self.assertEqual(len(self.service.activity.list_sessions(self.owner['web_token'])), len(tools))
 
+    def test_presence_uses_checkpoint_and_delivery_processing_remains_unknown(self):
+        self.service.activity.register_session(self.member['agent_token'],'presence','codex-cli','repo','main')
+        self.service.checkpoints.checkpoint(self.member['agent_token'],'presence','codex-cli','startup')
+        view=self.service.read_capabilities(self.owner['web_token'])
+        agent=next(a for m in view['members'] if m['member_id']==self.member['member_id'] for a in m['agents'])
+        self.assertEqual(agent['status'],'registered')
+        self.assertEqual(agent['recent_presence'],'recent')
+        self.assertIsNotNone(agent['last_seen_at'])
+        self.assertEqual(agent['event_delivery_status'],'unknown')
+        self.assertEqual(agent['model_status'],'unknown')
+
+    def test_checkpoint_for_another_tool_does_not_refresh_registered_session(self):
+        self.service.activity.register_session(self.member['agent_token'],'shared-key','cursor','repo','main')
+        self.service.checkpoints.checkpoint(self.member['agent_token'],'shared-key','codex-cli','startup')
+        view=self.service.read_capabilities(self.owner['web_token'])
+        agent=next(a for m in view['members'] if m['member_id']==self.member['member_id'] for a in m['agents'])
+        self.assertEqual(agent['recent_presence'],'unknown')
+        self.assertIsNone(agent['last_seen_at'])
+
     def test_http_and_mcp_discovery_and_strict_registration(self):
         import asyncio
         import httpx2
@@ -115,6 +134,18 @@ class CapabilityDiscoveryTests(unittest.TestCase):
                     tools={t.name for t in (await client.list_tools()).tools}
                     self.assertNotIn('record_capability',tools)
         asyncio.run(run())
+
+    def test_registration_refresh_keeps_omitted_optional_evidence(self):
+        self.service.activity.register_session(self.member['agent_token'],'refresh','cursor','repo','main',harness_version='1',platform='windows',capabilities={'mcp':'supported'})
+        self.service.activity.register_session(self.member['agent_token'],'refresh','cursor','repo','feature')
+        view=self.service.read_capabilities(self.owner['web_token'])
+        agent=next(a for m in view['members'] for a in m['agents'] if m['member_id']==self.member['member_id'])
+        self.assertEqual(agent['version'],'1')
+        self.assertEqual(agent['platform'],'windows')
+        self.assertEqual(agent['reported_capabilities']['mcp'],'supported')
+        self.assertFalse(any(h['harness']=='cursor' and h['evidence']['version']=='1' for h in view['harnesses']))
+        configured=next(h for h in view['harnesses'] if h['harness']=='cursor' and h['evidence']['source']=='adapter_contract')
+        self.assertEqual(configured['capabilities']['mcp'],'unknown')
 
 
 if __name__ == '__main__':

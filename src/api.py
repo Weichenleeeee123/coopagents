@@ -86,7 +86,7 @@ class LocalBoundary:
         origins = [v.decode('latin-1') for k, v in headers if k == b'origin']
         if origins and (len(origins) != 1 or origins[0] != (self.origin or scope['scheme'] + '://' + host)):
             rejection = ('Origin not accepted', 403)
-        if scope.get('query_string') and scope['path'] not in ('/api/inbox', '/api/context', '/api/deliveries') and not (scope['path'] in ('/account/oauth/github/callback','/api/git/github/callback') and scope['method'] == 'GET'):
+        if scope.get('query_string') and scope['path'] not in ('/api/inbox', '/api/context', '/api/deliveries', '/board/context') and not (scope['path'] in ('/account/oauth/github/callback','/api/git/github/callback') and scope['method'] == 'GET'):
             rejection = ('Query parameters not accepted', 400)
         if rejection:
             # Reply after small pending bodies arrive, avoiding Windows TCP reset.
@@ -275,19 +275,8 @@ def create_app(database_path='.local/coopagents.sqlite3', *, base_url=None, publ
                 elif name == 'git_observation':
                     result = service.repositories.read_observation(token,request.path_params['observation_id'])
                 elif name == 'context':
-                    if any(k not in ('task_id', 'member_id', 'limit') or len(request.query_params.getlist(k)) != 1
-                           for k in request.query_params):
-                        raise ValidationError('Unsupported context query parameter')
-                    values = dict(request.query_params)
-                    try:
-                        context_args = {'task_id': int(values['task_id'])} if 'task_id' in values else {}
-                        if 'member_id' in values:
-                            context_args['member_id'] = values['member_id']
-                        if 'limit' in values:
-                            context_args['limit'] = int(values['limit'])
-                    except ValueError:
-                        raise ValidationError('Invalid context query parameter') from None
-                    result = service.read_context(token, **context_args)
+                    from .context import query_arguments
+                    result = service.read_context(token, **query_arguments(request.query_params))
                 elif name == 'inbox':
                     if any(k not in ('after_id', 'limit') or len(request.query_params.getlist(k)) != 1 for k in request.query_params):
                         raise ValidationError('Unsupported query parameter')
@@ -389,7 +378,7 @@ def create_app(database_path='.local/coopagents.sqlite3', *, base_url=None, publ
                         'Content-Security-Policy': WEB_CSP})
 
     async def web_asset(request):
-        assets = {'/static/delivery.js': ('delivery.js', 'text/javascript'), '/static/capability_discovery.js': ('capability_discovery.js', 'text/javascript'), '/': ('index.html', 'text/html'),
+        assets = {'/static/shared_context.js': ('shared_context.js', 'text/javascript'), '/static/delivery.js': ('delivery.js', 'text/javascript'), '/static/capability_discovery.js': ('capability_discovery.js', 'text/javascript'), '/': ('index.html', 'text/html'),
                   '/static/styles.css': ('styles.css', 'text/css'),
                   '/static/app.js': ('app.js', 'text/javascript'),
                   '/static/board.js': ('board.js', 'text/javascript'),
@@ -410,7 +399,7 @@ def create_app(database_path='.local/coopagents.sqlite3', *, base_url=None, publ
         resource, mime = assets[request.url.path]
         return Response(files('coopagents').joinpath('static', resource).read_bytes(), media_type=mime, headers=headers)
 
-    routes = [Route(path, web_asset, methods=['GET']) for path in ('/static/delivery.js', '/static/capability_discovery.js', '/', '/static/styles.css', '/static/app.js', '/static/board.js', '/static/realtime_client.js', '/static/git.js', '/static/project_activity.js', '/static/project_assets.js', '/static/collaboration.js', '/static/task_lifecycle.js', '/static/dependencies.js', '/static/accounts.js', '/static/invitations.js', '/static/billing.js', '/static/icon.png', '/favicon.ico')]
+    routes = [Route(path, web_asset, methods=['GET']) for path in ('/static/shared_context.js', '/static/delivery.js', '/static/capability_discovery.js', '/', '/static/styles.css', '/static/app.js', '/static/board.js', '/static/realtime_client.js', '/static/git.js', '/static/project_activity.js', '/static/project_assets.js', '/static/collaboration.js', '/static/task_lifecycle.js', '/static/dependencies.js', '/static/accounts.js', '/static/invitations.js', '/static/billing.js', '/static/icon.png', '/favicon.ico')]
     routes += [Route('/api/assets', asset_list, methods=['GET']), Route('/api/assets', asset_upload, methods=['POST']),
                Route('/api/assets/{asset_id:str}', asset_read, methods=['GET'])]
     routes += [route('/health', ['GET']), route('/ready', ['GET']), route('/api/rooms', ['POST'], operation='create_room'), route('/api/join', ['POST'], operation='join'),

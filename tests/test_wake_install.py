@@ -97,17 +97,14 @@ class WakeInstall(unittest.TestCase):
 
     def test_cli_reports_the_reason_and_writes_nothing(self):
         self.write_claude({})
-        result = subprocess.run([sys.executable, '-m', 'coopagents.space_wake', 'install', '--tool', 'claude'],
-                                capture_output=True, text=True, cwd=self.repo, env=os.environ.copy())
+        result = self.wake_cli('--tool', 'claude', shell={})
         self.assertEqual(result.returncode, 1)
         self.assertIn('No Coopagents connection is registered for claude', result.stderr)
         self.assertFalse((self.repo / '.claude').exists())
 
     def test_cli_names_a_missing_project_folder(self):
         missing = self.directory / 'not-a-repo'
-        result = subprocess.run([sys.executable, '-m', 'coopagents.space_wake', 'install', '--tool', 'claude',
-                                 '--profile', str(self.profile), '--project-dir', str(missing)],
-                                capture_output=True, text=True, env=os.environ.copy())
+        result = self.wake_cli('--tool', 'claude', '--profile', str(self.profile), '--project-dir', str(missing), shell={})
         self.assertEqual(result.returncode, 1)
         self.assertIn('%s does not exist' % missing, result.stderr)
         self.assertFalse(missing.exists())

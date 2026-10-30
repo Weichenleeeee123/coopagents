@@ -45,7 +45,7 @@ class ActivityStore:
         return execution_task(connection, principal, task_id, session_key, ownership_epoch)
 
     def register_session(self, agent_token, session_key, tool, repository, branch, task_id=None, ownership_epoch=None,
-                         harness=None, harness_version='unknown', platform='unknown', capabilities=None):
+                         harness=None, harness_version=None, platform=None, capabilities=None):
         session_key = _text(session_key, "Session key", 200)
         repository = _text(repository, "Repository", 500)
         branch = _text(branch, "Branch", 200)
@@ -54,11 +54,14 @@ class ActivityStore:
         harness = harness or ('codex' if tool.startswith('codex') else tool)
         if harness not in HARNESSES or harness != ('codex' if tool.startswith('codex') else tool):
             raise ValidationError('Unsupported Harness')
-        harness_version = _text(harness_version, 'Harness version', 100)
-        platform = _text(platform, 'Platform', 60)
-        capabilities = {} if capabilities is None else capabilities
-        if not isinstance(capabilities, dict) or len(capabilities) > 32:
+        if harness_version is not None:
+            harness_version = _text(harness_version, 'Harness version', 100)
+        if platform is not None:
+            platform = _text(platform, 'Platform', 60)
+        if capabilities is not None and (not isinstance(capabilities, dict) or len(capabilities) > 32):
             raise ValidationError('Capabilities must be an object with at most 32 entries')
+        capabilities_omitted = capabilities is None
+        capabilities = {} if capabilities is None else capabilities
         if any(not isinstance(key, str) or not 1 <= len(key) <= 100 or not isinstance(value, str)
                or value not in CAPABILITY_STATUSES for key, value in capabilities.items()):
             raise ValidationError('Capability entries must use bounded status values')
@@ -66,6 +69,14 @@ class ActivityStore:
             task_id = _task_id(task_id)
         with self.db.connect(write=True) as connection:
             principal = self.resolve(connection, agent_token, required_kind="agent")
+            previous_capability = connection.execute('SELECT * FROM session_capabilities WHERE room_id=? AND member_id=? AND session_key=?',
+                (principal.room_id,principal.member_id,session_key)).fetchone()
+            if previous_capability and previous_capability['harness'] == harness:
+                if harness_version is None:harness_version=previous_capability['version']
+                if platform is None:platform=previous_capability['platform']
+                if capabilities_omitted:capabilities=json.loads(previous_capability['capabilities_json'])
+            harness_version = harness_version or 'unknown'
+            platform = platform or 'unknown'
             if task_id is not None:
                 self._owned_task(connection, principal, task_id, session_key, ownership_epoch)
             table = 'sessions' if tool in LEGACY_TOOLS else 'harness_sessions'

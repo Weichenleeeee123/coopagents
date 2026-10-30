@@ -15,6 +15,9 @@
         session.append(el('strong',(agent.harness||agent.tool)+' · '+({registered:'最近登记',stale:'登记已过期',unavailable:'当前不可用'}[agent.status]||'未知')),
           el('p',(agent.version||'unknown')+' · '+(agent.platform||'unknown')+' · '+(agent.repository||'未声明仓库')+' · '+(agent.branch||'未声明分支'),'meta'),
           el('p','最后登记 '+time(agent.updated_at)+' · '+(agent.evidence_source||'session_registry'),'meta'));
+        session.append(el('p','最近出现 '+time(agent.last_seen_at)+' · '+(agent.recent_presence==='recent'?'检查点在最近 15 分钟内':agent.recent_presence==='stale'?'检查点已过期':'未知'),'meta'),
+          el('p','事件送达 '+(agent.event_delivery_status||'unknown')+' · agent 处理 '+(agent.model_status||'unknown'),'meta'),
+          el('p','连接状态 '+(agent.connection_status||'unknown')+' · 凭据 '+(agent.credential_status||'unknown'),'meta'));
         if(agent.task_id&&context.openTask){const b=el('button','任务 #'+agent.task_id);b.type='button';b.addEventListener('click',()=>context.openTask(agent.task_id));session.append(b);}
         Object.entries(agent.capabilities||{}).forEach(([key,value])=>{
           if(!names[key])return;

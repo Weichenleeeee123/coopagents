@@ -101,11 +101,20 @@ class CapabilityStore:
                 observed = when(session['updated_at'])
                 fresh = observed is not None and 0 <= (now-observed).total_seconds() <= STALE_SECONDS
                 available = report.get('credential_status','unknown')
+                checkpoint = next((c for c in snapshot.get('collaboration',{}).get('checkpoints',[])
+                                   if c.get('member_id')==session['member_id']
+                                   and c.get('session_key')==session['session_key']
+                                   and c.get('tool')==session['tool']),None)
+                last_seen = checkpoint.get('updated_at') if checkpoint else None
+                last_seen_at = when(last_seen)
+                recently_present = last_seen_at is not None and 0 <= (now-last_seen_at).total_seconds() <= STALE_SECONDS
                 agents.append({'session_key':session['session_key'],'tool':session['tool'],'harness':harness,
                     'version':version,'platform':platform,'repository':session['repository'],'branch':session['branch'],
                     'task_id':session['task_id'],'updated_at':session['updated_at'],
                     'status':'unavailable' if available=='unavailable' else 'registered' if fresh else 'stale',
                     'credential_status':available,'connection_status':'unknown','model_status':'unknown',
+                    'last_seen_at':last_seen,'recent_presence':'recent' if recently_present else 'stale' if last_seen_at else 'unknown',
+                    'event_delivery_status':'unknown','last_event_delivery_at':None,
                     'capabilities':verified['capabilities'] if verified else {key:'unknown' for key in CAPABILITIES},
                     'capability_evidence':verified.get('capability_evidence',{}) if verified else {},
                     'reported_capabilities':report.get('capabilities',{}), 'evidence_source':report.get('evidence_source','session_registry')})

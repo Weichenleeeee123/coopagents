@@ -20,6 +20,7 @@
 | [1.0 发布就绪计划](release-1.0-plan.md) | 1.0 稳定版的范围、真实验收门槛和阶段顺序 |
 | [1.0 产品设计](product-1.0-design.md) | 本机 P2P、自托管 GUI、Git 交付关系、活动隐私和项目资产的分阶段设计 |
 | [1.0 前产品方向](superpowers/specs/2026-10-30-pre-1-0-product-direction-design.md) | 共享上下文、成员与能力发现、交付关联优化、Harness 验收和产品化准备 |
+| [0.9.1–0.9.3 能力深化](capability-deepening-report.md) | 共享上下文查询、成员/能力证据、交付反查与建议确认，以及分阶段实现和验证 |
 | [单机真实 agent 验收（2026-10-29）](solo-acceptance-2026-10-29.md) | Claude Opus 5 与 Codex 桌面版完成的 17 项单机闭环检查 |
 | [Agent 唤醒](agent-wake.md) | 可选唤醒 hook：Claude 空闲唤醒、Codex 每轮检查与待命、唤醒规则、限频、可靠性与原生验收 |
 | [唤醒与点对点原型](wake-and-p2p-prototype-report.md) | Claude asyncRewake 空闲唤醒、Codex Stop 待命续跑、iroh 公钥直连异地实测 |
@@ -72,8 +73,8 @@
 | [共享服务计划](shared-service-plan.md) | 当前身份基础与任务认领的具体实施步骤 |
 | [共享服务报告](shared-service-report.md) | P2 已实现能力和验证结果 |
 | [产品设计](agent-team-room-design.md) | 使用场景、协作机制、网页范围与权限边界 |
-| [接入实施计划](coopagents-implementation-plan.md) | 分阶段任务及验收标准 |
-| [接入验证报告](coopagents-integration-report.md) | 已取得的证据、版本、限制和 Git 提交 |
+| [接入实施计划](crewmesh-implementation-plan.md) | 分阶段任务及验收标准 |
+| [接入验证报告](crewmesh-integration-report.md) | 已取得的证据、版本、限制和 Git 提交 |
 | [实验运行说明](integration-lab.md) | 环境准备、配置生成、服务运行和原生入口验证 |
 | [原生 CLI 实验](native-cli-validation.md) | 真实启动、hook 事件、组织策略和配置兼容性阻塞 |
 

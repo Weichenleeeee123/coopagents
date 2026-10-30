@@ -8,7 +8,7 @@ from .tasks import TaskStore
 from .activity import ActivityStore
 from .messages import MessageStore
 from .contracts import ContractStore
-from .context import ContextStore
+from .context import ContextStore, QUERY_SCHEMA
 from .capabilities import CapabilityStore
 from .protocol import fields, validate
 
@@ -66,7 +66,7 @@ class CoordinationService:
             'connect_agent': ('web', self.identity.connect_agent, fields()),
             'create_task': ('web', self.tasks.create_task, fields('intent_key title scope')),
             'claim_task': ('agent', self.tasks.claim_task, fields('task_id', {'session_key': None})),
-            'register_session': ('agent', self.activity.register_session, {**fields('session_key tool repository branch', {'task_id': None, 'ownership_epoch': None, 'harness': None, 'harness_version': 'unknown', 'platform': 'unknown'}), 'capabilities': (dict, False, None)}),
+            'register_session': ('agent', self.activity.register_session, {**fields('session_key tool repository branch', {'task_id': None, 'ownership_epoch': None, 'harness': None, 'harness_version': None, 'platform': None}), 'capabilities': (dict, False, None)}),
             'report_progress': ('agent', self.activity.report_progress, fields('task_id state summary', {'evidence': '', 'session_key': None, 'ownership_epoch': None})),
             'send_request': ('agent', self.messages.send_request, fields('request_key context_version body', {'receiver_member_id': None, 'task_id': None})),
             'read_inbox': ('agent', self.messages.read_inbox, fields('', {'after_id': 0, 'limit': 50})),
@@ -83,9 +83,7 @@ class CoordinationService:
             'link_delivery': ('any', self.github.associate, {'task_id': (int, True, None),
                 'branch': (str, False, ''), 'pr_number': (int, False, None), 'commit_sha': (str, False, ''),
                 'release_id': (int, False, None)}),
-            'read_context': ('any', self.read_context, {
-                'task_id': (int, False, None), 'member_id': (str, False, None),
-                'limit': (int, False, 50)}),
+            'read_context': ('any', self.read_context, QUERY_SCHEMA),
         }
         for name, schema in dependency_schemas(fields).items():
             self.operations[name] = ('any', getattr(self.dependencies, name), schema)
@@ -137,12 +135,13 @@ class CoordinationService:
         self.identity.authenticate(token, required_kind='web' if web else 'agent')
         result = self.me(token)
         result.update({name: read(token) for name, read in self.reads.items()})
+        result['assets'] = self.assets.list_assets(token)
         return result
 
-    def read_context(self, token, task_id=None, member_id=None, limit=50):
+    def read_context(self, token, task_id=None, member_id=None, limit=50, **filters):
         principal = self.identity.authenticate(token)
         return self.context.project(self._base_snapshot(token, web=principal.kind == 'web'),
-                                    task_id=task_id, member_id=member_id, limit=limit)
+                                    task_id=task_id, member_id=member_id, limit=limit, **filters)
 
     def snapshot(self, token, *, web=True):
         result = self._base_snapshot(token, web=web)
