@@ -11,6 +11,7 @@ THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH RE
     <link rel="stylesheet" href="/static/styles.css" />
     <script src="/static/invitations.js" defer></script>
     <script src="/static/delivery.js" defer></script>
+    <script src="/static/delivery_graph.js" defer></script>
     <script src="/static/git.js" defer></script>
     <script src="/static/project_activity.js" defer></script>
     <script src="/static/project_assets.js" defer></script>
@@ -396,12 +397,9 @@ THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH RE
           ><img src="/static/icon.png" alt="" width="36" height="36" />Coopagents
           <span>同频</span></a
         >
-        <details id="account-switchers" class="workspace-switchers" hidden>
-          <summary>切换团队与项目</summary>
-          <label>团队<select id="workspace-team"></select></label
-          ><label>项目<select id="workspace-project"></select></label
-          ><button id="account-settings">团队与账号设置 ↗</button>
-        </details>
+        <button id="account-switchers" class="workspace-project-switch" type="button" aria-haspopup="dialog" aria-controls="workspace-project-dialog" hidden>
+          <span class="project-switch-mark" aria-hidden="true">P</span><span class="workspace-project-copy"><span id="workspace-switcher-current"></span><small id="workspace-switcher-team"></small></span><span class="project-switch-chevron" aria-hidden="true">⌄</span>
+        </button>
         <div class="room-label">
           <p class="eyebrow">WORKSPACE</p>
           <h2 id="room-name"></h2>
@@ -409,16 +407,14 @@ THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH RE
         </div>
         <nav aria-label="工作台">
           <button data-view="overview"><span>01</span>概览</button>
-          ><button data-view="tasks" aria-current="page"><span>02</span>任务</button>
-          ><button data-view="requests"><span>03</span>协作</button>
-          ><button data-view="contracts"><span>04</span>共享上下文</button>
-          ><button data-view="delivery"><span>05</span>交付</button>
-          ><button data-view="members"><span>06</span>成员与 agent</button>
-          ><button data-view="repository"><span>07</span>项目设置</button>
+          <button data-view="tasks" aria-current="page"><span>02</span>任务</button>
+          <button data-view="requests"><span>03</span>协作</button>
+          <button data-view="contracts"><span>04</span>共享上下文</button>
+          <button data-view="delivery"><span>05</span>交付</button>
+          <button data-view="members"><span>06</span>成员与 agent</button>
+          <button data-view="repository"><span>07</span>项目设置</button>
         </nav>
         <div class="sidebar-foot">
-          <button id="connection-button">接入 agent ↗</button
-          ><button id="invite-button" hidden>邀请成员 ↗</button>
           <p id="identity"></p>
           <button id="logout">退出当前标签页</button>
         </div>
@@ -444,9 +440,12 @@ THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH RE
         <section id="view-overview" hidden>
           <section id="needs-attention" class="needs-attention"></section>
           <div class="summary-strip" id="summary"></div>
-          <div id="overview-members-summary"></div>
-          <div id="overview-context-summary"></div>
-          <div id="overview-delivery-summary"></div>
+          <div class="overview-quick-links" aria-label="项目功能入口">
+            <button type="button" data-view="tasks">查看任务</button>
+            <button type="button" data-view="requests">查看协作</button>
+            <button type="button" data-view="delivery">查看交付</button>
+            <button type="button" data-view="members">查看成员与 agent</button>
+          </div>
           <details class="overview-details"><summary>范围与变更交叠</summary>
           <div class="section-heading">
             <h2>范围交叠</h2>
@@ -465,8 +464,8 @@ THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH RE
           </p>
           <div id="git-overlaps"></div>
           </details>
-          <div id="project-activity"></div>
-          <div id="project-assets"></div>
+          <div class="section-heading"><h2>最近变化</h2><button id="overview-recent-activity-link" class="link-button" type="button">查看全部活动 ↗</button></div>
+          <div id="overview-recent-activity"></div>
         </section>
         <section id="view-tasks">
           <div
@@ -540,19 +539,40 @@ THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH RE
           <div id="requests"></div>
         </section>
         <section id="view-contracts" hidden>
-          <div id="contracts"></div>
+          <nav class="page-tabs" aria-label="共享上下文分类">
+            <button type="button" data-context-tab="agreements" aria-current="page">约定</button>
+            <button type="button" data-context-tab="files">共享文件</button>
+            <button type="button" data-context-tab="records">共享记录</button>
+          </nav>
+          <div id="contracts" data-context-view="agreements"></div>
+          <div id="project-assets" data-context-view="files" hidden></div>
+          <div id="shared-context" data-context-view="records" hidden></div>
         </section>
         <section id="view-repository" hidden>
+          <section class="settings-intro"><h2>接入与仓库</h2><p class="muted">项目连接设置在这里管理；交付关系在“交付”页面查看。</p><button id="connection-button" type="button">接入自己的 agent ↗</button></section>
           <div id="collaboration-status" class="collaboration-panel"></div>
           <div id="git-connection" class="git-connection"></div>
         </section>
         <section id="view-delivery" hidden><div id="delivery-graph"></div></section>
-        <section id="view-members" hidden><div id="capability-discovery"></div></section>
+        <section id="view-members" hidden><div class="members-page-heading"><div><h2>成员与 agent</h2><p class="muted">项目成员、各自登记的工具与能力证据。</p></div><button id="invite-button" hidden type="button">邀请项目成员</button></div><div id="capability-discovery"></div></section>
+        <section id="view-activity" hidden><div id="project-activity"></div></section>
         <footer class="page-foot">
           <span>Coopagents / 同频</span>
         </footer>
       </main>
     </div>
+    <dialog id="workspace-project-dialog" class="project-switch-dialog" aria-labelledby="workspace-project-title">
+      <div class="project-switch-dialog-heading"><div><p class="eyebrow">PROJECTS / 项目</p><h2 id="workspace-project-title">切换项目</h2></div><button id="close-project-switcher" class="icon-button" type="button" aria-label="关闭项目切换器">×</button></div>
+      <p id="workspace-team-label" class="project-team-label"></p>
+      <div id="workspace-project-list" class="workspace-project-list" role="listbox" aria-label="可访问项目"></div>
+      <p id="workspace-switch-error" class="error" role="alert"></p>
+      <select id="workspace-team" hidden aria-hidden="true" tabindex="-1"></select>
+      <select id="workspace-project" hidden aria-hidden="true" tabindex="-1"></select>
+      <div class="project-switch-dialog-footer"><span class="meta">项目访问仅限已授权成员</span><button id="account-settings" type="button" class="quiet">全部项目与团队设置 ↗</button></div>
+    </dialog>
+    <dialog id="context-query-dialog" aria-labelledby="context-query-title">
+      <div class="dialog-heading"><h2 id="context-query-title">共享上下文</h2><button id="close-context-query" aria-label="关闭共享上下文查询">×</button></div><div id="context-query-content"></div>
+    </dialog>
     <dialog
       id="task-dialog"
       class="task-dialog"

@@ -90,8 +90,38 @@
   function renderTeams(){
     for(const id of ['hub-team','workspace-team'])options(el(id),teams,teamId,'team_id','选择团队');
     options(el('workspace-project'),projects,roomId,'room_id','选择项目');
+    const currentProject=projects.find(p=>p.room_id===roomId);
+    el('workspace-switcher-current').textContent=currentProject?.name||'选择项目';
+    el('workspace-switcher-team').textContent=teams.find(t=>t.team_id===teamId)?.name||'';
+    project.updateSwitcher?.({team:teams.find(t=>t.team_id===teamId),current_room_id:roomId,projects:projects.map(p=>({room_id:p.room_id,team_id:teamId,team_name:teams.find(t=>t.team_id===teamId)?.name||'',name:p.name,repository:p.repository||''}))});
     el('team-manager').hidden=!manager();el('project-manager').hidden=!manager();el('password-section').hidden=!config.local_login_enabled || !session.account.username;
     el('account-switchers').hidden=!project.managed();
+  }
+  function renderProjectSwitcher(data){
+    const list=el('workspace-project-list');list.replaceChildren();
+    const current=projects.find(p=>p.room_id===roomId);
+    el('workspace-switcher-current').textContent=current?.name||'选择项目';
+    el('workspace-switcher-team').textContent=teams.find(t=>t.team_id===teamId)?.name||'';
+    el('workspace-team-label').textContent=teams.find(t=>t.team_id===teamId)?.name||'当前团队';
+    let lastTeam='';
+    for(const p of data?.projects||projects){
+      if(p.team_name&&p.team_name!==lastTeam){lastTeam=p.team_name;list.append(node('p',lastTeam,'workspace-project-group'));}
+      const row=btn('',()=>{},'workspace-project-option');
+      row.setAttribute('data-project-id',p.room_id);
+      row.setAttribute('role','option');row.setAttribute('aria-selected',String(p.room_id===roomId));
+      const mark=node('span',(p.name||'P').slice(0,1),'project-switch-mark');
+      const detail=node('span','','workspace-project-detail');detail.append(node('strong',p.name),node('small',p.repository||'未声明仓库','meta'));
+      row.append(mark,detail,p.room_id===roomId?node('span','当前','project-current'):node('span','›','project-arrow'));
+      list.append(row);
+    }
+    if(!projects.length)list.append(node('p','当前团队没有已授权项目。','empty'));
+  }
+  async function openProjectSwitcher(){
+    if(!session)return;
+    const data=await switcherProjects();
+    project.updateSwitcher?.(data);
+    const dialog=el('workspace-project-dialog');
+    if(dialog.showModal)dialog.showModal();
   }
   function renderProjects(){
     const box=el('hub-projects');box.replaceChildren();
@@ -156,6 +186,24 @@
     projects=available;roomId=id;sessionStorage.setItem('coopagents_selected_project',id);project.enter(credential.web_token);
     el('account-hub').hidden=true;el('account-switchers').hidden=false;el('logout').textContent='返回团队与项目';renderTeams();
   }
+  async function switcherProjects(){
+    if(!session)throw new Error('请先登录账号');
+    const mine=epoch,accessible=[];
+    for(const team of teams){
+      const rows=team.team_id===teamId?projects:await request('/account/teams/'+encodeURIComponent(team.team_id)+'/projects');
+      if(mine!==epoch)throw stale();
+      accessible.push(...rows.map(p=>({room_id:p.room_id,team_id:team.team_id,team_name:team.name,name:p.name,repository:p.repository||''})));
+    }
+    return {team_id:teamId,teams:teams.map(t=>({team_id:t.team_id,name:t.name})),projects:accessible};
+  }
+  async function switchProject(id){
+    if(!session)return;
+    if(projects.some(p=>p.room_id===id))return selectProject(id);
+    const mine=epoch;let target='';
+    for(const team of teams){const rows=team.team_id===teamId?projects:await request('/account/teams/'+encodeURIComponent(team.team_id)+'/projects');if(mine!==epoch)throw stale();if(rows.some(p=>p.room_id===id)){target=team.team_id;break;}}
+    if(!target)throw new Error('项目不存在或当前账号没有访问权限');
+    await loadTeam(target);if(session&&teamId===target&&projects.some(p=>p.room_id===id))await selectProject(id);
+  }
   async function home(){
     invalidate();if(!session)return;setHubView('projects');showHub();
     try{await reload();}catch(error){if(session && error.message!=='访问已切换')el('hub-error').textContent=error.message;}
@@ -180,7 +228,10 @@
     catch(error){if(session){showHub();el('hub-error').textContent='退出未完成：'+error.message+'。请重试退出。';}throw error;}
   });});
   for(const id of ['hub-team','workspace-team'])el(id).addEventListener('change',()=>{const value=el(id).value;busy=false;act(el(id),()=>loadTeam(value));});
+  el('workspace-team').addEventListener('change',()=>el('workspace-project-dialog').close?.());
   el('workspace-project').addEventListener('change',()=>{const value=el('workspace-project').value;busy=false;act(el('workspace-project'),()=>selectProject(value));});
+  // The project picker is presented by the workbench shell; this module owns the authorized data and switch operation.
+  el('close-project-switcher').addEventListener('click',()=>el('workspace-project-dialog').close?.());
   el('account-settings').addEventListener('click',()=>act(el('account-settings'),home));
   el('hub-refresh').addEventListener('click',()=>act(el('hub-refresh'),reload));
   async function start(){
@@ -206,7 +257,7 @@
     if(session!==account || selectedTeam!==teamId || window.location.hash!==hash || el('account-hub').hidden)return;
     setHubView('billing');loadBilling(epoch,teamId);
   });
-  window.CoopagentsAccounts={home,denied};
+  window.CoopagentsAccounts={home,denied,switcherProjects,selectProject:switchProject};
   el('account-retry').addEventListener('click',()=>act(el('account-retry'),start));
   act(el('account-retry'),start);
 })();

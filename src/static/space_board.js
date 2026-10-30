@@ -26,16 +26,30 @@
   }
   function render(){
     $('room-name').textContent=snapshot.room.name;
+    $('readonly-project-name').textContent=snapshot.room.name;
+    renderNavigation();
     const owner=$('task-owner').value;$('task-owner').replaceChildren();
     [['','所有成员'],['unassigned','待认领'],...snapshot.members.map(m=>[String(m.member_id),m.display_name])].forEach(([value,label])=>{const n=node('option',label);n.value=value;$('task-owner').append(n);});$('task-owner').value=owner;
     renderTasks();$('members').replaceChildren();
     snapshot.members.forEach(m=>{const row=node('article','','member-row');row.append(node('h3',m.display_name));snapshot.sessions.filter(s=>s.member_id===m.member_id).forEach(s=>row.append(node('p',s.tool+' · '+(s.branch||'未声明分支')+' · 最后登记 '+time(s.updated_at),'meta')));snapshot.tasks.filter(t=>t.owner_member_id===m.member_id).forEach(t=>{const p=snapshot.progress.find(p=>p.task_id===t.id);row.append(node('p',t.title+' · '+(p?.summary||'尚无进展')+' · agent 自述 '+time(p?.updated_at)));});$('members').append(row);});
     $('requests').replaceChildren(...snapshot.requests.map(r=>board.request(r,snapshot)));$('contracts').replaceChildren(...snapshot.contracts.map(board.contract));
-    const epoch=generation;window.CoopagentsSharedContext?.render($('shared-context'),snapshot.shared_context,{roomId:snapshot.me.room_id,tasks:snapshot.tasks,members:snapshot.members,openTask,isCurrent:()=>epoch===generation&&!stopped,query:filters=>request('/board/context?'+new URLSearchParams(filters))});
-    window.CoopagentsDelivery?.render($('delivery-traceability'),snapshot.git?.delivery_graph,{openTask});
+    const epoch=generation,links={overview:'概览',tasks:'任务',requests:'协作',contracts:'共享上下文',delivery:'交付',members:'成员与 agent',settings:'项目设置',activity:'活动'};
+    window.CoopagentsSharedContext?.render($('shared-context'),snapshot.shared_context,{roomId:snapshot.me.room_id,tasks:snapshot.tasks,members:snapshot.members,openTask,isCurrent:()=>epoch===generation&&!stopped,query:filters=>request('/board/context?'+new URLSearchParams(filters))});
+    window.CoopagentsDeliveryGraph?.render($('delivery-traceability'),snapshot.git?.delivery_graph,{roomId:snapshot.me.room_id,readOnly:true,git:snapshot.git,openTask,taskName:id=>snapshot.tasks.find(t=>t.id===id)?.title||'任务 #'+id});
     window.CoopagentsCapabilities?.render($('capability-discovery'),snapshot.capabilities,{roomId:snapshot.me.room_id,openTask});
     window.CoopagentsProjectActivity?.render($('project-activity'),snapshot.activity);
+    renderOverview();
   }
+  function showView(view){
+    const nav=$('board-navigation');if(!nav)return;
+    for(const key of ['overview','tasks','requests','contracts','delivery','members','settings','activity']){const target=$('readonly-page-'+key);if(target)target.hidden=key!==view;}
+    nav.querySelectorAll('button').forEach(button=>{if(button.dataset.view===view)button.setAttribute('aria-current','page');else button.removeAttribute('aria-current');});
+  }
+  function renderNavigation(){
+    const nav=$('board-navigation');if(!nav)return;
+    nav.replaceChildren();for(const [view,label] of Object.entries({overview:'概览',tasks:'任务',requests:'协作',contracts:'共享上下文',delivery:'交付',members:'成员与 agent',settings:'项目设置',activity:'活动'})){const b=node('button',label);b.type='button';b.dataset.view=view;b.addEventListener('click',()=>showView(view));nav.append(b);}showView('overview');
+  }
+  function renderOverview(){const root=$('readonly-page-overview');if(!root)return;root.replaceChildren();const tasks=snapshot.tasks.length,requests=snapshot.requests.filter(r=>!r.resolved_at).length,assets=snapshot.assets?.length||0;const stats=node('div','','summary-strip');for(const [value,label] of [[tasks,'项目任务'],[requests,'未解决请求'],[assets,'共享文件'],[snapshot.members.length,'项目成员']]){const card=node('div','','metric');card.append(node('strong',String(value)),node('span',label));stats.append(card);}root.append(stats,node('h2','当前项目'),node('p',snapshot.room.repository||snapshot.room.name,'view-note'));for(const [view,label,items]of [['tasks','查看任务',tasks],['requests','查看协作',requests],['delivery','查看交付',snapshot.git?.delivery_graph?.items?.length||0],['members','查看成员与 agent',snapshot.members.length]]){const b=node('button',label+' · '+items);b.type='button';b.addEventListener('click',()=>showView(view));root.append(b);}}
   function renderTasks(){
     if(!snapshot)return;
     const focused=document.activeElement?.id,filter=$('task-status').value;

@@ -5,8 +5,9 @@ const tick=()=>new Promise(resolve=>setImmediate(resolve));
 async function scenario(oldStatus){
   const elements=new Map(),listeners={},pending=[],streams=[],timers=new Map();let timerId=0;
   class Node {
-    constructor(id){this.id=id;this.value='';this.children=[];this.textContent='';this.open=false;this.handlers={};}
+    constructor(id){this.id=id;this.value='';this.children=[];this.textContent='';this.open=false;this.handlers={};this.dataset={};this.attributes={};this.tagName=String(id).toUpperCase();this.hidden=false;}
     append(...nodes){this.children.push(...nodes);}replaceChildren(...nodes){this.children=nodes;}
+    setAttribute(k,v){this.attributes[k]=v;}removeAttribute(k){delete this.attributes[k];}querySelectorAll(selector){return selector==='button'?this.children.filter(node=>node.tagName==='BUTTON'):[];}
     addEventListener(event,fn){this.handlers[event]=fn;}focus(){}close(){this.open=false;this.handlers.close?.();}
   }
   const element=id=>{if(!elements.has(id))elements.set(id,new Node(id));return elements.get(id);};

@@ -22,6 +22,7 @@ class WebTests(unittest.TestCase):
                                     ('/static/app.js', 'text/javascript', 'app.js'),
                                     ('/static/board.js', 'text/javascript', 'board.js'),
                                     ('/static/git.js', 'text/javascript', 'git.js'),
+                                    ('/static/delivery_graph.js', 'text/javascript', 'delivery_graph.js'),
                                     ('/static/realtime_client.js', 'text/javascript', 'realtime_client.js'),
                                     ('/static/project_activity.js', 'text/javascript', 'project_activity.js'),
                                     ('/static/project_assets.js', 'text/javascript', 'project_assets.js'),

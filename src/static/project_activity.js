@@ -20,7 +20,7 @@
     if(!root)return;
     root.replaceChildren();
     const section=el('section','','project-activity');section.setAttribute('aria-label','项目活动');
-    section.append(el('h2','项目活动'));
+    section.append(el('h2',context.compact?'最近变化':'项目活动'));
     if(!activity||!Array.isArray(activity.items)){section.append(el('p','暂无结构化活动。','muted'));root.append(section);return;}
     const valid=activity.items.filter(item=>item&&typeof item==='object'&&types[item.type]&&typeof item.summary==='string'&&typeof item.occurred_at==='string');
     const addFilter=(name,label,values)=>{
@@ -32,13 +32,14 @@
     };
     const taskIds=[...new Set(valid.map(item=>item.task_id).filter(id=>Number.isInteger(id)&&id>0))].sort((a,b)=>a-b);
     const toolbar=el('div','','activity-filters');
-    toolbar.append(addFilter('type','类型',Object.entries(types)),addFilter('source','来源',Object.entries(sources)),
-      addFilter('task','任务',taskIds.map(id=>[String(id),'任务 #'+id])));section.append(toolbar);
-    const filtered=valid.filter(item=>(!filters.type||item.type===filters.type)&&(!filters.source||item.source===filters.source)
+    if(!context.compact)toolbar.append(addFilter('type','类型',Object.entries(types)),addFilter('source','来源',Object.entries(sources)),
+      addFilter('task','任务',taskIds.map(id=>[String(id),'任务 #'+id])));
+    if(!context.compact)section.append(toolbar);
+    const filtered=valid.filter(item=>(context.compact||!filters.type||item.type===filters.type)&&(context.compact||!filters.source||item.source===filters.source)
       &&(!filters.task||item.task_id===Number(filters.task)));
     const items=filtered
       .map((item,index)=>({item,index,time:Date.parse(item.occurred_at)})).filter(entry=>Number.isFinite(entry.time))
-      .sort((a,b)=>b.time-a.time||a.index-b.index).slice(0,100);
+      .sort((a,b)=>b.time-a.time||a.index-b.index).slice(0,context.compact?(context.maxItems||4):100);
     if(!items.length)section.append(el('p','暂无结构化活动。','muted'));
     items.forEach(({item})=>{
       const row=el('article','','activity-item');
@@ -54,6 +55,7 @@
       }
       section.append(row);
     });
+    if(context.compact&&activity.items.length>(context.maxItems||4)&&context.viewAll){const more=el('button','查看全部活动','activity-view-all');more.type='button';more.addEventListener('click',context.viewAll);section.append(more);}
     if(activity.truncated===true)section.append(el('p','仅显示最近 '+items.length+' 条活动。','muted'));
     root.append(section);
   }

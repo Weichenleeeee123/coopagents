@@ -56,7 +56,7 @@
       Object.values(h.capability_evidence||{}).forEach(v=>row.append(el('p','证据：'+v.evidence+' · 确认成员 '+v.verified_by+' · '+time(v.verified_at),'meta')));
       matrix.append(row);
     });
-    section.append(matrix);if(data.verification_truncated)section.append(el('p','验证记录超出展示范围，请按具体 Harness 查询。','muted'));root.append(section);
+    if(context.showMatrix!==false)section.append(matrix);if(data.verification_truncated)section.append(el('p','验证记录超出展示范围，请按具体 Harness 查询。','muted'));root.append(section);
   }
   const api={render};if(typeof module!=='undefined'&&module.exports)module.exports=api;
   if(typeof window!=='undefined')window.CoopagentsCapabilities=api;

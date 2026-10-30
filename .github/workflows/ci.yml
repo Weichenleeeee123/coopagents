@@ -29,6 +29,8 @@ jobs:
       - run: node tests/shared_context_ui_regression.js
       - run: node tests/board_ui_regression.js
       - run: node tests/delivery_ui_regression.js
+      - run: node tests/delivery_graph_ui_regression.js
+      - run: node tests/workspace_navigation_regression.js
       - run: node tests/realtime_client_regression.js
       - run: node tests/space_board_session_regression.js
       - run: node --check src/static/accounts.js
