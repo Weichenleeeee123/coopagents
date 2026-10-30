@@ -408,12 +408,13 @@ THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH RE
           <p id="room-repository"></p>
         </div>
         <nav aria-label="工作台">
-          <button data-view="overview"><span>01</span>团队现场</button
-          ><button data-view="tasks" aria-current="page">
-            <span>02</span>任务看板</button
-          ><button data-view="requests"><span>03</span>技术请求</button
-          ><button data-view="contracts"><span>04</span>公共约定</button
-          ><button data-view="repository"><span>05</span>仓库接入</button>
+          <button data-view="overview"><span>01</span>概览</button>
+          ><button data-view="tasks" aria-current="page"><span>02</span>任务</button>
+          ><button data-view="requests"><span>03</span>协作</button>
+          ><button data-view="contracts"><span>04</span>共享上下文</button>
+          ><button data-view="delivery"><span>05</span>交付</button>
+          ><button data-view="members"><span>06</span>成员与 agent</button>
+          ><button data-view="repository"><span>07</span>项目设置</button>
         </nav>
         <div class="sidebar-foot">
           <button id="connection-button">接入 agent ↗</button
@@ -443,10 +444,9 @@ THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH RE
         <section id="view-overview" hidden>
           <section id="needs-attention" class="needs-attention"></section>
           <div class="summary-strip" id="summary"></div>
-          <div id="capability-discovery"></div>
-          <details class="overview-details"><summary>成员工作进展</summary><div id="members"></div></details>
-          <div id="shared-context"></div>
-          <div id="delivery-traceability"></div>
+          <div id="overview-members-summary"></div>
+          <div id="overview-context-summary"></div>
+          <div id="overview-delivery-summary"></div>
           <details class="overview-details"><summary>范围与变更交叠</summary>
           <div class="section-heading">
             <h2>范围交叠</h2>
@@ -546,6 +546,8 @@ THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH RE
           <div id="collaboration-status" class="collaboration-panel"></div>
           <div id="git-connection" class="git-connection"></div>
         </section>
+        <section id="view-delivery" hidden><div id="delivery-graph"></div></section>
+        <section id="view-members" hidden><div id="capability-discovery"></div></section>
         <footer class="page-foot">
           <span>Coopagents / 同频</span>
         </footer>
