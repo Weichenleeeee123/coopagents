@@ -1,6 +1,6 @@
 'use strict';
 (() => {
-  const types={task_created:'任务创建',progress_reported:'进度汇报',claim_task:'认领任务',release_task:'释放任务',
+  const types={delivery_association:'交付关联',task_created:'任务创建',progress_reported:'进度汇报',claim_task:'认领任务',release_task:'释放任务',
     propose_handoff:'提出交接',accept_handoff:'接受交接',reject_handoff:'拒绝交接',force_handoff:'管理员交接',
     cancel_task:'取消任务',reopen_task:'恢复任务',session_registered:'Agent 会话登记',request_sent:'发送协作请求',
     request_read:'读取协作请求',request_processed:'确认处理请求',request_resolved:'解决协作请求',reply_sent:'发送协作回复',

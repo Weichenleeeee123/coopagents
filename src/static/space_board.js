@@ -31,6 +31,7 @@
     renderTasks();$('members').replaceChildren();
     snapshot.members.forEach(m=>{const row=node('article','','member-row');row.append(node('h3',m.display_name));snapshot.sessions.filter(s=>s.member_id===m.member_id).forEach(s=>row.append(node('p',s.tool+' · '+(s.branch||'未声明分支')+' · 最后登记 '+time(s.updated_at),'meta')));snapshot.tasks.filter(t=>t.owner_member_id===m.member_id).forEach(t=>{const p=snapshot.progress.find(p=>p.task_id===t.id);row.append(node('p',t.title+' · '+(p?.summary||'尚无进展')+' · agent 自述 '+time(p?.updated_at)));});$('members').append(row);});
     $('requests').replaceChildren(...snapshot.requests.map(r=>board.request(r,snapshot)));$('contracts').replaceChildren(...snapshot.contracts.map(board.contract));
+    window.CoopagentsDelivery?.render($('delivery-traceability'),snapshot.git?.delivery_graph,{openTask});
     window.CoopagentsCapabilities?.render($('capability-discovery'),snapshot.capabilities,{openTask});
     window.CoopagentsProjectActivity?.render($('project-activity'),snapshot.activity);
   }
@@ -58,7 +59,7 @@
     if(!ticket){$('board-error').textContent='请由主机 agent 使用 board 命令打开一次性看板地址。';return;}
     retire();const epoch=generation;stopped=false;busy=false;dirty=false;snapshot=null;active=null;
     if($('task-dialog').open)$('task-dialog').close();
-    ['tasks','members','requests','contracts','task-detail','project-activity','capability-discovery'].forEach(id=>$(id).replaceChildren());
+    ['tasks','members','requests','contracts','task-detail','project-activity','capability-discovery','delivery-traceability'].forEach(id=>$(id).replaceChildren());
     $('room-name').textContent='团队协作';$('board-count').textContent='';$('board-error').textContent='';$('transport-status').textContent='正在连接…';
     try{
       const result=await request('/board/session',{ticket});if(epoch!==generation||stopped)return;token=result.token;

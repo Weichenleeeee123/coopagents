@@ -27,6 +27,7 @@ jobs:
       - run: node --check src/static/space_board.js
       - run: node tests/capability_discovery_ui_regression.js
       - run: node tests/board_ui_regression.js
+      - run: node tests/delivery_ui_regression.js
       - run: node tests/realtime_client_regression.js
       - run: node tests/space_board_session_regression.js
       - run: node --check src/static/accounts.js

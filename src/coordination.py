@@ -37,6 +37,8 @@ class CoordinationService:
         from .github_app import GitHubApp
         from .github_sync import GitHubSync
         self.github = GitHubSync(self.identity, self.repositories, github_app or GitHubApp())
+        from .delivery import DeliveryStore
+        self.delivery = DeliveryStore(self)
         from .events import EventStore
         self.change_events = EventStore(self.identity)
         from .wake_digest import WakeDigest
@@ -46,6 +48,9 @@ class CoordinationService:
                 'harness': (str, True, None), 'version': (str, True, None), 'platform': (str, True, None),
                 'capability': (str, True, None), 'status': (str, True, None), 'evidence': (str, True, None),
                 'constraints': (str, False, '')}),
+            'read_deliveries': ('any', self.read_deliveries, fields('', {'task_id':None, 'kind':'', 'value':''})),
+            'suggest_delivery': ('agent', self.delivery.suggest, {'task_id':(int,True,None),'request_key':(str,True,None),'branch':(str,False,''),'pr_number':(int,False,None),'commit_sha':(str,False,''),'release_id':(int,False,None),'evidence':(str,False,''),'session_key':(str,False,None),'ownership_epoch':(int,False,None)}),
+            'decide_delivery': ('web', self.delivery.decide, {'suggestion_id':(int,True,None),'decision':(str,True,None)}),
             'read_capabilities': ('any', self.read_capabilities, fields()),
             'wake_digest': ('agent', self.wake.digest, fields()),
             'checkpoint': ('agent', self.checkpoints.checkpoint, fields('session_key tool event', {'task_id': None, 'ownership_epoch': None})),
@@ -103,6 +108,9 @@ class CoordinationService:
         self.reads['lifecycle'] = self.lifecycle.snapshot
         self.reads['dependencies'] = self.dependencies.snapshot
 
+    def read_deliveries(self, token, task_id=None, kind='', value=''):
+        return self.delivery.read(token, task_id=task_id, kind=kind, value=value)
+
     def read_capabilities(self, token):
         principal = self.identity.authenticate(token)
         snapshot = self._base_snapshot(token, web=principal.kind == 'web')
@@ -113,6 +121,7 @@ class CoordinationService:
     def git_snapshot(self, token):
         result = self.repositories.snapshot(token)
         result.update(self.github.snapshot(token))
+        result['delivery_graph'] = self.delivery.read(token)
         result['github_configured'] = self.github.app.enabled
         return result
 

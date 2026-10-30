@@ -125,6 +125,7 @@ function renderOverview(){
   snapshot.overlaps.forEach(o => add($('overlaps'),add(text('article','','record'),text('h3',o.task_ids.map(taskName).join(' × ')),text('p',o.scopes.join(' / '),'meta'),text('p',reasons[o.reason] || o.reason))));
   if($('git-overlaps')){$('git-overlaps').replaceChildren();gitUI()?.renderOverlaps($('git-overlaps'),snapshot.git,taskName);if(!snapshot.git?.overlaps?.length)empty($('git-overlaps'),'当前没有新鲜观测中的实际路径重叠。');}
   renderSharedContext();
+  renderDeliveryTraceability();
 }
 function renderCapabilities(){window.CoopagentsCapabilities?.render($('capability-discovery'),snapshot.capabilities,{openTask:openTaskDetail});}
 
@@ -143,6 +144,8 @@ function renderSharedContext(){
   if(context.truncated)section.append(text('p','仅显示最近 '+context.items.length+' 条；agent 可通过 read_context 按任务或成员查询。','muted'));
   root.append(section);
 }
+function renderDeliveryTraceability(){window.CoopagentsDelivery?.render($('delivery-traceability'),snapshot.git?.delivery_graph,{...gitContext(),openTask:openTaskDetail,canManage:!!snapshot.git?.can_manage});}
+
 function taskLink(id) { return button('任务：'+taskName(id),()=>{setView('tasks');openTaskDetail(id);},'link-button'); }
 const taskColumns = boardUI()?.columns || [
   ['open','待认领','明确意图，等待接手'],

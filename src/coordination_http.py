@@ -41,7 +41,7 @@ def coordination_routes(service, *, base_url=None, public_url=None, include_name
             principal = await run_in_threadpool(service.identity.authenticate, token)
             operation = request.scope.get('coordination_operation', request.path_params.get('operation'))
             read = request.scope.get('coordination_read')
-            if request.query_params and read not in ('inbox', 'context'):
+            if request.query_params and read not in ('inbox', 'context', 'deliveries'):
                 raise ValidationError('Query parameters not accepted')
             if request.method == 'GET':
                 if read == 'me':
@@ -58,6 +58,15 @@ def coordination_routes(service, *, base_url=None, public_url=None, include_name
                     except ValueError:
                         raise ValidationError('Invalid inbox query') from None
                     result = await run_in_threadpool(service.call, 'read_inbox', token, data)
+                elif read == 'deliveries':
+                    if any(k not in ('task_id','kind','value') or len(request.query_params.getlist(k)) != 1 for k in request.query_params):
+                        raise ValidationError('Unsupported delivery query')
+                    data = dict(request.query_params)
+                    try:
+                        if 'task_id' in data: data['task_id']=int(data['task_id'])
+                    except ValueError:
+                        raise ValidationError('Invalid delivery task id') from None
+                    result = await run_in_threadpool(service.read_deliveries,token,**data)
                 elif read == 'capabilities':
                     result = await run_in_threadpool(service.read_capabilities, token)
                 elif read == 'context':
@@ -127,7 +136,8 @@ def coordination_routes(service, *, base_url=None, public_url=None, include_name
     routes = [route('/api/operations/{operation}', 'POST'),
               route('/api/agent-snapshot', 'GET', read='agent_snapshot'),
               route('/api/context', 'GET', read='context'),
-              route('/api/capabilities', 'GET', read='capabilities')]
+              route('/api/capabilities', 'GET', read='capabilities'),
+              route('/api/deliveries', 'GET', read='deliveries')]
     if include_named:
         routes.extend(route(path, 'POST', operation=operation) for path, operation in OPERATION_PATHS.items())
         from .task_lifecycle import ACTIONS

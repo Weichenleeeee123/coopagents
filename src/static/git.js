@@ -74,6 +74,7 @@
       form.addEventListener('submit',async e=>{e.preventDefault();submit.disabled=true;try{const payload={task_id:task.id};if(branch.value)payload.branch=branch.value;if(pr.value)payload.pr_number=Number(pr.value);if(commit.value)payload.commit_sha=commit.value;if(release.value)payload.release_id=Number(release.value);await context.api('/api/git/github/link',payload);if(!context.isCurrent())return;document.activeElement?.blur();await context.sync();feedback.textContent='关联已保存，下次远端核对后显示证据。';}catch(error){feedback.textContent=error.message;}finally{submit.disabled=false;}});
       container.append(form);
     }
+    const trace=element('div');container.append(trace);(typeof window!=='undefined'?window.CoopagentsDelivery:null)?.render(trace,git?.delivery_graph,{...context,taskId:task.id,canManage:!!git?.can_manage,openTask:context.openTask});
     append(container,element('p','合并记录属于交付证据；任务验收仍由团队确认。','muted'));
     if(task.owner_member_id===context.me.member_id)append(container,element('p','自己的 agent 可用 link_delivery(task_id, branch / pr_number / commit_sha / release_id) 明确关联交付。','muted'));
   }
