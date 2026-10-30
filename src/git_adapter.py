@@ -143,6 +143,7 @@ class LocalAdapter:
         if name=='whoami': return self.request('/api/me')
         if name=='read_team': return self.request('/api/git/team',{})
         if name=='read_inbox': return self.request('/api/inbox?'+urlencode(arguments)) if arguments else self.request('/api/inbox')
+        if name=='read_capabilities': return self.request('/api/capabilities')
         if name=='read_context': return self.request('/api/context?'+urlencode(arguments)) if arguments else self.request('/api/context')
         if name not in paths: raise ValidationError('Unsupported coordination tool')
         body = dict(arguments); path = paths[name]
@@ -160,7 +161,7 @@ def create_local_mcp(adapter):
     # Use the shared operation schemas without creating a local server/database.
     from .api import fields, validate
     schemas = {
-        'whoami':{},'read_team':{},'read_context':fields('',{'task_id':None,'member_id':None,'limit':50}),
+        'whoami':{},'read_team':{},'read_capabilities':{},'read_context':fields('',{'task_id':None,'member_id':None,'limit':50}),
         'read_inbox':fields('',{'after_id':0,'limit':50}),
         'checkpoint':fields('session_key tool event',{'task_id':None,'ownership_epoch':None}),
         'diagnostic_start':fields('challenge'),'diagnostic_read':fields('diagnostic_id'),
@@ -168,7 +169,7 @@ def create_local_mcp(adapter):
         'read_task_history':fields('task_id',{'before_id':None,'limit':20}),
         'release_task':fields('task_id expected_revision request_key summary',{'session_key':None,'ownership_epoch':None}),
         'propose_handoff':fields('task_id expected_revision request_key summary target_member_id',{'session_key':None,'ownership_epoch':None}),
-        'claim_task':fields('task_id',{'session_key':None}), 'register_session':fields('session_key tool repository branch',{'task_id':None,'ownership_epoch':None}),
+        'claim_task':fields('task_id',{'session_key':None}), 'register_session':{**fields('session_key tool repository branch',{'task_id':None,'ownership_epoch':None,'harness':None,'harness_version':'unknown','platform':'unknown'}),'capabilities':(dict,False,None)},
         'report_progress':fields('task_id state summary',{'evidence':'','session_key':None,'ownership_epoch':None}),
         'send_request':fields('request_key context_version body',{'receiver_member_id':None,'task_id':None}),
         'acknowledge':fields('request_id'),'reply':fields('request_id request_key context_version body',{'evidence':''}),

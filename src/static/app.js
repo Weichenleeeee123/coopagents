@@ -119,12 +119,15 @@ function renderOverview(){
     tasks.forEach(t => { const p=snapshot.progress.find(p=>p.task_id===t.id); const line=add(text('p'),badge(p?.state||t.state),text('span',t.title)); if(p) add(line,text('span',' · agent 自述 · '+date(p.updated_at),'meta')); add(activity,line); if(p) add(activity,text('p',p.summary,'progress-summary')); });
     add($('members'),add(row,profile,activity));
   });
+  renderCapabilities();
   $('overlaps').replaceChildren(); if(!snapshot.overlaps.length) empty($('overlaps'),'当前没有声明范围交叠。');
   const reasons={'Declared scopes are equal':'两项任务声明了相同的工作范围。','One declared scope is a slash-segment prefix of the other':'一项任务的声明范围包含另一项的子路径。'};
   snapshot.overlaps.forEach(o => add($('overlaps'),add(text('article','','record'),text('h3',o.task_ids.map(taskName).join(' × ')),text('p',o.scopes.join(' / '),'meta'),text('p',reasons[o.reason] || o.reason))));
   if($('git-overlaps')){$('git-overlaps').replaceChildren();gitUI()?.renderOverlaps($('git-overlaps'),snapshot.git,taskName);if(!snapshot.git?.overlaps?.length)empty($('git-overlaps'),'当前没有新鲜观测中的实际路径重叠。');}
   renderSharedContext();
 }
+function renderCapabilities(){window.CoopagentsCapabilities?.render($('capability-discovery'),snapshot.capabilities,{openTask:openTaskDetail});}
+
 function renderSharedContext(){
   const root=$('shared-context');if(!root)return;root.replaceChildren();
   const context=snapshot.shared_context;

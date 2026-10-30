@@ -9,6 +9,7 @@ from .activity import ActivityStore
 from .messages import MessageStore
 from .contracts import ContractStore
 from .context import ContextStore
+from .capabilities import CapabilityStore
 from .protocol import fields, validate
 
 
@@ -28,6 +29,7 @@ class CoordinationService:
         self.messages = MessageStore(self.identity)
         self.contracts = ContractStore(self.identity)
         self.context = ContextStore()
+        self.capability_store = CapabilityStore(self.identity)
         from .checkpoints import CheckpointStore
         self.checkpoints = CheckpointStore(self.identity)
         from .repositories import RepositoryStore
@@ -40,6 +42,11 @@ class CoordinationService:
         from .wake_digest import WakeDigest
         self.wake = WakeDigest(self.identity)
         self.operations = {
+            'record_capability': ('web', self.capability_store.record, {
+                'harness': (str, True, None), 'version': (str, True, None), 'platform': (str, True, None),
+                'capability': (str, True, None), 'status': (str, True, None), 'evidence': (str, True, None),
+                'constraints': (str, False, '')}),
+            'read_capabilities': ('any', self.read_capabilities, fields()),
             'wake_digest': ('agent', self.wake.digest, fields()),
             'checkpoint': ('agent', self.checkpoints.checkpoint, fields('session_key tool event', {'task_id': None, 'ownership_epoch': None})),
             'diagnostic_start': ('agent', self.checkpoints.diagnostic_start, fields('challenge')),
@@ -54,7 +61,7 @@ class CoordinationService:
             'connect_agent': ('web', self.identity.connect_agent, fields()),
             'create_task': ('web', self.tasks.create_task, fields('intent_key title scope')),
             'claim_task': ('agent', self.tasks.claim_task, fields('task_id', {'session_key': None})),
-            'register_session': ('agent', self.activity.register_session, fields('session_key tool repository branch', {'task_id': None, 'ownership_epoch': None})),
+            'register_session': ('agent', self.activity.register_session, {**fields('session_key tool repository branch', {'task_id': None, 'ownership_epoch': None, 'harness': None, 'harness_version': 'unknown', 'platform': 'unknown'}), 'capabilities': (dict, False, None)}),
             'report_progress': ('agent', self.activity.report_progress, fields('task_id state summary', {'evidence': '', 'session_key': None, 'ownership_epoch': None})),
             'send_request': ('agent', self.messages.send_request, fields('request_key context_version body', {'receiver_member_id': None, 'task_id': None})),
             'read_inbox': ('agent', self.messages.read_inbox, fields('', {'after_id': 0, 'limit': 50})),
@@ -96,6 +103,13 @@ class CoordinationService:
         self.reads['lifecycle'] = self.lifecycle.snapshot
         self.reads['dependencies'] = self.dependencies.snapshot
 
+    def read_capabilities(self, token):
+        principal = self.identity.authenticate(token)
+        snapshot = self._base_snapshot(token, web=principal.kind == 'web')
+        snapshot['capabilities'] = self.activity.list_capabilities(token)
+        snapshot['capability_records'], snapshot['capability_records_truncated'] = self.capability_store.evidence(token)
+        return self.capability_store.project(snapshot)
+
     def git_snapshot(self, token):
         result = self.repositories.snapshot(token)
         result.update(self.github.snapshot(token))
@@ -124,6 +138,9 @@ class CoordinationService:
     def snapshot(self, token, *, web=True):
         result = self._base_snapshot(token, web=web)
         result['shared_context'] = self.context.project(result)
+        source = dict(result, capabilities=self.activity.list_capabilities(token))
+        source['capability_records'], source['capability_records_truncated'] = self.capability_store.evidence(token)
+        result['capabilities'] = self.capability_store.project(source)
         from .project_activity import project_activity
         result['activity'] = project_activity(result)
         result['server_time'] = datetime.now(timezone.utc).isoformat()

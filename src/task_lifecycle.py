@@ -93,6 +93,8 @@ def context_for(db, task):
     progress = db.execute('SELECT * FROM progress WHERE task_id=?', (task_id,)).fetchone()
     result = {'task': project_task(task), 'progress': dict(progress) if progress else None,
               'sessions': [dict(r) for r in db.execute('SELECT * FROM sessions WHERE task_id=?', (task_id,))]}
+    if has_table(db, 'harness_sessions'):
+        result['sessions'].extend(dict(r) for r in db.execute('SELECT * FROM harness_sessions WHERE task_id=?',(task_id,)))
     for table in ('collaboration_checkpoints', 'github_refs', 'github_commit_refs', 'github_release_refs'):
         result[table] = [dict(r) for r in db.execute(f'SELECT * FROM {table} WHERE task_id=?', (task_id,))] if has_table(db, table) else []
     # Immutable observations remain queryable in their original table; retain only branch context here.
@@ -111,7 +113,7 @@ def retire_execution(db, task):
     # Legacy tasks can have several registered sessions without an exclusive binding.
     # Retire every known task session before detaching it, preserving current legacy
     # behavior until an actual lifecycle boundary occurs.
-    for table in ('sessions', 'collaboration_checkpoints'):
+    for table in ('sessions', 'harness_sessions', 'collaboration_checkpoints'):
         if has_table(db, table):
             db.execute(f'''INSERT OR IGNORE INTO task_session_bindings
                 (task_id,room_id,member_id,session_key,ownership_epoch,bound_at)
@@ -119,6 +121,8 @@ def retire_execution(db, task):
                 (task['ownership_epoch'],task['id']))
     db.execute('DELETE FROM progress WHERE task_id=?', (task['id'],))
     db.execute('UPDATE sessions SET task_id=NULL WHERE task_id=?', (task['id'],))
+    if has_table(db, 'harness_sessions'):
+        db.execute('UPDATE harness_sessions SET task_id=NULL WHERE task_id=?',(task['id'],))
     if has_table(db, 'collaboration_checkpoints'):
         db.execute('UPDATE collaboration_checkpoints SET task_id=NULL WHERE task_id=?', (task['id'],))
     for table in ('github_refs', 'github_commit_refs', 'github_release_refs'):

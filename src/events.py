@@ -25,7 +25,8 @@ class EventStore:
         """Install after stores initialize; never backfill historical business rows."""
         direct = {
             'tasks': ('tasks', 'id'), 'progress': ('progress', 'task_id'),
-            'sessions': ('sessions', 'id'), 'members': ('identity', 'id'),
+            'sessions': ('sessions', 'id'), 'harness_sessions': ('sessions', 'id'),
+            'session_capabilities': ('sessions', 'session_key'), 'capability_verifications': ('capabilities', 'id'), 'members': ('identity', 'id'),
             'rooms': ('room', 'id'), 'message_requests': ('messages', 'id'),
             'message_receipts': ('messages', 'request_id'),
             'message_deliveries': ('messages', 'request_id'),

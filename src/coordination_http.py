@@ -8,6 +8,7 @@ from .errors import AccessDenied, Conflict, NotFound, ValidationError
 
 
 OPERATION_PATHS = {
+    '/api/capabilities/evidence': 'record_capability',
     '/api/invites': 'invite', '/api/agent-token': 'rotate_agent',
     '/api/agent-connect': 'connect_agent', '/api/tasks': 'create_task',
     '/api/tasks/{task_id:int}/claim': 'claim_task', '/api/sessions': 'register_session',
@@ -57,6 +58,8 @@ def coordination_routes(service, *, base_url=None, public_url=None, include_name
                     except ValueError:
                         raise ValidationError('Invalid inbox query') from None
                     result = await run_in_threadpool(service.call, 'read_inbox', token, data)
+                elif read == 'capabilities':
+                    result = await run_in_threadpool(service.read_capabilities, token)
                 elif read == 'context':
                     if any(k not in ('task_id', 'member_id', 'limit') or len(request.query_params.getlist(k)) != 1
                            for k in request.query_params):
@@ -123,7 +126,8 @@ def coordination_routes(service, *, base_url=None, public_url=None, include_name
 
     routes = [route('/api/operations/{operation}', 'POST'),
               route('/api/agent-snapshot', 'GET', read='agent_snapshot'),
-              route('/api/context', 'GET', read='context')]
+              route('/api/context', 'GET', read='context'),
+              route('/api/capabilities', 'GET', read='capabilities')]
     if include_named:
         routes.extend(route(path, 'POST', operation=operation) for path, operation in OPERATION_PATHS.items())
         from .task_lifecycle import ACTIONS

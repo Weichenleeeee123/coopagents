@@ -100,7 +100,7 @@ def project_activity(snapshot, limit=MAX_ITEMS):
             if not isinstance(row, dict):
                 continue
             tool = row.get('tool')
-            if tool not in ('claude-code', 'codex-cli', 'codex-desktop'):
+            if tool not in ('claude-code', 'codex-cli', 'codex-desktop', 'cursor', 'opencode', 'pi', 'kimi-code', 'zcode'):
                 continue
             summary = 'Session registered for '+tool
             items.append(_item('session:'+str(row.get('id', '')), 'session_registered',

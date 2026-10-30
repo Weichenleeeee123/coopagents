@@ -36,6 +36,7 @@ TOOL_DESCRIPTIONS = {
     'read_inbox': ('Read requests delivered to you (teammates asking you). It does not list replies to requests you '
                    'sent: those appear under your request in read_team (requests[].replies). Reading records that '
                    'you read them.'),
+    'read_capabilities': 'Discover project members, their agent sessions and Harness capability evidence. Registration and event delivery do not imply model responsiveness.',
     'read_context': ('Query shared structured context by task, member, scope, source or text. '
                      'Sources, freshness and confirmation are explicit. This never reads private transcripts, '
                      'marks messages read, or proves a model consumed the context.'),
@@ -58,7 +59,7 @@ NOT_DELIVERED = ('Not delivered: no receiver_member_id was given, so nobody rece
 
 def create_mcp_app(service, *, origin=None):
     """Return (SDK lifespan application, authenticated ASGI application)."""
-    names = ('read_context', 'read_task_history', 'release_task', 'propose_handoff', 'claim_task', 'register_session', 'report_progress', 'send_request', 'read_inbox',
+    names = ('read_capabilities', 'read_context', 'read_task_history', 'release_task', 'propose_handoff', 'claim_task', 'register_session', 'report_progress', 'send_request', 'read_inbox',
              'acknowledge', 'reply', 'resolve_request', 'propose_contract', 'repo_checkpoint', 'link_delivery',
              'checkpoint', 'diagnostic_start', 'diagnostic_read', 'diagnostic_complete')
     names += ('lookup_owner', 'create_dependency', 'read_dependency', 'reply_dependency', 'resolve_dependency', 'cancel_dependency')
