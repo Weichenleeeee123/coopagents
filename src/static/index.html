@@ -39,20 +39,9 @@
           ><img src="/static/icon.png" alt="" width="36" height="36" />Coopagents
           <span>同频</span></a
         >
-        <p class="eyebrow">A SHARED WORKBENCH FOR YOUR AGENTS</p>
-        <h1>各自推进，<br />在此同频。</h1>
-        <p class="intro">
-          让分工、技术请求与公共约定，<br />成为团队共享的清晰上下文。
-        </p>
-        <div class="entry-foot">
-          <span>01 / 协作从这里开始</span>
-          <p>团队协作工作台 · 通过 MCP 接入自己的 agent</p>
-        </div>
       </section>
       <section class="entry-action">
-        <p class="eyebrow">WELCOME TO COOPAGENTS</p>
         <h2>进入工作空间</h2>
-        <p class="muted">为团队建立共同的工作现场。</p>
         <div id="account-entry">
           <p id="account-mode" class="muted" role="status">正在读取部署配置…</p>
           <form id="account-login">
@@ -68,7 +57,7 @@
                 type="password"
                 required
                 autocomplete="current-password" /></label
-            ><button class="primary">登录账号 ↗</button>
+            ><button class="primary">登录</button>
           </form>
           <details id="account-bootstrap" hidden>
             <summary>初始化首个账号</summary>
@@ -130,7 +119,7 @@
             >使用 GitHub 登录 ↗</a
           >
           <p id="account-error" class="error" role="alert"></p>
-          <button id="account-retry" type="button">重试连接 ↻</button>
+          <button id="account-retry" type="button">重试连接</button>
         </div>
         <details id="legacy-entry">
           <summary>已有项目网页凭据 / 旧版工作空间</summary>
@@ -268,7 +257,7 @@
       </aside>
       <main>
         <header class="topline">
-          <span>账号 / 团队与项目</span><button id="hub-refresh">刷新 ↻</button>
+          <span>团队与项目</span><button id="hub-refresh" class="icon-button" aria-label="刷新团队与项目" title="刷新团队与项目"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg></button>
         </header>
         <div class="page-heading">
           <div>
@@ -394,7 +383,7 @@
           ></section>
         </section>
         <footer class="page-foot">
-          <span>Coopagents / 同频</span><span>各自开工，始终同频。</span>
+          <span>Coopagents / 同频</span>
         </footer>
       </main>
     </div>
@@ -432,11 +421,11 @@
       </aside>
       <main>
         <header class="topline">
-          <span>项目 / 团队工作台</span>
+          <span>项目工作台</span>
           <div>
             <span id="sync-time" aria-live="polite">正在同步…</span
             >
-            <span id="transport-status" role="status">实时连接准备中</span><button id="retry">刷新 ↻</button>
+            <span id="transport-status" role="status">实时连接准备中</span><button id="retry" class="icon-button" aria-label="刷新项目" title="刷新项目"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg></button>
           </div>
         </header>
         <div id="network-error" role="status" class="notice" hidden></div>
@@ -529,19 +518,16 @@
                     placeholder="用于避免重复创建" /></label
                 ><button type="submit" class="primary">创建任务 ↗</button>
               </div>
-              <p class="muted">任务由 agent 认领与汇报；网页负责分工和审核。</p>
             </form>
           </details>
           <p class="board-note">
-            随 agent 汇报与 GitHub 验证自动分列 · 合并不代表验收 ·
-            点击卡片查看证据
+            agent 自述与 GitHub 证据分别标注 · 合并不代表验收
           </p>
           <div id="board-empty" class="filter-empty" hidden>
             <h2>没有找到匹配的任务</h2>
             <p class="muted">试试其他关键词，或清除筛选查看全部工作。</p>
             <button id="clear-filters">清除筛选 ↻</button>
           </div>
-          <p class="board-scroll-hint">在看板内左右滑动，查看五个工作阶段 →</p>
           <div
             id="tasks"
             class="kanban-board"
@@ -550,17 +536,9 @@
           ></div>
         </section>
         <section id="view-requests" hidden>
-          <p class="view-note">
-            agent 通过 MCP
-            发起、读取、处理和回复请求。在此分派收件人，检查回复，并由发起人确认解决。
-          </p>
           <div id="requests"></div>
         </section>
         <section id="view-contracts" hidden>
-          <p class="view-note">
-            agent
-            提出版本，人明确审核。当前版本与已生效版本分别保留；只有最新版本可做决定。
-          </p>
           <div id="contracts"></div>
         </section>
         <section id="view-repository" hidden>
@@ -568,11 +546,7 @@
           <div id="git-connection" class="git-connection"></div>
         </section>
         <footer class="page-foot">
-          <span>Coopagents / 同频</span
-          ><span
-            >检查点拉取 · 会话不会自动唤醒 · agent 自述 / 本地 Git 观测 / GitHub
-            验证分别标注</span
-          >
+          <span>Coopagents / 同频</span>
         </footer>
       </main>
     </div>
