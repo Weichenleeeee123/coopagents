@@ -1,4 +1,6 @@
-# 真人双机验收清单（0.7.4）
+# 真人双机验收清单（1.0 候选）
+
+更新：2026-10-31。旧 0.7.4 操作不能代替当前候选验收；先记录双方实际运行的提交、wheel 哈希和原生工具版本。执行结果见 [P0 记录](release-1.0-p0-acceptance.md)。
 
 目的：验证此前单机测试无法证明的三件事。
 
@@ -6,13 +8,14 @@
 - 能否跨电脑唤醒
 - 实际使用中，Codex 待命时的交互
 
-需要两个人、两台电脑、两个不同的网络，例如一方用家里的 Wi-Fi，另一方用手机热点。双方都不开代理，以覆盖国内无代理的情况。如果实在需要代理，记下来。
+需要两个人、两台电脑、两个不同的网络，例如一方用家里的 Wi-Fi，另一方用手机热点。双方都不开代理，以覆盖国内无代理的情况。如果实在需要代理，记下来。一人远程控制 Windows 与 Linux VPS 可以验证跨设备，但不能证明两位用户独立使用或双方家庭/移动 NAT。不能为验收主动关闭用户代理而不记录原有条件。
 
 ## 准备
 
-1. 双方都用 [PyPI 上的 0.7.4](https://pypi.org/project/coopagents/0.7.4/)。发起人自己先装好；对方不用单独准备，邀请信息里写明了这个版本，对方的 agent 会照着装。
-2. 发起人把下面这句话交给自己的 Claude Code 或 Codex：“从 PyPI 装 Coopagents 0.7.4（`pip install "coopagents[space]==0.7.4"`），把 coopagents-space Skill 装到我的 agent 里。”PyPI 访问不了时，改从 [0.7.4 发行页](https://github.com/Weichenleeeee123/coopagents/releases/tag/v0.7.4) 下载 wheel，并用 `SHA256SUMS.txt` 校验。
-3. 用一个不重要的仓库做测试，两边的 agent 都在这个仓库里工作。
+1. 双方使用同一候选 wheel，记录 SHA-256。候选未发布时，邀请中的 PyPI 版本不代表候选代码；明确指定已授权的本地 wheel 来源并核对哈希，不意外安装已发布的旧 0.9.0。
+2. 两边分别建立专用虚拟环境，使用其 Python 安装 `.[space]` 对应候选及依赖。记录 Python、OS、CLI 版本、网络/代理条件及参与者，不记录凭据。
+3. 使用合成仓库和独立原生配置目录，不修改真实用户配置；保留所有证据。将 [agent-first 配置说明](agent-first-setup.zh-CN.md)及当前候选的 Skill 交给真实 agent，默认不启用唤醒。
+4. 配置后分别启动新模型会话，通过真实 MCP 调用 `whoami` 和 `read_team`；将实际身份与预期项目/成员核对。doctor 成功和 MCP 配置存在不能替代此步。
 
 ## 步骤与记录
 
@@ -20,21 +23,22 @@
 | --- | --- | --- | --- |
 | 1 | 主机 A | “用 Coopagents 给这个项目创建协作空间，生成一条给队友的中文邀请信息，24 小时有效。” | 创建耗时；把邀请信息整段私聊发给 B |
 | 2 | 成员 B | 把 A 发来的邀请信息整段贴给自己的 agent，不加任何说明 | 是否加入成功、耗时；agent 是否自己装好了 Coopagents |
-| 3 | 双方 | “安装 Coopagents 唤醒。” Codex 用户随后在 `/hooks` 里信任新 hook | 是否装上；Codex 是否需要信任 |
+| 3 | 双方 | 新会话核对身份和团队；先完成普通双向问答，再明确请求安装可选唤醒。Codex 用户在 `/hooks` 里正常审阅信任新 hook | 实际 MCP 调用和服务端回复；安装与信任分开记录，不绕过 |
 | 4 | 双方 | 运行 `python scripts/two_machine_check.py report --profile <profile> --out start.json` | `runtime.p2p` 是 direct 还是 relay |
-| 5 | B | 让自己的 agent 处于空闲状态，什么都不做 | — |
+| 5 | B | Claude 保持交互会话空闲；Codex 明确开启待命并保持交互会话，不能只让它普通空闲 | 会话类型、watcher/standby 状态 |
 | 6 | A | `python scripts/two_machine_check.py ping --profile <A profile> --to <B member id> --marker ALPHA` | 发送时间 |
-| 7 | B | 观察 agent 有没有自己醒来、回复 `Received ALPHA` | 从发送到回复的时间；没醒的话，看 `space_wake status` |
+| 7 | B | 观察 Claude 是否空闲唤醒，或 Codex 是否从显式待命继续；通过 MCP 回复 `Received ALPHA` | 从发送到模型实际回复的时间；失败时检查 `space_wake status`；通知到达单独记录 |
 | 8 | 交换 | B 给 A 发 `BRAVO`，重复 6–7 | 同上 |
-| 9 | Codex 用户 | 对 agent 说“开启 Coopagents 待命”，然后对方发 `CHARLIE` | 是否在待命中继续；待命时按 Esc 是否立即中断；待命时直接打字会怎样 |
+| 9 | Codex 用户 | 在显式待命中由对方发 `CHARLIE`；再分别测试 Esc 与直接输入 | 是否继续且实际回复；Esc 是否停止等待；直接输入是否被接受，记录耗时与界面，不预设结果 |
 | 10 | A | 关掉主机 agent 和终端，再重新开一个 agent，让它“启动 Coopagents 空间” | 重启后 B 是否无需新邀请就能恢复（再 ping 一次） |
 | 11 | 双方 | 再跑一次 `report --out end.json` | 把两份报告发回维护者 |
 
-两份报告都不含任何凭据，可以直接分享。报告里的回复正文最多截取 200 字，测试时不要发敏感内容。
+报告不包含凭据，但含成员名称、标识和最多 200 字回复正文，仍需人工脱敏后再分享。原始报告保留本地，不提交 Git。使用合成消息；不要发送私人会话内容。
 
 ## 通过标准
 
 - 第 2 步加入成功，第 4 步报告里能看到直连或中继路径。
-- 第 7、8 步双方都能在空闲时被唤醒并回复，并记下从发送到回复的耗时。
+- 第 7、8 步 Claude 空闲唤醒、Codex 显式待命各自实际回复，并记下从发送到回复的耗时；不要求 Codex 普通空闲自动唤醒。
+- Codex 正常完成 hook 信任；第 9 步中断与输入行为有实际交互证据。
 - 第 10 步主机重启后，成员不需要新邀请就能恢复。
 - 任何一步失败，保留报告和 agent 的原话，不要重试到成功了才记录。

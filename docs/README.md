@@ -33,8 +33,9 @@ For operation and support: [P2P runtime](agent-hosted-runtime.md), [harness adap
 | [Agent-first acceptance](agent-first-setup-acceptance.md) | 本机 CLI/HTTP/MCP 验证、测试与发行包证据，以及待完成的真实模型/双机验收 |
 | [Agent-first setup](agent-first-setup.md) | English default: install, connect, doctor states, network recovery and security boundaries |
 | [Agent-first 首次配置](agent-first-setup.zh-CN.md) | 中文同步版：agent 配置路径、doctor 检查、网络恢复和安全边界 |
-| [双机验收清单](two-machine-acceptance.md) | 0.7.4 真人双机、双方 NAT 后的点对点与跨电脑唤醒验收步骤和取证脚本 |
+| [双机验收清单](two-machine-acceptance.md) | 当前候选真人双机、双方 NAT 后的点对点、Claude 空闲唤醒及 Codex 待命步骤和取证脚本 |
 | [1.0 发布就绪计划](release-1.0-plan.md) | 1.0 稳定版的范围、真实验收门槛和阶段顺序 |
+| [1.0 P0 验收记录](release-1.0-p0-acceptance.md) | 当前候选的真实模型、跨设备、Harness/平台和 GitHub App 执行状态与缺口 |
 | [1.0 产品设计](product-1.0-design.md) | 本机 P2P、自托管 GUI、Git 交付关系、活动隐私和项目资产的分阶段设计 |
 | [1.0 前产品方向](superpowers/specs/2026-10-30-pre-1-0-product-direction-design.md) | 共享上下文、成员与能力发现、交付关联优化、Harness 验收和产品化准备 |
 | [0.9.1–0.9.3 能力深化](capability-deepening-report.md) | 共享上下文查询、成员/能力证据、交付反查与建议确认，以及分阶段实现和验证 |

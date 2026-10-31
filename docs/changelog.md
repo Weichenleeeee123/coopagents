@@ -1,10 +1,17 @@
 # 版本记录
 
-## Unreleased — Agent-first setup and diagnostics
+## Unreleased — Shared context, project workspace and agent-first setup
+
+- Add scoped shared-context queries with sources, freshness and pagination, member/session capability evidence, and task-to-delivery traceability with separate suggestions and confirmed associations. See [capability acceptance](capability-deepening-report.md).
+- Migrate the project workspace to the approved navigation, project switcher, task board, detail drawers and evidence-based delivery graph; verify desktop/mobile behavior against a real local backend with synthetic data. See [workspace acceptance](workspace-migration-acceptance.md).
+- Update the monochrome application icon and preserve approved brand assets and screenshot provenance.
 
 - Configure Coopagents through the current agent: join an invitation, reuse a selected connection, or create a P2P space for the current repository. First-run setup requires no web workbench; wake-up remains opt-in.
 - Add `space_runtime doctor` for environment, native MCP, Skill, identity, transport and diagnostic challenge checks. Missing evidence, native session loading and hook trust remain explicit pending states.
 - Return separate configuration and verification results from connection helpers, preserving saved profiles when network checks fail. Add English and Chinese [setup guides](agent-first-setup.md) and [acceptance evidence](agent-first-setup-acceptance.md).
+- Fix OpenCode environment interpolation to its native `{env:NAME}` form. Add isolated real-model cold-start acceptance and a private GitHub App manifest registration helper.
+- Polish GitHub registration/installation/authorization pages for desktop and mobile. Accept GitHub's optional, strictly validated OAuth issuer parameter while rejecting duplicate and unknown callback fields.
+- Track current native, cross-device and real GitHub App evidence separately from remaining release blockers in the [1.0 P0 execution record](release-1.0-p0-acceptance.md).
 - This capability is not included in published 0.9.0. Real model cold-start, cross-device networking and additional platform acceptance remain 1.0 release gates.
 
 ## 0.9.0 — 项目资产、自托管工作台与多 Harness MCP 接入（2026-10-30）
