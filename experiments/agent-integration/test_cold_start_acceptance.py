@@ -113,9 +113,19 @@ class ColdStartTests(unittest.TestCase):
                 self.assertEqual(report['collaboration_status'], collaboration_status)
                 self.assertIn('Result: shutdown_failed', output.getvalue())
 
+    def test_runner_rejects_nonisolated_python_before_model_execution(self):
+        with patch.object(self.runner.sys, 'prefix', self.runner.sys.base_prefix), \
+                patch.object(self.runner, 'bounded') as model, \
+                redirect_stdout(io.StringIO()), patch('sys.stderr', io.StringIO()):
+            with self.assertRaises(SystemExit) as error:
+                self.runner.main(['--prepare-only', '--codex', sys.executable, '--claude', sys.executable])
+        self.assertEqual(error.exception.code, 2)
+        model.assert_not_called()
+
     def test_partial_host_cli_is_explicit_and_preparation_spends_no_quota(self):
         result = subprocess.run([sys.executable, str(Path(__file__).with_name('cold_start_acceptance.py')),
-                                 '--host', 'codex', '--stop-after-host-verification', '--prepare-only'],
+                                 '--host', 'codex', '--stop-after-host-verification', '--prepare-only',
+                                 '--codex', sys.executable, '--claude', sys.executable],
                                 capture_output=True, text=True, timeout=30)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertNotIn('PASS', result.stdout)

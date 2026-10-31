@@ -52,7 +52,10 @@ jobs:
       - run: node tests/agent_connect_ui_regression.js src/static/app.js
       - run: node tests/account_ui_regression.js src/static/accounts.js
       - run: node tests/billing_ui_regression.js src/static/billing.js src/static/accounts.js
-      - run: python -m unittest discover -s experiments/agent-integration -p 'test_*.py' -v
+      - name: Run native-free experiment regressions in isolated Python
+        run: |
+          python -m venv --system-site-packages .local/ci-experiments-venv
+          .local/ci-experiments-venv/bin/python -m unittest discover -s experiments/agent-integration -p 'test_*.py' -v
       - run: python -m build
       - uses: actions/upload-artifact@v4
         with:
