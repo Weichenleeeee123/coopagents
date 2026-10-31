@@ -80,27 +80,73 @@ def model_command(tool, executable, run, python, *, setup=False):
     if setup:
         allowed.append('Bash("' + str(python) + '" -m coopagents.space_runtime:*)')
     return [executable, '--print', '--verbose', '--output-format', 'stream-json',
-            '--permission-prompts', 'none', '--add-dir', str(run), str(REPO / 'src/skills/coopagents-space'),
+            '--permission-prompts', 'none', '--add-dir', str(run),
             '--allowedTools', ','.join(allowed)]
 
 
-def successful_tools(tool, events):
-    """Require native completed tool records; prose and tool starts never pass."""
-    found, pending = set(), {}
+def decoded_objects(value, depth=0):
+    """Read native structured content and JSON TextContent, never assistant prose."""
+    if depth > 12:
+        return
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except ValueError:
+            return
+    if isinstance(value, dict):
+        yield value
+        for child in value.values():
+            yield from decoded_objects(child, depth + 1)
+    elif isinstance(value, list):
+        for child in value:
+            yield from decoded_objects(child, depth + 1)
+
+
+def native_results(tool, events):
+    """Yield successful completed native calls, rejecting nested MCP error envelopes."""
+    pending = {}
     for event in events:
         if tool == 'codex' and event.get('type') == 'item.completed':
             item = event.get('item', {})
             if (item.get('type') == 'mcp_tool_call' and item.get('status') == 'completed'
-                    and not item.get('error') and item.get('result') is not None
-                    and not item.get('result', {}).get('isError')):
-                found.add(item.get('tool', '').split('__')[-1])
+                    and not item.get('error') and item.get('result') is not None):
+                result = item['result']
+                if not any(v.get('isError') is True or v.get('is_error') is True for v in decoded_objects(result)):
+                    yield item.get('tool', '').split('__')[-1], result
         if tool == 'claude':
             for block in event.get('message', {}).get('content', []) if isinstance(event.get('message', {}).get('content'), list) else []:
                 if block.get('type') == 'tool_use' and block.get('name', '').startswith('mcp__coopagents_'):
                     pending[block['id']] = block['name'].split('__')[-1]
                 if block.get('type') == 'tool_result' and not block.get('is_error') and block.get('tool_use_id') in pending:
-                    found.add(pending[block['tool_use_id']])
-    return found
+                    if not any(v.get('isError') is True or v.get('is_error') is True for v in decoded_objects(block)):
+                        yield pending[block['tool_use_id']], block
+
+
+def successful_tools(tool, events):
+    return {name for name, result in native_results(tool, events)}
+
+
+def native_identity_proven(tool, events, expected):
+    """Compare the actual whoami result to the expected saved personal identity."""
+    return any(isinstance(value.get('me'), dict) and all(value['me'].get(key) == expected[key]
+               for key in ('room_id', 'member_id')) for name, result in native_results(tool, events)
+               if name == 'whoami' for value in decoded_objects(result))
+
+
+def network_proven(requested, host_state, guest_profile=None):
+    """Do not certify P2P from a requested flag or a model's network claim."""
+    if host_state.get('network') != requested:
+        return False
+    if requested == 'local':
+        return guest_profile is None or not guest_profile.get('p2p')
+    if requested != 'p2p':
+        return False
+    try:
+        from coopagents.p2p import endpoint_id, validate_link
+        actual_endpoint = endpoint_id(host_state['p2p_secret'])
+        return guest_profile is None or validate_link(guest_profile.get('p2p'))['endpoint_id'] == actual_endpoint
+    except (ValueError, KeyError, TypeError):
+        return False
 
 
 def exchange_proven(snapshot, guest, host, nonce, answer):
@@ -203,7 +249,7 @@ def main(argv=None):
         parser.error('Use this checkout\'s isolated editable-install Python')
     if not args.codex or not args.claude:
         parser.error('Both native CLI executables are required')
-    from coopagents.spaces import private_directory, private_write, read_profile
+    from coopagents.spaces import private_directory, private_write, read_json, read_profile
     run = private_directory(REPO / '.local' / 'cold-start-acceptance' / (time.strftime('%Y%m%d-%H%M%S') + '-' + uuid4().hex[:8]))
     real_home = Path.home()
     host, guest = args.host, 'codex' if args.host == 'claude' else 'claude'
@@ -212,11 +258,12 @@ def main(argv=None):
     projects = {tool: private_directory(run / tool / 'repo') for tool in (host, guest)}
     answer, nonce = 'answer-' + uuid4().hex, 'request-' + uuid4().hex
     for tool, project in projects.items():
+        shutil.copytree(REPO / 'src/skills/coopagents-space', run / tool / 'checkout-skill')
         subprocess.run(['git', 'init', '-q', str(project)], check=True, capture_output=True, timeout=30)
         (project / 'README.md').write_text('# Synthetic acceptance repository\n', encoding='utf-8')
         (project / 'AGENTS.md').write_text('Never delete files. Only operate in this synthetic run.\n', encoding='utf-8')
     (projects[host] / 'acceptance-answer.txt').write_text(answer, encoding='utf-8')
-    report = {'status': 'prepared', 'host': host, 'guest': guest, 'network': args.network,
+    report = {'status': 'prepared', 'host': host, 'guest': guest, 'requested_network': args.network,
               'scope': 'single machine, wake disabled', 'sessions': [], 'checks': []}
     report['source_commit'] = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=REPO,
                                              capture_output=True, text=True, timeout=30, check=True).stdout.strip()
@@ -241,21 +288,40 @@ def main(argv=None):
         return 0 if report['status'] == 'preflight_passed' else 1
     owner = None
 
-    def turn(tool, stage, prompt, *, setup=False, require=()):
+    def turn(tool, stage, prompt, *, setup=False, require=(), expected_identity=None, verify_setup=False):
         env = environments[tool]
         path = run / (stage + '.jsonl')
         code = bounded(model_command(tool, getattr(args, tool), run / tool, Path(sys.executable), setup=setup),
                        prompt, path, env, projects[tool], args.timeout)
-        tools = successful_tools(tool, events_from(path))
+        events = events_from(path)
+        tools = successful_tools(tool, events)
         ok = code == 0 and set(require).issubset(tools)
+        entry = None
+        if verify_setup:
+            try:
+                entry = registrations(env, tool, projects[tool])
+                profile = read_profile(entry['profile'])
+                setup_ok = diagnostics_proven(snapshot(entry['profile']), {profile['member_id']})
+            except (OSError, ValueError, KeyError, RuntimeError, subprocess.SubprocessError):
+                setup_ok = False
+            report['checks'].append({'check': stage + ' native registration and completed doctor challenge', 'ok': setup_ok})
+            ok = ok and setup_ok
+        if expected_identity is not None:
+            identity_ok = native_identity_proven(tool, events, expected_identity)
+            report['checks'].append({'check': stage + ' native whoami matches saved room/member', 'ok': identity_ok})
+            ok = ok and identity_ok
         report['sessions'].append({'stage': stage, 'tool': tool, 'exit': code, 'native_tools': sorted(tools), 'ok': ok})
+        if not ok and any(e.get('item', {}).get('status') == 'declined' and
+                          'blocked by policy' in e.get('item', {}).get('aggregated_output', '').lower() for e in events):
+            report['failure_reason'] = 'native_execution_blocked_by_policy'
         private_write(run / 'summary.json', report, update=True)
         print(stage + ': ' + ('PASS' if ok else 'FAIL'), flush=True)
         if not ok:
             raise RuntimeError('Native model session failed; inspect private evidence')
+        return entry
 
     def cold_prompt(tool):
-        return (f'Read the development checkout Skill at {(REPO / "src/skills/coopagents-space/SKILL.md").as_posix()}. '
+        return (f'Read the development checkout Skill at {(run / tool / "checkout-skill/SKILL.md").as_posix()}. '
                 f'I explicitly authorize this unreleased development checkout. The isolated Python {sys.executable} '
                 f'is already installed editable from that checkout with [space]; reuse it and use it explicitly. '
                 f'You are {tool}. All settings and state directories are isolated in {run / tool}. '
@@ -263,10 +329,16 @@ def main(argv=None):
                 'Do not print credentials or environment variables. ')
 
     try:
-        turn(host, '01-create', cold_prompt(host) + f'Help me configure Coopagents here. Create a new {args.network} space '
-             f'for this repository with owner {host}, connect this agent, then run doctor. Use the current configured model.', setup=True)
-        owner = registrations(environments[host], host, projects[host])
+        owner = turn(host, '01-create', cold_prompt(host) + f'Help me configure Coopagents here. Create a new {args.network} space '
+             f'for this repository with owner {host}, connect this agent, then run doctor. Use the current configured model.',
+             setup=True, verify_setup=True)
         host_profile = read_profile(owner['profile'])
+        host_state = read_json(Path(owner['profile']).with_name('host.json'))
+        report['observed_host_network'] = host_state.get('network')
+        host_network_ok = network_proven(args.network, host_state)
+        report['checks'].append({'check': 'persisted host network matches requested mode', 'ok': host_network_ok})
+        if not host_network_ok:
+            raise RuntimeError('Persisted host network did not match requested acceptance mode')
         invite_result = run / host / 'invitation-result.json'
         verification_prompt = (f'Using only the native Coopagents MCP tools, call whoami and compare '
              f'room_id={host_profile["room_id"]} and member_id={host_profile["member_id"]}, then read_team. '
@@ -277,7 +349,8 @@ def main(argv=None):
              'Keep the invitation private. Do not enable wake.')
         turn(host, '02-host-new-session', verification_prompt + (
              'Do not create an invitation. This run stops after host verification.' if args.stop_after_host_verification
-             else invitation_prompt), setup=not args.stop_after_host_verification, require=('whoami', 'read_team'))
+             else invitation_prompt), setup=not args.stop_after_host_verification, require=('whoami', 'read_team'),
+             expected_identity=host_profile)
         if args.stop_after_host_verification:
             state = snapshot(owner['profile'])
             private_write(run / 'host-backend-snapshot.json', state)
@@ -295,15 +368,21 @@ def main(argv=None):
         turn(guest, '03-join', cold_prompt(guest) + f'Read my private invitation message at {invitation_message}. '
              f'I authorize joining that space as {guest}; use join --invitation-file with that path and --connect {guest}. '
              'The invitation names published package metadata, but for this acceptance I explicitly authorize reusing the '
-             'same already-installed development checkout rather than installing a release. Run doctor.', setup=True)
+             'same already-installed development checkout rather than installing a release. Run doctor.', setup=True, verify_setup=True)
         member = registrations(environments[guest], guest, projects[guest])
         guest_profile = read_profile(member['profile'])
         if guest_profile['room_id'] != host_profile['room_id'] or guest_profile['member_id'] == host_profile['member_id']:
             raise RuntimeError('Joined identity does not match the expected separate member')
+        report['observed_join_network'] = 'p2p' if guest_profile.get('p2p') else 'local'
+        peer_network_ok = network_proven(args.network, host_state, guest_profile)
+        report['checks'].append({'check': 'joined network matches host and requested mode, including P2P endpoint', 'ok': peer_network_ok})
+        if not peer_network_ok:
+            raise RuntimeError('Joining member did not use the expected host network endpoint')
         turn(guest, '04-guest-new-session', f'Use only native Coopagents MCP tools. Call whoami and verify '
              f'room_id={guest_profile["room_id"]}, member_id={guest_profile["member_id"]}; then read_team. '
              f'Send a request to member {host_profile["member_id"]} asking for the exact text in its '
-             f'acceptance-answer.txt file. Include marker {nonce} in the body.', require=('whoami', 'read_team', 'send_request'))
+             f'acceptance-answer.txt file. Include marker {nonce} in the body.', require=('whoami', 'read_team', 'send_request'),
+             expected_identity=guest_profile)
         turn(host, '05-host-reply', 'Use native Coopagents MCP tools to read_inbox and read_team. '
              f'Find request with marker {nonce}. Read acceptance-answer.txt in this repository and reply with its exact text. '
              'Do not execute commands or change files.', require=('read_inbox', 'reply'))
@@ -330,7 +409,7 @@ def main(argv=None):
     finally:
         # A model may create the host but fail before native registration. Stop
         # only retained host profiles beneath this run, even in that failure case.
-        owned = list(Path(environments[host]['COOPAGENTS_HOME']).glob('spaces/*/profile.json'))
+        owned = list((run / host).rglob('profile.json'))
         report['host_stopped'] = True
         for retained_profile in owned:
             try:

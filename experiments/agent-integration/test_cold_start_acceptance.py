@@ -39,6 +39,24 @@ class ColdStartTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertNotIn('PASS', result.stdout)
 
+    def test_zero_exit_and_setup_prose_never_mark_create_stage_passed(self):
+        root = Path(__file__).resolve().parents[2] / '.local' / 'cold-start-tests' / uuid4().hex
+        from coopagents.spaces import private_directory
+        private_directory(root)
+        fake = root / ('fake.cmd' if os.name == 'nt' else 'fake.sh')
+        event = json.dumps({'type': 'item.completed', 'item': {'type': 'agent_message', 'text': 'Setup passed'}})
+        fake.write_text('@echo off\n' + 'echo ' + event + '\nexit /b 0\n' if os.name == 'nt' else
+                        '#!/bin/sh\nprintf \'%s\\n\' \'' + event + '\'\n', encoding='utf-8')
+        if os.name != 'nt':
+            fake.chmod(0o700)
+        result = subprocess.run([sys.executable, str(Path(__file__).with_name('cold_start_acceptance.py')),
+                                 '--host', 'codex', '--stop-after-host-verification', '--codex', str(fake),
+                                 '--claude', sys.executable, '--timeout', '10'],
+                                capture_output=True, text=True, timeout=30)
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertIn('01-create: FAIL', result.stdout)
+        self.assertNotIn('01-create: PASS', result.stdout)
+
     def test_prose_and_failed_tool_calls_do_not_count(self):
         events = [
             {'type': 'item.completed', 'item': {'type': 'agent_message', 'text': 'whoami read_team passed'}},
@@ -63,6 +81,48 @@ class ColdStartTests(unittest.TestCase):
                    'status': 'completed', 'error': None, 'result': {'content': []}}}
                   for name in ('whoami', 'read_team')]
         self.assertEqual(self.runner.successful_tools('codex', events), {'whoami', 'read_team'})
+
+    def test_identity_requires_actual_matching_native_response(self):
+        expected = {'room_id': 'room', 'member_id': 'member'}
+        def events(identity):
+            return [{'type': 'item.completed', 'item': {'type': 'mcp_tool_call', 'tool': 'whoami',
+                     'status': 'completed', 'error': None, 'result': {'content': [
+                         {'type': 'text', 'text': json.dumps({'me': identity})}]}}}]
+        self.assertTrue(self.runner.native_identity_proven('codex', events(expected), expected))
+        self.assertFalse(self.runner.native_identity_proven('codex', events(dict(expected, member_id='wrong')), expected))
+        self.assertFalse(self.runner.native_identity_proven('codex', events(dict(expected, room_id='wrong')), expected))
+        self.assertFalse(self.runner.native_identity_proven('codex', [], expected))
+
+    def test_nested_native_error_cannot_pass_identity_or_tool_checks(self):
+        identity = {'room_id': 'room', 'member_id': 'member'}
+        events = [{'type': 'item.completed', 'item': {'type': 'mcp_tool_call', 'tool': 'whoami',
+                   'status': 'completed', 'error': None, 'result': {'content': [{'type': 'text',
+                       'text': json.dumps({'isError': True, 'me': identity})}]}}}]
+        self.assertEqual(self.runner.successful_tools('codex', events), set())
+        self.assertFalse(self.runner.native_identity_proven('codex', events, identity))
+
+    def test_claude_native_identity_extracts_text_content(self):
+        identity = {'room_id': 'room', 'member_id': 'member'}
+        events = [
+            {'type': 'assistant', 'message': {'content': [{'type': 'tool_use', 'id': 'a', 'name': 'mcp__coopagents_x__whoami'}]}},
+            {'type': 'user', 'message': {'content': [{'type': 'tool_result', 'tool_use_id': 'a', 'content': [
+                {'type': 'text', 'text': json.dumps({'me': identity})}]}]}}
+        ]
+        self.assertTrue(self.runner.native_identity_proven('claude', events, identity))
+        events[1]['message']['content'][0]['is_error'] = True
+        self.assertFalse(self.runner.native_identity_proven('claude', events, identity))
+
+    def test_network_evidence_rejects_local_fallback_and_wrong_peer_endpoint(self):
+        from coopagents.p2p import endpoint_id
+        host = {'network': 'p2p', 'p2p_secret': '11' * 32}
+        guest = {'p2p': {'endpoint_id': endpoint_id(host['p2p_secret'])}}
+        self.assertTrue(self.runner.network_proven('p2p', host, guest))
+        self.assertFalse(self.runner.network_proven('p2p', {'network': 'local'}, {}))
+        self.assertFalse(self.runner.network_proven('p2p', host, {}))
+        self.assertFalse(self.runner.network_proven('p2p', host, {'p2p': {'endpoint_id': endpoint_id('22' * 32)}}))
+        self.assertFalse(self.runner.network_proven('local', host, guest))
+        self.assertTrue(self.runner.network_proven('local', {'network': 'local'}, {}))
+        self.assertTrue(self.runner.network_proven('p2p', host))
 
     def test_claude_requires_matching_successful_tool_result(self):
         events = [
