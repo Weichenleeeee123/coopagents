@@ -21,6 +21,13 @@ class RegistrationTests(unittest.TestCase):
         spec.loader.exec_module(module)
         return module
 
+    def test_manifest_app_name_obeys_actual_github_34_character_limit(self):
+        helper = self.load()
+        callback = 'http://127.0.0.1:12345/callback'
+        self.assertEqual(helper.manifest('https://acceptance.example', callback, 'a' * 34)['name'], 'a' * 34)
+        with self.assertRaises(ValueError):
+            helper.manifest('https://acceptance.example', callback, 'a' * 35)
+
     def test_manifest_uses_read_only_private_app_and_exact_public_routes(self):
         helper = self.load()
         manifest = helper.manifest('https://acceptance.example', 'http://127.0.0.1:12345/callback', 'Acceptance')

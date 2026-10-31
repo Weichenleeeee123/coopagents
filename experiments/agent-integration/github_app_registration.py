@@ -34,8 +34,8 @@ def manifest(public_origin, redirect_url, name):
     if parsed.port is not None and not 1 <= parsed.port <= 65535:
         raise ValueError('Invalid public origin port')
     origin = public_origin.rstrip('/')
-    if not isinstance(name, str) or not 1 <= len(name) <= 100:
-        raise ValueError('App name must contain 1 to 100 characters')
+    if not isinstance(name, str) or not 1 <= len(name) <= 34:
+        raise ValueError('App name must contain 1 to 34 characters')
     return {'name': name, 'url': origin, 'description': 'Private Coopagents 1.0 acceptance App',
             'public': False, 'redirect_url': redirect_url,
             'callback_urls': [origin + '/api/git/github/callback'],
