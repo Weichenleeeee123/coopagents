@@ -156,6 +156,9 @@ class Connect(unittest.TestCase):
         self.assertEqual(done.returncode, 0, done.stderr)
         result = json.loads(done.stdout)
         self.assertTrue(result['verified'])
+        self.assertIn('configuration', result)
+        self.assertIn('verification', result)
+        self.assertIn('next', result)
         self.assertTrue(Path(result['skill_path']).is_relative_to(self.directory / 'codex-home'))
         self.assertNotIn('secret', done.stdout + done.stderr)
 

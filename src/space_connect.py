@@ -307,6 +307,15 @@ def connect(tool, profile_path, name=None, cli=None, skills=None, wake=False, pr
     result = {'tool': tool, 'cli': cli[-1], 'server': name, 'config': state, 'verified': True, 'profile': str(path),
               'room_id': profile['room_id'], 'member_id': profile['member_id']}
     result.update(install_skill(tool, skills))
+    from . import onboarding_doctor
+    verification = onboarding_doctor.local_checks(tool=tool, profile_path=path, project_dir=project_dir,
+                                                   cli=cli, skills=skills)
+    verification['checks'].append(onboarding_doctor.make_check(
+        'session_reload', 'needs_user', 'The native configuration is saved but this session cannot reload it.',
+        'Start a new session and call whoami, then read_team to verify the loaded MCP connection.'))
+    verification = onboarding_doctor.aggregate(verification['checks'])
+    result['configuration'] = {'config': state, 'skill': result['skill'], 'verified': True}
+    result['verification'] = verification
     label = 'Claude Code' if tool == 'claude' else 'Codex'
     steps = ['Tell the user to start a new %s session in the repository folder: the current session cannot load '
              'the new tools. There, the agent calls whoami to check the connection.' % label]

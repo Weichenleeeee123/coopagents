@@ -101,6 +101,55 @@ class Profiles(unittest.TestCase):
             self.assertEqual(runtime.stop(self.directory / 'profile.json')['status'], 'stopped')
             self.assertEqual(unlocked.call_count, 3)
 
+    def test_doctor_without_profile_returns_secret_free_json_and_needs_user(self):
+        import io
+        from contextlib import redirect_stdout, redirect_stderr
+        output, errors = io.StringIO(), io.StringIO()
+        with patch.dict(os.environ, {'CODEX_THREAD_ID': '', 'CODEX_SESSION_ID': '', 'CLAUDECODE': ''}, clear=False), \
+                redirect_stdout(output), redirect_stderr(errors):
+            code = runtime.main(['doctor', '--json'])
+        self.assertEqual(code, 1)
+        result = json.loads(output.getvalue())
+        self.assertEqual(result['overall'], 'needs_user')
+        self.assertIn('checks', result)
+        self.assertNotIn('agent_token', output.getvalue())
+        self.assertNotIn('password', output.getvalue())
+        self.assertEqual(errors.getvalue(), '')
+
+    def test_doctor_is_read_only_when_profile_is_unreachable(self):
+        profile = self.directory / 'profile.json'
+        private_write(profile, dict(schema_version=1, origin='http://127.0.0.1:9', room_id='room',
+                                    member_id='member', agent_token='agent-secret'))
+        with patch.object(runtime, 'request', side_effect=OSError('secret remote body')), \
+                patch('coopagents.onboarding_doctor.request', side_effect=OSError('secret remote body'), create=True):
+            result = runtime.doctor(profile_path=profile, tool=None)
+        encoded = json.dumps(result)
+        self.assertIn(result['overall'], ('blocked', 'needs_user'))
+        self.assertNotIn('agent-secret', encoded)
+        self.assertNotIn('secret remote body', encoded)
+        self.assertEqual(read_profile(profile)['agent_token'], 'agent-secret')
+
+    def test_connect_after_attaches_verification_without_losing_created_space(self):
+        import io
+        from contextlib import redirect_stdout
+        result = {'profile': 'private-profile', 'room_id': 'room-1', 'member_id': 'member-1'}
+        connection = {'configuration': {'config': 'added', 'skill': 'installed', 'verified': True},
+                      'next': 'Start a new session.'}
+        verification = {'overall': 'ready', 'checks': [], 'next': 'Start a new session.'}
+        output = io.StringIO()
+        with patch('coopagents.space_connect.connect', return_value=connection), \
+                patch.object(runtime, 'doctor', return_value=verification) as checked, \
+                redirect_stdout(output):
+            code = runtime.connect_after(result, 'codex', False, None)
+        emitted = json.loads(output.getvalue())
+        self.assertEqual(code, 0)
+        self.assertEqual(emitted['profile'], 'private-profile')
+        self.assertEqual(emitted['room_id'], 'room-1')
+        self.assertEqual(emitted['configuration'], connection['configuration'])
+        self.assertEqual(emitted['verification'], verification)
+        self.assertEqual(emitted['next'], 'Start a new session.')
+        checked.assert_called_once_with('private-profile', 'codex', None, None)
+
 
 class Runtime(unittest.TestCase):
     def setUp(self):

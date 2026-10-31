@@ -7,6 +7,9 @@ from pathlib import Path
 tool, state = os.environ['FAKE_TOOL'], Path(os.environ['FAKE_MCP_STATE'])
 servers = json.loads(state.read_text()) if state.exists() else {}
 args = sys.argv[1:]
+if args == ['--version']:
+    print('Codex CLI 2.0.0')
+    sys.exit(0)
 if os.environ.get('FAKE_BROKEN') or args[:1] == ['--broken']:
     print('Error: failed to load configuration', file=sys.stderr)
     sys.exit(1)

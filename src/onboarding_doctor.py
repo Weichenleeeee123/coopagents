@@ -4,11 +4,14 @@ import json
 import os
 from pathlib import Path
 import re
+import secrets
 import site
 import sys
+from contextlib import nullcontext
 
 from . import space_connect
-from .spaces import checked_path
+from .p2p import member_link
+from .spaces import checked_path, read_profile
 
 
 STATUSES = frozenset(('pass', 'fail', 'needs_user', 'unknown', 'skipped'))
@@ -138,8 +141,17 @@ def tool_check(tool=None, project_dir=None, cli=None):
     if error:
         return make_check('native_tool', 'needs_user', 'The selected native tool was not found.', error,
                           {'tool': selected})
+    try:
+        result = space_connect._run(executable + ['--version'], timeout=10)
+    except space_connect.ConnectError:
+        return make_check('native_tool', 'needs_user', 'The selected native CLI could not report its version.',
+                          'Install or select a working native CLI, then run doctor again.', {'tool': selected})
+    version = re.search(r'\b(\d+\.\d+(?:\.\d+)?)\b', result.stdout + '\n' + result.stderr)
+    if result.returncode != 0 or not version:
+        return make_check('native_tool', 'needs_user', 'The selected native CLI version could not be verified.',
+                          'Install or select a supported native CLI, then run doctor again.', {'tool': selected})
     return make_check('native_tool', 'pass', 'The selected native tool is available.',
-                      evidence={'tool': selected, 'cli_found': bool(executable)})
+                      evidence={'tool': selected, 'cli_found': True, 'version': version.group(1)})
 
 
 def skill_root(tool, root=None):
@@ -208,6 +220,122 @@ def local_checks(*, tool=None, profile_path=None, project_dir=None, cli=None, sk
     checks.append(skill_check(selected, skills) if selected else
                   make_check('skill_installation', 'skipped', 'No native tool was selected.',
                              'Run doctor inside Claude Code or Codex.'))
+    result = aggregate(checks)
+    if not profile_path and result['overall'] == 'ready':
+        result['overall'] = 'needs_user'
+        result['next'] = 'Provide an invitation or let the agent create a P2P space in the current repository.'
+    return result
+
+
+def _request_profile(profile, path, *, token=None, data=None):
+    # Import lazily to keep the diagnostic core usable without starting a runtime.
+    from .space_runtime import request
+    return request(profile['origin'], path, token=token or profile['agent_token'], data=data)
+
+
+def profile_checks(profile_path, *, tool=None, project_dir=None, cli=None, skills=None):
+    """Verify a private profile, its target identity and its diagnostic challenge."""
+    try:
+        path = checked_path(profile_path).resolve()
+        profile = read_profile(path)
+    except Exception:
+        return aggregate([
+            make_check('project_context', 'fail', 'The private Coopagents profile is invalid or unavailable.',
+                       'Use the profile path returned by create or join; no profile was changed.'),
+            make_check('runtime_reachability', 'skipped', 'The invalid profile was not used for a network request.'),
+            make_check('challenge_round_trip', 'skipped', 'The invalid profile could not run a diagnostic challenge.'),
+            make_check('transport_path', 'unknown', 'The transport path is unknown.'),
+            make_check('session_reload', 'needs_user', 'The current session has not been checked.',
+                       'Start a new agent session after the profile is configured.'),
+            make_check('wake_up', 'skipped', 'Wake-up is optional and was not changed.'),
+        ])
+
+    secrets_to_hide = (profile.get('agent_token'), profile.get('web_token'), profile.get('control_token'))
+    checks = [make_check('project_context', 'pass', 'The private profile is valid for one Coopagents space.',
+                         evidence={'room_id': profile['room_id'], 'member_id': profile['member_id']},
+                         secrets=secrets_to_hide)]
+    link = None
+    try:
+        with member_link(profile) as link:
+            identity = _request_profile(profile, '/api/me')
+            me = identity.get('me') if isinstance(identity, dict) else None
+            if not isinstance(me, dict) or me.get('room_id') != profile['room_id'] \
+                    or me.get('member_id') != profile['member_id'] or me.get('kind') != 'agent':
+                raise ValueError('The authenticated identity does not match the private profile')
+            checks.append(make_check('runtime_reachability', 'pass', 'The space accepted the personal agent identity.',
+                                     evidence={'room_id': me['room_id'], 'member_id': me['member_id'], 'kind': me['kind']},
+                                     secrets=secrets_to_hide))
+            if link is not None:
+                try:
+                    path_info = link.path()
+                    state = path_info.get('state', 'unknown')
+                    path_status = 'pass' if state in ('direct', 'relay') else (
+                        'fail' if state == 'disconnected' else 'unknown')
+                    checks.append(make_check('transport_path', path_status,
+                                             'The P2P transport reported its current path.' if path_status != 'fail'
+                                             else 'The P2P transport is disconnected.',
+                                             evidence={'state': state, 'rtt_ms': path_info.get('rtt_ms')},
+                                             secrets=secrets_to_hide))
+                except Exception:
+                    checks.append(make_check('transport_path', 'unknown', 'The P2P transport path is not available.'))
+            else:
+                state = 'https' if profile['origin'].startswith('https://') else 'loopback'
+                checks.append(make_check('transport_path', 'pass',
+                                         'The profile uses its configured service origin.',
+                                         evidence={'state': state}))
+
+            try:
+                challenge = secrets.token_urlsafe(24)
+                started = _request_profile(profile, '/api/diagnostics/start', data={'challenge': challenge})
+                diagnostic_id = started.get('diagnostic_id') if isinstance(started, dict) else None
+                read = _request_profile(profile, '/api/diagnostics/read', data={'diagnostic_id': diagnostic_id})
+                if read.get('diagnostic_id') != diagnostic_id or read.get('challenge') != challenge:
+                    raise ValueError('The diagnostic challenge readback did not match')
+                completed = _request_profile(
+                    profile, '/api/diagnostics/complete',
+                    data={'diagnostic_id': diagnostic_id, 'proof': read.get('proof')})
+                if completed.get('status') != 'completed':
+                    raise ValueError('The diagnostic challenge did not complete')
+                checks.append(make_check('challenge_round_trip', 'pass', 'The authenticated diagnostic challenge completed.',
+                                         evidence={'status': 'completed'},
+                                         secrets=secrets_to_hide + (challenge, read.get('proof'))))
+            except Exception:
+                checks.append(make_check('challenge_round_trip', 'fail', 'The diagnostic challenge did not complete.',
+                                         'Retry doctor after the agent identity is reachable; no credential was changed.',
+                                         secrets=secrets_to_hide))
+    except Exception:
+        checks.append(make_check('runtime_reachability', 'fail', 'The space did not accept the personal profile.',
+                                 'Check that the host is running, the network is reachable and the member is still active.',
+                                 secrets=secrets_to_hide))
+        checks.append(make_check('transport_path', 'unknown', 'The transport path is unknown.'))
+        checks.append(make_check('challenge_round_trip', 'skipped', 'The diagnostic challenge did not run because identity verification failed.'))
+
+    checks.extend([
+        make_check('session_reload', 'needs_user', 'The native configuration may require a new agent session.',
+                    'Start a new session and call whoami, then read_team to verify the loaded MCP connection.'),
+        make_check('wake_up', 'skipped', 'Wake-up is optional and was not changed.'),
+    ])
+    return aggregate(checks)
+
+
+def run(*, profile_path=None, tool=None, project_dir=None, cli=None, skills=None):
+    """Run local checks and, when supplied, profile/network checks."""
+    local = local_checks(tool=tool, profile_path=profile_path, project_dir=project_dir,
+                         cli=cli, skills=skills)
+    checks = local['checks']
+    if profile_path:
+        checks.extend(profile_checks(profile_path, tool=tool, project_dir=project_dir, cli=cli, skills=skills)['checks'])
+    else:
+        checks.extend([
+            make_check('project_context', 'skipped', 'No private profile was provided.',
+                       'Provide an invitation or let the agent create a P2P space.'),
+            make_check('runtime_reachability', 'skipped', 'No profile was provided for a network check.'),
+            make_check('transport_path', 'unknown', 'The transport path is unknown until a space is connected.'),
+            make_check('challenge_round_trip', 'skipped', 'No profile was provided for a diagnostic challenge.'),
+            make_check('session_reload', 'needs_user', 'No native session has been verified yet.',
+                       'Run doctor again after connecting the profile.'),
+            make_check('wake_up', 'skipped', 'Wake-up is optional and was not changed.'),
+        ])
     result = aggregate(checks)
     if not profile_path and result['overall'] == 'ready':
         result['overall'] = 'needs_user'
