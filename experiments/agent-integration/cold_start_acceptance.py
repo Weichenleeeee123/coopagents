@@ -111,11 +111,56 @@ def prepare_homes(run, codex_source, claude_settings, environ=None, tool=None):
     return env
 
 
-def model_command(tool, executable, run, python, *, setup=False):
+def codex_tool_approvals(run, python, require):
+    """Invocation-only approvals for the exact isolated bridge and stage tools."""
+    if not require:
+        return []
+    allowed = {'whoami', 'read_team', 'read_inbox', 'send_request', 'reply'}
+    if not set(require).issubset(allowed):
+        raise ValueError('Unexpected acceptance tool')
+    config = tomllib.loads((run / 'codex-home/config.toml').read_text(encoding='utf-8'))
+    servers = config.get('mcp_servers', {})
+    if len(servers) != 1:
+        raise ValueError('Expected exactly one private synthetic server')
+    server, entry = next(iter(servers.items()))
+    args = entry.get('args', [])
+    if (Path(entry.get('command', '')).resolve() != python.resolve() or len(args) != 4
+            or args[:3] != ['-m', 'coopagents.space_bridge', '--profile']):
+        raise ValueError('Unexpected native bridge command')
+    profile = Path(args[3]).resolve()
+    if not profile.is_relative_to((run / 'coopagents-home').resolve()):
+        raise ValueError('Native bridge profile escaped the private run')
+    from coopagents.space_connect import server_name
+    if server != server_name(json.loads(profile.read_text(encoding='utf-8'))):
+        raise ValueError('Native server does not match the synthetic room')
+    prefix = 'mcp_servers.' + server
+    settings = ['-c', prefix + '.enabled_tools=' + json.dumps(list(require))]
+    for name in require:
+        settings.extend(['-c', prefix + '.tools.' + name + '.approval_mode="approve"'])
+    return settings
+
+
+def host_reply_prompt(tool, nonce, answer_file):
+    prompt = ('Use native Coopagents MCP tools to read_inbox and read_team. '
+              f'Find request with marker {nonce}. ')
     if tool == 'codex':
-        return [executable, 'exec', '--sandbox', 'workspace-write', '--add-dir', str(run),
-                '-c', 'sandbox_workspace_write.network_access=true',
-                '--json', '--output-last-message', str(run / 'last-message.txt'), '-']
+        quoted = "'" + str(answer_file).replace("'", "''" if os.name == 'nt' else "'\"'\"'") + "'"
+        command = ('Get-Content -LiteralPath ' if os.name == 'nt' else 'cat -- ') + quoted
+        prompt += f'I explicitly authorize this exact read-only synthetic-file command: {command}. '
+        prompt += 'Do not execute any other commands. '
+    else:
+        prompt += f'Use Read to read only the synthetic file {answer_file}. '
+    return prompt + 'Reply with its exact text. Do not change files.'
+
+
+def model_command(tool, executable, run, python, *, setup=False, require=()):
+    if tool == 'codex':
+        command = [executable, 'exec', '--sandbox', 'workspace-write' if setup else 'read-only',
+                   '--add-dir', str(run)]
+        if setup:
+            command.extend(['-c', 'sandbox_workspace_write.network_access=true'])
+        command.extend(codex_tool_approvals(run, python, require))
+        return command + ['--json', '--output-last-message', str(run / 'last-message.txt'), '-']
     # Only the already-installed checkout's runtime helper can execute commands.
     # The model may read the explicitly authorized source Skill and synthetic repo.
     allowed = ['Read', 'mcp__coopagents_*']
@@ -333,7 +378,7 @@ def main(argv=None):
     def turn(tool, stage, prompt, *, setup=False, require=(), expected_identity=None, verify_setup=False):
         env = environments[tool]
         path = run / (stage + '.jsonl')
-        code = bounded(model_command(tool, getattr(args, tool), run / tool, Path(sys.executable), setup=setup),
+        code = bounded(model_command(tool, getattr(args, tool), run / tool, Path(sys.executable), setup=setup, require=require),
                        prompt, path, env, projects[tool], args.timeout)
         events = events_from(path)
         tools = successful_tools(tool, events)
@@ -424,9 +469,8 @@ def main(argv=None):
                  f'Send a request to member {host_profile["member_id"]} asking for the exact text in its '
                  f'acceptance-answer.txt file. Include marker {nonce} in the body.', require=('whoami', 'read_team', 'send_request'),
                  expected_identity=guest_profile)
-            turn(host, '05-host-reply', 'Use native Coopagents MCP tools to read_inbox and read_team. '
-                 f'Find request with marker {nonce}. Read acceptance-answer.txt in this repository and reply with its exact text. '
-                 'Do not execute commands or change files.', require=('read_inbox', 'reply'))
+            turn(host, '05-host-reply', host_reply_prompt(host, nonce, projects[host] / 'acceptance-answer.txt'),
+                 require=('read_inbox', 'read_team', 'reply'))
             turn(guest, '06-guest-read-reply', f'Use native Coopagents MCP read_team to find the reply to the request '
                  f'with marker {nonce}. Report its answer. Do not send a second request.', require=('read_team',))
             state = snapshot(owner['profile'])

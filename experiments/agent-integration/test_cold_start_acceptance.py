@@ -35,6 +35,40 @@ class ColdStartTests(unittest.TestCase):
                 self.assertIn('--allowedTools', command)
                 self.assertNotIn('Bash(*)', joined)
 
+    def test_collaboration_uses_read_only_and_exact_registered_tool_approvals(self):
+        root = Path(__file__).resolve().parents[2] / '.local/cold-start-tests' / uuid4().hex
+        profile = root / 'coopagents-home/member/profile.json'
+        profile.parent.mkdir(parents=True)
+        profile.write_text(json.dumps({'room_id': '12345678-room'}))
+        config = root / 'codex-home/config.toml'
+        config.parent.mkdir()
+        python = root / 'python'
+        entry = {'command': str(python), 'args': ['-m', 'coopagents.space_bridge', '--profile', str(profile)]}
+        config.write_text('mcp_servers = ' + self.runner.toml_value({'coopagents_12345678': entry}))
+        command = self.runner.model_command('codex', 'codex', root, python, require=('whoami', 'read_team'))
+        self.assertEqual(command[command.index('--sandbox') + 1], 'read-only')
+        settings = [command[i + 1] for i, arg in enumerate(command) if arg == '-c']
+        self.assertEqual(settings, [
+            'mcp_servers.coopagents_12345678.enabled_tools=["whoami", "read_team"]',
+            'mcp_servers.coopagents_12345678.tools.whoami.approval_mode="approve"',
+            'mcp_servers.coopagents_12345678.tools.read_team.approval_mode="approve"'])
+        self.assertNotIn('send_request', ' '.join(command))
+        for foreign in ({'personal': entry}, {'coopagents_12345678': dict(entry, command='foreign')},
+                        {'coopagents_12345678': entry, 'personal': entry},
+                        {'coopagents_12345678': dict(entry, args=['-m', 'other'])}):
+            config.write_text('mcp_servers = ' + self.runner.toml_value(foreign))
+            with self.assertRaises(ValueError):
+                self.runner.model_command('codex', 'codex', root, python, require=('whoami',))
+
+    def test_host_reply_authorizes_only_exact_synthetic_file_read(self):
+        answer = Path(__file__).resolve().parents[2] / '.local/synthetic answer.txt'
+        prompt = self.runner.host_reply_prompt('codex', 'nonce', answer)
+        self.assertIn(str(answer), prompt)
+        self.assertIn('Get-Content -LiteralPath' if os.name == 'nt' else 'cat --', prompt)
+        self.assertNotIn('Do not execute commands', prompt)
+        self.assertIn('Do not execute any other commands', prompt)
+        self.assertIn('Do not change files', prompt)
+
     def test_failed_owned_host_stop_fails_full_and_partial_acceptance(self):
         # Exercise main's real finalization path without calling native models.
         for partial, collaboration_status in ((False, 'passed'), (True, 'host_verified_partial')):
@@ -55,7 +89,7 @@ class ColdStartTests(unittest.TestCase):
                     stopped = 'stop' in command
                     return subprocess.CompletedProcess(command, 1 if stopped else 0,
                                                        stdout='' if '--porcelain' in command else 'synthetic-commit')
-                overrides = {'prepare_homes': prepare, 'bounded': lambda *a, **k: 0,
+                overrides = {'codex_tool_approvals': lambda *a: [], 'prepare_homes': prepare, 'bounded': lambda *a, **k: 0,
                     'registrations': native_registration, 'events_from': lambda *a: [],
                     'successful_tools': lambda *a: {'whoami', 'read_team', 'send_request', 'read_inbox', 'reply'},
                     'native_identity_proven': lambda *a: True, 'snapshot': lambda *a: {},
