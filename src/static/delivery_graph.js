@@ -63,15 +63,16 @@
     const heading=element('div','','graph-page-heading');append(heading,element('div','', 'graph-page-title'),element('p','分支、提交、PR 与 Release 按已有关系分组。连接线只表示有来源的关联，不代表完整 Git 提交历史。','meta'));
     heading.firstChild.append(element('p','05 / DELIVERY','eyebrow'),element('h2','交付关系'));
     const controls=element('div','','git-graph-controls'),search=element('label','','search-field');search.setAttribute('aria-label','搜索交付对象');const input=element('input');input.type='search';input.placeholder='搜索分支、SHA、PR 或 Release';input.value=state.query;search.append(input);const kind=element('select');kind.setAttribute('aria-label','交付类型');for(const [value,label] of [['','全部类型'],['branch','分支'],['commit','Commit'],['pr','Pull request'],['release','Release']]){const option=element('option',label);option.value=value;kind.append(option);}kind.value=state.kind;const branches=unique(projection.groups.filter(g=>g.kind==='branch').map(g=>g.title));const branch=element('select');branch.setAttribute('aria-label','分支');const all=element('option','全部分支');all.value='';branch.append(all);for(const name of branches){const option=element('option',name);option.value=name;branch.append(option);}branch.value=state.branch;const count=element('span','','result-count');append(controls,search,kind,branch,count);section.append(heading,controls);
-    const candidates=projection.groups.map(group=>({...group,nodes:group.nodes.filter(n=>(!state.kind||n.kind===state.kind)&&(!state.branch||n.branch===state.branch)&&(!state.query||[n.label,n.title,n.value,n.branch,n.repository,n.source].join(' ').toLocaleLowerCase().includes(state.query.toLocaleLowerCase())))})).filter(g=>g.nodes.length);
+    // Keep the full projection mounted so snapshot refreshes preserve filter recovery.
+    const candidates=projection.groups;
     function open(node){state.selected=node.key;context.openNode?.(node.key,node,projection);}
-    const graphRoot=element('div','','git-graph-groups');graphRoot.style.position='relative';const nodeElements=new Map(),edgeElements=[];
+    const graphRoot=element('div','','git-graph-groups');graphRoot.style.position='relative';const nodeElements=new Map(),rowElements=new Map(),edgeElements=[];
     for(const group of candidates){
       const lane=element('section','','git-lane');lane.setAttribute('aria-label',group.title+' 分支交付关系');lane.style.position='relative';lane.style.zIndex='1';const laneHead=element('header','','git-lane-head');
       append(laneHead,element('span','','git-lane-track'),append(element('div'),element('p',group.kind==='branch'?'分支轨道':group.kind==='release'?'发布记录':'其他交付','eyebrow'),element('h3',group.title)),element('span',group.nodes.length+' 个对象','meta'));lane.append(laneHead);
       const child=element('div','','git-lane-objects');
       for(const node of group.nodes){
-        const article=element('article','','git-object-row'),marker=element('span','','git-object-marker kind-'+node.kind),body=element('div','','git-object-body'),top=element('div','','git-object-top'),openButton=element('button',node.label,'git-object-link');article.dataset.nodeKey=node.key;nodeElements.set(node.key,marker);openButton.type='button';openButton.setAttribute('data-node-key',node.key);openButton.addEventListener('click',()=>open(node));
+        const article=element('article','','git-object-row'),marker=element('span','','git-object-marker kind-'+node.kind),body=element('div','','git-object-body'),top=element('div','','git-object-top'),openButton=element('button',node.label,'git-object-link');article.dataset.nodeKey=node.key;nodeElements.set(node.key,marker);rowElements.set(node.key,article);openButton.type='button';openButton.setAttribute('data-node-key',node.key);openButton.addEventListener('click',()=>open(node));
         append(top,openButton,element('span',labels[node.kind]||node.kind,'kind-chip'),element('span',stateLabels[node.state]||node.state,'git-object-state'+(node.stale?' stale':'')));
         append(body,top,element('p',node.title,'git-object-title'));
         const facts=element('div','','git-object-facts');if(node.branch)facts.append(element('span','分支 '+node.branch,'mono'));if(node.repository)facts.append(element('span',node.repository,'meta'));if(node.stale||node.unavailable)facts.append(element('span',node.unavailable?'来源不可用':'证据过期','evidence-warning'));
@@ -84,16 +85,29 @@
       lane.append(child);graphRoot.append(lane);
     }
     count.textContent=candidates.reduce((n,g)=>n+g.nodes.length,0)+' 个交付对象';
-    if(!candidates.length)graphRoot.append(element('p','没有匹配的交付对象。','empty'));
+    const filterEmpty=element('p','没有匹配的交付对象。请调整搜索或筛选。','graph-filter-empty');filterEmpty.setAttribute('role','status');graphRoot.append(filterEmpty);
     if(projection.truncated)graphRoot.append(element('p','交付清单已截断；请在共享上下文按任务或对象继续查询。','meta'));
     section.append(graphRoot);
     root.replaceChildren(section);
     const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.classList.add('git-edge-layer');svg.setAttribute('aria-hidden','true');svg.setAttribute('preserveAspectRatio','none');svg.style.cssText='position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:0';
     for(const edge of projection.edges){const from=nodeElements.get(edge.from),to=nodeElements.get(edge.to);if(!from||!to)continue;const path=document.createElementNS('http://www.w3.org/2000/svg','path');path.setAttribute('class','git-edge git-edge-'+edge.kind);path.setAttribute('data-from',edge.from);path.setAttribute('data-to',edge.to);path.setAttribute('fill','none');path.setAttribute('stroke-width','2');path.setAttribute('stroke','currentColor');const title=document.createElementNS('http://www.w3.org/2000/svg','title');title.textContent=edge.label;path.append(title);svg.append(path);edgeElements.push({path,edge});}
-    const drawEdges=()=>{const bounds=graphRoot.getBoundingClientRect();svg.setAttribute('viewBox',`0 0 ${Math.max(1,bounds.width)} ${Math.max(1,bounds.height)}`);for(const {path,edge} of edgeElements){const from=nodeElements.get(edge.from),to=nodeElements.get(edge.to);if(!from||!to)continue;const a=from.getBoundingClientRect(),b=to.getBoundingClientRect(),x1=a.left-bounds.left+a.width/2,y1=a.top-bounds.top+a.height/2,x2=b.left-bounds.left+b.width/2,y2=b.top-bounds.top+b.height/2;path.setAttribute('d',`M ${x1} ${y1} C ${x1+30} ${y1}, ${x2+30} ${y2}, ${x2} ${y2}`);}};
+    const drawEdges=()=>{const bounds=graphRoot.getBoundingClientRect();svg.setAttribute('viewBox',`0 0 ${Math.max(1,bounds.width)} ${Math.max(1,bounds.height)}`);for(const {path,edge} of edgeElements){const from=nodeElements.get(edge.from),to=nodeElements.get(edge.to);if(!from||!to||rowElements.get(edge.from)?.hidden||rowElements.get(edge.to)?.hidden){path.setAttribute('display','none');path.setAttribute('d','');continue;}path.setAttribute('display','');const a=from.getBoundingClientRect(),b=to.getBoundingClientRect(),x1=a.left-bounds.left+a.width/2,y1=a.top-bounds.top+a.height/2,x2=b.left-bounds.left+b.width/2,y2=b.top-bounds.top+b.height/2;path.setAttribute('d',`M ${x1} ${y1} C ${x1+30} ${y1}, ${x2+30} ${y2}, ${x2} ${y2}`);}};
     graphRoot.prepend(svg);
     drawEdges();if(typeof ResizeObserver!=='undefined'){state.resizeObserver=new ResizeObserver(drawEdges);state.resizeObserver.observe(graphRoot);}
-    const applyFilters=()=>{let visible=0;for(const group of graphRoot.querySelectorAll('.git-lane')){for(const row of group.querySelectorAll('.git-object-row')){const key=row.dataset.nodeKey,node=projection.nodes.find(n=>n.key===key),show=!!node&&(!state.query||[node.label,node.title,node.value,node.branch,node.repository,node.source].join(' ').toLocaleLowerCase().includes(state.query.toLocaleLowerCase()))&&(!state.kind||node.kind===state.kind)&&(!state.branch||node.branch===state.branch);row.hidden=!show;if(show)visible++;}}for(const {path,edge} of edgeElements){const from=graphRoot.querySelector(`[data-node-key="${CSS.escape(edge.from)}"]`),to=graphRoot.querySelector(`[data-node-key="${CSS.escape(edge.to)}"]`);path.hidden=!!(from?.hidden||to?.hidden);}count.textContent=visible+' 个交付对象';drawEdges();};
+    const applyFilters=()=>{
+      let visible=0;
+      for(const group of graphRoot.querySelectorAll('.git-lane')){
+        let groupCount=0;
+        for(const row of group.querySelectorAll('.git-object-row')){
+          const node=projection.nodes.find(n=>n.key===row.dataset.nodeKey);
+          const show=!!node&&(!state.query||[node.label,node.title,node.value,node.branch,node.repository,node.source].join(' ').toLocaleLowerCase().includes(state.query.toLocaleLowerCase()))&&(!state.kind||node.kind===state.kind)&&(!state.branch||node.branch===state.branch);
+          row.hidden=!show;if(show){visible++;groupCount++;}
+        }
+        group.hidden=groupCount===0;
+        const total=group.querySelectorAll('.meta')[0];if(total)total.textContent=groupCount+' 个对象';
+      }
+      filterEmpty.hidden=visible>0;count.textContent=visible+' 个交付对象';drawEdges();
+    };
     input.addEventListener('input',()=>{state.query=input.value;applyFilters();});kind.addEventListener('change',()=>{state.kind=kind.value;applyFilters();});branch.addEventListener('change',()=>{state.branch=branch.value;applyFilters();});applyFilters();
   }
   const api={buildGraph,render};if(typeof module!=='undefined'&&module.exports)module.exports=api;if(typeof window!=='undefined')window.CoopagentsDeliveryGraph=api;

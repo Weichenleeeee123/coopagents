@@ -38,6 +38,22 @@ assert.ok(all(root).some(n=>n.className.split(' ').includes('git-lane')));assert
 const edge=all(root).find(n=>n.tagName==='PATH');
 const marker=all(root).find(n=>n.className.split(' ').includes('git-object-marker'));
 const previousPath=edge.attributes.d;marker.x+=96;resizeGraph();assert.notEqual(edge.attributes.d,previousPath,'Graph connectors must recalculate when responsive layout moves nodes');
+// SVG needs explicit display semantics, and hidden endpoints must never be measured.
+const search=all(root).find(n=>n.tagName==='INPUT');
+search.value='Launch';search.listeners.input();
+assert.equal(edge.attributes.display,'none','Edges touching filtered rows must use SVG display semantics');
+assert.equal(edge.attributes.d,'','Filtered endpoints must never generate paths from zero coordinates');
+resizeGraph();assert.equal(edge.attributes.d,'');
+assert.equal(all(root).filter(n=>n.className==='git-lane'&&!n.hidden).length,1,'Empty branch groups must disappear');
+search.value='no object matches';search.listeners.input();
+assert.ok(all(root).some(n=>n.className==='graph-filter-empty'&&!n.hidden),'Empty filter results need a clear recovery state');
+search.value='';search.listeners.input();
+assert.equal(edge.attributes.display,'');assert.ok(edge.attributes.d.startsWith('M '));
+// A snapshot refresh while filtering must retain the complete object set.
+search.value='Launch';search.listeners.input();
+Graph.render(root,graph,git,{openTask:id=>opened.push(id),openNode:key=>opened.push(key),canManage:true,api:async(_path,payload)=>decisions.push(payload),sync:async()=>{}});
+const restoredSearch=all(root).find(n=>n.tagName==='INPUT');restoredSearch.value='';restoredSearch.listeners.input();
+assert.equal(all(root).filter(n=>n.className==='git-object-row'&&!n.hidden).length,5);
 const node=all(root).find(n=>n.className.split(' ').includes('git-object-link')&&n.attributes['data-node-key']==='pr:17');node.listeners.click();assert.ok(opened.includes('pr:17'));
 const task=all(root).find(n=>n.textContent==='任务 #1');task.listeners.click();assert.ok(opened.includes(1));
 const approve=all(root).find(n=>n.textContent==='确认关联');assert.ok(approve);
