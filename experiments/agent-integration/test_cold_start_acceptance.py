@@ -31,6 +31,7 @@ class ColdStartTests(unittest.TestCase):
             self.assertNotIn('-m', command)
             if tool == 'codex':
                 self.assertIn('workspace-write', command)
+                self.assertEqual('features.prefer_mxc=true' in command, os.name == 'nt')
             else:
                 self.assertIn('--allowedTools', command)
                 self.assertNotIn('Bash(*)', joined)
@@ -47,7 +48,8 @@ class ColdStartTests(unittest.TestCase):
         config.write_text('mcp_servers = ' + self.runner.toml_value({'coopagents_12345678': entry}))
         command = self.runner.model_command('codex', 'codex', root, python, require=('whoami', 'read_team'))
         self.assertEqual(command[command.index('--sandbox') + 1], 'read-only')
-        settings = [command[i + 1] for i, arg in enumerate(command) if arg == '-c']
+        settings = [command[i + 1] for i, arg in enumerate(command)
+                    if arg == '-c' and command[i + 1].startswith('mcp_servers.')]
         self.assertEqual(settings, [
             'mcp_servers.coopagents_12345678.enabled_tools=["whoami", "read_team"]',
             'mcp_servers.coopagents_12345678.tools.whoami.approval_mode="approve"',
@@ -65,17 +67,57 @@ class ColdStartTests(unittest.TestCase):
         python = PureWindowsPath('C:/Users/Synthetic User/project/.venv/Scripts/python.exe')
         command = self.runner.model_command('claude', 'claude', root, python, setup=True)
         allowed = command[command.index('--allowedTools') + 1].split(',')
-        self.assertEqual(allowed, ['Read', 'mcp__coopagents_*',
+        self.assertEqual(allowed, ['Read',
             'Bash("C:\\Users\\Synthetic User\\project\\.venv\\Scripts\\python.exe" -m coopagents.space_runtime:*)',
             'Bash("C:/Users/Synthetic User/project/.venv/Scripts/python.exe" -m coopagents.space_runtime:*)',
             'Bash("/c/Users/Synthetic User/project/.venv/Scripts/python.exe" -m coopagents.space_runtime:*)'])
         self.assertTrue(all(rule.endswith('" -m coopagents.space_runtime:*)')
                             for rule in allowed if rule.startswith('Bash(')))
         command = self.runner.model_command('claude', 'claude', root, python)
-        self.assertEqual(command[command.index('--allowedTools') + 1], 'Read,mcp__coopagents_*')
+        self.assertEqual(command[command.index('--allowedTools') + 1], 'Read')
         posix = self.runner.model_command('claude', 'claude', root, PurePosixPath('/venv/bin/python'), setup=True)
         self.assertEqual(posix[posix.index('--allowedTools') + 1],
-                         'Read,mcp__coopagents_*,Bash("/venv/bin/python" -m coopagents.space_runtime:*)')
+                         'Read,Bash("/venv/bin/python" -m coopagents.space_runtime:*)')
+
+    def test_claude_required_permissions_use_verified_exact_server_and_tools(self):
+        root = Path(__file__).resolve().parents[2] / '.local/cold-start-tests' / uuid4().hex
+        profile = root / 'coopagents-home/member/profile.json'
+        profile.parent.mkdir(parents=True)
+        profile.write_text(json.dumps({'room_id': '12345678-room'}))
+        config = root / 'claude-home/.claude.json'
+        config.parent.mkdir()
+        python = root / 'python'
+        entry = {'command': str(python), 'args': ['-m', 'coopagents.space_bridge', '--profile', str(profile)]}
+        config.write_text(json.dumps({'mcpServers': {'coopagents_12345678': entry}}))
+        command = self.runner.model_command('claude', 'claude', root, python, require=('whoami', 'read_team'))
+        self.assertEqual(command[command.index('--allowedTools') + 1],
+                         'Read,mcp__coopagents_12345678__whoami,mcp__coopagents_12345678__read_team')
+        for servers in ({'foreign': entry}, {'coopagents_12345678': dict(entry, command='foreign')},
+                        {'coopagents_12345678': entry, 'foreign': entry}):
+            config.write_text(json.dumps({'mcpServers': servers}))
+            with self.assertRaises(ValueError):
+                self.runner.model_command('claude', 'claude', root, python, require=('whoami',))
+
+    def test_invitation_requires_exact_successful_native_command_result(self):
+        profile = Path('/synthetic/member/profile.json')
+        command = self.runner.invitation_command(Path('/venv/python'), profile)
+        invitation = {'message': 'synthetic invitation', 'invitation_file': str(profile.with_name('invitation-test.json'))}
+        def events(command=command, result=invitation, failed=False):
+            return [
+                {'type': 'assistant', 'message': {'content': [{'type': 'tool_use', 'id': 'invite',
+                    'name': 'Bash', 'input': {'command': command}}]}},
+                {'type': 'user', 'message': {'content': [{'type': 'tool_result', 'tool_use_id': 'invite',
+                    'is_error': failed, 'content': json.dumps(result)}]}}]
+        self.assertEqual(self.runner.native_invitation_result('claude', events(), command, profile), invitation)
+        for rejected in (events(command='echo invented'), events(failed=True),
+                         events(result={'isError': True, **invitation}),
+                         events(result=dict(invitation, invitation_file='/foreign/invitation.json')),
+                         [{'type': 'assistant', 'message': {'content': [{'type': 'text', 'text': json.dumps(invitation)}]}}]):
+            with self.assertRaises(ValueError):
+                self.runner.native_invitation_result('claude', rejected, command, profile)
+        codex = [{'type': 'item.completed', 'item': {'type': 'command_execution', 'command': command,
+                  'exit_code': 0, 'aggregated_output': json.dumps(invitation)}}]
+        self.assertEqual(self.runner.native_invitation_result('codex', codex, command, profile), invitation)
 
     def test_claude_nonstructured_messages_and_blocks_do_not_crash_or_prove_tools(self):
         noise = [{'type': kind, 'message': message}
@@ -113,7 +155,6 @@ class ColdStartTests(unittest.TestCase):
                 def prepare(root, *args, tool=None, **kwargs):
                     root.mkdir(parents=True)
                     (root / 'profile.json').write_text('{}', encoding='utf-8')
-                    (root / 'invitation-result.json').write_text('{"message":"synthetic invitation"}', encoding='utf-8')
                     roots[tool] = root
                     return {'SYNTHETIC_ROOT': str(root)}
                 def profile(path):
@@ -125,7 +166,9 @@ class ColdStartTests(unittest.TestCase):
                     stopped = 'stop' in command
                     return subprocess.CompletedProcess(command, 1 if stopped else 0,
                                                        stdout='' if '--porcelain' in command else 'synthetic-commit')
-                overrides = {'codex_tool_approvals': lambda *a: [], 'prepare_homes': prepare, 'bounded': lambda *a, **k: 0,
+                overrides = {'codex_tool_approvals': lambda *a: [], 'claude_tool_approvals': lambda *a: [],
+                    'native_invitation_result': lambda *a: {'message': 'synthetic invitation'},
+                    'prepare_homes': prepare, 'bounded': lambda *a, **k: 0,
                     'registrations': native_registration, 'events_from': lambda *a: [],
                     'successful_tools': lambda *a: {'whoami', 'read_team', 'send_request', 'read_inbox', 'reply'},
                     'native_identity_proven': lambda *a: True, 'snapshot': lambda *a: {},
@@ -296,7 +339,7 @@ class ColdStartTests(unittest.TestCase):
                                      'AWS_SECRET_ACCESS_KEY': 'omit', 'GOOGLE_API_KEY': 'omit',
                                      'ANTHROPIC_UNRELATED_SECRET': 'omit'},
                                      'model': 'configured-claude', 'hooks': {'Stop': []}}), encoding='utf-8')
-        source_env = {'PATH': os.environ.get('PATH', ''), 'SELECTED_API_KEY': 'selected-auth',
+        source_env = {'PATH': os.environ.get('PATH', ''), 'SystemDrive': 'C:', 'SELECTED_API_KEY': 'selected-auth',
                       'UNRELATED_API_KEY': 'omit', 'AWS_SESSION_TOKEN': 'omit', 'GOOGLE_API_KEY': 'omit'}
         env = self.runner.prepare_homes(root / 'run', source, claude, environ=source_env)
         self.assertNotEqual(Path(env['CODEX_HOME']), source)
@@ -306,6 +349,7 @@ class ColdStartTests(unittest.TestCase):
         self.assertNotIn('personal', config)
         self.assertNotIn('unrelated', config)
         self.assertEqual(env['SELECTED_API_KEY'], 'selected-auth')
+        self.assertEqual(env['SystemDrive'], 'C:')
         self.assertEqual(env['ANTHROPIC_AUTH_TOKEN'], 'synthetic')
         for key in ('UNRELATED_SECRET', 'UNRELATED_API_KEY', 'AWS_SESSION_TOKEN', 'GOOGLE_API_KEY',
                     'AWS_SECRET_ACCESS_KEY', 'ANTHROPIC_UNRELATED_SECRET'):

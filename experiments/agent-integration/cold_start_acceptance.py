@@ -36,7 +36,7 @@ def prepare_homes(run, codex_source, claude_settings, environ=None, tool=None):
     source_env = os.environ if environ is None else environ
     # Start with process/runtime essentials, rather than forwarding every
     # credential present in the parent's environment to either native model.
-    runtime_keys = set(('PATH PATHEXT SYSTEMROOT WINDIR COMSPEC OS APPDATA LOCALAPPDATA '
+    runtime_keys = set(('PATH PATHEXT SYSTEMROOT SYSTEMDRIVE WINDIR COMSPEC OS APPDATA LOCALAPPDATA '
         'PROGRAMFILES PROGRAMFILES(X86) PROGRAMW6432 PROCESSOR_ARCHITECTURE NUMBER_OF_PROCESSORS '
         'PSMODULEPATH TERM COLORTERM LANG LC_ALL TZ HTTP_PROXY HTTPS_PROXY ALL_PROXY NO_PROXY '
         'SSL_CERT_FILE SSL_CERT_DIR REQUESTS_CA_BUNDLE NODE_EXTRA_CA_CERTS').split())
@@ -111,15 +111,13 @@ def prepare_homes(run, codex_source, claude_settings, environ=None, tool=None):
     return env
 
 
-def codex_tool_approvals(run, python, require):
-    """Invocation-only approvals for the exact isolated bridge and stage tools."""
-    if not require:
-        return []
-    allowed = {'whoami', 'read_team', 'read_inbox', 'send_request', 'reply'}
-    if not set(require).issubset(allowed):
-        raise ValueError('Unexpected acceptance tool')
-    config = tomllib.loads((run / 'codex-home/config.toml').read_text(encoding='utf-8'))
-    servers = config.get('mcp_servers', {})
+def native_bridge_server(run, python, tool):
+    if tool == 'codex':
+        config = tomllib.loads((run / 'codex-home/config.toml').read_text(encoding='utf-8'))
+        servers = config.get('mcp_servers', {})
+    else:
+        config = json.loads((run / 'claude-home/.claude.json').read_text(encoding='utf-8'))
+        servers = config.get('mcpServers', {})
     if len(servers) != 1:
         raise ValueError('Expected exactly one private synthetic server')
     server, entry = next(iter(servers.items()))
@@ -133,6 +131,28 @@ def codex_tool_approvals(run, python, require):
     from coopagents.space_connect import server_name
     if server != server_name(json.loads(profile.read_text(encoding='utf-8'))):
         raise ValueError('Native server does not match the synthetic room')
+    return server
+
+
+def acceptance_tools(require):
+    if not set(require).issubset({'whoami', 'read_team', 'read_inbox', 'send_request', 'reply'}):
+        raise ValueError('Unexpected acceptance tool')
+
+
+def claude_tool_approvals(run, python, require):
+    if not require:
+        return []
+    acceptance_tools(require)
+    server = native_bridge_server(run, python, 'claude')
+    return ['mcp__' + server + '__' + name for name in require]
+
+
+def codex_tool_approvals(run, python, require):
+    """Invocation-only approvals for the exact isolated bridge and stage tools."""
+    if not require:
+        return []
+    acceptance_tools(require)
+    server = native_bridge_server(run, python, 'codex')
     prefix = 'mcp_servers.' + server
     settings = ['-c', prefix + '.enabled_tools=' + json.dumps(list(require))]
     for name in require:
@@ -157,13 +177,16 @@ def model_command(tool, executable, run, python, *, setup=False, require=()):
     if tool == 'codex':
         command = [executable, 'exec', '--sandbox', 'workspace-write' if setup else 'read-only',
                    '--add-dir', str(run)]
+        if os.name == 'nt':
+            # The current native CLI needs an explicit Windows sandbox backend.
+            command.extend(['-c', 'features.prefer_mxc=true'])
         if setup:
             command.extend(['-c', 'sandbox_workspace_write.network_access=true'])
         command.extend(codex_tool_approvals(run, python, require))
         return command + ['--json', '--output-last-message', str(run / 'last-message.txt'), '-']
     # Only the already-installed checkout's runtime helper can execute commands.
     # The model may read the explicitly authorized source Skill and synthetic repo.
-    allowed = ['Read', 'mcp__coopagents_*']
+    allowed = ['Read', *claude_tool_approvals(run, python, require)]
     if setup:
         spellings = [str(python)]
         windows = PureWindowsPath(python)
@@ -224,6 +247,38 @@ def native_results(tool, events):
 
 def successful_tools(tool, events):
     return {name for name, result in native_results(tool, events)}
+
+
+def invitation_command(python, profile):
+    return f'"{python}" -m coopagents.space_runtime invite --profile "{profile}" --message en'
+
+
+def native_invitation_result(tool, events, command, profile):
+    """Retain model-invoked CLI output directly; shell redirection needs extra permission."""
+    pending, outputs = set(), []
+    for event in events:
+        if tool == 'claude':
+            for block in claude_content(event):
+                if (block.get('type') == 'tool_use' and block.get('name') == 'Bash'
+                        and block.get('input', {}).get('command') == command):
+                    pending.add(block.get('id'))
+                if (block.get('type') == 'tool_result' and block.get('tool_use_id') in pending
+                        and not block.get('is_error')):
+                    outputs.append(block)
+        elif event.get('type') == 'item.completed':
+            item = event.get('item', {})
+            if item.get('type') == 'command_execution' and item.get('command') == command and item.get('exit_code') == 0:
+                outputs.append(item.get('aggregated_output'))
+    for output in outputs:
+        objects = list(decoded_objects(output))
+        if any(value.get('isError') is True or value.get('is_error') is True for value in objects):
+            continue
+        for value in objects:
+            if (isinstance(value.get('message'), str) and value['message']
+                    and isinstance(value.get('invitation_file'), str)
+                    and Path(value['invitation_file']).resolve().parent == Path(profile).resolve().parent):
+                return value
+    raise ValueError('No successful exact native invitation command result')
 
 
 def native_identity_proven(tool, events, expected):
@@ -443,10 +498,11 @@ def main(argv=None):
         verification_prompt = (f'Using only the native Coopagents MCP tools, call whoami and compare '
              f'room_id={host_profile["room_id"]} and member_id={host_profile["member_id"]}, then read_team. '
              'Do not enable wake. ')
-        invitation_prompt = (
-             f'I authorize creating one invitation for my other agent: run "{sys.executable}" -m coopagents.space_runtime '
-             f'invite --profile "{owner["profile"]}" --message en and redirect the complete JSON to "{invite_result}". '
-             'Keep the invitation private. Do not enable wake.')
+        invite_command = invitation_command(sys.executable, owner['profile'])
+        invitation_prompt = (f'I authorize creating one invitation for my other agent: run exactly {invite_command}. '
+             + ('Do not redirect output or write another file; the private runner retains the native CLI result. '
+                if host == 'claude' else f'Redirect the complete JSON to "{invite_result}". ')
+             + 'Keep the invitation private. Do not enable wake.')
         turn(host, '02-host-new-session', verification_prompt + (
              'Do not create an invitation. This run stops after host verification.' if args.stop_after_host_verification
              else invitation_prompt), setup=not args.stop_after_host_verification, require=('whoami', 'read_team'),
@@ -460,6 +516,10 @@ def main(argv=None):
                 raise RuntimeError('Host diagnostic evidence incomplete')
             report['status'] = 'host_verified_partial'
         else:
+            if host == 'claude':
+                invitation = native_invitation_result(host, events_from(run / '02-host-new-session.jsonl'),
+                                                      invite_command, owner['profile'])
+                private_write(invite_result, invitation)
             invitation = json.loads(invite_result.read_text(encoding='utf-8'))
             # Preserve the actual invitation message as supplied to the joiner; no README parsing/version invention.
             invitation_message = run / guest / 'invitation-message.txt'
