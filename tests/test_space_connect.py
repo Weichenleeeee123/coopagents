@@ -50,6 +50,27 @@ class Connect(unittest.TestCase):
         second = self.run_connect('claude')
         self.assertEqual((first['skill'], second['config'], second['skill']), ('installed', 'already_configured', 'present'))
 
+    def test_inspect_configuration_is_read_only_and_reports_matching_entry(self):
+        self.run_connect('codex')
+        before = self.state.read_bytes()
+        with patch.dict(os.environ, {'FAKE_TOOL': 'codex', 'FAKE_MCP_STATE': str(self.state)}):
+            result = space_connect.inspect_configuration('codex', self.profile, cli=[sys.executable, FAKE],
+                                                         skills=self.skills)
+        self.assertEqual(result['config'], 'matching')
+        self.assertEqual(result['skill'], 'present')
+        self.assertEqual(result['profile'], str(self.profile.resolve()))
+        self.assertEqual(self.state.read_bytes(), before)
+
+    def test_inspect_configuration_reports_conflict_without_changing_entry(self):
+        self.state.write_text(json.dumps({'coopagents_e12dd599': ['node', 'other.js']}))
+        before = self.state.read_bytes()
+        with patch.dict(os.environ, {'FAKE_TOOL': 'codex', 'FAKE_MCP_STATE': str(self.state)}):
+            result = space_connect.inspect_configuration('codex', self.profile, cli=[sys.executable, FAKE],
+                                                         skills=self.skills)
+        self.assertEqual(result['config'], 'conflict')
+        self.assertEqual(result['skill'], 'missing')
+        self.assertEqual(self.state.read_bytes(), before)
+
     def test_different_existing_server_is_never_overwritten(self):
         self.state.write_text(json.dumps({'coopagents_e12dd599': ['node', 'other.js']}))
         with self.assertRaises(ConnectError) as raised:

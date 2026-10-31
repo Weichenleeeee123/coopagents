@@ -199,6 +199,43 @@ def _same_text(left, right):
     return normal(left) == normal(right)
 
 
+def inspect_configuration(tool, profile_path, name=None, cli=None, skills=None):
+    """Read the native entry and installed Skill without changing either one."""
+    if tool not in TOOLS:
+        raise ConnectError('Tool must be claude or codex')
+    path = checked_path(profile_path).resolve()
+    profile = read_profile(path)
+    name = name or server_name(profile)
+    if not NAME_PATTERN.match(name):
+        raise ConnectError('Server names may only contain letters, digits, - and _')
+    command = bridge_command(path)
+    failure = None
+    for candidate in cli_candidates(tool, cli):
+        try:
+            registered = _registered(tool, candidate, name)
+            break
+        except ConnectError as error:
+            failure = error
+    else:
+        raise failure or ConnectError('No usable native CLI was found')
+    if registered is None:
+        config = 'missing'
+    elif _matches(registered, command):
+        config = 'matching'
+    else:
+        config = 'conflict'
+    source = Path(__file__).resolve().parent / 'skills' / SKILL_NAME
+    target = Path(skills or skills_root(tool)) / SKILL_NAME
+    if not target.is_dir():
+        skill = 'missing'
+    else:
+        try:
+            skill = 'present' if _same_text(_skill_files(target), _skill_files(source)) else 'different'
+        except (OSError, ValueError):
+            skill = 'different'
+    return {'tool': tool, 'server': name, 'profile': str(path), 'config': config, 'skill': skill}
+
+
 def install_skill(tool, root=None):
     """Copy the packaged skill; an existing different copy is kept as a dated backup, never removed."""
     source = Path(__file__).resolve().parent / 'skills' / SKILL_NAME
