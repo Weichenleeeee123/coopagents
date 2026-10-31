@@ -72,6 +72,7 @@
   function openTask(id){objectDetail=null;active=id;opener=document.activeElement;renderDetail();if(!$('task-dialog').open)$('task-dialog').showModal();}
   function setNavigation(open){$('readonly-shell')?.setAttribute('data-navigation-open',String(open));$('readonly-mobile-menu')?.setAttribute('aria-expanded',String(open));}
   $('readonly-mobile-menu')?.addEventListener('click',()=>setNavigation($('readonly-mobile-menu').attributes?.['aria-expanded']!=='true'&&$('readonly-mobile-menu').getAttribute?.('aria-expanded')!=='true'));
+  $('readonly-sidebar')?.addEventListener('keydown',event=>{if(event.key==='Escape'){setNavigation(false);$('readonly-mobile-menu').focus();}});
   function renderContextTab(){for(const [tab,id] of [['agreements','contracts'],['files','readonly-assets'],['records','shared-context']]){$(id).hidden=contextTab!==tab;const button=$('readonly-context-'+tab);if(contextTab===tab)button.setAttribute('aria-current','page');else button.removeAttribute('aria-current');}}
   for(const tab of ['agreements','files','records'])$('readonly-context-'+tab)?.addEventListener('click',()=>{contextTab=tab;renderContextTab();});
   for(const layout of ['board','list'])$('readonly-layout-'+layout)?.addEventListener('click',()=>{taskLayout=layout;for(const key of ['board','list']){if(key===layout)$('readonly-layout-'+key).setAttribute('aria-current','page');else $('readonly-layout-'+key).removeAttribute('aria-current');}renderTasks();});

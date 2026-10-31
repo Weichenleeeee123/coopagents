@@ -35,10 +35,13 @@ $('workspace-mobile-menu')?.addEventListener('click',()=>{
 });
 $('workspace-sidebar')?.addEventListener('keydown',event=>{if(event.key==='Escape'){setWorkspaceNavigation(false);$('workspace-mobile-menu').focus();}});
 $('workspace-crumb-project')?.addEventListener('click',()=>setView('overview'));
+function setHubNavigation(open){$('account-hub').setAttribute?.('data-navigation-open',String(open));$('hub-mobile-menu')?.setAttribute?.('aria-expanded',String(open));}
 $('hub-mobile-menu')?.addEventListener('click',()=>{
-  const open=$('account-hub').getAttribute?.('data-navigation-open')!=='true';
-  $('account-hub').setAttribute?.('data-navigation-open',String(open));$('hub-mobile-menu').setAttribute?.('aria-expanded',String(open));
+  const expanded=$('account-hub').getAttribute?.('data-navigation-open')??$('account-hub').attributes?.['data-navigation-open'];setHubNavigation(expanded!=='true');
 });
+$('hub-sidebar')?.addEventListener('keydown',event=>{if(event.key==='Escape'){setHubNavigation(false);$('hub-mobile-menu').focus();}});
+document.querySelectorAll('#account-hub .sidebar nav button').forEach(button=>button.addEventListener('click',()=>setHubNavigation(false)));
+
 function setView(view, options={}) {
   if(!views[view])return;
   setWorkspaceNavigation(false);

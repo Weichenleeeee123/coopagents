@@ -22,6 +22,7 @@ assert.equal(element('workspace-crumb-page').textContent,'交付');
 vm.runInContext("setView('tasks')",context);
 assert.equal(element('view-tasks').hidden,false);assert.equal(element('view-delivery').hidden,true);
 assert.match(location.hash,/workspace=tasks/);
+element('hub-mobile-menu').listeners.click();assert.equal(element('hub-mobile-menu').attributes['aria-expanded'],'true');element('hub-sidebar').listeners.keydown({key:'Escape'});assert.equal(element('hub-mobile-menu').attributes['aria-expanded'],'false','Escape dismisses team navigation');
 vm.runInContext("enter=()=>{};logout=()=>{};setView('delivery');window.CoopagentsProject.enter('scoped',{restoreView:true})",context);
 assert.equal(element('view-delivery').hidden,false,'Restoring a validated account project preserves its routed page');
 vm.runInContext("window.CoopagentsProject.enter('different-project')",context);assert.equal(element('view-tasks').hidden,false,'An explicit project switch starts at tasks');
