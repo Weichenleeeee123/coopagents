@@ -1,5 +1,12 @@
 # 版本记录
 
+## Unreleased — Agent-first setup and diagnostics
+
+- Configure Coopagents through the current agent: join an invitation, reuse a selected connection, or create a P2P space for the current repository. First-run setup requires no web workbench; wake-up remains opt-in.
+- Add `space_runtime doctor` for environment, native MCP, Skill, identity, transport and diagnostic challenge checks. Missing evidence, native session loading and hook trust remain explicit pending states.
+- Return separate configuration and verification results from connection helpers, preserving saved profiles when network checks fail. Add English and Chinese [setup guides](agent-first-setup.md) and [acceptance evidence](agent-first-setup-acceptance.md).
+- This capability is not included in published 0.9.0. Real model cold-start, cross-device networking and additional platform acceptance remain 1.0 release gates.
+
 ## 0.9.0 — 项目资产、自托管工作台与多 Harness MCP 接入（2026-10-30）
 
 0.9.0 增加了面向多人和多 agent 协作的项目资产与活动工作流，并为 Cursor、OpenCode、Pi、Kimi Code 和 ZCode 提供保守的项目级 MCP 配置适配。完整验收记录见 [0.9 发布验收报告](release-0.9-report.md)。
