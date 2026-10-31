@@ -159,22 +159,58 @@ class ColdStartTests(unittest.TestCase):
         source = root / 'source'
         source.mkdir(parents=True)
         (source / 'config.toml').write_text('model = "configured-model"\nmodel_provider = "custom"\n'
-            '[model_providers.custom]\nname = "custom"\nbase_url = "https://example.invalid"\n'
+            '[model_providers.custom]\nname = "custom"\nbase_url = "https://example.invalid"\nenv_key = "SELECTED_API_KEY"\n'
+            '[model_providers.unrelated]\nname = "unrelated"\nexperimental_bearer_token = "unrelated-secret"\n'
+            'env_key = "UNRELATED_API_KEY"\n'
             '[mcp_servers.personal]\ncommand = "private"\n', encoding='utf-8')
         (source / 'auth.json').write_text('{"token":"synthetic"}', encoding='utf-8')
         claude = root / 'claude-source.json'
-        claude.write_text(json.dumps({'env': {'ANTHROPIC_AUTH_TOKEN': 'synthetic', 'UNRELATED_SECRET': 'omit'},
+        claude.write_text(json.dumps({'env': {'ANTHROPIC_AUTH_TOKEN': 'synthetic', 'UNRELATED_SECRET': 'omit',
+                                     'AWS_SECRET_ACCESS_KEY': 'omit', 'GOOGLE_API_KEY': 'omit',
+                                     'ANTHROPIC_UNRELATED_SECRET': 'omit'},
                                      'model': 'configured-claude', 'hooks': {'Stop': []}}), encoding='utf-8')
-        env = self.runner.prepare_homes(root / 'run', source, claude, environ={'PATH': os.environ.get('PATH', '')})
+        source_env = {'PATH': os.environ.get('PATH', ''), 'SELECTED_API_KEY': 'selected-auth',
+                      'UNRELATED_API_KEY': 'omit', 'AWS_SESSION_TOKEN': 'omit', 'GOOGLE_API_KEY': 'omit'}
+        env = self.runner.prepare_homes(root / 'run', source, claude, environ=source_env)
         self.assertNotEqual(Path(env['CODEX_HOME']), source)
         config = (Path(env['CODEX_HOME']) / 'config.toml').read_text(encoding='utf-8')
         self.assertIn('configured-model', config)
         self.assertIn('example.invalid', config)
         self.assertNotIn('personal', config)
+        self.assertNotIn('unrelated', config)
+        self.assertEqual(env['SELECTED_API_KEY'], 'selected-auth')
         self.assertEqual(env['ANTHROPIC_AUTH_TOKEN'], 'synthetic')
-        self.assertNotIn('UNRELATED_SECRET', env)
+        for key in ('UNRELATED_SECRET', 'UNRELATED_API_KEY', 'AWS_SESSION_TOKEN', 'GOOGLE_API_KEY',
+                    'AWS_SECRET_ACCESS_KEY', 'ANTHROPIC_UNRELATED_SECRET'):
+            self.assertNotIn(key, env)
         self.assertEqual((source / 'auth.json').read_text(), '{"token":"synthetic"}')
         self.assertNotIn('hooks', (Path(env['CLAUDE_CONFIG_DIR']) / 'settings.json').read_text())
+
+    def test_selected_claude_bedrock_auth_excludes_other_backend_credentials(self):
+        root = Path(__file__).resolve().parents[2] / '.local' / 'cold-start-tests' / uuid4().hex
+        root.mkdir(parents=True)
+        settings = root / 'settings.json'
+        settings.write_text(json.dumps({'env': {'CLAUDE_CODE_USE_BEDROCK': '1',
+            'AWS_ACCESS_KEY_ID': 'selected-key', 'AWS_SECRET_ACCESS_KEY': 'selected-secret',
+            'AWS_REGION': 'us-east-1', 'GOOGLE_API_KEY': 'unrelated', 'ANTHROPIC_AUTH_TOKEN': 'unrelated'}}))
+        env = self.runner.prepare_homes(root / 'run', root / 'no-codex-config', settings, environ={}, tool='claude')
+        self.assertEqual(env['AWS_SECRET_ACCESS_KEY'], 'selected-secret')
+        self.assertEqual(env['CLAUDE_CODE_USE_BEDROCK'], '1')
+        self.assertNotIn('GOOGLE_API_KEY', env)
+        self.assertNotIn('ANTHROPIC_AUTH_TOKEN', env)
+
+    def test_codex_child_does_not_receive_claude_or_unused_cloud_credentials(self):
+        root = Path(__file__).resolve().parents[2] / '.local' / 'cold-start-tests' / uuid4().hex
+        root.mkdir(parents=True)
+        settings = root / 'settings.json'
+        settings.write_text(json.dumps({'env': {'ANTHROPIC_AUTH_TOKEN': 'unrelated'}}))
+        env = self.runner.prepare_homes(root / 'run', root / 'no-codex-config', settings,
+            environ={'OPENAI_API_KEY': 'selected', 'AWS_SECRET_ACCESS_KEY': 'unrelated',
+                     'UNRELATED_API_KEY': 'unrelated'}, tool='codex')
+        self.assertEqual(env['OPENAI_API_KEY'], 'selected')
+        self.assertNotIn('ANTHROPIC_AUTH_TOKEN', env)
+        self.assertNotIn('AWS_SECRET_ACCESS_KEY', env)
+        self.assertNotIn('UNRELATED_API_KEY', env)
 
 
 if __name__ == '__main__':

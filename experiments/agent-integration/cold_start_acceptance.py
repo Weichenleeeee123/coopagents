@@ -27,44 +27,86 @@ def toml_value(value):
     return json.dumps(value, ensure_ascii=True)
 
 
-def prepare_homes(run, codex_source, claude_settings, environ=None):
+def prepare_homes(run, codex_source, claude_settings, environ=None, tool=None):
     """Copy auth and provider/model settings only, never native MCP/hooks/plugins."""
     from coopagents.spaces import private_directory, private_write, protect
     private_directory(run)
     for name in ('home', 'codex-home', 'claude-home', 'coopagents-home', 'tmp'):
         private_directory(run / name)
-    env = {k: v for k, v in (os.environ if environ is None else environ).items()
-           if not k.startswith(('CODEX', 'CLAUDE', 'COOPAGENTS'))}
+    source_env = os.environ if environ is None else environ
+    # Start with process/runtime essentials, rather than forwarding every
+    # credential present in the parent's environment to either native model.
+    runtime_keys = set(('PATH PATHEXT SYSTEMROOT WINDIR COMSPEC OS APPDATA LOCALAPPDATA '
+        'PROGRAMFILES PROGRAMFILES(X86) PROGRAMW6432 PROCESSOR_ARCHITECTURE NUMBER_OF_PROCESSORS '
+        'PSMODULEPATH TERM COLORTERM LANG LC_ALL TZ HTTP_PROXY HTTPS_PROXY ALL_PROXY NO_PROXY '
+        'SSL_CERT_FILE SSL_CERT_DIR REQUESTS_CA_BUNDLE NODE_EXTRA_CA_CERTS').split())
+    env = {k: v for k, v in source_env.items() if k.upper() in runtime_keys}
     env.update(HOME=str(run / 'home'), USERPROFILE=str(run / 'home'),
                CODEX_HOME=str(run / 'codex-home'), CLAUDE_CONFIG_DIR=str(run / 'claude-home'),
                COOPAGENTS_HOME=str(run / 'coopagents-home'), TMP=str(run / 'tmp'),
                TEMP=str(run / 'tmp'), TMPDIR=str(run / 'tmp'), PYTHONUTF8='1')
-    source_env = os.environ if environ is None else environ
-    for key in ('CLAUDE_CODE_OAUTH_TOKEN', 'CLAUDE_CODE_USE_BEDROCK', 'CLAUDE_CODE_USE_VERTEX', 'CLAUDE_CODE_USE_FOUNDRY'):
-        if key in source_env:
-            env[key] = source_env[key]
     auth = codex_source / 'auth.json'
-    if auth.is_file():
+    if tool in (None, 'codex') and auth.is_file():
         target = run / 'codex-home' / 'auth.json'
         with target.open('xb') as stream:
             protect(target)
             stream.write(auth.read_bytes())
     source = codex_source / 'config.toml'
     config = tomllib.loads(source.read_text(encoding='utf-8')) if source.is_file() else {}
-    allow = ('model', 'model_provider', 'model_providers', 'model_reasoning_effort', 'model_reasoning_summary',
+    allow = ('model', 'model_provider', 'model_reasoning_effort', 'model_reasoning_summary',
              'preferred_auth_method', 'forced_login_method')
+    selected_config = {}
+    if tool in (None, 'codex'):
+        selected_config = {k: config[k] for k in allow if k in config}
+        provider_name = config.get('model_provider', 'openai')
+        provider = config.get('model_providers', {}).get(provider_name, {})
+        if provider:
+            selected_config['model_providers'] = {provider_name: provider}
+        provider_env = {provider.get('env_key')}
+        provider_env.update(provider.get('env_http_headers', {}).values())
+        if provider_name == 'openai' or provider.get('requires_openai_auth'):
+            provider_env.update(('OPENAI_API_KEY', 'OPENAI_BASE_URL', 'OPENAI_ORG_ID', 'OPENAI_PROJECT_ID'))
+        for key in provider_env:
+            if isinstance(key, str) and key in source_env:
+                env[key] = source_env[key]
     native = run / 'codex-home' / 'config.toml'
-    native.write_text(''.join(k + ' = ' + toml_value(config[k]) + '\n' for k in allow if k in config), encoding='utf-8')
+    native.write_text(''.join(k + ' = ' + toml_value(v) + '\n' for k, v in selected_config.items()), encoding='utf-8')
     protect(native)
     settings = json.loads(claude_settings.read_text(encoding='utf-8')) if claude_settings.is_file() else {}
-    for key, value in settings.get('env', {}).items():
-        if key.startswith(('ANTHROPIC_', 'CLAUDE_CODE_USE_', 'AWS_', 'GOOGLE_')):
-            env[key] = str(value)
+    claude_env = dict(source_env, **{k: str(v) for k, v in settings.get('env', {}).items()})
+    backend_keys = {
+        'bedrock': ('AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN AWS_REGION AWS_DEFAULT_REGION '
+                    'AWS_PROFILE AWS_SHARED_CREDENTIALS_FILE AWS_CONFIG_FILE AWS_BEARER_TOKEN_BEDROCK '
+                    'ANTHROPIC_BEDROCK_BASE_URL CLAUDE_CODE_SKIP_BEDROCK_AUTH'),
+        'vertex': ('GOOGLE_APPLICATION_CREDENTIALS GOOGLE_CLOUD_PROJECT GOOGLE_CLOUD_QUOTA_PROJECT '
+                   'CLOUD_ML_REGION ANTHROPIC_VERTEX_PROJECT_ID CLAUDE_CODE_SKIP_VERTEX_AUTH'),
+        'foundry': ('ANTHROPIC_FOUNDRY_API_KEY ANTHROPIC_FOUNDRY_RESOURCE ANTHROPIC_FOUNDRY_BASE_URL '
+                    'AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_CLIENT_SECRET AZURE_FEDERATED_TOKEN_FILE'),
+        'anthropic': ('ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN ANTHROPIC_BASE_URL ANTHROPIC_CUSTOM_HEADERS '
+                      'CLAUDE_CODE_OAUTH_TOKEN'),
+    }
+    selected_backends = [name for name in ('bedrock', 'vertex', 'foundry')
+                         if claude_env.get('CLAUDE_CODE_USE_' + name.upper(), '').lower() in ('1', 'true')]
+    if tool in (None, 'claude') and len(selected_backends) > 1:
+        raise ValueError('Multiple Claude provider backends are enabled')
+    backend = selected_backends[0] if selected_backends else 'anthropic'
+    if tool in (None, 'claude'):
+        keys = set(backend_keys[backend].split())
+        keys.update(('ANTHROPIC_MODEL ANTHROPIC_SMALL_FAST_MODEL ANTHROPIC_DEFAULT_SONNET_MODEL '
+                     'ANTHROPIC_DEFAULT_OPUS_MODEL ANTHROPIC_DEFAULT_HAIKU_MODEL CLAUDE_CODE_SUBAGENT_MODEL').split())
+        if backend != 'anthropic':
+            keys.add('CLAUDE_CODE_USE_' + backend.upper())
+        for key in keys:
+            if key in claude_env:
+                env[key] = claude_env[key]
+    claude_native = {k: settings[k] for k in ('model',) if k in settings} if tool in (None, 'claude') else {}
+    if tool in (None, 'claude') and backend == 'anthropic' and 'apiKeyHelper' in settings:
+        claude_native['apiKeyHelper'] = settings['apiKeyHelper']
     private_write(run / 'claude-home' / 'settings.json',
-                  {k: settings[k] for k in ('model', 'apiKeyHelper') if k in settings})
+                  claude_native)
     # An OAuth credential file is an authentication artifact, not personal settings.
     credentials = claude_settings.parent / '.credentials.json'
-    if credentials.is_file():
+    if tool in (None, 'claude') and backend == 'anthropic' and credentials.is_file():
         private_write(run / 'claude-home' / '.credentials.json', json.loads(credentials.read_text(encoding='utf-8')))
     return env
 
@@ -254,7 +296,7 @@ def main(argv=None):
     real_home = Path.home()
     host, guest = args.host, 'codex' if args.host == 'claude' else 'claude'
     environments = {tool: prepare_homes(run / tool, Path(os.environ.get('CODEX_HOME') or real_home / '.codex'),
-                    Path(os.environ.get('CLAUDE_CONFIG_DIR') or real_home / '.claude') / 'settings.json') for tool in (host, guest)}
+                    Path(os.environ.get('CLAUDE_CONFIG_DIR') or real_home / '.claude') / 'settings.json', tool=tool) for tool in (host, guest)}
     projects = {tool: private_directory(run / tool / 'repo') for tool in (host, guest)}
     answer, nonce = 'answer-' + uuid4().hex, 'request-' + uuid4().hex
     for tool, project in projects.items():
