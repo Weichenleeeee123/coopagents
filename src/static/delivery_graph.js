@@ -33,7 +33,7 @@
         if(match||workspace)addEdge(branch.key,commit.key,'workspace-head','同一工作区 HEAD 观测');
       }
       for(const pr of nodes.values())if(pr.kind==='pr'){
-        const evidence=pr.associations.find(a=>a.relationship_source==='observed'&&a.evidence==='GitHub PR head matches linked branch'&&branch.task_ids.includes(a.task_id));
+        const evidence=pr.associations.find(a=>a.relationship_source==='observed'&&a.evidence==='GitHub PR head matches linked branch'&&branch.task_ids.includes(a.task_id)&&(!pr.fact?.branch||pr.fact.branch===branch.value)&&(a.branch===branch.value||(a.ref_id!=null&&branch.associations.some(b=>b.ref_id===a.ref_id&&b.task_id===a.task_id&&(a.ownership_epoch==null||b.ownership_epoch===a.ownership_epoch)))));
         const verifiedHead=pr.fact?.source==='github_verified'&&pr.fact.branch===branch.value&&branch.task_ids.some(id=>pr.task_ids.includes(id));
         if(evidence||verifiedHead)addEdge(branch.key,pr.key,'pr-head-branch','PR head branch 匹配');
       }
@@ -45,6 +45,10 @@
     // workspace observation has fallen outside the bounded workspace list.
     for(const node of nodes.values())if(node.kind==='commit'&&!node.branch){
       const related=unique(edges.filter(e=>e.kind==='workspace-head'&&e.to===node.key).map(e=>nodes.get(e.from)?.value).filter(Boolean));
+      if(related.length===1)node.branch=related[0];
+    }
+    for(const node of nodes.values())if(node.kind==='pr'&&!node.branch){
+      const related=unique(edges.filter(e=>e.kind==='pr-head-branch'&&e.to===node.key).map(e=>nodes.get(e.from)?.value).filter(Boolean));
       if(related.length===1)node.branch=related[0];
     }
     const grouped=new Map(),groups=[];

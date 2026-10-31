@@ -27,7 +27,7 @@
   }
   function render(){
     $('room-name').textContent=snapshot.room.name;
-    $('readonly-project-name').textContent=snapshot.room.name;$('readonly-page-project').textContent=snapshot.room.name;$('readonly-repository').textContent=snapshot.room.repository||'未声明仓库';
+    $('readonly-project-name').textContent=snapshot.room.name;$('readonly-page-project').textContent=snapshot.room.name;$('readonly-repository').textContent=snapshot.git?.binding?.repository||snapshot.room.repository||'未声明仓库';
     renderNavigation();
     const owner=$('task-owner').value;$('task-owner').replaceChildren();
     [['','所有成员'],['unassigned','待认领'],...snapshot.members.map(m=>[String(m.member_id),m.display_name])].forEach(([value,label])=>{const n=node('option',label);n.value=value;$('task-owner').append(n);});$('task-owner').value=owner;
@@ -81,18 +81,30 @@
   function openDelivery(item){active=null;objectDetail=null;opener=document.activeElement;const title=node('h2',item.label);title.id='task-detail-title';const root=$('task-detail');root.replaceChildren(title,node('p',item.title,'detail-value'),node('p','来源 '+item.source,'meta'));for(const id of item.task_ids||[]){const b=node('button','任务 #'+id,'detail-link');b.type='button';b.addEventListener('click',()=>openTask(id));root.append(b);}for(const a of item.associations||[])root.append(node('p',a.evidence||a.source,'meta'));if(!$('task-dialog').open)$('task-dialog').showModal();}
   function renderAssets(){const root=$('readonly-assets');root.replaceChildren();for(const asset of snapshot.assets||[]){const row=node('article','','content-row'),body=node('div','','row-content');body.append(node('h3',asset.filename),node('p',(asset.media_type||'文件')+' · '+asset.size_bytes+' bytes','meta'),node('p',asset.source_ref||'成员上传','meta'));row.append(body);root.append(row);}if(!root.children.length)root.append(node('p','暂时没有共享文件。','empty'));}
   function renderSettings(){const root=$('readonly-settings');root.replaceChildren(node('h2','代码仓库'),node('p',snapshot.git?.binding?.repository||snapshot.room.repository||'尚未绑定仓库','git-repository'),node('p','当前为只读查看会话。连接配置由主机或项目管理者维护。','meta'));const activity=node('button','查看项目活动','link-button');activity.type='button';activity.addEventListener('click',()=>showView('activity'));root.append(activity);}
-  $('close-task').addEventListener('click',()=>$('task-dialog').close());$('task-dialog').addEventListener('close',()=>{active=null;objectDetail=null;$('task-detail').replaceChildren();(opener?.isConnected?opener:$(opener?.id)||$('task-search')).focus();opener=null;});
+  $('close-task').addEventListener('click',()=>$('task-dialog').close());$('task-dialog').addEventListener('close',()=>{if($('task-dialog').open)return;active=null;objectDetail=null;$('task-detail').replaceChildren();(opener?.isConnected?opener:$(opener?.id)||$('task-search')).focus();opener=null;});
   ['task-search','task-owner','task-status'].forEach(id=>$(id).addEventListener(id==='task-search'?'input':'change',renderTasks));$('refresh').addEventListener('click',refresh);
   function retire(){generation++;stopped=true;token='';clearTimeout(poll);stream?.close();stream=null;requests.forEach(controller=>controller.abort());requests.clear();}
+  function clearProject(){
+    snapshot=null;active=null;objectDetail=null;opener=null;currentView='tasks';contextTab='agreements';taskLayout='board';
+    if($('task-dialog').open)$('task-dialog').close();
+    // Clear stateful projections before discarding their DOM so another ticket
+    // cannot inherit query results, disclosure state, filters or resize observers.
+    window.CoopagentsSharedContext?.render($('shared-context'),null);
+    window.CoopagentsCapabilities?.render($('capability-discovery'),null);
+    window.CoopagentsDeliveryGraph?.render($('delivery-traceability'),null);
+    window.CoopagentsGit?.clear?.();
+    for(const id of ['tasks','members','requests','contracts','task-detail','project-activity','shared-context','capability-discovery','delivery-traceability','readonly-assets','readonly-page-overview','readonly-settings'])$(id).replaceChildren();
+    for(const id of ['readonly-project-name','readonly-page-project','readonly-repository','board-count','board-error'])$(id).textContent='';
+    $('room-name').textContent='团队协作';$('task-search').value='';$('task-owner').replaceChildren(node('option','所有成员'));$('task-owner').value='';$('task-status').value='active';
+    $('tasks').className='kanban-board';$('readonly-layout-board').setAttribute('aria-current','page');$('readonly-layout-list').removeAttribute('aria-current');
+    renderContextTab();renderNavigation();setNavigation(false);$('transport-status').textContent='正在连接…';
+  }
   window.addEventListener('pagehide',retire);
   window.addEventListener('hashchange',()=>{if(location.hash.length>1)start();});
   async function start(){
     const ticket=location.hash.slice(1);history.replaceState(null,'',location.pathname);
     if(!ticket){$('board-error').textContent='请由主机 agent 使用 board 命令打开一次性看板地址。';return;}
-    retire();const epoch=generation;stopped=false;busy=false;dirty=false;snapshot=null;active=null;objectDetail=null;currentView='tasks';contextTab='agreements';taskLayout='board';
-    if($('task-dialog').open)$('task-dialog').close();
-    ['tasks','members','requests','contracts','task-detail','project-activity','shared-context','capability-discovery','delivery-traceability'].forEach(id=>$(id).replaceChildren());
-    $('room-name').textContent='团队协作';$('board-count').textContent='';$('board-error').textContent='';$('transport-status').textContent='正在连接…';
+    retire();const epoch=generation;stopped=false;busy=false;dirty=false;clearProject();
     try{
       const result=await request('/board/session',{ticket});if(epoch!==generation||stopped)return;token=result.token;
       status('degraded');stream=window.CoopagentsRealtime.connect({token,refresh:()=>epoch===generation?refresh():Promise.resolve(),status:value=>{if(epoch===generation)status(value);}});await refresh();

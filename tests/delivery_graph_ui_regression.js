@@ -33,6 +33,14 @@ assert.ok(projection.edges.some(e=>e.kind==='pr-head-sha'&&e.from==='pr:17'&&e.t
 assert.ok(!projection.edges.some(e=>e.to==='release:9'));
 assert.ok(!projection.edges.some(e=>e.to==='branch:suspicious'));
 assert.equal(projection.nodes.find(n=>n.key==='release:9').title,'Launch');
+const multiBranch={items:[
+ {kind:'branch',value:'feat/a',task_ids:[10],associations:[{task_id:10,ref_id:11,ownership_epoch:0,relationship_source:'explicit'}]},
+ {kind:'branch',value:'feat/b',task_ids:[10],associations:[{task_id:10,ref_id:12,ownership_epoch:0,relationship_source:'explicit'}]},
+ {kind:'pr',value:42,task_ids:[10],associations:[{task_id:10,ref_id:11,ownership_epoch:0,relationship_source:'observed',evidence:'GitHub PR head matches linked branch'}]}
+]};
+const branchEvidence=Graph.buildGraph(multiBranch,{});
+assert.deepEqual(branchEvidence.edges.filter(e=>e.kind==='pr-head-branch').map(e=>e.from),['branch:feat/a'],'A shared task cannot connect a PR to a different branch reference');
+assert.ok(branchEvidence.groups.find(g=>g.id==='branch:feat/a').nodes.some(n=>n.key==='pr:42'),'Reference-matched PR stays in the evidenced branch lane');
 const root=new E('div');let opened=[],decisions=[];
 Graph.render(root,graph,git,{openTask:id=>opened.push(id),openNode:key=>opened.push(key),canManage:true,api:async(_path,payload)=>decisions.push(payload),sync:async()=>{}});
 assert.match(text(root),/PR #17/);assert.match(text(root),/同一工作区 HEAD/);assert.match(text(root),/PR head SHA 匹配/);

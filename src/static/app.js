@@ -172,7 +172,7 @@ function openDeliveryNode(node){
   add(container,text('p',kind,'eyebrow'),text('h2',node.label||node.value),badge(node.state||'observed'),text('p',node.title||'','detail-value'),text('p','来源：'+(node.source||'交付关联'),'meta'),text('p','分支：'+(node.branch||'未声明'),'detail-value'));
   add(container,text('p','关联任务','detail-label'));
   if(!node.task_ids?.length)empty(container,'尚无关联任务。');
-  (node.task_ids||[]).forEach(id=>container.append(button('任务：'+taskName(id),()=>{closeTaskDetail();openTaskDetail(id);},'detail-link')));
+  (node.task_ids||[]).forEach(id=>container.append(button('任务：'+taskName(id),()=>openTaskDetail(id),'detail-link')));
   const evidence=[...new Set((node.associations||[]).map(a=>a.evidence).filter(Boolean))];if(evidence.length)add(container,text('p','证据','detail-label'),text('p',evidence.join('\n'),'detail-value'));
   const title=container.querySelector('h2');if(title)title.id='task-detail-title';
   if(!$('task-dialog').open)$('task-dialog').showModal();
@@ -309,7 +309,7 @@ function setDrawerKind(kind){if($('drawer-kind'))$('drawer-kind').textContent=ki
 function openTaskDetail(id){setDrawerKind('任务');activeObject=null;activeTaskId=id;taskOpener=document.activeElement;renderTaskDetail();if(!$('task-dialog').open)$('task-dialog').showModal();}
 function closeTaskDetail(){activeObject=null;activeTaskId=null;if($('task-dialog').open)$('task-dialog').close();$('task-detail').replaceChildren();}
 $('close-task').addEventListener('click',closeTaskDetail);
-$('task-dialog').addEventListener('close',()=>{activeObject=null;activeTaskId=null;$('task-detail').replaceChildren();const target=taskOpener?.isConnected?taskOpener:$(taskOpener?.id);if(target)target.focus();else $('task-search').focus();taskOpener=null;});
+$('task-dialog').addEventListener('close',()=>{if($('task-dialog').open)return;activeObject=null;activeTaskId=null;$('task-detail').replaceChildren();const target=taskOpener?.isConnected?taskOpener:$(taskOpener?.id);if(target)target.focus();else $('task-search').focus();taskOpener=null;});
 document.querySelectorAll('[data-task-layout]').forEach(tab=>tab.addEventListener('click',()=>{taskLayout=tab.dataset.taskLayout;document.querySelectorAll('[data-task-layout]').forEach(button=>{if(button===tab)button.setAttribute('aria-current','page');else button.removeAttribute('aria-current');});if(snapshot)renderTasks();}));
 $('task-search').addEventListener('input',()=>{if(snapshot)renderTasks();});
 $('task-owner').addEventListener('change',()=>{if(snapshot)renderTasks();});
