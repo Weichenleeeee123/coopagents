@@ -327,8 +327,13 @@ function renderObjectDetail(){
   if(!activeObject||!snapshot)return;const {kind,id}=activeObject,item=(kind==='request'?snapshot.requests:snapshot.contracts).find(item=>item.id===id);
   if(!item){closeTaskDetail();return;}
   const container=$('task-detail');if(container.contains(document.activeElement)&&['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName))return;
+  const active=document.activeElement,recordId=(kind==='request'?'request-':'contract-')+id;
+  const focus=active?.closest?.('.record')?.id===recordId?{record:recordId,tag:active.tagName,label:active.textContent}:null;
+  const expanded=Array.from(container.querySelectorAll('.record details[open]')).filter(details=>details.closest('.record')?.id===recordId).map(details=>details.querySelector('summary')?.textContent);
   container.replaceChildren();const title=text('h2',kind==='request'?'协作请求 #'+id:item.contract_key);title.id='task-detail-title';container.append(title);
-  container.append(kind==='request'?requestRecord(item):contractRecord(item));
+  const record=kind==='request'?requestRecord(item):contractRecord(item);record.id=recordId;container.append(record);
+  for(const summary of expanded){const details=Array.from(record.querySelectorAll('details')).find(details=>details.querySelector('summary')?.textContent===summary);if(details)details.open=true;}
+  if(focus)restoreRecordFocus(focus);
 }
 function requestRecord(r){
   const row=text('article','','record'); add(row,add(text('div','','record-header'),add(text('div'),badge(r.resolved_at?'已解决':'待解决'),text('span','#'+r.id+' · 上下文 v'+r.context_version,'meta')),text('span',memberName(r.sender_member_id)+' → '+memberName(r.receiver_member_id),'meta')),text('h3',r.body)); if(r.task_id) row.append(taskLink(r.task_id));
