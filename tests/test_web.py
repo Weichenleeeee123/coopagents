@@ -50,6 +50,9 @@ class WebTests(unittest.TestCase):
             with self.assertRaises(HTTPError) as rejected:
                 urlopen(self.live.url + path)
             self.assertNotEqual(rejected.exception.code, 200)
+            # Drain the response before closing: a reset with unread data can
+            # strand a Windows Proactor transport during server.wait_closed().
+            rejected.exception.read()
             rejected.exception.close()
         with urlopen(self.live.url + '/favicon.ico') as response:
             self.assertEqual(response.status, 204)
