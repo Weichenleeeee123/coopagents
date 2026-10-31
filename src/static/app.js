@@ -164,7 +164,7 @@ function renderSharedContext(){
 }
 
 function openDeliveryNode(node){
-  if(!node)return;
+  if(!node)return;clearDrawerError();
   const container=$('task-detail');if(!container)return;
   activeTaskId=null;activeObject=null;taskOpener=document.activeElement;container.replaceChildren();
   setDrawerKind('交付');
@@ -305,11 +305,12 @@ function renderTaskDetail(){
   contracts.forEach(c=>container.append(button(c.contract_key+' · 生效 '+(c.effective_version?'v'+c.effective_version:'未批准'),()=>{closeTaskDetail();setView('contracts');$('contract-'+c.id)?.scrollIntoView({block:'center'});},'detail-link')));
   if(focused)Array.from(container.querySelectorAll('button,summary')).find(node=>node.tagName===focused.tag&&(focused.key?node.dataset.lifecycleFocus===focused.key:node.textContent===focused.label))?.focus({preventScroll:true});
 }
-function setDrawerKind(kind){if($('drawer-kind'))$('drawer-kind').textContent=kind+'详情';$('close-task').setAttribute?.('aria-label','关闭'+kind+'详情');}
+function clearDrawerError(){const error=$('drawer-error');if(error)error.textContent='';}
+function setDrawerKind(kind){clearDrawerError();if($('drawer-kind'))$('drawer-kind').textContent=kind+'详情';$('close-task').setAttribute?.('aria-label','关闭'+kind+'详情');}
 function openTaskDetail(id){setDrawerKind('任务');activeObject=null;activeTaskId=id;taskOpener=document.activeElement;renderTaskDetail();if(!$('task-dialog').open)$('task-dialog').showModal();}
-function closeTaskDetail(){activeObject=null;activeTaskId=null;if($('task-dialog').open)$('task-dialog').close();$('task-detail').replaceChildren();}
+function closeTaskDetail(){clearDrawerError();activeObject=null;activeTaskId=null;if($('task-dialog').open)$('task-dialog').close();$('task-detail').replaceChildren();}
 $('close-task').addEventListener('click',closeTaskDetail);
-$('task-dialog').addEventListener('close',()=>{if($('task-dialog').open)return;activeObject=null;activeTaskId=null;$('task-detail').replaceChildren();const target=taskOpener?.isConnected?taskOpener:$(taskOpener?.id);if(target)target.focus();else $('task-search').focus();taskOpener=null;});
+$('task-dialog').addEventListener('close',()=>{if($('task-dialog').open)return;clearDrawerError();activeObject=null;activeTaskId=null;$('task-detail').replaceChildren();const target=taskOpener?.isConnected?taskOpener:$(taskOpener?.id);if(target)target.focus();else $('task-search').focus();taskOpener=null;});
 document.querySelectorAll('[data-task-layout]').forEach(tab=>tab.addEventListener('click',()=>{taskLayout=tab.dataset.taskLayout;document.querySelectorAll('[data-task-layout]').forEach(button=>{if(button===tab)button.setAttribute('aria-current','page');else button.removeAttribute('aria-current');});if(snapshot)renderTasks();}));
 $('task-search').addEventListener('input',()=>{if(snapshot)renderTasks();});
 $('task-owner').addEventListener('change',()=>{if(snapshot)renderTasks();});
@@ -319,9 +320,9 @@ $('clear-filters').addEventListener('click',()=>{
 });
 $('task-status')?.addEventListener('change',()=>{if(snapshot)renderTasks();});
 $('new-task').addEventListener('click',()=>{$('task-create').open=true;$('task-form').querySelector('input').focus();});
-function openContentDetail(label,body){activeTaskId=null;activeObject=null;taskOpener=document.activeElement;setDrawerKind('共享文件');const title=text('h2',label);title.id='task-detail-title';$('task-detail').replaceChildren(title,body);if(!$('task-dialog').open)$('task-dialog').showModal();}
+function openContentDetail(label,body){clearDrawerError();activeTaskId=null;activeObject=null;taskOpener=document.activeElement;setDrawerKind('共享文件');const title=text('h2',label);title.id='task-detail-title';$('task-detail').replaceChildren(title,body);if(!$('task-dialog').open)$('task-dialog').showModal();}
 function objectTitle(label,kind,id){return button(label,()=>openObjectDetail(kind,id),'object-title-button');}
-function openObjectDetail(kind,id){setDrawerKind(kind==='request'?'协作请求':'约定');activeTaskId=null;activeObject={kind,id};taskOpener=document.activeElement;renderObjectDetail();if(!$('task-dialog').open)$('task-dialog').showModal();}
+function openObjectDetail(kind,id){clearDrawerError();setDrawerKind(kind==='request'?'协作请求':'约定');activeTaskId=null;activeObject={kind,id};taskOpener=document.activeElement;renderObjectDetail();if(!$('task-dialog').open)$('task-dialog').showModal();}
 function renderObjectDetail(){
   if(!activeObject||!snapshot)return;const {kind,id}=activeObject,item=(kind==='request'?snapshot.requests:snapshot.contracts).find(item=>item.id===id);
   if(!item){closeTaskDetail();return;}
@@ -374,7 +375,8 @@ function renderContracts(){
   if(activeObject?.kind==='contract')renderObjectDetail();
 }
 ['request-search','request-filter'].forEach(id=>$(id)?.addEventListener(id==='request-search'?'input':'change',()=>{if(snapshot)renderRequests();}));
-async function perform(b, operation){ b.disabled=true; $('action-error').textContent=''; const epoch=generation; try { await operation(); if(epoch===generation){ renderSignature=''; await sync(); } } catch(error){ if(epoch===generation) $('action-error').textContent=error.message; } finally{b.disabled=false;} }
+async function perform(b, operation){ b.disabled=true; $('action-error').textContent='';clearDrawerError();const epoch=generation,object=activeObject?{...activeObject}:null,taskId=activeTaskId; try { await operation(); if(epoch===generation&&objectMatches(object,taskId)){ renderSignature=''; await sync(); } } catch(error){ if(epoch===generation&&objectMatches(object,taskId)){const target=$('task-dialog').open?$('drawer-error'):$('action-error');target.textContent=error.message;} } finally{if(epoch===generation&&objectMatches(object,taskId))b.disabled=false;} }
+function objectMatches(object,taskId){return object?activeObject?.kind===object.kind&&activeObject?.id===object.id:activeObject===null&&activeTaskId===taskId;}
 $('task-form').addEventListener('submit',e=>{e.preventDefault();const form=e.currentTarget,b=form.querySelector('button[type=submit]'),epoch=generation;perform(b,async()=>{await api('/api/tasks',Object.fromEntries(new FormData(form)));if(epoch===generation){form.reset();$('task-create').open=false;$('new-task').focus();}});});
 $('retry').addEventListener('click',sync); $('logout').addEventListener('click',()=>{if(accountManaged && typeof window!=='undefined')window.CoopagentsAccounts.home();else logout();});
 function configTemplate(){const url=location.origin+'/mcp'; const tool=$('connection-tool').value; $('config-template').value=tool==='codex-desktop'?'[mcp_servers.coopagents]\nurl = "'+url+'"\nhttp_headers = { Authorization = "Bearer TOKEN" }':tool==='codex-cli'?"$env:COOPAGENTS_AGENT_TOKEN = 'TOKEN'\ncodex mcp add coopagents --url "+url+' --bearer-token-env-var COOPAGENTS_AGENT_TOKEN':"claude mcp add --transport http --scope local coopagents "+url+' --header "Authorization: Bearer TOKEN"';}

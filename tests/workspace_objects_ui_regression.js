@@ -1,7 +1,7 @@
 'use strict';
 const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
 const dialogEvents=[];
-class N{constructor(tag='DIV'){this.tagName=tag.toUpperCase();this.children=[];this.textContent='';this.className='';this.listeners={};this.attributes={};this.dataset={};this.hidden=false;this.value='';this.open=false;this.isConnected=true;}append(...nodes){this.children.push(...nodes);}replaceChildren(...nodes){this.children=nodes;}setAttribute(k,v){this.attributes[k]=String(v);}removeAttribute(k){delete this.attributes[k];}addEventListener(k,fn){this.listeners[k]=fn;}querySelector(){return new N('button');}querySelectorAll(){return [];}contains(){return false;}focus(){}showModal(){this.open=true;}close(){if(!this.open)return;this.open=false;dialogEvents.push(()=>this.listeners.close?.());}reset(){}}
+class N{constructor(tag='DIV'){this.disabled=false;this.tagName=tag.toUpperCase();this.children=[];this.textContent='';this.className='';this.listeners={};this.attributes={};this.dataset={};this.hidden=false;this.value='';this.open=false;this.isConnected=true;}append(...nodes){this.children.push(...nodes);}replaceChildren(...nodes){this.children=nodes;}get firstChild(){return this.children[0];}setAttribute(k,v){this.attributes[k]=String(v);}removeAttribute(k){delete this.attributes[k];}addEventListener(k,fn){this.listeners[k]=fn;}appendChild(n){this.children.push(n);}querySelector(){return new N('button');}querySelectorAll(){return [];}contains(){return false;}focus(){}showModal(){this.open=true;}close(){if(!this.open)return;this.open=false;dialogEvents.push(()=>this.listeners.close?.());}reset(){}}
 const elements=new Map(),element=id=>{if(!elements.has(id))elements.set(id,new N());return elements.get(id);};
 const context=vm.createContext({document:{getElementById:element,querySelectorAll:()=>[],createElement:t=>new N(t),activeElement:null},window:{addEventListener(){}},sessionStorage:{getItem:()=>'',setItem(){},removeItem(){}},location:{hash:'',origin:'http://localhost'},history:{pushState(){},replaceState(){}},setTimeout:()=>1,clearTimeout(){},AbortController,Date,JSON});
 vm.runInContext(fs.readFileSync('src/static/app.js','utf8'),context);
@@ -24,4 +24,18 @@ all(element('task-detail')).find(n=>n.textContent==='任务：Linked real task')
 while(dialogEvents.length)dialogEvents.shift()();
 assert.equal(element('task-dialog').open,true);assert.match(text(element('task-detail')),/Linked real task/,'Delivery-to-task navigation survives queued native dialog events');
 run('closeTaskDetail();openObjectDetail("request",8)');while(dialogEvents.length)dialogEvents.shift()();assert.match(text(element('task-detail')),/PRIVATE_DETAIL_EVIDENCE/,'A stale queued close cannot erase a newly opened object');
-console.log('Object drawers retain content across asynchronous native close events and graph navigation');
+const html=fs.readFileSync('src/static/index.html','utf8');assert.match(html,/id="drawer-error"[^>]*role="alert"/,'Modal actions need a visible local alert');
+(async()=>{
+  context.fetch=async()=>({status:403,ok:false,json:async()=>({message:'Assignment refused by project permissions'})});
+  run(`snapshot.requests.push({id:10,body:'Assign this request',sender_member_id:1,receiver_member_id:null,context_version:1,replies:[]});openObjectDetail('request',10);`);
+  const form=all(element('task-detail')).find(n=>n.className==='assignment'),select=all(form).find(n=>n.tagName==='SELECT'),submit=all(form).find(n=>n.tagName==='BUTTON');select.value='2';form.listeners.submit({preventDefault(){}});
+  for(let i=0;i<6;i++)await new Promise(resolve=>setImmediate(resolve));
+  assert.match(element('drawer-error').textContent,/Assignment refused/,'Failed assignment must be announced inside the active drawer');assert.equal(element('action-error').textContent,'');assert.equal(select.value,'2','Failure keeps the receiver selection');assert.equal(submit.disabled,false,'Failure restores the assignment button');assert.equal(element('task-dialog').open,true);
+  run('openObjectDetail("contract",9)');assert.equal(element('drawer-error').textContent,'','Switching objects clears prior errors');
+  let rejectOld;context.fetch=()=>new Promise((_resolve,reject)=>rejectOld=reject);
+  const approve=all(element('task-detail')).find(n=>n.textContent==='批准 v2');approve.listeners.click({currentTarget:approve});run('openObjectDetail("request",8)');rejectOld(new Error('OLD_CONTRACT_FAILURE'));
+  for(let i=0;i<6;i++)await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(element('drawer-error').textContent,'','An old object action cannot show an error in a replacement drawer');
+  run('closeTaskDetail()');assert.equal(element('drawer-error').textContent,'');
+  console.log('Drawer navigation, local failed-action alerts, retained inputs and stale-object guards passed');
+})().catch(error=>{console.error(error);process.exitCode=1;});
