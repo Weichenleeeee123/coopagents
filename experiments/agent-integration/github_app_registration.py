@@ -5,7 +5,6 @@ No App is created until the user submits the form and confirms it on GitHub.
 """
 import argparse
 import csv
-import html
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import json
 import os
@@ -22,6 +21,9 @@ from uuid import uuid4
 REPOSITORY = 'Weichenleeeee123/coopagents-1-0-acceptance-20261031'
 EVENTS = ['push', 'pull_request', 'check_run', 'check_suite', 'status', 'release']
 MAX_RESPONSE = 512 * 1024
+
+
+from coopagents.github_binding_page import binding_page
 
 
 def manifest(public_origin, redirect_url, name):
@@ -103,7 +105,11 @@ def save_private(folder, data):
 
 
 def registration_server(public_origin, folder, *, name='Coopagents private acceptance',
-                        exchange=exchange_manifest_code):
+                        exchange=exchange_manifest_code, preview=None, preview_slug=None):
+    if preview not in (None, 'ready', 'registered', 'error', 'verified'):
+        raise ValueError('Invalid preview state')
+    if preview_slug is not None and not re.fullmatch(r'[A-Za-z0-9_-]+', preview_slug):
+        raise ValueError('Invalid preview App slug')
     settings = manifest(public_origin, 'http://127.0.0.1:1/callback', name)
     protect_directory(folder)
 
@@ -113,6 +119,14 @@ def registration_server(public_origin, folder, *, name='Coopagents private accep
             pass
 
         def send_page(self, status, content):
+            if not content.startswith('<!doctype html>'):
+                content = binding_page('error', app_name=name, message={
+                    400: '授权信息不完整或已失效，请重新发起连接。',
+                    403: '此页面仅接受本机发起的连接请求。',
+                    404: '这个接入页面不存在，请返回发起连接的页面。',
+                    409: '此授权已处理，无需重复提交。',
+                    502: '暂时无法完成 GitHub 授权，请重新发起连接。'
+                }.get(status, '连接未完成，请重新发起授权。'))
             body = content.encode('utf-8')
             self.send_response(status)
             self.send_header('Content-Type', 'text/html; charset=utf-8')
@@ -120,7 +134,7 @@ def registration_server(public_origin, folder, *, name='Coopagents private accep
             self.send_header('Cache-Control', 'no-store')
             self.send_header('Referrer-Policy', 'no-referrer')
             self.send_header('X-Content-Type-Options', 'nosniff')
-            self.send_header('Content-Security-Policy', "default-src 'none'; form-action https://github.com; frame-ancestors 'none'; base-uri 'none'")
+            self.send_header('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; form-action https://github.com; frame-ancestors 'none'; base-uri 'none'")
             self.send_header('Connection', 'close')
             self.end_headers()
             self.wfile.write(body)
@@ -135,15 +149,14 @@ def registration_server(public_origin, folder, *, name='Coopagents private accep
             if len(self.path) > 4096:
                 return self.send_page(400, 'Request rejected.')
             parsed = urlsplit(self.path)
+            if preview:
+                if parsed.path != '/preview/' + preview or parsed.query:
+                    return self.send_page(404, 'Not found.')
+                return self.send_page(200, binding_page(preview, app_name=preview_slug or name,
+                                      slug=preview_slug or 'synthetic-preview-app', preview=True, repository=REPOSITORY))
             if parsed.path == server.start_path and not parsed.query:
-                encoded = html.escape(json.dumps(server.manifest), quote=True)
                 action = 'https://github.com/settings/apps/new?state=' + server.state
-                return self.send_page(200, '<!doctype html><meta charset="utf-8"><title>Create private acceptance App</title>'
-                    '<h1>Create the private acceptance GitHub App</h1>'
-                    '<p>Review the requested read-only permissions on GitHub. After creation, install only on '
-                    + html.escape(REPOSITORY) + '.</p><form method="post" action="' + action + '">'
-                    '<input type="hidden" name="manifest" value="' + encoded + '">'
-                    '<button type="submit">Review App creation on GitHub</button></form>')
+                return self.send_page(200, binding_page('ready', app_name=name, settings=server.manifest, action=action, repository=REPOSITORY))
             if parsed.path != '/callback':
                 return self.send_page(404, 'Not found.')
             try:
@@ -166,9 +179,7 @@ def registration_server(public_origin, folder, *, name='Coopagents private accep
                 print(json.dumps({'status': 'registered', 'app_id': data['id'], 'slug': data['slug'],
                                   'private_file': str(target), 'installation_url': installation_url,
                                   'install_only_repository': REPOSITORY}), flush=True)
-                self.send_page(200, '<!doctype html><title>App registered</title><p>Credentials saved privately.</p>'
-                               '<p>Select only ' + html.escape(REPOSITORY) + ' when installing.</p>'
-                               '<a href="' + html.escape(installation_url, quote=True) + '">Choose repository and install</a>')
+                self.send_page(200, binding_page('registered', app_name=data['slug'], slug=data['slug'], repository=REPOSITORY))
                 server.succeeded = True
             except Exception:
                 # Exceptions may contain the one-time code or secret API response.
@@ -194,27 +205,36 @@ def registration_server(public_origin, folder, *, name='Coopagents private accep
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--public-origin', required=True)
+    parser.add_argument('--public-origin')
     parser.add_argument('--name', default='Coopagents private acceptance')
     parser.add_argument('--wait-seconds', type=int, default=900)
+    parser.add_argument('--preview', choices=('ready', 'registered', 'error', 'verified'),
+                        help='Serve a non-mutating page preview; never exchanges authorization codes')
+    parser.add_argument('--preview-slug', help='Public App slug used only for the preview installation link')
     args = parser.parse_args(argv)
     if not 1 <= args.wait_seconds <= 3600:
         parser.error('--wait-seconds must be between 1 and 3600')
+    if not args.preview and not args.public_origin:
+        parser.error('--public-origin is required for registration')
+    if args.preview_slug and not args.preview:
+        parser.error('--preview-slug requires --preview')
     root = Path(__file__).resolve().parents[2]
     folder = root / '.local/github-app-registration' / uuid4().hex
     try:
-        server = registration_server(args.public_origin, folder, name=args.name)
+        server = registration_server(args.public_origin or 'https://preview.invalid', folder, name=args.name,
+                                     preview=args.preview, preview_slug=args.preview_slug)
     except Exception:
         print('Unable to prepare secure registration. Check public origin and private directory permissions.')
         return 1
     try:
-        print(json.dumps({'status': 'awaiting_user_approval',
-                          'open_url': 'http://127.0.0.1:' + str(server.server_port) + server.start_path,
+        print(json.dumps({'status': 'preview' if args.preview else 'awaiting_user_approval',
+                          'open_url': 'http://127.0.0.1:' + str(server.server_port) + (
+                              '/preview/' + args.preview if args.preview else server.start_path),
                           'private_directory': str(folder), 'install_only_repository': REPOSITORY}), flush=True)
         deadline = time.monotonic() + args.wait_seconds
         while time.monotonic() < deadline and not server.succeeded and not server.failed:
             server.handle_request()
-        if not server.succeeded:
+        if not server.succeeded and not args.preview:
             print('Registration was not completed. All local files retained.', flush=True)
             return 1
         return 0

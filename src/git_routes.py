@@ -7,6 +7,7 @@ from starlette.routing import Route
 
 from .errors import AccessDenied, Conflict, NotFound, ValidationError
 from .github_app import GitHubError
+from .github_binding_page import binding_page
 
 
 def single_header(request,name,required=True):
@@ -79,8 +80,8 @@ def git_routes(service,sync):
         if (len(pairs)!=2 or {key for key,value in pairs}!={'state','code'}):
             raise ValidationError('Invalid GitHub authorization callback')
         await run_in_threadpool(sync.complete_authorization,request.query_params['state'],request.query_params['code'])
-        return HTMLResponse('<!doctype html><html lang="zh"><meta charset="utf-8"><title>GitHub 授权</title><p>GitHub 仓库访问已验证。请返回 Coopagents 网页完成连接。</p></html>',headers={
-            'Cache-Control':'no-store','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'none'; frame-ancestors 'none'; base-uri 'none'"})
+        return HTMLResponse(binding_page('verified'),headers={
+            'Cache-Control':'no-store','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'"})
 
     async def link(request):
         token=bearer(request)

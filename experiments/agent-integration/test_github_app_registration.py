@@ -28,6 +28,48 @@ class RegistrationTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             helper.manifest('https://acceptance.example', callback, 'a' * 35)
 
+    def test_binding_pages_escape_dynamic_content_and_keep_installation_as_next_step(self):
+        helper = self.load()
+        self.assertTrue(callable(getattr(helper, 'binding_page', None)), 'Shared binding page renderer required')
+        page = helper.binding_page('registered', app_name='<script>secret-marker</script>', slug='synthetic-app',
+                                   repository='<img src=x onerror=bad>', message='<iframe>bad</iframe>')
+        self.assertIn('选择测试仓库并安装', page)
+        self.assertIn('App 已创建', page)
+        self.assertIn('&lt;script&gt;secret-marker&lt;/script&gt;', page)
+        self.assertNotIn('<script>', page)
+        self.assertNotIn('<img', page)
+        self.assertNotIn('<iframe>', page)
+        self.assertNotIn('已安装', page)
+        self.assertIn('name="viewport"', page)
+        self.assertIn(':focus-visible', page)
+        self.assertIn('@media', page)
+        self.assertNotIn('github-app-private.json', page)
+
+    def test_preview_cannot_exchange_manifest_codes_or_render_registration_form(self):
+        helper = self.load()
+        self.assertIn('preview', __import__('inspect').signature(helper.registration_server).parameters)
+        folder = Path('.local/test-evidence/github-app-preview') / uuid4().hex
+        with patch.object(helper, 'exchange_manifest_code') as exchange:
+            server = helper.registration_server('https://preview.invalid', folder, preview='ready',
+                                                preview_slug='synthetic-app', exchange=exchange)
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            origin = 'http://127.0.0.1:' + str(server.server_port)
+            try:
+                with urlopen(origin + '/preview/ready', timeout=5) as response:
+                    page = response.read().decode()
+                    self.assertIn("style-src 'unsafe-inline'", response.headers['Content-Security-Policy'])
+                self.assertIn('页面预览', page)
+                self.assertNotIn('<form', page)
+                with self.assertRaises(HTTPError):
+                    urlopen(origin + '/callback?code=synthetic-code&state=' + server.state, timeout=5)
+                exchange.assert_not_called()
+                self.assertFalse((folder / 'github-app-private.json').exists())
+            finally:
+                server.shutdown()
+                thread.join(5)
+                server.server_close()
+
     def test_manifest_uses_read_only_private_app_and_exact_public_routes(self):
         helper = self.load()
         manifest = helper.manifest('https://acceptance.example', 'http://127.0.0.1:12345/callback', 'Acceptance')
