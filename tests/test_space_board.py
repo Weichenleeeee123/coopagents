@@ -35,6 +35,10 @@ class BoardTests(unittest.TestCase):
         self.assertIn("script-src 'self'", response.headers['content-security-policy'])
         self.assertEqual(self.client.get('/board/static/project_activity.js').status_code, 200)
         self.assertEqual(self.client.get('/board/static/project_activity.js').headers['content-type'], 'application/javascript')
+        icon = self.client.get('/board/static/icon.png')
+        self.assertEqual(icon.status_code, 200)
+        self.assertEqual(icon.headers['content-type'], 'image/png')
+        self.assertTrue(icon.content.startswith(b'\x89PNG\r\n\x1a\n'))
         self.assertEqual(self.client.get('/board/static/app.js').status_code, 404)
         self.assertEqual(self.client.get('/board/snapshot').status_code, 401)
 
