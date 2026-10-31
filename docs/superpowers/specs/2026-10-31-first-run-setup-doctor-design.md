@@ -2,7 +2,7 @@
 
 日期：2026-10-31
 
-状态：设计已确认，等待实现计划。
+状态：agent/CLI 实现与本机验证完成；真实模型首次配置、双设备验收仍待执行。详见 ../../agent-first-setup-acceptance.md。
 
 ## 目标
 
@@ -41,42 +41,42 @@
 
 agent 需要显示每一步的结果和下一步，但不得回显邀请、agent token、web token、control token、profile JSON 或完整命令中的秘密。只有用户明确要求时才生成或展示邀请信息；创建空间本身不默认邀请别人。
 
-## 共享诊断语义
+## 共同诊断语义
 
-新增一个只负责检查与格式化结果的诊断核心，供 CLI 和 Skill 指令共同使用。它不保存秘密，不修改业务数据，不自动修复破坏性配置。
+新增一个只负责检查与格式化结果的诊断核心，供 CLI 和 Skill 指令共同使用。它不输出秘密，不修改配置、任务、消息或成员状态；带 profile 的主动探测复用现有挑战接口，会写入服务端诊断记录。
 
 ### 检查项
 
 每一项返回 `id`、`status`、`summary`、`next` 和不含秘密的 `evidence`。`status` 只允许：`pass`、`fail`、`needs_user`、`unknown`、`skipped`。
 
-固定检查顺序如下：
+诊断检查包括以下项目（输出顺序按本机检查与网络检查分组）：
 
 1. `python_runtime`：Python 版本、解释器路径是否属于隔离环境、Coopagents 包版本和 `space` extra 是否可导入。
-2. `project_context`：当前仓库路径、profile 所属空间和本次目标项目是否一致；不输出 profile 内容。
+2. `project_context`：验证指定目录存在、profile 合法、服务返回空间与成员身份匹配；全局 entry 与当前仓库的归属需要用户/agent 根据上下文确定，不凭目录推断。
 3. `native_tool`：调用 agent 自己的 harness 检测结果，确认对应 CLI 可发现、版本可读取；检测不到时给出显式的 `needs_user`。
 4. `mcp_configuration`：读取并核对原生配置中的 Coopagents entry；不存在时报告待执行 connect，存在冲突时报告冲突且不覆盖。
-5. `skill_installation`：Skill 文件是否存在、版本是否匹配；不同版本保留备份并报告路径，不删除旧版本。
+5. `skill_installation`：Skill 文件是否存在、版本是否匹配；doctor 只报告是否与包内文件匹配；connect 才负责保留旧版备份并安装。
 6. `runtime_reachability`：profile 的 loopback、HTTPS 或 P2P 目标是否可达，空间 ID 是否匹配，凭据是否为 agent 身份。
 7. `transport_path`：P2P 报告 `direct`、`relay`、`connecting`、`disconnected` 或 `loopback`，自托管 HTTPS 报告 `https`；路径未知时为 `unknown`，不推测。
 8. `challenge_round_trip`：执行现有诊断挑战的 start/read/complete，并验证 challenge、diagnostic ID 和 proof 关联一致。
 9. `session_reload`：说明配置已被原生 CLI 核验，但新 MCP 是否进入当前会话只能由用户新建会话后调用 `whoami` 验证。
 10. `wake_up`：只报告是否已经安装、是否待用户信任以及当前 harness 的实际能力；默认 `skipped`，不会因为运行 doctor 自动开启。
 
-整体结果按以下规则计算：存在 `fail` 为 `blocked`；没有 `fail` 但存在 `needs_user` 为 `needs_user`；所有必要检查为 `pass` 且只有可选项 `skipped/unknown` 为 `ready`；没有 profile 时只返回本地环境和工具检查，整体为 `needs_user` 或 `unknown`，不伪造连接成功。
+整体结果按以下规则计算：任何 `fail` 为 `blocked`；没有失败但有 `needs_user` 为 `needs_user`；必需检查缺失、skipped 或 unknown 为 `unknown`；所有必要检查通过且无待办用户步骤才为 `ready`。shell 无法证明原生会话加载和 hook 信任，因此正常连接仍会有 session_reload 的 needs_user，由真实会话独立核验。
 
 ### CLI 接口
 
 增加：
 
 ```text
-<python> -m coopagents.space_runtime doctor [--profile <private-profile>] [--tool claude|codex] [--project-dir <repo>] [--json]
+<python> -m coopagents.space_runtime doctor [--profile <private-profile>] [--tool claude|codex] [--project-dir <repo>] [--name <server>] [--cli <path>] [--json]
 ```
 
 - 无 `--profile` 时只做本地环境、工具、Skill 根目录和已注册 Coopagents entry 的只读检查。
 - 有 `--profile` 时增加 profile、服务身份、P2P/HTTPS 可达性和挑战诊断。
 - `--tool` 缺省时按当前 agent 环境自动识别；无法唯一识别时返回 `needs_user`，不猜测工具。
 - `--json` 输出稳定的机器可读对象；默认输出英文简报，内容与 JSON 的状态一致。凭据、邀请原文、环境变量值和远端响应正文永不出现在两种输出中。
-- doctor 的非零退出码只表示存在 `fail` 或需要用户完成的阻断步骤；`unknown` 和可选 `skipped` 不单独导致失败。
+- doctor 仅在 ready 时退出 0，其余状态退出 1；connect 保留配置写入成功时退出 0 的兼容行为，完整诊断另看 verification。
 
 `connect`、`create --connect` 和 `join --connect` 在完成已有配置动作后调用同一诊断核心，返回 `configuration`、`verification` 和 `next` 三个明确区段；不得把配置写成功直接映射为 `ready`。
 
@@ -91,7 +91,6 @@ agent 需要显示每一步的结果和下一步，但不得回显邀请、agent
 | P2P 直连失败但 relay 可用 | `pass` + `relay`，展示 relay 状态和延迟 | 继续使用；若 relay 也失败，给出网络/代理诊断 |
 | Codex hook 尚未信任或唤醒未开启 | `needs_user` 或可选 `skipped` | 用户在 `/hooks` 审阅或明确要求安装 wake；不自动绕过 |
 | 当前会话尚未加载新 MCP | `needs_user` | 用户启动新会话并执行 `whoami`、`read_team`；保留配置和空间 |
-| 旧请求在项目切换后返回 | 丢弃响应，不更新页面 | 用户刷新当前项目；不显示旧项目秘密 |
 
 所有失败都保留现有 profile、配置备份、数据库和诊断证据。任何需要删除文件、撤销成员或轮换凭据的动作都不由 doctor 自动执行。
 
