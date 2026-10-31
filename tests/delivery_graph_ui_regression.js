@@ -25,6 +25,8 @@ const graph={items:[
 const git={workspaces:[{id:7,task_id:1,branch:'feat/ui',head:sha,member_id:4,stale:false}],deliveries:[{pr_number:17,branch:'feat/ui',head_sha:sha,state:'open',source:'github_verified',sync_at:'2026-10-30T12:10:00Z',stale:false}],releases:[{release_id:9,tag_name:'v0.9.0',name:'Launch',target_commitish:'main',state:'published',source:'github_verified',sync_at:'2026-10-30T13:00:00Z',stale:false}],github:{deliveries:[{pr_number:17,branch:'feat/ui',head_sha:sha,state:'open',source:'github_verified',sync_at:'2026-10-30T12:10:00Z',stale:false}],releases:[{release_id:9,tag_name:'v0.9.0',name:'Launch',target_commitish:'main',state:'published',source:'github_verified',sync_at:'2026-10-30T13:00:00Z',stale:false}]}};
 const projection=Graph.buildGraph(graph,git);
 assert.equal(projection.nodes.length,5);
+const evidenceOnly=Graph.buildGraph(graph,{...git,workspaces:[]});
+assert.ok(evidenceOnly.groups.find(g=>g.id==='branch:feat/ui').nodes.some(n=>n.key==='commit:'+sha),'Explicit checkpoint evidence must group commit and branch even when the workspace list is absent');
 assert.ok(projection.edges.some(e=>e.kind==='workspace-head'&&e.from==='branch:feat/ui'&&e.to==='commit:'+sha));
 assert.ok(projection.edges.some(e=>e.kind==='pr-head-branch'&&e.from==='branch:feat/ui'&&e.to==='pr:17'));
 assert.ok(projection.edges.some(e=>e.kind==='pr-head-sha'&&e.from==='pr:17'&&e.to==='commit:'+sha));

@@ -1,0 +1,28 @@
+'use strict';
+const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
+const html=fs.readFileSync('src/static/index.html','utf8'),styles=fs.readFileSync('src/static/styles.css','utf8');
+assert.match(html,/id="workspace-mobile-menu"[^>]*aria-expanded="false"/,'Mobile navigation must have an accessible toggle');
+assert.match(html,/id="workspace-breadcrumbs"[^>]*aria-label="当前位置"/,'Current project and page must be discoverable outside the sidebar');
+const nav=html.slice(html.indexOf('id="workspace-navigation"'),html.indexOf('id="workspace-utility"'));
+assert.equal((nav.match(/data-view=/g)||[]).length,6,'The project workbench has six primary pages');
+assert.ok(!nav.includes('data-view="repository"'),'Settings belong to the utility area');
+assert.ok(!/<span>0[1-7]<\/span>/.test(nav),'Navigation must use approved icons');
+assert.equal((styles.match(/\.workspace-project-switch\s*\{/g)||[]).length,1,'Project switcher has one authoritative base rule');
+const elements=new Map();
+function element(id){if(!elements.has(id))elements.set(id,{hidden:false,open:false,value:'',textContent:'',listeners:{},attributes:{},dataset:{},children:[],isConnected:true,addEventListener(k,fn){this.listeners[k]=fn;},setAttribute(k,v){this.attributes[k]=String(v);},removeAttribute(k){delete this.attributes[k];},replaceChildren(...children){this.children=children;},append(...children){this.children.push(...children);},querySelector(){return element(id+'-child');},querySelectorAll(){return [];},focus(){document.activeElement=this;},reset(){},close(){this.open=false;},classList:{toggle(){},remove(){}}});return elements.get(id);}
+const document={getElementById:element,querySelectorAll:()=>[],activeElement:null,createElement:tag=>element('generated-'+elements.size),title:''};
+const window={addEventListener(){},matchMedia:()=>({matches:true})},location={origin:'http://localhost',hash:''},history={pushState(_s,_t,hash){location.hash=hash;},replaceState(_s,_t,hash){location.hash=hash;}};
+const context=vm.createContext({document,window,location,history,sessionStorage:{getItem:()=>'',setItem(){},removeItem(){}},setTimeout:()=>1,clearTimeout(){},AbortController,JSON,Date});
+vm.runInContext(fs.readFileSync('src/static/app.js','utf8'),context);
+element('workspace-mobile-menu').listeners.click();
+assert.equal(element('workspace-mobile-menu').attributes['aria-expanded'],'true');
+vm.runInContext("setView('delivery')",context);
+assert.equal(element('workspace-mobile-menu').attributes['aria-expanded'],'false','Selecting a page closes the mobile menu');
+assert.equal(element('workspace-crumb-page').textContent,'交付');
+vm.runInContext("setView('tasks')",context);
+assert.equal(element('view-tasks').hidden,false);assert.equal(element('view-delivery').hidden,true);
+assert.match(location.hash,/workspace=tasks/);
+vm.runInContext("enter=()=>{};logout=()=>{};setView('delivery');window.CoopagentsProject.enter('scoped',{restoreView:true})",context);
+assert.equal(element('view-delivery').hidden,false,'Restoring a validated account project preserves its routed page');
+vm.runInContext("window.CoopagentsProject.enter('different-project')",context);assert.equal(element('view-tasks').hidden,false,'An explicit project switch starts at tasks');
+console.log('Workspace shell, mobile navigation, breadcrumbs and routed project restoration passed');

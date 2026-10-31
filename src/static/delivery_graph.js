@@ -41,6 +41,12 @@
     for(const pr of nodes.values())if(pr.kind==='pr'&&pr.fact?.source==='github_verified'&&pr.fact.head_sha){
       for(const commit of nodes.values())if(commit.kind==='commit'&&commit.value.toLowerCase()===String(pr.fact.head_sha).toLowerCase())addEdge(pr.key,commit.key,'pr-head-sha','PR head SHA 匹配');
     }
+    // A checkpoint association is explicit evidence even when its current
+    // workspace observation has fallen outside the bounded workspace list.
+    for(const node of nodes.values())if(node.kind==='commit'&&!node.branch){
+      const related=unique(edges.filter(e=>e.kind==='workspace-head'&&e.to===node.key).map(e=>nodes.get(e.from)?.value).filter(Boolean));
+      if(related.length===1)node.branch=related[0];
+    }
     const grouped=new Map(),groups=[];
     const ensure=(id,title,kind='branch')=>{if(!grouped.has(id)){const group={id,title,kind,nodes:[]};grouped.set(id,group);groups.push(group);}return grouped.get(id);};
     const branchNodes=branches.slice().sort((a,b)=>(a.value==='main'?-1:b.value==='main'?1:a.value.localeCompare(b.value)));
@@ -65,16 +71,17 @@
     const controls=element('div','','git-graph-controls'),search=element('label','','search-field');search.setAttribute('aria-label','搜索交付对象');const input=element('input');input.type='search';input.placeholder='搜索分支、SHA、PR 或 Release';input.value=state.query;search.append(input);const kind=element('select');kind.setAttribute('aria-label','交付类型');for(const [value,label] of [['','全部类型'],['branch','分支'],['commit','Commit'],['pr','Pull request'],['release','Release']]){const option=element('option',label);option.value=value;kind.append(option);}kind.value=state.kind;const branches=unique(projection.groups.filter(g=>g.kind==='branch').map(g=>g.title));const branch=element('select');branch.setAttribute('aria-label','分支');const all=element('option','全部分支');all.value='';branch.append(all);for(const name of branches){const option=element('option',name);option.value=name;branch.append(option);}branch.value=state.branch;const count=element('span','','result-count');append(controls,search,kind,branch,count);section.append(heading,controls);
     // Keep the full projection mounted so snapshot refreshes preserve filter recovery.
     const candidates=projection.groups;
+    const legend=element('div','','branch-legend');for(const group of candidates.filter(g=>g.kind==='branch'))legend.append(element('span',group.title,'branch-chip'));section.append(legend);
     function open(node){state.selected=node.key;context.openNode?.(node.key,node,projection);}
     const graphRoot=element('div','','git-graph-groups');graphRoot.style.position='relative';const nodeElements=new Map(),rowElements=new Map(),edgeElements=[];
-    for(const group of candidates){
-      const lane=element('section','','git-lane');lane.setAttribute('aria-label',group.title+' 分支交付关系');lane.style.position='relative';lane.style.zIndex='1';const laneHead=element('header','','git-lane-head');
+    for(const [laneIndex,group] of candidates.entries()){
+      const lane=element('section','','git-lane');lane.setAttribute('aria-label',group.title+' 分支交付关系');lane.style.position='relative';lane.style.zIndex='1';lane.style.setProperty('--lane',String(Math.min(laneIndex,3)));const laneHead=element('header','','git-lane-head');
       append(laneHead,element('span','','git-lane-track'),append(element('div'),element('p',group.kind==='branch'?'分支轨道':group.kind==='release'?'发布记录':'其他交付','eyebrow'),element('h3',group.title)),element('span',group.nodes.length+' 个对象','meta'));lane.append(laneHead);
       const child=element('div','','git-lane-objects');
       for(const node of group.nodes){
         const article=element('article','','git-object-row'),marker=element('span','','git-object-marker kind-'+node.kind),body=element('div','','git-object-body'),top=element('div','','git-object-top'),openButton=element('button',node.label,'git-object-link');article.dataset.nodeKey=node.key;nodeElements.set(node.key,marker);rowElements.set(node.key,article);openButton.type='button';openButton.setAttribute('data-node-key',node.key);openButton.addEventListener('click',()=>open(node));
         append(top,openButton,element('span',labels[node.kind]||node.kind,'kind-chip'),element('span',stateLabels[node.state]||node.state,'git-object-state'+(node.stale?' stale':'')));
-        append(body,top,element('p',node.title,'git-object-title'));
+        append(body,top);if(!['branch','commit'].includes(node.kind))body.append(element('p',node.title,'git-object-title'));
         const facts=element('div','','git-object-facts');if(node.branch)facts.append(element('span','分支 '+node.branch,'mono'));if(node.repository)facts.append(element('span',node.repository,'meta'));if(node.stale||node.unavailable)facts.append(element('span',node.unavailable?'来源不可用':'证据过期','evidence-warning'));
         const evidence=projection.edges.filter(edge=>edge.from===node.key||edge.to===node.key);for(const edge of evidence)facts.append(element('span',edge.label,'relation-tag'));body.append(facts);
         if(node.task_ids.length){const tasks=element('div','','git-object-tasks');for(const id of node.task_ids){const name=context.taskName?.(id)||'任务 #'+id,button=element('button',name,'git-task-link');button.type='button';button.addEventListener('click',()=>context.openTask?.(id));tasks.append(button);}body.append(tasks);}
