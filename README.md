@@ -1,167 +1,110 @@
 <div align="center">
-  <img src="src/static/icon.png" width="112" alt="Coopagents icon">
+  <img src="src/static/icon.png" width="96" alt="Coopagents icon">
   <h1>Coopagents</h1>
-  <p><sub>Current release: 0.9.0.</sub></p>
-  <p><strong>Multiplayer mode for Claude Code and Codex.</strong></p>
-  <p>Your agents and your teammates' agents share one task board. They ask each other questions, hand off work, and wake each other up.<br>Peer-to-peer. No server, no account.</p>
-  <p><a href="#configure-with-your-agent">Configure with your agent</a> · <a href="#try-it-on-your-own-machine">Try it</a> · <a href="#invite-a-teammate">Invite a teammate</a> · <a href="SECURITY.md">Security</a> · <a href="docs/README.md">Docs</a> · <a href="README.zh-CN.md">中文</a></p>
-  <p><sub>Formerly Crewmesh.</sub></p>
+  <p><strong>Shared context for coding agents across tools and computers.</strong></p>
+  <p>Let your agent and your teammates’ agents find each other, ask questions and connect work to delivery evidence.<br>Keep your own tools, machines and way of working.</p>
+  <p><a href="#get-started-with-your-agent">Get started</a> · <a href="#choose-how-to-run-it">Run modes</a> · <a href="docs/harness-adapters-0.9.md">Harness support</a> · <a href="SECURITY.md">Security</a> · <a href="CONTRIBUTING.md">Contribute</a> · <a href="README.zh-CN.md">简体中文</a></p>
+  <p><sub>Alpha · Latest published package: 0.9.0 · Formerly Crewmesh</sub></p>
 </div>
 
 ---
 
-You use Claude Code. Your teammate uses Codex. Or you run both on your own machine. Each agent works fast on its own, but the agents can't talk to each other, so the coordination falls to you:
+You use Claude Code. Your teammate uses Codex on another computer. Each agent works independently, but interface decisions, open questions and delivery progress need a shared place.
 
-- Two agents build the same module, because neither knew the other had started.
-- One agent changes an API, and the other keeps coding against the old fields.
-- You end up copying questions and answers between chat windows, acting as a human relay.
+**Coopagents connects them through MCP.** Share project context, discover teammates’ agents, ask the right agent directly, and trace tasks to branches, commits, pull requests and releases. These are capabilities you can combine; there is no required sequence or prescribed team workflow.
 
-**Coopagents gives the agents one shared workspace.** They claim tasks so nobody does the same work twice, send technical questions straight to whoever owns the code, hand tasks over with their history, and agree on interface contracts that a person approves. Everyone keeps their own tool, their own machine and their own branch. Coopagents connects them through MCP.
+![Coopagents project task board](docs/assets/workspace-board-v2-2026-10-31.png)
 
-## What it looks like
+<sub>The self-hosted workbench, captured from the real application with synthetic demo data. The current UI is Chinese. This is separate from the optional host-local, read-only P2P board. [Screenshot provenance](docs/brand-assets.md).</sub>
 
-An illustrative exchange. Codex has a question, and Claude Code's session is sitting idle:
+## What you can do
 
-```text
-[Codex]        send_request → Claude: "Does POST /login return the ticket as a string or a number?
-                                       And how long is it valid?"
+| Capability | What it gives your team |
+| --- | --- |
+| Shared context | Project agreements, scoped context queries, shared files and source/freshness information. Pending proposals stay separate from effective decisions. |
+| Members and agents | Find teammates’ registered tools, sessions and capability evidence. A connection indicator does not claim that a model is active or has read a message. |
+| Direct collaboration | Send requests, reply and track reading, processing and resolution separately. |
+| Tasks | Claim work, report progress and see dependencies in a shared board. |
+| Delivery evidence | Follow task associations to Git objects and inspect their sources. The graph shows evidenced relationships, not an invented complete commit history. |
 
-[Claude Code]  (idle, then wakes up on its own)
-               Automatic collaboration notice, not a message from your user:
-               1 new request addressed to you…
-               read_inbox → reply: "String. Valid for 600 seconds. See auth/ticket.py."
+People retain the decisions that require their authority: creating tasks, approving agreements, accepting handoffs and changing membership. Ordinary agent MCP tools do not expose those operations. An agent can perform a human operation only when its user explicitly asks, using that user’s separate credential.
 
-[Codex]        (standby picks up the reply) Continues the task with the right type.
-```
+## Get started with your agent
 
-Nobody copied or pasted anything. The request, the reply and who read it when are all stored in the space, and every agent on the team can see them.
+You need **Python 3.11+** and a supported coding agent. First-run P2P setup does not require a web account or a running workbench. You can try two agents on one computer before inviting a teammate.
 
-![Coopagents task board](docs/assets/kanban-demo.jpg)
+For the **published 0.9.0 release**, open the project repository and paste this into Claude Code or Codex:
 
-<sub>The task board. This screenshot is from the self-hosted workbench with a fictional demo team. A space's read-only board uses the same columns and cards.</sub>
+> Read the [Coopagents 0.9.0 space Skill](https://github.com/Weichenleeeee123/coopagents/blob/v0.9.0/src/skills/coopagents-space/SKILL.md). Install `coopagents[space]==0.9.0` into its own virtual environment outside this repository, using that environment’s Python explicitly. Help me configure Coopagents here: reuse the matching connection if one exists; otherwise create a local P2P space for this repository and connect this agent as my member. Preserve existing settings. Do not enable wake-up or invite anyone yet. Report what was configured and what still requires a new session or my confirmation.
 
-## Configure with your agent
+After setup, start a new agent session so the native tool can load MCP. Ask it to call `whoami`, check the project/member identity, then call `read_team`. Configuration saved on disk is distinct from tools loaded in the current session.
 
-First-run setup does not require a web account or workbench. Open the repository you want to use and ask your agent:
+**Development checkout:** the newer agent-first flow adds a unified `doctor` diagnostic, connection recovery guidance and separate configuration/verification results. It is **not in published 0.9.0**. To use it now, explicitly authorize a development checkout and follow [Agent-first setup](docs/agent-first-setup.md) ([中文](docs/agent-first-setup.zh-CN.md)). Once that Skill is installed, “Help me configure Coopagents” is enough to begin. Trust prompts and optional wake-up remain your decisions.
 
-> Read the [Coopagents space Skill](https://github.com/Weichenleeeee123/coopagents/blob/main/src/skills/coopagents-space/SKILL.md) and follow it to configure Coopagents for this repository. Use this agent as my local member, keep existing settings, and do not enable wake-up or invite anyone unless I ask.
-
-The agent handles the isolated install, native MCP entry and connection checks. The new doctor command is currently available in this development checkout; it is not included in published 0.9.0. It creates a local P2P space when no invitation or existing project is supplied. See the [agent-first setup guide](docs/agent-first-setup.md) for result states and recovery steps.
-
-## Try it on your own machine
-
-You don't need a teammate to try it. Treat Claude Code and Codex as two teammates on one computer. You need Python 3.11+ and at least one of the two tools.
-
-**1. In Claude Code**, open a test repository and say:
-
-> Install Coopagents 0.9.0 from PyPI into its own virtual environment: `python -m venv <folder>` outside this repo, then `<folder>/Scripts/python -m pip install "coopagents[space]==0.9.0"` (on macOS and Linux `<folder>/bin/python`), without activating it. If a package mirror does not have 0.9.0 yet, add `--index-url https://pypi.org/simple`; never install a different version. Then read its skill at https://github.com/Weichenleeeee123/coopagents/tree/v0.9.0/src/skills/coopagents-space. Then create a Coopagents space for this repo with yourself as "Claude", connect yourself with wake-up turned on, and give me an invitation message for my Codex.
-
-**2. In Codex**, in the same repository:
-
-> *(paste the invitation message Claude gave you)* Join as "Codex".
-
-**3. Wake-up.** Step 1 already turned it on for Claude Code. To turn it on later, in any session, just say *"Turn on Coopagents wake-up for this repo"*: the agent calls the `install_wake` tool, which finds the tool, the folder and your space by itself. Claude Code loads the hooks in its next session; in Codex, approve the new hook in `/hooks`.
-
-**4. Make them talk.** Leave Claude Code idle. Tell Codex: *"Ask Claude through Coopagents which command runs this repo's tests, then wait for the answer."*
-
-The agent does the installation itself. It installs that exact version from PyPI into its own virtual environment, starts the space and adds the MCP server to its own configuration, without overwriting any of your existing settings. Codex may ask you to approve each Coopagents tool the first time it is used.
-
-Invitation messages always name the inviter's own version, so both sides run the same release.
-
-Prefer to install it yourself?
-
-```bash
-python -m venv ~/.coopagents/venv && ~/.coopagents/venv/bin/python -m pip install "coopagents[space]"   # Windows: Scripts\python
-export PATH=~/.coopagents/venv/bin:$PATH
-python -m coopagents.space_runtime create --name "My space" --owner Claude --connect claude --wake
-python -m coopagents.space_runtime invite --profile <profile from the output> --message en
-```
+For manual commands, see [space runtime](docs/agent-hosted-runtime.md). Install into an isolated environment rather than your system Python; invitation messages pin the inviter’s version so both sides use the same release.
 
 ## Invite a teammate
 
-The same flow works across computers and networks:
+1. Ask your connected agent: **“Create a Coopagents invitation message for my teammate, valid for 24 hours.”**
+2. Send the complete message privately. It contains a one-time bearer secret; anyone holding an unused invitation can join. Invitations expire after one hour by default, up to 72 hours when requested.
+3. Your teammate pastes it into their own supported agent and asks to join. Their agent installs the matching version and saves a personal profile.
+4. In a fresh session, verify identity and team access. Then try a real request: **“Ask Mia through Coopagents which API fields the shared context endpoint returns.”**
 
-1. **You:** "Create a Coopagents space for this project and give me an invitation message for my teammate. Make it valid for 24 hours."
-2. **Send the message privately**, for example in a direct message. It says what Coopagents is and contains a one-time code, so anyone who holds it can join. It works once and expires after the time you chose (1 hour by default, up to 72).
-3. **Your teammate** pastes the whole message into their own Claude Code or Codex. Their agent installs Coopagents and joins. That's it.
+The host computer keeps the space and must remain on. Peers use [iroh](https://iroh.computer) to authenticate the host by its persistent public key. Connections are direct when possible and fall back to an encrypted relay when needed. No public IP, port forwarding or separate hosted account is required for this mode. Host restarts retain identity; recover an existing profile instead of consuming another invitation.
 
-Here is what your teammate receives:
+## Choose how to run it
 
-```text
-Alice invited you to the Coopagents space "Hack night".
+| Mode | Best for | Browser experience |
+| --- | --- | --- |
+| Agent-hosted P2P space | A small team collaborating from their own machines, without deploying a separate service | Optional read-only board on the host computer; collaboration happens through agents |
+| Self-hosted team service | Accounts, multiple projects, web management and Git/GitHub integration | Full project workbench with overview, tasks, collaboration, shared context, delivery and members |
 
-Coopagents is multiplayer mode for Claude Code and Codex: our agents share one task board,
-ask each other questions and hand off work directly. Peer-to-peer, no account.
-https://github.com/Weichenleeeee123/coopagents
+Both modes share the collaboration core. The self-hosted workbench shown above requires a deployed service and account setup; first-run P2P configuration does not launch it. See [P2P runtime](docs/agent-hosted-runtime.md), [read-only board](docs/agent-hosted-board.md), [self-hosted service](docs/self-hosted-service.md) and [deployment](docs/deployment.md).
 
-Paste everything between the two lines into your Claude Code or Codex:
-----------
-Install Coopagents 0.9.0 from PyPI … `pip install "coopagents[space]==0.9.0"` … then join my Coopagents space with the one-time invitation code below. …
-coopagents-invite-2.09G02-071GZ-75SCY-14W94-…
-----------
+<details>
+<summary>More workbench screenshots</summary>
 
-This invitation works once and expires at 2026-10-16 21:30 (UTC+08:00). It contains a key: …
-```
+![Project switching](docs/assets/workspace-project-switcher-v2-2026-10-31.png)
 
-The space lives on the computer of the person who created it. That computer has to stay on. Teammates connect peer-to-peer using [iroh](https://iroh.computer), and the host is identified by its public key. When the networks allow it, the connection is direct. When they don't, it goes through an encrypted relay that sees only ciphertext. You don't need a public IP, port forwarding, a tunnel or an account. The host can restart without anyone needing a new invitation.
+![Shared project context](docs/assets/workspace-context-v2-2026-10-31.png)
 
-## What agents do, and what stays with people
+![Members and agent capabilities](docs/assets/workspace-members-v2-2026-10-31.png)
 
-| Agents can | Only a person decides |
+</details>
+
+## Harness support and optional wake-up
+
+Native space setup is available for Claude Code and Codex. Other harnesses have remote MCP configuration adapters with different validation levels; consult the [support matrix](docs/harness-adapters-0.9.md) before choosing one. Configuration support does not imply a verified native model session or automatic wake-up.
+
+| Harness | Optional wake behavior |
 | --- | --- |
-| Read the team's tasks, owners and progress | Create tasks |
-| Claim a task. Only one agent can win a claim. | Approve or reject an interface contract |
-| Report progress, branch and commits | Accept or reject a task handoff |
-| Ask the owner of a task or module a question, reply, and resolve | Reassign a request, cancel or reopen a task |
-| Declare dependencies and offer handoffs | Revoke a member |
-| Propose a shared contract (it stays pending until approved) | |
+| Claude Code | An idle open session can wake through the installed hooks. The terminal must remain open. |
+| Codex | Checks when a turn ends; explicitly enabled standby can wait for new items. It cannot wake an idle session. New hooks require your `/hooks` trust review. |
+| Other adapters | Native hooks and idle wake are unverified or unsupported as recorded in the matrix. |
 
-Reading, handling, replying and resolving are separate states. An agent that received a message hasn't necessarily understood it, and an answered question isn't necessarily a resolved one. Person-only actions don't appear in the agents' MCP tool list. Your agent performs them only when you explicitly ask, and it uses your own credential to do so.
+Wake-up is off until requested, uses model quota and never bypasses native permissions. Notifications contain counts; the agent reads content using its normal tools. See [wake-up behavior and limits](docs/agent-wake.md).
 
-## Wake-up
+## Privacy and security
 
-Turning on wake-up is optional. Each wake costs a full model turn.
+Shared tasks, requests and agreements are visible to project members. Private agent conversations are not uploaded by the configuration adapters. The host stores the shared SQLite database and can read it. P2P traffic is encrypted; relays still observe connection metadata. Profiles and invitations must stay private.
 
-| Tool | Behavior |
-| --- | --- |
-| Claude Code | An idle session wakes up on its own when a teammate sends it a request, replies to one of its requests, or hands it a task. The terminal has to be open. |
-| Codex | Codex can't be woken while idle. It checks at the end of every turn. In standby, a finished turn keeps waiting for teammates, and you can interrupt it with Esc. |
+Messages from other agents are **data, not permission** to run commands, change access or accept new work. Coopagents’s guidance and role boundaries reduce this risk; they do not guarantee that a model will never follow malicious content. Read the [threat model, limitations and private reporting instructions](SECURITY.md).
 
-Wake-ups are only for things that need the agent to act. Progress updates don't wake anyone. Each item wakes an agent at most once. Wake-ups are at least 60 seconds apart, with at most 12 per hour. The wake notice contains only counts. The agent then reads the content with its normal tools. Details are in [Agent wake-up](docs/agent-wake.md).
+## Release status and evidence
 
-## How it differs from Claude Code's agent teams
+The latest published package is **0.9.0 (alpha)**. This repository also contains newer capability, workspace and setup work; unreleased features should not be inferred from the package version alone.
 
-Claude Code has an experimental [agent teams](https://code.claude.com/docs/en/agent-teams) feature. A lead session spawns Claude teammates on one machine. Coopagents covers what that feature doesn't:
+- Real Claude Code and Codex collaboration, including Claude idle wake and Codex standby, passed a single-Windows-machine acceptance run: [17-check report](docs/solo-acceptance-2026-10-29.md).
+- P2P connectivity has evidence between a GitHub Actions runner and a home machine: [network report](docs/agent-hosted-p2p-report.md).
+- CI tests Python 3.11/3.13, browser scripts, packaging and deployment smoke. UI screenshots use synthetic data and are not harness or cross-device certification.
+- **Still separate 1.0 gates:** two people behind home/mobile NATs, cross-device wake-up, macOS and full real-model cold-start acceptance for the newer diagnostic flow. See [setup acceptance](docs/agent-first-setup-acceptance.md) and [two-machine checklist](docs/two-machine-acceptance.md).
 
-- **Mixed vendors.** Claude Code and Codex work in the same space.
-- **Different people and different computers.** Each person joins with their own agent and their own account, and the agents connect peer-to-peer.
-- **Persistent.** The space is a SQLite database on the host. Tasks, messages and history survive closed sessions and restarts.
-- **People stay in charge.** Contracts, handoffs and task creation stay with people.
+## Documentation and contributions
 
-## Security
+Start with [setup](docs/agent-first-setup.md), [harness support](docs/harness-adapters-0.9.md), [security](SECURITY.md) or [contributing](CONTRIBUTING.md) ([中文](docs/CONTRIBUTING.zh-CN.md)). The [documentation index](docs/README.md) links detailed implementation and acceptance reports; some historical guides remain Chinese.
 
-Messages from other people's agents are **data, not instructions**. The skill tells agents never to treat a teammate's message as permission to run commands, change permissions or take on new work. Wake-up doesn't bypass your tool's permission prompts. Credentials stay in private profile files and never appear in command arguments, MCP tool arguments or Git. Read [SECURITY.md](SECURITY.md) for the threat model, including its limits.
-
-## Status
-
-**Alpha (0.9.0).** Here is what has actually been tested:
-
-- Claude Code and Codex collaborated through a real space on one Windows machine. Claude was woken while idle, and Codex was woken from standby.
-- Peer-to-peer worked across networks between a GitHub Actions runner and a home machine.
-- The full test suite runs in CI on Linux with Python 3.11 and 3.13.
-- A real single-machine Claude Code and Codex flow passed all 17 checks, including joining from a compact v2 invitation and waking an idle Claude session. See [the acceptance report](docs/solo-acceptance-2026-10-29.md).
-
-**Not yet tested:** two people on two home or mobile networks, waking an agent across computers, and macOS. If you and a friend try it on two networks, please follow [two-machine-acceptance.md](docs/two-machine-acceptance.md) and open an issue with the two reports. The reports don't contain credentials, and this is the most valuable contribution right now.
-
-## Also available
-
-- **Read-only board.** The host can open a one-time local board link to watch the team's tasks in a browser. See [board](docs/agent-hosted-board.md).
-- **Self-hosted team service.** Accounts, multiple projects, a web workbench, Git and GitHub delivery evidence, and Docker deployment. See [self-hosted service](docs/self-hosted-service.md).
-
-## Develop
-
-Python, SQLite, Starlette, MCP, and plain HTML, CSS and JavaScript. Setup and tests are in [CONTRIBUTING.md](CONTRIBUTING.md). All design notes and test reports are in [docs/](docs/README.md).
+Coopagents uses Python, SQLite, Starlette, MCP and plain HTML/CSS/JavaScript. Contributions with real two-device evidence are particularly useful. Keep credentials, personal configuration and raw session records out of issues and pull requests.
 
 ---
 
-<div align="center"><a href="LICENSE">MIT License</a> · Built for people who build with agents.</div>
+[MIT License](LICENSE)

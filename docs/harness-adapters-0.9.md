@@ -1,5 +1,18 @@
 # 0.9 Harness MCP Adapters
 
+## Native space connections
+
+The primary P2P setup path uses the bundled `coopagents-space` Skill and the harness's native MCP CLI. It does not require a web account. Published 0.9.0 and the newer, unreleased doctor flow have different setup capabilities; see [agent-first setup](agent-first-setup.md).
+
+| Harness | Connection | Optional wake | Evidence boundary |
+| --- | --- | --- | --- |
+| Claude Code | Native MCP registration and personal space profile | Idle wake through installed hooks, while the session remains open | Real single-machine Windows collaboration; other OS and cross-device wake remain separate acceptance gates |
+| Codex | Native MCP registration and personal space profile | End-of-turn check; explicit standby can wait. No ordinary idle wake. User reviews new hooks in `/hooks` | Real single-machine Windows collaboration; CLI registration is separate from loading MCP in a fresh model session |
+
+The [single-machine acceptance report](solo-acceptance-2026-10-29.md), [setup diagnostic acceptance](agent-first-setup-acceptance.md) and [two-machine checklist](two-machine-acceptance.md) describe what has and has not been verified. A session registration is not proof that a model is currently active, and an MCP configuration adapter is not a native wake adapter.
+
+## Remote MCP configuration adapters
+
 The 0.9 adapter contract configures a project-local MCP server without reading or copying agent conversations. The adapter writes only the harness's documented project configuration file, preserves unrelated JSON entries, refuses symlink/path escapes, and refuses to overwrite a different existing `coopagents` entry. Re-running an identical install is idempotent.
 
 The CLI is:
