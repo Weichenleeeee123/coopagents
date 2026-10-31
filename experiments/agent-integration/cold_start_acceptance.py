@@ -1,0 +1,333 @@
+"""Bounded real-model development-checkout cold start; all evidence stays in .local.
+
+Run with the checkout's isolated Python. No model overrides, permission bypass,
+real native settings changes or file removal. This is single-machine evidence;
+it cannot certify two people, different NATs, cross-device wake or other OSes.
+The retained host is stopped on exit. Wake is deliberately a separate test.
+"""
+import argparse
+import json
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+import time
+import tomllib
+from uuid import uuid4
+
+REPO = Path(__file__).resolve().parents[2]
+
+
+def toml_value(value):
+    if isinstance(value, dict):
+        return '{' + ', '.join(json.dumps(k) + ' = ' + toml_value(v) for k, v in value.items()) + '}'
+    if isinstance(value, list):
+        return '[' + ', '.join(toml_value(v) for v in value) + ']'
+    return json.dumps(value, ensure_ascii=True)
+
+
+def prepare_homes(run, codex_source, claude_settings, environ=None):
+    """Copy auth and provider/model settings only, never native MCP/hooks/plugins."""
+    from coopagents.spaces import private_directory, private_write, protect
+    private_directory(run)
+    for name in ('home', 'codex-home', 'claude-home', 'coopagents-home', 'tmp'):
+        private_directory(run / name)
+    env = {k: v for k, v in (os.environ if environ is None else environ).items()
+           if not k.startswith(('CODEX', 'CLAUDE', 'COOPAGENTS'))}
+    env.update(HOME=str(run / 'home'), USERPROFILE=str(run / 'home'),
+               CODEX_HOME=str(run / 'codex-home'), CLAUDE_CONFIG_DIR=str(run / 'claude-home'),
+               COOPAGENTS_HOME=str(run / 'coopagents-home'), TMP=str(run / 'tmp'),
+               TEMP=str(run / 'tmp'), TMPDIR=str(run / 'tmp'), PYTHONUTF8='1')
+    source_env = os.environ if environ is None else environ
+    for key in ('CLAUDE_CODE_OAUTH_TOKEN', 'CLAUDE_CODE_USE_BEDROCK', 'CLAUDE_CODE_USE_VERTEX', 'CLAUDE_CODE_USE_FOUNDRY'):
+        if key in source_env:
+            env[key] = source_env[key]
+    auth = codex_source / 'auth.json'
+    if auth.is_file():
+        target = run / 'codex-home' / 'auth.json'
+        with target.open('xb') as stream:
+            protect(target)
+            stream.write(auth.read_bytes())
+    source = codex_source / 'config.toml'
+    config = tomllib.loads(source.read_text(encoding='utf-8')) if source.is_file() else {}
+    allow = ('model', 'model_provider', 'model_providers', 'model_reasoning_effort', 'model_reasoning_summary',
+             'preferred_auth_method', 'forced_login_method')
+    native = run / 'codex-home' / 'config.toml'
+    native.write_text(''.join(k + ' = ' + toml_value(config[k]) + '\n' for k in allow if k in config), encoding='utf-8')
+    protect(native)
+    settings = json.loads(claude_settings.read_text(encoding='utf-8')) if claude_settings.is_file() else {}
+    for key, value in settings.get('env', {}).items():
+        if key.startswith(('ANTHROPIC_', 'CLAUDE_CODE_USE_', 'AWS_', 'GOOGLE_')):
+            env[key] = str(value)
+    private_write(run / 'claude-home' / 'settings.json',
+                  {k: settings[k] for k in ('model', 'apiKeyHelper') if k in settings})
+    # An OAuth credential file is an authentication artifact, not personal settings.
+    credentials = claude_settings.parent / '.credentials.json'
+    if credentials.is_file():
+        private_write(run / 'claude-home' / '.credentials.json', json.loads(credentials.read_text(encoding='utf-8')))
+    return env
+
+
+def model_command(tool, executable, run, python, *, setup=False):
+    if tool == 'codex':
+        return [executable, 'exec', '--sandbox', 'workspace-write', '--add-dir', str(run),
+                '-c', 'sandbox_workspace_write.network_access=true',
+                '--json', '--output-last-message', str(run / 'last-message.txt'), '-']
+    # Only the already-installed checkout's runtime helper can execute commands.
+    # The model may read the explicitly authorized source Skill and synthetic repo.
+    allowed = ['Read', 'mcp__coopagents_*']
+    if setup:
+        allowed.append('Bash("' + str(python) + '" -m coopagents.space_runtime:*)')
+    return [executable, '--print', '--verbose', '--output-format', 'stream-json',
+            '--permission-prompts', 'none', '--add-dir', str(run), str(REPO / 'src/skills/coopagents-space'),
+            '--allowedTools', ','.join(allowed)]
+
+
+def successful_tools(tool, events):
+    """Require native completed tool records; prose and tool starts never pass."""
+    found, pending = set(), {}
+    for event in events:
+        if tool == 'codex' and event.get('type') == 'item.completed':
+            item = event.get('item', {})
+            if (item.get('type') == 'mcp_tool_call' and item.get('status') == 'completed'
+                    and not item.get('error') and item.get('result') is not None
+                    and not item.get('result', {}).get('isError')):
+                found.add(item.get('tool', '').split('__')[-1])
+        if tool == 'claude':
+            for block in event.get('message', {}).get('content', []) if isinstance(event.get('message', {}).get('content'), list) else []:
+                if block.get('type') == 'tool_use' and block.get('name', '').startswith('mcp__coopagents_'):
+                    pending[block['id']] = block['name'].split('__')[-1]
+                if block.get('type') == 'tool_result' and not block.get('is_error') and block.get('tool_use_id') in pending:
+                    found.add(pending[block['tool_use_id']])
+    return found
+
+
+def exchange_proven(snapshot, guest, host, nonce, answer):
+    return any(r.get('sender_member_id') == guest and r.get('receiver_member_id') == host
+               and nonce in r.get('body', '') and any(p.get('author_member_id') == host
+               and answer in p.get('body', '') for p in r.get('replies', []))
+               for r in snapshot.get('requests', []))
+
+
+def diagnostics_proven(snapshot, members):
+    completed = {d.get('member_id') for d in snapshot.get('collaboration', {}).get('diagnostics', [])
+                 if d.get('status') == 'completed'}
+    return members.issubset(completed)
+
+
+def assistant_text(tool, events):
+    if tool == 'codex':
+        return '\n'.join(e.get('item', {}).get('text', '') for e in events
+                         if e.get('type') == 'item.completed' and e.get('item', {}).get('type') == 'agent_message')
+    return '\n'.join(block.get('text', '') for e in events if e.get('type') == 'assistant'
+                     for block in e.get('message', {}).get('content', []) if isinstance(block, dict) and block.get('type') == 'text')
+
+
+def bounded(command, prompt, path, env, cwd, timeout):
+    """No pipes retained by grandchildren, no cleanup; timeout terminates children."""
+    prompt_path = path.with_suffix('.prompt.txt')
+    prompt_path.write_text(prompt, encoding='utf-8')
+    from coopagents.spaces import protect
+    protect(prompt_path)
+    with prompt_path.open('rb') as stdin, path.open('xb') as out:
+        protect(path)
+        process = subprocess.Popen(command, stdin=stdin, stdout=out, stderr=subprocess.STDOUT,
+                                   env=env, cwd=cwd, start_new_session=os.name != 'nt')
+        try:
+            return process.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            if os.name == 'nt':
+                subprocess.run(['taskkill', '/T', '/F', '/PID', str(process.pid)], capture_output=True, timeout=30)
+            else:
+                import signal
+                os.killpg(process.pid, signal.SIGKILL)
+            process.wait(timeout=30)
+            return 'timeout'
+
+
+def events_from(path):
+    events = []
+    for line in path.read_text(encoding='utf-8', errors='replace').splitlines():
+        try:
+            value = json.loads(line)
+            if isinstance(value, dict):
+                events.append(value)
+        except ValueError:
+            pass
+    return events
+
+
+def registrations(env, tool, project):
+    # Read in a child with the isolated environment, never mutate this process's home.
+    script = ('import json,sys;from coopagents.space_connect import registered_spaces;'
+              'print(json.dumps(registered_spaces(sys.argv[1],sys.argv[2])))')
+    result = subprocess.run([sys.executable, '-c', script, tool, str(project)], env=env,
+                            capture_output=True, text=True, timeout=30, check=True)
+    entries = json.loads(result.stdout)
+    if len(entries) != 1:
+        raise RuntimeError('Expected one isolated native registration')
+    entry = entries[0]
+    if not Path(entry['profile']).resolve().is_relative_to(Path(env['COOPAGENTS_HOME']).resolve()):
+        raise RuntimeError('Native registration escaped the private run')
+    if Path(entry['python']).resolve() != Path(sys.executable).resolve():
+        raise RuntimeError('Native registration used a different Python')
+    return entry
+
+
+def snapshot(profile_path):
+    from coopagents.space_runtime import request
+    from coopagents.spaces import read_profile
+    profile = read_profile(profile_path)
+    from coopagents.p2p import member_link
+    with member_link(profile):
+        return request(profile['origin'], '/api/snapshot', token=profile['web_token'])
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--host', choices=['claude', 'codex'], default='claude', help='Run again with the other host for both create paths')
+    parser.add_argument('--network', choices=['p2p', 'local'], default='p2p')
+    parser.add_argument('--timeout', type=int, default=600, help='Seconds per new model session (six sessions maximum)')
+    parser.add_argument('--prepare-only', action='store_true', help='Prepare private homes without consuming model quota')
+    parser.add_argument('--preflight-only', action='store_true', help='Two bounded default-model replies without tools; not acceptance')
+    parser.add_argument('--codex', default=shutil.which('codex'))
+    parser.add_argument('--claude', default=shutil.which('claude'))
+    args = parser.parse_args(argv)
+    if not 1 <= args.timeout <= 1800:
+        parser.error('timeout must be between 1 and 1800 seconds')
+    import coopagents
+    if sys.prefix == sys.base_prefix or not Path(coopagents.__file__).resolve().is_relative_to(REPO / 'src'):
+        parser.error('Use this checkout\'s isolated editable-install Python')
+    if not args.codex or not args.claude:
+        parser.error('Both native CLI executables are required')
+    from coopagents.spaces import private_directory, private_write, read_profile
+    run = private_directory(REPO / '.local' / 'cold-start-acceptance' / (time.strftime('%Y%m%d-%H%M%S') + '-' + uuid4().hex[:8]))
+    real_home = Path.home()
+    host, guest = args.host, 'codex' if args.host == 'claude' else 'claude'
+    environments = {tool: prepare_homes(run / tool, Path(os.environ.get('CODEX_HOME') or real_home / '.codex'),
+                    Path(os.environ.get('CLAUDE_CONFIG_DIR') or real_home / '.claude') / 'settings.json') for tool in (host, guest)}
+    projects = {tool: private_directory(run / tool / 'repo') for tool in (host, guest)}
+    answer, nonce = 'answer-' + uuid4().hex, 'request-' + uuid4().hex
+    for tool, project in projects.items():
+        subprocess.run(['git', 'init', '-q', str(project)], check=True, capture_output=True, timeout=30)
+        (project / 'README.md').write_text('# Synthetic acceptance repository\n', encoding='utf-8')
+        (project / 'AGENTS.md').write_text('Never delete files. Only operate in this synthetic run.\n', encoding='utf-8')
+    (projects[host] / 'acceptance-answer.txt').write_text(answer, encoding='utf-8')
+    report = {'status': 'prepared', 'host': host, 'guest': guest, 'network': args.network,
+              'scope': 'single machine, wake disabled', 'sessions': [], 'checks': []}
+    report['source_commit'] = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=REPO,
+                                             capture_output=True, text=True, timeout=30, check=True).stdout.strip()
+    report['source_dirty'] = bool(subprocess.run(['git', 'status', '--porcelain', '--', 'src', 'pyproject.toml'],
+                                  cwd=REPO, capture_output=True, text=True, timeout=30, check=True).stdout.strip())
+    private_write(run / 'summary.json', report)
+    print('Private evidence: ' + str(run), flush=True)
+    if args.prepare_only:
+        return 0
+    if args.preflight_only:
+        for tool in (host, guest):
+            command = ([args.codex, 'exec', '--sandbox', 'read-only', '--json', '-'] if tool == 'codex' else
+                       [args.claude, '--print', '--output-format', 'stream-json', '--verbose', '--tools', ''])
+            path = run / ('preflight-' + tool + '.jsonl')
+            code = bounded(command, 'Reply with exactly COOPAGENTS_PREFLIGHT_OK. Do not use any tools.', path,
+                           environments[tool], projects[tool], min(args.timeout, 120))
+            ok = code == 0 and 'COOPAGENTS_PREFLIGHT_OK' in assistant_text(tool, events_from(path))
+            report['checks'].append({'check': tool + ' default-model authentication preflight', 'ok': ok, 'exit': code})
+            print(tool + ' preflight: ' + ('PASS' if ok else 'FAIL'), flush=True)
+        report['status'] = 'preflight_passed' if all(c['ok'] for c in report['checks']) else 'preflight_failed'
+        private_write(run / 'summary.json', report, update=True)
+        return 0 if report['status'] == 'preflight_passed' else 1
+    owner = None
+
+    def turn(tool, stage, prompt, *, setup=False, require=()):
+        env = environments[tool]
+        path = run / (stage + '.jsonl')
+        code = bounded(model_command(tool, getattr(args, tool), run / tool, Path(sys.executable), setup=setup),
+                       prompt, path, env, projects[tool], args.timeout)
+        tools = successful_tools(tool, events_from(path))
+        ok = code == 0 and set(require).issubset(tools)
+        report['sessions'].append({'stage': stage, 'tool': tool, 'exit': code, 'native_tools': sorted(tools), 'ok': ok})
+        private_write(run / 'summary.json', report, update=True)
+        print(stage + ': ' + ('PASS' if ok else 'FAIL'), flush=True)
+        if not ok:
+            raise RuntimeError('Native model session failed; inspect private evidence')
+
+    def cold_prompt(tool):
+        return (f'Read the development checkout Skill at {(REPO / "src/skills/coopagents-space/SKILL.md").as_posix()}. '
+                f'I explicitly authorize this unreleased development checkout. The isolated Python {sys.executable} '
+                f'is already installed editable from that checkout with [space]; reuse it and use it explicitly. '
+                f'You are {tool}. All settings and state directories are isolated in {run / tool}. '
+                'Never delete files, change real native configuration or enable wake-up. '
+                'Do not print credentials or environment variables. ')
+
+    try:
+        turn(host, '01-create', cold_prompt(host) + f'Help me configure Coopagents here. Create a new {args.network} space '
+             f'for this repository with owner {host}, connect this agent, then run doctor. Use the current configured model.', setup=True)
+        owner = registrations(environments[host], host, projects[host])
+        host_profile = read_profile(owner['profile'])
+        invite_result = run / host / 'invitation-result.json'
+        turn(host, '02-host-new-session', f'Using only the native Coopagents MCP tools, call whoami and compare '
+             f'room_id={host_profile["room_id"]} and member_id={host_profile["member_id"]}, then read_team. '
+             f'I authorize creating one invitation for my other agent: run "{sys.executable}" -m coopagents.space_runtime '
+             f'invite --profile "{owner["profile"]}" --message en and redirect the complete JSON to "{invite_result}". '
+             'Keep the invitation private. Do not enable wake.', setup=True, require=('whoami', 'read_team'))
+        invitation = json.loads(invite_result.read_text(encoding='utf-8'))
+        # Preserve the actual invitation message as supplied to the joiner; no README parsing/version invention.
+        invitation_message = run / guest / 'invitation-message.txt'
+        invitation_message.write_text(invitation['message'], encoding='utf-8')
+        turn(guest, '03-join', cold_prompt(guest) + f'Read my private invitation message at {invitation_message}. '
+             f'I authorize joining that space as {guest}; use join --invitation-file with that path and --connect {guest}. '
+             'The invitation names published package metadata, but for this acceptance I explicitly authorize reusing the '
+             'same already-installed development checkout rather than installing a release. Run doctor.', setup=True)
+        member = registrations(environments[guest], guest, projects[guest])
+        guest_profile = read_profile(member['profile'])
+        if guest_profile['room_id'] != host_profile['room_id'] or guest_profile['member_id'] == host_profile['member_id']:
+            raise RuntimeError('Joined identity does not match the expected separate member')
+        turn(guest, '04-guest-new-session', f'Use only native Coopagents MCP tools. Call whoami and verify '
+             f'room_id={guest_profile["room_id"]}, member_id={guest_profile["member_id"]}; then read_team. '
+             f'Send a request to member {host_profile["member_id"]} asking for the exact text in its '
+             f'acceptance-answer.txt file. Include marker {nonce} in the body.', require=('whoami', 'read_team', 'send_request'))
+        turn(host, '05-host-reply', 'Use native Coopagents MCP tools to read_inbox and read_team. '
+             f'Find request with marker {nonce}. Read acceptance-answer.txt in this repository and reply with its exact text. '
+             'Do not execute commands or change files.', require=('read_inbox', 'reply'))
+        turn(guest, '06-guest-read-reply', f'Use native Coopagents MCP read_team to find the reply to the request '
+             f'with marker {nonce}. Report its answer. Do not send a second request.', require=('read_team',))
+        state = snapshot(owner['profile'])
+        guest_state = snapshot(member['profile'])
+        state.setdefault('collaboration', {}).setdefault('diagnostics', []).extend(
+            guest_state.get('collaboration', {}).get('diagnostics', []))
+        private_write(run / 'backend-snapshot.json', state)
+        proven = exchange_proven(state, guest_profile['member_id'], host_profile['member_id'], nonce, answer)
+        report['checks'].append({'check': 'backend request and real file-derived reply', 'ok': proven})
+        diagnostics = diagnostics_proven(state, {guest_profile['member_id'], host_profile['member_id']})
+        report['checks'].append({'check': 'both members completed doctor challenge', 'ok': diagnostics})
+        consumed = answer in assistant_text(guest, events_from(run / '06-guest-read-reply.jsonl'))
+        report['checks'].append({'check': 'guest model consumed the file-derived reply', 'ok': consumed})
+        if not all((proven, diagnostics, consumed)):
+            raise RuntimeError('Backend or model evidence incomplete')
+        report['status'] = 'passed'
+    except Exception as error:
+        report['status'] = 'failed'
+        # Never expose exception text: native errors can contain private response bodies.
+        report['failure_type'] = type(error).__name__
+    finally:
+        # A model may create the host but fail before native registration. Stop
+        # only retained host profiles beneath this run, even in that failure case.
+        owned = list(Path(environments[host]['COOPAGENTS_HOME']).glob('spaces/*/profile.json'))
+        report['host_stopped'] = True
+        for retained_profile in owned:
+            try:
+                if 'control_token' not in read_profile(retained_profile):
+                    continue
+                result = subprocess.run([sys.executable, '-m', 'coopagents.space_runtime', 'stop', '--profile', str(retained_profile)],
+                                        env=environments[host], capture_output=True, timeout=60)
+                report['host_stopped'] = report['host_stopped'] and result.returncode == 0
+            except (OSError, ValueError, subprocess.TimeoutExpired):
+                report['host_stopped'] = False
+        private_write(run / 'summary.json', report, update=True)
+    print('Result: ' + report['status'] + ' (single machine; no wake/cross-device certification)')
+    return 0 if report['status'] == 'passed' else 1
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())
