@@ -143,6 +143,10 @@ class LocalAdapter:
         if name=='whoami': return self.request('/api/me')
         if name=='read_team': return self.request('/api/git/team',{})
         if name=='read_inbox': return self.request('/api/inbox?'+urlencode(arguments)) if arguments else self.request('/api/inbox')
+        if name=='read_deliveries': return self.request('/api/operations/read_deliveries',arguments)
+        if name=='suggest_delivery': return self.request('/api/operations/suggest_delivery',arguments)
+        if name=='read_capabilities': return self.request('/api/capabilities')
+        if name=='read_context': return self.request('/api/operations/read_context',arguments)
         if name not in paths: raise ValidationError('Unsupported coordination tool')
         body = dict(arguments); path = paths[name]
         for field in ('task_id','request_id','dependency_id'):
@@ -158,15 +162,18 @@ def create_local_mcp(adapter):
     from mcp.types import CallToolResult, TextContent
     # Use the shared operation schemas without creating a local server/database.
     from .api import fields, validate
+    from .context import QUERY_SCHEMA
     schemas = {
-        'whoami':{},'read_team':{},'read_inbox':fields('',{'after_id':0,'limit':50}),
+        'whoami':{},'read_team':{},'read_capabilities':{},'read_deliveries':fields('',{'task_id':None,'kind':'','value':''}),
+        'suggest_delivery':{'task_id':(int,True,None),'request_key':(str,True,None),'branch':(str,False,''),'pr_number':(int,False,None),'commit_sha':(str,False,''),'release_id':(int,False,None),'evidence':(str,False,''),'session_key':(str,False,None),'ownership_epoch':(int,False,None)},'read_context':QUERY_SCHEMA,
+        'read_inbox':fields('',{'after_id':0,'limit':50}),
         'checkpoint':fields('session_key tool event',{'task_id':None,'ownership_epoch':None}),
         'diagnostic_start':fields('challenge'),'diagnostic_read':fields('diagnostic_id'),
         'diagnostic_complete':fields('diagnostic_id proof'),
         'read_task_history':fields('task_id',{'before_id':None,'limit':20}),
         'release_task':fields('task_id expected_revision request_key summary',{'session_key':None,'ownership_epoch':None}),
         'propose_handoff':fields('task_id expected_revision request_key summary target_member_id',{'session_key':None,'ownership_epoch':None}),
-        'claim_task':fields('task_id',{'session_key':None}), 'register_session':fields('session_key tool repository branch',{'task_id':None,'ownership_epoch':None}),
+        'claim_task':fields('task_id',{'session_key':None}), 'register_session':{**fields('session_key tool repository branch',{'task_id':None,'ownership_epoch':None,'harness':None,'harness_version':None,'platform':None}),'capabilities':(dict,False,None)},
         'report_progress':fields('task_id state summary',{'evidence':'','session_key':None,'ownership_epoch':None}),
         'send_request':fields('request_key context_version body',{'receiver_member_id':None,'task_id':None}),
         'acknowledge':fields('request_id'),'reply':fields('request_id request_key context_version body',{'evidence':''}),

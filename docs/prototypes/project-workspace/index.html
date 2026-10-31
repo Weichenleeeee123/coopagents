@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Coopagents · 项目工作台</title>
+  <link rel="icon" type="image/png" href="../../../src/static/icon.png">
+  <link rel="stylesheet" href="styles.css">
+  <script src="data.js" defer></script>
+  <script src="icons.js" defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <a class="skip" href="#page">跳到页面内容</a>
+  <div id="shell">
+    <aside id="sidebar" aria-label="项目导航">
+      <a class="brand" href="#/atlas/overview"><img src="../../../src/static/icon.png" alt="" width="28" height="28"><span>Coopagents</span><span class="brand-cn">同频</span></a>
+      <button id="project-switch" class="project-switch" aria-haspopup="dialog"></button>
+      <p class="nav-label">当前项目</p>
+      <nav id="project-nav" aria-label="项目页面"></nav>
+      <div class="sidebar-bottom">
+        <nav id="utility-nav" aria-label="管理入口"></nav>
+        <div id="account-menu"></div>
+      </div>
+    </aside>
+    <button id="menu-scrim" class="scrim" aria-label="关闭导航" hidden></button>
+    <div class="main-shell">
+      <header class="topbar">
+        <button id="mobile-menu" class="icon-button mobile-menu" title="项目导航" aria-label="项目导航" aria-expanded="false" aria-controls="sidebar"></button>
+        <div id="breadcrumbs" class="breadcrumbs" aria-label="当前位置"></div>
+        <div class="topbar-right"><span class="preview-label">结构预览 · 合成数据</span><button id="mode-button" class="quiet"></button></div>
+      </header>
+      <main id="page" tabindex="-1"></main>
+      <footer><span>Coopagents / 同频</span><span>不同工具，同一个项目。</span></footer>
+    </div>
+  </div>
+  <dialog id="switcher" aria-labelledby="switcher-title">
+    <div class="dialog-top"><h2 id="switcher-title">切换项目</h2><button class="icon-button" data-close="switcher" title="关闭" aria-label="关闭项目选择"></button></div>
+    <div id="project-options"></div>
+  </dialog>
+  <dialog id="detail" class="drawer" aria-labelledby="detail-title"><div id="detail-content"></div></dialog>
+  <dialog id="action-dialog" aria-labelledby="action-title"><div class="dialog-top"><h2 id="action-title"></h2><button class="icon-button" data-close="action-dialog" title="关闭" aria-label="关闭操作"></button></div><div id="action-content"></div></dialog>
+  <div id="toast" role="status" hidden></div>
+</body>
+</html>

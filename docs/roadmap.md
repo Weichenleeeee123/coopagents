@@ -2,6 +2,16 @@
 
 更新：2026-10-29。持续维护本文件；每个代码阶段测试和审查通过后独立提交 Git。任务详情在对应实施计划中，证据进入验证报告。
 
+## 1.0 前产品方向（2026-10-30）
+
+已确认：0.9.x 继续深化共享上下文（0.9.1）、成员与 Harness 能力发现（0.9.2）和现有 Git 交付关联的可发现性与追溯性（0.9.3）。产品提供可组合能力，不规定团队固定工作流；责任转移暂不列为 1.0 前新增方向。七个 Harness 的适配和逐组合验收在 0.9.x 并行推进，并须在 1.0 发布前完成对应支持声明的证据。
+
+产品化与发布准备并行开展：明确定位和宣传边界、打磨首次使用及诊断体验、准备真实跨设备跨 Harness 演示，并更新 README/项目主页、截图、短视频、能力矩阵、安全说明、已知限制和试用入口。完整方向与收口条件见[1.0 前产品方向](superpowers/specs/2026-10-30-pre-1-0-product-direction-design.md)。
+
+## 0.9.1–0.9.3 能力实现（2026-10-30）
+
+共享上下文、成员与 Harness 能力发现、交付关联优化已按阶段完成代码实现。新增共同 HTTP/MCP 查询、七种 Harness 会话登记与逐版本/平台证据、任务/交付多对多反查、明确关联/观测/建议区分，以及两种看板的共用展示。完整范围、调用方式和验收证据见[能力深化记录](capability-deepening-report.md)。Python 649 通过、1 跳过，27 条 JavaScript CI 命令通过。阶段编号表示能力目标，尚未发行对应版本；Harness 真实适配验收与产品化准备仍按原计划推进。
+
 ## 0.9 进度（2026-10-29）
 
 0.9.0 已发布：[GitHub Release v0.9.0](https://github.com/Weichenleeeee123/coopagents/releases/tag/v0.9.0)，并已通过 Trusted Publishing 上传至 [PyPI](https://pypi.org/project/coopagents/0.9.0/)。阶段计划与验收记录见 [0.9 实施计划](superpowers/plans/2026-10-29-release-0-9.md)、[资产报告](asset-sharing-report.md) 和 [最终发布报告](release-0.9-report.md)。最终合并构建的 CI 在 Python 3.11/3.13 和容器任务全部通过。
@@ -44,7 +54,7 @@ Claude 正常入口发布、Codex 桌面读取和显式确认已通过。既有�
 ## 文档和提交约定
 
 - 已完成的详细计划：[P2/P3 实施计划](p2-p3-plan.md)；基础见 [共享服务实施计划](shared-service-plan.md)。本机 HTTP/MCP 和网页已通过；实际证据见 [P2/P3 验证报告](p2-p3-report.md)。
-- 当前事实：[接入验证报告](coopagents-integration-report.md)。原生接入剩余验收不在本路线中自动勾选完成。
+- 当前事实：[接入验证报告](crewmesh-integration-report.md)。原生接入剩余验收不在本路线中自动勾选完成。
 - P3 已采用单一网页工作台，运行步骤见 [本机运行](app-running.md)。下一阶段是 P4 双机试用与原生检查点稳定性验证。
 - 用户已确认先交付可部署发行版，实际部署目标稍后提供。单机多成员和 TLS 容器测试已实施；不把它们当作真实双机 / 公网验收。见 [P4 计划](p4-release-plan.md)、[发行报告](p4-release-report.md) 和 [原生报告](p4-native-report.md)。
 - 源码、测试和文档进入 Git；机器凭据、数据库、虚拟环境和原始实验记录保留本地。禁止删除文件。

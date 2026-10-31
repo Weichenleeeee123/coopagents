@@ -40,6 +40,8 @@ node tests/web_session_regression.js src/static/app.js
 node tests/account_ui_regression.js src/static/accounts.js
 node tests/billing_ui_regression.js src/static/billing.js src/static/accounts.js
 node tests/git_ui_regression.js
+node tests/workspace_navigation_regression.js
+node tests/delivery_graph_ui_regression.js
 ```
 
 默认与可选覆盖配置均使用 `docker compose ... config --quiet` 验证，避免输出展开配置和密钥路径。覆盖文件缺少任一 OAuth/Stripe/cap 必填项必须失败；可用保留在独立 `.local/` 目录的明确合成 env 验证语法，不能视作真实 OAuth/Stripe 验收。

@@ -152,6 +152,18 @@ function harness(hash='', invitation=false, anonymous=false, oauth=false){
   const failed=harness();await flush();delete failed.replies['/account/teams'];await assert.doesNotReject(()=>failed.window.CoopagentsAccounts.home());assert.equal(failed.element('hub-error').textContent,'Permission denied');assert.equal(failed.element('account-hub').hidden,false);
   // Successful project selection uses the bridge; logout revokes with CSRF then clears it.
   const e=harness();await flush();e.element('hub-projects').children[0].children[3].click();await flush();assert.deepEqual(e.entered,['scoped-private-token']);assert.equal(e.element('workspace-project').value,'p1');e.element('account-logout').click();await flush();assert.equal(e.storage.has('coopagents_web_token'),false);const revoke=e.calls.find(c=>c.path==='/account/logout');assert.equal(revoke.headers['X-Coopagents-CSRF'],'csrf-memory-only');
+  const switcher=harness();await flush();
+  switcher.replies['/account/teams'].push({team_id:'t2',name:'Other',role:'member'});
+  switcher.replies['/account/teams/t2/projects']=[{room_id:'p2',team_id:'t2',name:'Private project',repository:'example/private'}];
+  switcher.replies['/account/teams/t2/members']=[{account_id:'a1',username:'alice',display_name:'Alice',role:'member'}];
+  switcher.replies['/account/projects/p2/select']={web_token:'second-private-token',room_id:'p2'};
+  const available=await switcher.window.CoopagentsAccounts.switcherProjects();
+  assert.equal(JSON.stringify(available.projects.map(p=>p.room_id)),JSON.stringify(['p1','p2']));
+  assert.ok(available.projects.every(p=>!Object.hasOwn(p,'web_token')&&!Object.hasOwn(p,'agent_token')));
+  await switcher.window.CoopagentsAccounts.selectProject('p2');await flush();
+  assert.deepEqual(switcher.entered,['second-private-token']);
+  assert.equal(switcher.element('hub-team').value,'t2');
+  assert.ok(switcher.calls.some(c=>c.path==='/account/projects/p2/select'));
   // Hub navigation exposes one view; same-team refresh keeps it, team changes reset it.
   const views=harness();await flush();
   assert.equal(views.element('hub-view-projects').hidden,false);

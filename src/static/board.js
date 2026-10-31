@@ -48,6 +48,7 @@
     const git=adapters.git?.summarize(t.id,s.git);if(git)add(root,node('p','Git 证据来源','detail-label'),node('p',git));
     (s.git?.workspaces||[]).filter(w=>w.task_id===t.id).forEach(w=>add(root,node('p','本地 Git · '+(w.branch||'detached HEAD')+' · '+(w.head||'无提交')+' · '+date(w.captured_at)+(w.stale?' · 已过期':''),'meta'),node('p',(w.paths||[]).join('、'))));
     (s.git?.deliveries||[]).filter(d=>d.task_id===t.id).forEach(d=>add(root,node('p',(d.source==='github_verified'?'GitHub 验证':'协作记录')+' · '+(d.pr_number?'PR #'+d.pr_number:d.branch||d.commit_sha||'交付')+' · '+d.state+' · '+date(d.sync_at||d.verified_at)+(d.stale?' · 同步过期':''),'meta')));
+    const trace=node('div');root.append(trace);window.CoopagentsDelivery?.render(trace,s.git?.delivery_graph,{taskId:t.id,openTask:adapters.open});
     (s.dependencies||[]).filter(d=>d.source_task_id===t.id||d.target_task_id===t.id).forEach(d=>add(root,node('p','依赖 #'+d.id+' · '+d.status+' · '+(d.need||'')+' · '+(d.source?.title||d.source_task_id)+' → '+(d.target?.title||d.target_task_id),'meta')));
     (s.lifecycle?.handoffs||[]).filter(h=>h.task_id===t.id).forEach(h=>add(root,node('p','交接 · '+h.status+' · '+member(s,h.target_member_id)+' · '+h.summary,'meta')));
     const related=s.requests.filter(r=>r.task_id===t.id);add(root,node('p','关联技术请求','detail-label'));related.forEach(r=>root.append(request(r,s)));

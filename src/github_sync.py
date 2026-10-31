@@ -186,43 +186,46 @@ class GitHubSync:
         if reference_count!=1:
             raise ValidationError('Specify exactly one branch, PR, commit or release')
         with self.db.connect(write=True) as c:
-            principal=self.identity.resolve(c,token)
-            if principal.kind=='web': require_manager(self.identity,c,principal)
-            task = visible_task(c,principal,task_id,manager=principal.kind=='web',session_key=session_key,ownership_epoch=ownership_epoch)
-            conn=c.execute("SELECT * FROM github_connections WHERE room_id=? AND status='active'",(principal.room_id,)).fetchone()
-            if not conn: raise Conflict('GitHub repository is not authorized')
-            if commit_sha:
-                existing=c.execute('SELECT * FROM github_commit_refs WHERE room_id=? AND task_id=? AND commit_sha=?',
-                    (principal.room_id,task_id,commit_sha)).fetchone()
-            elif release_id is not None:
-                existing=c.execute('SELECT * FROM github_release_refs WHERE room_id=? AND task_id=? AND release_id=?',
-                    (principal.room_id,task_id,release_id)).fetchone()
-            else:
-                existing=c.execute('SELECT * FROM github_refs WHERE room_id=? AND task_id=? AND branch=? AND pr_number=?',
-                    (principal.room_id,task_id,branch,pr_number or 0)).fetchone()
-            if existing: return dict(existing)
-            count=c.execute('''SELECT (SELECT COUNT(*) FROM github_refs WHERE room_id=?) +
-                (SELECT COUNT(*) FROM github_commit_refs WHERE room_id=?) +
-                (SELECT COUNT(*) FROM github_release_refs WHERE room_id=?)''',
-                (principal.room_id,principal.room_id,principal.room_id)).fetchone()[0]
-            if count>=MAX_REFS: raise ValidationError('Project GitHub reference limit is 100')
-            if commit_sha:
-                c.execute('''INSERT OR IGNORE INTO github_commit_refs(room_id,task_id,commit_sha,linked_by,linked_at,ownership_epoch)
-                    VALUES(?,?,?,?,?,?)''',(principal.room_id,task_id,commit_sha,principal.member_id,now().isoformat(),task['ownership_epoch']))
-                c.execute('UPDATE github_connections SET revision=revision+1 WHERE room_id=?',(principal.room_id,))
-                return dict(c.execute('SELECT * FROM github_commit_refs WHERE room_id=? AND task_id=? AND commit_sha=?',
-                    (principal.room_id,task_id,commit_sha)).fetchone())
-            if release_id is not None:
-                c.execute('''INSERT OR IGNORE INTO github_release_refs(room_id,task_id,release_id,linked_by,linked_at,ownership_epoch)
-                    VALUES(?,?,?,?,?,?)''',(principal.room_id,task_id,release_id,principal.member_id,now().isoformat(),task['ownership_epoch']))
-                c.execute('UPDATE github_connections SET revision=revision+1 WHERE room_id=?',(principal.room_id,))
-                return dict(c.execute('SELECT * FROM github_release_refs WHERE room_id=? AND task_id=? AND release_id=?',
-                    (principal.room_id,task_id,release_id)).fetchone())
-            c.execute('''INSERT OR IGNORE INTO github_refs(room_id,task_id,branch,pr_number,linked_by,linked_at,ownership_epoch)
-                VALUES(?,?,?,?,?,?,?)''',(principal.room_id,task_id,branch,pr_number or 0,principal.member_id,now().isoformat(),task['ownership_epoch']))
+            return self._associate_in_transaction(c,token,task_id,branch,pr_number,commit_sha,release_id,session_key,ownership_epoch)
+
+    def _associate_in_transaction(self,c,token,task_id,branch='',pr_number=None,commit_sha='',release_id=None,session_key=None,ownership_epoch=None):
+        principal=self.identity.resolve(c,token)
+        if principal.kind=='web': require_manager(self.identity,c,principal)
+        task = visible_task(c,principal,task_id,manager=principal.kind=='web',session_key=session_key,ownership_epoch=ownership_epoch)
+        conn=c.execute("SELECT * FROM github_connections WHERE room_id=? AND status='active'",(principal.room_id,)).fetchone()
+        if not conn: raise Conflict('GitHub repository is not authorized')
+        if commit_sha:
+            existing=c.execute('SELECT * FROM github_commit_refs WHERE room_id=? AND task_id=? AND commit_sha=?',
+                (principal.room_id,task_id,commit_sha)).fetchone()
+        elif release_id is not None:
+            existing=c.execute('SELECT * FROM github_release_refs WHERE room_id=? AND task_id=? AND release_id=?',
+                (principal.room_id,task_id,release_id)).fetchone()
+        else:
+            existing=c.execute('SELECT * FROM github_refs WHERE room_id=? AND task_id=? AND branch=? AND pr_number=?',
+                (principal.room_id,task_id,branch,pr_number or 0)).fetchone()
+        if existing: return dict(existing)
+        count=c.execute('''SELECT (SELECT COUNT(*) FROM github_refs WHERE room_id=?) +
+            (SELECT COUNT(*) FROM github_commit_refs WHERE room_id=?) +
+            (SELECT COUNT(*) FROM github_release_refs WHERE room_id=?)''',
+            (principal.room_id,principal.room_id,principal.room_id)).fetchone()[0]
+        if count>=MAX_REFS: raise ValidationError('Project GitHub reference limit is 100')
+        if commit_sha:
+            c.execute('''INSERT OR IGNORE INTO github_commit_refs(room_id,task_id,commit_sha,linked_by,linked_at,ownership_epoch)
+                VALUES(?,?,?,?,?,?)''',(principal.room_id,task_id,commit_sha,principal.member_id,now().isoformat(),task['ownership_epoch']))
             c.execute('UPDATE github_connections SET revision=revision+1 WHERE room_id=?',(principal.room_id,))
-            return dict(c.execute('SELECT * FROM github_refs WHERE room_id=? AND task_id=? AND branch=? AND pr_number=?',
-                (principal.room_id,task_id,branch,pr_number or 0)).fetchone())
+            return dict(c.execute('SELECT * FROM github_commit_refs WHERE room_id=? AND task_id=? AND commit_sha=?',
+                (principal.room_id,task_id,commit_sha)).fetchone())
+        if release_id is not None:
+            c.execute('''INSERT OR IGNORE INTO github_release_refs(room_id,task_id,release_id,linked_by,linked_at,ownership_epoch)
+                VALUES(?,?,?,?,?,?)''',(principal.room_id,task_id,release_id,principal.member_id,now().isoformat(),task['ownership_epoch']))
+            c.execute('UPDATE github_connections SET revision=revision+1 WHERE room_id=?',(principal.room_id,))
+            return dict(c.execute('SELECT * FROM github_release_refs WHERE room_id=? AND task_id=? AND release_id=?',
+                (principal.room_id,task_id,release_id)).fetchone())
+        c.execute('''INSERT OR IGNORE INTO github_refs(room_id,task_id,branch,pr_number,linked_by,linked_at,ownership_epoch)
+            VALUES(?,?,?,?,?,?,?)''',(principal.room_id,task_id,branch,pr_number or 0,principal.member_id,now().isoformat(),task['ownership_epoch']))
+        c.execute('UPDATE github_connections SET revision=revision+1 WHERE room_id=?',(principal.room_id,))
+        return dict(c.execute('SELECT * FROM github_refs WHERE room_id=? AND task_id=? AND branch=? AND pr_number=?',
+            (principal.room_id,task_id,branch,pr_number or 0)).fetchone())
 
     def refresh(self,token):
         self._enabled()

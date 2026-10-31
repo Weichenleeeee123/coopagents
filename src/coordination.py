@@ -8,6 +8,8 @@ from .tasks import TaskStore
 from .activity import ActivityStore
 from .messages import MessageStore
 from .contracts import ContractStore
+from .context import ContextStore, QUERY_SCHEMA
+from .capabilities import CapabilityStore
 from .protocol import fields, validate
 
 
@@ -26,6 +28,8 @@ class CoordinationService:
         self.activity = ActivityStore(self.identity)
         self.messages = MessageStore(self.identity)
         self.contracts = ContractStore(self.identity)
+        self.context = ContextStore()
+        self.capability_store = CapabilityStore(self.identity)
         from .checkpoints import CheckpointStore
         self.checkpoints = CheckpointStore(self.identity)
         from .repositories import RepositoryStore
@@ -33,11 +37,21 @@ class CoordinationService:
         from .github_app import GitHubApp
         from .github_sync import GitHubSync
         self.github = GitHubSync(self.identity, self.repositories, github_app or GitHubApp())
+        from .delivery import DeliveryStore
+        self.delivery = DeliveryStore(self)
         from .events import EventStore
         self.change_events = EventStore(self.identity)
         from .wake_digest import WakeDigest
         self.wake = WakeDigest(self.identity)
         self.operations = {
+            'record_capability': ('web', self.capability_store.record, {
+                'harness': (str, True, None), 'version': (str, True, None), 'platform': (str, True, None),
+                'capability': (str, True, None), 'status': (str, True, None), 'evidence': (str, True, None),
+                'constraints': (str, False, '')}),
+            'read_deliveries': ('any', self.read_deliveries, fields('', {'task_id':None, 'kind':'', 'value':''})),
+            'suggest_delivery': ('agent', self.delivery.suggest, {'task_id':(int,True,None),'request_key':(str,True,None),'branch':(str,False,''),'pr_number':(int,False,None),'commit_sha':(str,False,''),'release_id':(int,False,None),'evidence':(str,False,''),'session_key':(str,False,None),'ownership_epoch':(int,False,None)}),
+            'decide_delivery': ('web', self.delivery.decide, {'suggestion_id':(int,True,None),'decision':(str,True,None)}),
+            'read_capabilities': ('any', self.read_capabilities, fields()),
             'wake_digest': ('agent', self.wake.digest, fields()),
             'checkpoint': ('agent', self.checkpoints.checkpoint, fields('session_key tool event', {'task_id': None, 'ownership_epoch': None})),
             'diagnostic_start': ('agent', self.checkpoints.diagnostic_start, fields('challenge')),
@@ -52,7 +66,7 @@ class CoordinationService:
             'connect_agent': ('web', self.identity.connect_agent, fields()),
             'create_task': ('web', self.tasks.create_task, fields('intent_key title scope')),
             'claim_task': ('agent', self.tasks.claim_task, fields('task_id', {'session_key': None})),
-            'register_session': ('agent', self.activity.register_session, fields('session_key tool repository branch', {'task_id': None, 'ownership_epoch': None})),
+            'register_session': ('agent', self.activity.register_session, {**fields('session_key tool repository branch', {'task_id': None, 'ownership_epoch': None, 'harness': None, 'harness_version': None, 'platform': None}), 'capabilities': (dict, False, None)}),
             'report_progress': ('agent', self.activity.report_progress, fields('task_id state summary', {'evidence': '', 'session_key': None, 'ownership_epoch': None})),
             'send_request': ('agent', self.messages.send_request, fields('request_key context_version body', {'receiver_member_id': None, 'task_id': None})),
             'read_inbox': ('agent', self.messages.read_inbox, fields('', {'after_id': 0, 'limit': 50})),
@@ -69,6 +83,7 @@ class CoordinationService:
             'link_delivery': ('any', self.github.associate, {'task_id': (int, True, None),
                 'branch': (str, False, ''), 'pr_number': (int, False, None), 'commit_sha': (str, False, ''),
                 'release_id': (int, False, None)}),
+            'read_context': ('any', self.read_context, QUERY_SCHEMA),
         }
         for name, schema in dependency_schemas(fields).items():
             self.operations[name] = ('any', getattr(self.dependencies, name), schema)
@@ -91,9 +106,20 @@ class CoordinationService:
         self.reads['lifecycle'] = self.lifecycle.snapshot
         self.reads['dependencies'] = self.dependencies.snapshot
 
+    def read_deliveries(self, token, task_id=None, kind='', value=''):
+        return self.delivery.read(token, task_id=task_id, kind=kind, value=value)
+
+    def read_capabilities(self, token):
+        principal = self.identity.authenticate(token)
+        snapshot = self._base_snapshot(token, web=principal.kind == 'web')
+        snapshot['capabilities'] = self.activity.list_capabilities(token)
+        snapshot['capability_records'], snapshot['capability_records_truncated'] = self.capability_store.evidence(token)
+        return self.capability_store.project(snapshot)
+
     def git_snapshot(self, token):
         result = self.repositories.snapshot(token)
         result.update(self.github.snapshot(token))
+        result['delivery_graph'] = self.delivery.read(token)
         result['github_configured'] = self.github.app.enabled
         return result
 
@@ -105,10 +131,24 @@ class CoordinationService:
     def me(self, token):
         return {'me': asdict(self.identity.authenticate(token)), 'room': self.identity.room_info(token)}
 
-    def snapshot(self, token, *, web=True):
+    def _base_snapshot(self, token, *, web=True):
         self.identity.authenticate(token, required_kind='web' if web else 'agent')
         result = self.me(token)
         result.update({name: read(token) for name, read in self.reads.items()})
+        result['assets'] = self.assets.list_assets(token)
+        return result
+
+    def read_context(self, token, task_id=None, member_id=None, limit=50, **filters):
+        principal = self.identity.authenticate(token)
+        return self.context.project(self._base_snapshot(token, web=principal.kind == 'web'),
+                                    task_id=task_id, member_id=member_id, limit=limit, **filters)
+
+    def snapshot(self, token, *, web=True):
+        result = self._base_snapshot(token, web=web)
+        result['shared_context'] = self.context.project(result)
+        source = dict(result, capabilities=self.activity.list_capabilities(token))
+        source['capability_records'], source['capability_records_truncated'] = self.capability_store.evidence(token)
+        result['capabilities'] = self.capability_store.project(source)
         from .project_activity import project_activity
         result['activity'] = project_activity(result)
         result['server_time'] = datetime.now(timezone.utc).isoformat()

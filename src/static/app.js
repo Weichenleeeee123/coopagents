@@ -11,10 +11,10 @@ const gitUI = () => typeof window!=='undefined' ? window.CoopagentsGit : null;
 const dependencyUI = () => typeof window!=='undefined' ? window.CoopagentsDependencies : null;
 const lifecycleUI = () => typeof window!=='undefined' ? window.CoopagentsTaskLifecycle : null;
 const collaborationUI = () => typeof window!=='undefined' ? window.CoopagentsCollaboration : null;
-function gitContext(){const epoch=generation;return {api,sync,me:snapshot.me,memberName,origin:location.origin,isCurrent:()=>epoch===generation};}
+function gitContext(){const epoch=generation;return {api,sync,me:snapshot.me,memberName,openTask:openTaskDetail,origin:location.origin,isCurrent:()=>epoch===generation};}
 function assetContext(){const epoch=generation;return {api,roomId:snapshot.me.room_id,isCurrent:()=>epoch===generation};}
 const states = {cancelled:'已取消',open:'待认领', claimed:'已认领', working:'推进中', blocked:'受阻', local_done:'本地完成', pushed:'已推送', pr_open:'PR 已打开', merged:'已合并', approved:'已批准', rejected:'已拒绝'};
-const views = {overview:['01 / TEAM FIELD','团队现场','理解每个人正在推进的工作。'],tasks:['TEAM OPERATIONS / 任务协作','任务看板','每一项工作，都有清晰的去向。'],requests:['03 / TECHNICAL REQUESTS','技术请求','让依赖有去处，让答复有记录。'],contracts:['04 / SHARED AGREEMENTS','公共约定','把技术共识变成明确生效的版本。'],repository:['05 / REPOSITORY','仓库接入','让实际开发和远端交付成为可追溯的协作证据。']};
+const views = {overview:['01 / OVERVIEW','概览','项目状况与需要留意的事项。'],tasks:['02 / TASKS','任务','谁在做什么，当前进展如何。'],requests:['03 / COLLABORATION','协作','问题、答复与处理状态各自独立。'],contracts:['04 / SHARED CONTEXT','共享上下文','约定、共享文件与可引用记录。'],delivery:['05 / DELIVERY','交付','从 Git 交付对象查找关联任务。'],members:['06 / MEMBERS','成员与 agent','队友、工具与能力状态。'],repository:['07 / PROJECT SETTINGS','项目设置','连接与项目级配置。'],activity:['项目活动','项目活动','查看有来源的结构化项目事件。']};
 const text = (tag, value, cls) => { const e = document.createElement(tag); e.textContent = value == null ? '' : String(value); if(cls) e.className = cls; return e; };
 const add = (parent, ...children) => { children.forEach(c => parent.append(c)); return parent; };
 const button = (label, action, cls) => { const b = text('button', label, cls); b.type = 'button'; b.addEventListener('click', action); return b; };
@@ -24,13 +24,18 @@ const taskName = id => snapshot?.tasks.find(t => t.id === id)?.title || '任务 
 const empty = (target, message) => target.append(text('p',message,'empty'));
 const badge = value => text('span',states[value] || value,'badge'+(Object.hasOwn(states,value)?' badge-'+value:''));
 const detail = (title, children) => add(document.createElement('details'),text('summary',title),...children);
-function setView(view) {
+function setView(view, options={}) {
+  if(!views[view])return;
   for(const key of Object.keys(views)) $('view-'+key).hidden = key !== view;
   document.querySelectorAll('[data-view]').forEach(b => { if(b.dataset.view === view) b.setAttribute('aria-current','page'); else b.removeAttribute('aria-current'); });
   [$('view-kicker').textContent,$('view-title').textContent,$('view-description').textContent] = views[view];
   if(!$('workspace').hidden)document.title=views[view][1]+' · Coopagents';
+  if(options.push!==false&&location.hash!=='#workspace='+view)history.pushState({workspaceView:view},'', '#workspace='+view);
+  else if(options.replace&&location.hash!=='#workspace='+view)history.replaceState({workspaceView:view},'', '#workspace='+view);
 }
 document.querySelectorAll('[data-view]').forEach(b => b.addEventListener('click',() => setView(b.dataset.view)));
+const routeView=()=>/^#workspace=(overview|tasks|requests|contracts|delivery|members|repository|activity)$/.exec(location.hash)?.[1];
+if(typeof window!=='undefined')window.addEventListener('popstate',()=>{const view=routeView();if(view)setView(view,{push:false});});
 const tabs = Array.from(document.querySelectorAll('[data-entry]'));
 function entryTab(b) { if(b.hidden)return;tabs.forEach(t => { const active=t===b; t.setAttribute('aria-selected',String(active)); t.tabIndex=active?0:-1; $('form-'+t.dataset.entry).hidden=!active; }); }
 tabs.forEach((b,i) => { b.tabIndex=i? -1:0; b.addEventListener('click',() => entryTab(b)); b.addEventListener('keydown',e => { if(['ArrowLeft','ArrowRight','Home','End'].includes(e.key)){ e.preventDefault(); const visible=tabs.filter(t=>!t.hidden),current=visible.indexOf(b); const next=e.key==='Home'?0:e.key==='End'?visible.length-1:(current+(e.key==='ArrowRight'?1:visible.length-1))%visible.length; entryTab(visible[next]); visible[next].focus(); } }); });
@@ -59,7 +64,13 @@ function logout(message='') {
   collaborationUI()?.clear(); lifecycleUI()?.clear(); dependencyUI()?.clear();
   renderSignature=''; closePrivate(); closeTaskDetail(); $('task-search').value=''; $('task-owner').value=''; if($('task-status'))$('task-status').value='active'; $('workspace').hidden=true; $('login').hidden=false; $('login-error').textContent=message;document.title='Coopagents · 同频';
   $('board-empty').hidden=true;
-  ['members','tasks','requests','contracts','overlaps','summary','board-summary'].forEach(id => $(id).replaceChildren());
+  if(typeof window!=='undefined'){
+    window.CoopagentsSharedContext?.render($('shared-context'),null);
+    window.CoopagentsCapabilities?.render($('capability-discovery'),null);
+    window.CoopagentsDelivery?.render($('delivery-traceability'),null);
+    window.CoopagentsDeliveryGraph?.render($('delivery-graph'),null);
+  }
+  ['capability-discovery','tasks','requests','contracts','overlaps','summary','board-summary'].forEach(id => $(id).replaceChildren());
   ['room-name','room-repository','identity','network-error','action-error','board-count'].forEach(id=>$(id).textContent='');
   $('form-restore').reset(); $('form-join').reset(); $('form-create').reset(); $('task-form').reset();
 }
@@ -83,18 +94,24 @@ async function sync() {
 }
 // Keep forms, selection and keyboard focus intact when the snapshot is unchanged.
 let renderSignature='';
+let renderedRoom='';
 function render() {
   const signature=JSON.stringify({...snapshot,server_time:null}); if(signature===renderSignature) return; renderSignature=signature;
   // Defer dynamic lists while a user edits a receiver or interacts with a record.
-  if((['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName) && ['requests','contracts','tasks','task-detail','git-connection','collaboration-status'].some(id => $(id)?.contains(document.activeElement))) || !window.getSelection().isCollapsed){ renderSignature=''; return; }
+  if((['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName) && ['requests','contracts','tasks','task-detail','git-connection','collaboration-status','shared-context','project-assets','overview-recent-activity','delivery-graph','capability-discovery'].some(id => $(id)?.contains(document.activeElement))) || !window.getSelection().isCollapsed){ renderSignature=''; return; }
   const active=document.activeElement, activeRecord=active?.closest('.record,.task-card');
   const focus=activeRecord ? {record:activeRecord.id,tag:active.tagName,label:active.textContent} : null;
   const expanded=Array.from(document.querySelectorAll('.record details[open]')).map(d=>({record:d.closest('.record').id,label:d.querySelector('summary').textContent}));
   $('room-name').textContent=snapshot.room.name; $('room-repository').textContent=snapshot.git?.binding?.repository || snapshot.room.repository || '未声明仓库'; $('identity').textContent=snapshot.me.display_name+' / '+(snapshot.me.role==='owner'?'项目创建者':'项目成员'); $('invite-button').hidden=accountManaged || snapshot.me.role!=='owner';
-  renderOverview(); renderTasks(); renderRequests(); renderContracts();
+  const projectName=$('workspace-project-name');if(projectName)projectName.textContent=snapshot.room.name;
+  if(renderedRoom&&renderedRoom!==snapshot.me.room_id)contextTab='agreements';renderedRoom=snapshot.me.room_id;
+  renderOverview(); renderTasks(); renderRequests(); renderContracts();renderContractsTabs();
+  renderCapabilities(); renderDeliveryTraceability();
   gitUI()?.renderPanel($('git-connection'),snapshot,gitContext());
+  window.CoopagentsProjectActivity?.render($('overview-recent-activity'),snapshot.activity,{openTask:openTaskDetail,compact:true,maxItems:4,viewAll:()=>setView('activity')});
+  const activityLink=$('overview-recent-activity-link');if(activityLink)activityLink.onclick=()=>setView('activity');
+  const recentLink=$('overview-recent-activity-link');if(recentLink)recentLink.onclick=()=>setView('activity');
   window.CoopagentsProjectActivity?.render($('project-activity'),snapshot.activity,{openTask:openTaskDetail});
-  assetsUI()?.render($('project-assets'),assetContext());
   collaborationUI()?.renderPanel($('collaboration-status'),snapshot,gitContext());
   expanded.forEach(item=>{ const record=$(item.record); record?.querySelectorAll('details').forEach(d=>{if(d.querySelector('summary').textContent===item.label)d.open=true;}); });
   if(focus)restoreRecordFocus(focus);
@@ -110,20 +127,68 @@ function renderOverview(){
     if(item.task_id){setView('tasks');openTaskDetail(item.task_id);}
     else{setView(item.kind==='contract'?'contracts':'requests');$(item.kind+'-'+item.id)?.scrollIntoView({block:'center'});}
   }});
-  $('summary').replaceChildren(); for(const [n,label] of [[snapshot.members.length,'团队成员'],[snapshot.tasks.length,'声明任务'],[snapshot.requests.filter(r=>!r.resolved_at&&(!r.dependency_id||r.dependency_route_state==='current')).length,'待解决请求']]) add($('summary'),add(text('div','','metric'),text('strong',n),text('span',label)));
-  $('members').replaceChildren(); snapshot.members.forEach(m => {
-    const row=text('article','','member-row'), profile=add(text('div'),text('h3',m.display_name),text('p',m.role==='owner'?'团队创建者':'团队成员','meta')), activity=text('div');
-    const sessions=snapshot.sessions.filter(s=>s.member_id===m.member_id), tasks=snapshot.tasks.filter(t=>t.owner_member_id===m.member_id);
-    if(!sessions.length) activity.append(text('p','尚无 agent 会话登记','muted'));
-    sessions.forEach(s => add(activity,add(text('div','','session'),badge(s.tool),text('span',s.branch || '未声明分支'),text('p',(s.repository || '未声明仓库')+' · 会话 '+s.session_key,'meta'),text('p',(s.task_id?'任务：'+taskName(s.task_id)+' · ':'')+'最后登记 '+date(s.updated_at),'meta'))));
-    tasks.forEach(t => { const p=snapshot.progress.find(p=>p.task_id===t.id); const line=add(text('p'),badge(p?.state||t.state),text('span',t.title)); if(p) add(line,text('span',' · agent 自述 · '+date(p.updated_at),'meta')); add(activity,line); if(p) add(activity,text('p',p.summary,'progress-summary')); });
-    add($('members'),add(row,profile,activity));
-  });
-  $('overlaps').replaceChildren(); if(!snapshot.overlaps.length) empty($('overlaps'),'当前没有声明范围交叠。');
-  const reasons={'Declared scopes are equal':'两项任务声明了相同的工作范围。','One declared scope is a slash-segment prefix of the other':'一项任务的声明范围包含另一项的子路径。'};
-  snapshot.overlaps.forEach(o => add($('overlaps'),add(text('article','','record'),text('h3',o.task_ids.map(taskName).join(' × ')),text('p',o.scopes.join(' / '),'meta'),text('p',reasons[o.reason] || o.reason))));
+  if(!$('summary'))return;
+  $('summary').replaceChildren(); for(const [n,label] of [[snapshot.members.length,'项目成员'],[snapshot.tasks.length,'声明任务'],[snapshot.requests.filter(r=>!r.resolved_at&&(!r.dependency_id||r.dependency_route_state==='current')).length,'待解决请求'],[snapshot.git?.delivery_graph?.items?.length||0,'交付对象']]) add($('summary'),add(text('div','','metric'),text('strong',n),text('span',label)));
+  if($('overlaps')){$('overlaps').replaceChildren();if(!snapshot.overlaps.length)empty($('overlaps'),'当前没有声明范围交叠。');const reasons={'Declared scopes are equal':'两项任务声明了相同的工作范围。','One declared scope is a slash-segment prefix of the other':'一项任务的声明范围包含另一项的子路径。'};snapshot.overlaps.forEach(o=>add($('overlaps'),add(text('article','','record'),text('h3',o.task_ids.map(taskName).join(' × ')),text('p',o.scopes.join(' / '),'meta'),text('p',reasons[o.reason]||o.reason))));}
   if($('git-overlaps')){$('git-overlaps').replaceChildren();gitUI()?.renderOverlaps($('git-overlaps'),snapshot.git,taskName);if(!snapshot.git?.overlaps?.length)empty($('git-overlaps'),'当前没有新鲜观测中的实际路径重叠。');}
 }
+function renderCapabilities(){window.CoopagentsCapabilities?.render($('capability-discovery'),snapshot.capabilities,{roomId:snapshot.me.room_id,openTask:openTaskDetail,showMatrix:false});}
+
+function renderSharedContext(){
+  const context=gitContext();window.CoopagentsSharedContext?.render($('shared-context'),snapshot.shared_context,
+    {...context,roomId:snapshot.me.room_id,tasks:snapshot.tasks,members:snapshot.members,openTask:openTaskDetail,
+     query:filters=>api('/api/operations/read_context',filters)});
+}
+
+function openDeliveryNode(node){
+  if(!node)return;
+  const container=$('task-detail');if(!container)return;
+  activeTaskId=null;taskOpener=document.activeElement;container.replaceChildren();
+  const kind={branch:'分支',commit:'Commit',pr:'Pull request',release:'Release'}[node.kind]||'交付对象';
+  add(container,text('p',kind,'eyebrow'),text('h2',node.label||node.value),badge(node.state||'observed'),text('p',node.title||'','detail-value'),text('p','来源：'+(node.source||'交付关联'),'meta'),text('p','分支：'+(node.branch||'未声明'),'detail-value'));
+  add(container,text('p','关联任务','detail-label'));
+  if(!node.task_ids?.length)empty(container,'尚无关联任务。');
+  (node.task_ids||[]).forEach(id=>container.append(button('任务：'+taskName(id),()=>{closeTaskDetail();openTaskDetail(id);},'detail-link')));
+  const evidence=[...new Set((node.associations||[]).map(a=>a.evidence).filter(Boolean))];if(evidence.length)add(container,text('p','证据','detail-label'),text('p',evidence.join('\n'),'detail-value'));
+  if(!$('task-dialog').open)$('task-dialog').showModal();
+}
+function renderDeliveryTraceability(){window.CoopagentsDeliveryGraph?.render($('delivery-graph'),snapshot.git?.delivery_graph,{...gitContext(),openTask:openTaskDetail,openNode:openDeliveryNode,taskName,canManage:!!snapshot.git?.can_manage,roomId:snapshot.me.room_id,git:snapshot.git});}
+
+let contextTab='agreements';
+function renderContractsTabs(){
+  const sections=[['agreements',$('contracts')],['files',$('project-assets')],['records',$('shared-context')]];
+  for(const [tab,target] of sections)if(target)target.hidden=contextTab!==tab;
+  document.querySelectorAll('[data-context-tab]').forEach(button=>{if(button.dataset.contextTab===contextTab)button.setAttribute('aria-current','page');else button.removeAttribute('aria-current');});
+  if(contextTab==='files')assetsUI()?.render($('project-assets'),assetContext());
+  if(contextTab==='records')renderSharedContext();
+}
+document.querySelectorAll('[data-context-tab]').forEach(button=>button.addEventListener('click',()=>{contextTab=button.dataset.contextTab;renderContractsTabs();}));
+
+async function openWorkspaceProjectSwitcher(){
+  const accounts=window.CoopagentsAccounts;if(!accountManaged||!accounts?.switcherProjects)return;
+  const opener=$('account-switchers'),dialog=$('workspace-project-dialog'),list=$('workspace-project-list');
+  list.replaceChildren(text('p','正在读取可访问项目…','muted'));
+  if(!dialog.open)dialog.showModal();
+  try{
+    const data=await accounts.switcherProjects();if(!dialog.open)return;
+    list.replaceChildren();let team='';
+    for(const project of data.projects||[]){
+      if(project.team_name&&project.team_name!==team){team=project.team_name;list.append(text('p',team,'workspace-project-group'));}
+      const row=button('',async()=>{if(project.room_id===snapshot?.me?.room_id){dialog.close();return;}row.disabled=true;try{dialog.close();await accounts.selectProject(project.room_id);}catch(error){$('workspace-switch-error').textContent=error.message;row.disabled=false;dialog.showModal();}},'workspace-project-option');
+      row.dataset.projectId=project.room_id;row.setAttribute('role','option');row.setAttribute('aria-selected',String(project.room_id===snapshot?.me?.room_id));
+      add(row,text('span',(project.name||'P').slice(0,1),'project-switch-mark'),add(text('span','','workspace-project-detail'),text('strong',project.name),text('small',project.repository||'未声明仓库','meta')),text('span',project.room_id===snapshot?.me?.room_id?'当前':'›',project.room_id===snapshot?.me?.room_id?'project-current':'project-arrow'));list.append(row);
+    }
+    if(!list.children.length)list.append(text('p','当前账号没有可访问的项目。','empty'));
+    $('workspace-team').replaceChildren();for(const item of data.teams||[]){const option=text('option',item.name);option.value=item.team_id;$('workspace-team').append(option);} $('workspace-team').value=data.team_id||'';
+    $('workspace-switch-error').textContent='';
+  }catch(error){if(dialog.open){list.replaceChildren(text('p',error.message,'error'));}}
+  $('close-project-switcher').focus();
+}
+$('account-switchers').addEventListener('click',openWorkspaceProjectSwitcher);
+$('close-project-switcher').addEventListener('click',()=>$('workspace-project-dialog').close());
+$('workspace-project-dialog').addEventListener('close',()=>{$('workspace-switch-error').textContent='';if($('account-switchers').isConnected)$('account-switchers').focus();});
+$('workspace-team').addEventListener('change',()=>{if($('workspace-project-dialog').open)$('workspace-project-dialog').close();});
+
 function taskLink(id) { return button('任务：'+taskName(id),()=>{setView('tasks');openTaskDetail(id);},'link-button'); }
 const taskColumns = boardUI()?.columns || [
   ['open','待认领','明确意图，等待接手'],
@@ -290,12 +355,27 @@ $('copy-skill-preview').addEventListener('click',()=>copy(connectionPrompt(snaps
 $('copy-url').addEventListener('click',()=>copy($('mcp-url').value)); $('connection-tool').addEventListener('change',()=>{clearPrivate();configTemplate();}); $('copy-template').addEventListener('click',()=>copy($('config-template').value));
 $('invite-button').addEventListener('click',e=>{const epoch=generation;perform(e.currentTarget,async()=>{const result=await api('/api/invites',{});if(epoch===generation)showPrivate('邀请一位团队成员',result);});});
 $('rotate-agent').addEventListener('click',async e=>{ const b=e.currentTarget; b.disabled=true;const epoch=generation;try{const result=await api('/api/agent-token',{});if(epoch===generation){showPrivate('保存新的 agent 令牌',result);$('dialog-status').textContent='旧 agent 令牌已立即失效。请更新配置并重建连接。';}}catch(error){if(epoch===generation)$('dialog-status').textContent=error.message;}finally{b.disabled=false;} });
-setView('tasks');
+setView(routeView()||'tasks',{push:false});
 if(typeof window!=='undefined') window.CoopagentsProject={
-  enter(credential){logout();accountManaged=true;sessionStorage.setItem('coopagents_account_project','1');enter(credential);},
+  enter(credential){logout();accountManaged=true;sessionStorage.setItem('coopagents_account_project','1');enter(credential);setView('overview',{push:false,replace:true});},
   clear(){logout();accountManaged=false;},
   private:showPrivate,
-  managed(){return accountManaged;}
+  managed(){return accountManaged;},
+  updateSwitcher(data){
+    const button=$('account-switchers'),dialog=$('workspace-project-dialog'),list=$('workspace-project-list');
+    if(!button||!dialog||!list||!data)return;
+    button.hidden=!accountManaged;
+    const current=data.projects?.find(p=>p.room_id===data.current_room_id);
+    $('workspace-switcher-current').textContent=current?.name||'选择项目';
+    $('workspace-switcher-team').textContent=data.team?.name||current?.team_name||'';
+    list.replaceChildren();
+    for(const p of data.projects||[]){
+      const row=document.createElement('button');row.type='button';row.className='workspace-project-option';row.setAttribute('data-project-id',p.room_id);row.setAttribute('aria-selected',String(p.room_id===data.current_room_id));
+      const mark=text('span',(p.name||'P').slice(0,1),'project-switch-mark'),copy=text('span','', 'workspace-project-detail');copy.append(text('strong',p.name||'未命名项目'),text('small',p.repository||'未声明仓库','meta'));
+      row.append(mark,copy,text('span',p.room_id===data.current_room_id?'当前':'›',p.room_id===data.current_room_id?'project-current':'project-arrow'));list.append(row);
+    }
+    if(!$('workspace-project-list').children.length)list.append(text('p','当前团队没有已授权项目。','empty'));
+  }
 };
 // Account-managed project credentials are reissued only after validating the cookie.
 if(token && !sessionStorage.getItem('coopagents_account_project')) enter(token);

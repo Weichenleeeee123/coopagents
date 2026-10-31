@@ -79,7 +79,7 @@ def board_routes(service, source_token, control_origin, control_token, room_id):
     if access._source().room_id != room_id:
         raise AccessDenied('Board space does not match host')
     static = Path(__file__).parent / 'static'
-    allowed = {'board.js', 'realtime_client.js', 'space_board.js', 'styles.css', 'git.js', 'project_activity.js', 'dependencies.js'}
+    allowed = {'board.js', 'realtime_client.js', 'space_board.js', 'styles.css', 'git.js', 'project_activity.js', 'dependencies.js', 'capability_discovery.js', 'delivery.js', 'delivery_graph.js', 'shared_context.js'}
     headers = {'Content-Security-Policy': "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'",
                'Referrer-Policy': 'no-referrer', 'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'no-store'}
 
@@ -102,6 +102,11 @@ def board_routes(service, source_token, control_origin, control_token, room_id):
                     raise ValidationError('Expected board ticket')
                 token = await run_in_threadpool(access.consume, data['ticket'])
                 return JSONResponse({'token': token, 'expires_in': 3600}, headers=headers)
+            if request.url.path == '/board/context':
+                from .context import query_arguments
+                access.authenticate(bearer(request))
+                result = await run_in_threadpool(service.read_context, source_token, **query_arguments(request.query_params))
+                return JSONResponse(result, headers=headers)
             if request.url.path == '/board/snapshot':
                 result = await run_in_threadpool(access.snapshot, bearer(request))
                 return JSONResponse(result, headers=headers)
@@ -118,4 +123,4 @@ def board_routes(service, source_token, control_origin, control_token, room_id):
 
     return [Route('/board', endpoint), Route('/board/static/{name}', endpoint),
             Route('/board/open', endpoint, methods=['POST']), Route('/board/session', endpoint, methods=['POST']),
-            Route('/board/snapshot', endpoint), events_route(access, base_url=control_origin)]
+            Route('/board/context', endpoint), Route('/board/snapshot', endpoint), events_route(access, base_url=control_origin)]

@@ -118,3 +118,16 @@ class BoardTests(unittest.TestCase):
                 ws.send_json({'token': self.owner['agent_token'], 'after_id': 0})
                 ws.receive_json()
         self.assertEqual(error.exception.code, 4401)
+
+    def test_readonly_context_filters_and_private_scope(self):
+        token=self.session();headers={'Authorization':'Bearer '+token}
+        task=self.service.tasks.create_task(self.owner['web_token'],'query','Query context','src/api')
+        self.service.messages.send_request(self.owner['agent_token'],'peek',self.owner['member_id'],task['id'],1,'Shared request')
+        response=self.client.get('/board/context?scope=src/api&limit=1',headers=headers)
+        self.assertEqual(response.status_code,200,response.text)
+        self.assertEqual(response.json()['filters']['scope'],'src/api')
+        self.assertIsNone(self.service.messages.list_requests(self.owner['agent_token'])[0]['read_at'])
+        self.assertEqual(self.client.get('/board/context').status_code,401)
+        self.assertEqual(self.client.get('/board/context?prompt=private',headers=headers).status_code,400)
+        self.assertEqual(self.client.get('/board/static/shared_context.js').status_code,200)
+        self.assertEqual(self.client.post('/board/context',json={},headers=headers).status_code,405)

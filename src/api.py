@@ -86,7 +86,7 @@ class LocalBoundary:
         origins = [v.decode('latin-1') for k, v in headers if k == b'origin']
         if origins and (len(origins) != 1 or origins[0] != (self.origin or scope['scheme'] + '://' + host)):
             rejection = ('Origin not accepted', 403)
-        if scope.get('query_string') and scope['path'] != '/api/inbox' and not (scope['path'] in ('/account/oauth/github/callback','/api/git/github/callback') and scope['method'] == 'GET'):
+        if scope.get('query_string') and scope['path'] not in ('/api/inbox', '/api/context', '/api/deliveries', '/board/context') and not (scope['path'] in ('/account/oauth/github/callback','/api/git/github/callback') and scope['method'] == 'GET'):
             rejection = ('Query parameters not accepted', 400)
         if rejection:
             # Reply after small pending bodies arrive, avoiding Windows TCP reset.
@@ -274,6 +274,9 @@ def create_app(database_path='.local/coopagents.sqlite3', *, base_url=None, publ
                     result = service.repositories.get_binding(token)
                 elif name == 'git_observation':
                     result = service.repositories.read_observation(token,request.path_params['observation_id'])
+                elif name == 'context':
+                    from .context import query_arguments
+                    result = service.read_context(token, **query_arguments(request.query_params))
                 elif name == 'inbox':
                     if any(k not in ('after_id', 'limit') or len(request.query_params.getlist(k)) != 1 for k in request.query_params):
                         raise ValidationError('Unsupported query parameter')
@@ -375,7 +378,7 @@ def create_app(database_path='.local/coopagents.sqlite3', *, base_url=None, publ
                         'Content-Security-Policy': WEB_CSP})
 
     async def web_asset(request):
-        assets = {'/': ('index.html', 'text/html'),
+        assets = {'/static/shared_context.js': ('shared_context.js', 'text/javascript'), '/static/delivery.js': ('delivery.js', 'text/javascript'), '/static/delivery_graph.js': ('delivery_graph.js', 'text/javascript'), '/static/capability_discovery.js': ('capability_discovery.js', 'text/javascript'), '/': ('index.html', 'text/html'),
                   '/static/styles.css': ('styles.css', 'text/css'),
                   '/static/app.js': ('app.js', 'text/javascript'),
                   '/static/board.js': ('board.js', 'text/javascript'),
@@ -396,11 +399,12 @@ def create_app(database_path='.local/coopagents.sqlite3', *, base_url=None, publ
         resource, mime = assets[request.url.path]
         return Response(files('coopagents').joinpath('static', resource).read_bytes(), media_type=mime, headers=headers)
 
-    routes = [Route(path, web_asset, methods=['GET']) for path in ('/', '/static/styles.css', '/static/app.js', '/static/board.js', '/static/realtime_client.js', '/static/git.js', '/static/project_activity.js', '/static/project_assets.js', '/static/collaboration.js', '/static/task_lifecycle.js', '/static/dependencies.js', '/static/accounts.js', '/static/invitations.js', '/static/billing.js', '/static/icon.png', '/favicon.ico')]
+    routes = [Route(path, web_asset, methods=['GET']) for path in ('/static/shared_context.js', '/static/delivery.js', '/static/delivery_graph.js', '/static/capability_discovery.js', '/', '/static/styles.css', '/static/app.js', '/static/board.js', '/static/realtime_client.js', '/static/git.js', '/static/project_activity.js', '/static/project_assets.js', '/static/collaboration.js', '/static/task_lifecycle.js', '/static/dependencies.js', '/static/accounts.js', '/static/invitations.js', '/static/billing.js', '/static/icon.png', '/favicon.ico')]
     routes += [Route('/api/assets', asset_list, methods=['GET']), Route('/api/assets', asset_upload, methods=['POST']),
                Route('/api/assets/{asset_id:str}', asset_read, methods=['GET'])]
     routes += [route('/health', ['GET']), route('/ready', ['GET']), route('/api/rooms', ['POST'], operation='create_room'), route('/api/join', ['POST'], operation='join'),
               route('/api/me', ['GET'], read_name='me'), route('/api/snapshot', ['GET'], read_name='snapshot'),
+              route('/api/context', ['GET'], read_name='context'),
               route('/api/invites', ['POST'], operation='invite'), route('/api/agent-token', ['POST'], operation='rotate_agent'),
               route('/api/inbox', ['GET'], read_name='inbox'),
               route('/api/agent-connect', ['POST'], operation='connect_agent'),
@@ -442,6 +446,7 @@ def create_app(database_path='.local/coopagents.sqlite3', *, base_url=None, publ
     from .coordination_http import coordination_routes
     routes.extend(coordination_routes(service, base_url=base_url, public_url=origin))
     routes.append(Mount('/', app=authenticated_mcp))
+    from .space_board import BoardAccess
     app = Starlette(routes=routes, lifespan=lifespan)
     app.state.service = service
     app.state.billing_worker = billing_worker

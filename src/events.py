@@ -25,7 +25,8 @@ class EventStore:
         """Install after stores initialize; never backfill historical business rows."""
         direct = {
             'tasks': ('tasks', 'id'), 'progress': ('progress', 'task_id'),
-            'sessions': ('sessions', 'id'), 'members': ('identity', 'id'),
+            'sessions': ('sessions', 'id'), 'harness_sessions': ('sessions', 'id'),
+            'session_capabilities': ('sessions', 'session_key'), 'capability_verifications': ('capabilities', 'id'), 'members': ('identity', 'id'),
             'rooms': ('room', 'id'), 'message_requests': ('messages', 'id'),
             'message_receipts': ('messages', 'request_id'),
             'message_deliveries': ('messages', 'request_id'),
@@ -40,7 +41,7 @@ class EventStore:
             'repo_bindings': ('git', 'room_id'), 'git_observations': ('git', 'id'),
             'github_connections': ('git', 'room_id'), 'github_refs': ('git', 'id'),
             'github_commit_refs': ('git', 'id'), 'github_release_refs': ('git', 'id'),
-            'github_evidence': ('git', 'room_id'),
+            'github_evidence': ('git', 'room_id'), 'delivery_suggestions': ('git','id'),
             'project_members': ('identity', 'member_id'),
         }
         with self.db.connect(write=True) as c:

@@ -100,7 +100,7 @@ def project_activity(snapshot, limit=MAX_ITEMS):
             if not isinstance(row, dict):
                 continue
             tool = row.get('tool')
-            if tool not in ('claude-code', 'codex-cli', 'codex-desktop'):
+            if tool not in ('claude-code', 'codex-cli', 'codex-desktop', 'cursor', 'opencode', 'pi', 'kimi-code', 'zcode'):
                 continue
             summary = 'Session registered for '+tool
             items.append(_item('session:'+str(row.get('id', '')), 'session_registered',
@@ -179,6 +179,15 @@ def project_activity(snapshot, limit=MAX_ITEMS):
                     reference['url'] = row['url']
                 items.append(_item('github:'+str(row.get('ref_id', row.get('release_id', ''))), kind,
                     row.get('sync_at'), 'github_verified', summary, None, row.get('task_id'), reference))
+        graph = git.get('delivery_graph', {})
+        for row in graph.get('items', [])[:MAX_SOURCE_ITEMS] if isinstance(graph, dict) else []:
+            for association in row.get('associations', [])[:MAX_SOURCE_ITEMS] if isinstance(row, dict) else []:
+                items.append(_item('delivery:'+str(row.get('object_key',''))+':'+str(association.get('task_id','')),
+                    'delivery_association', association.get('linked_at'), 'delivery_registry',
+                    'Delivery '+str(row.get('kind',''))+' '+str(row.get('value',''))+' · '+str(association.get('state','')),
+                    association.get('linked_by'), association.get('task_id'),
+                    {'relationship_source': association.get('relationship_source'), 'stale': association.get('stale',False),
+                     'unavailable': association.get('unavailable',False)}))
 
     items = [item for item in items if item]
     items.sort(key=lambda item: (item['occurred_at'], item['source'], item['id']), reverse=True)

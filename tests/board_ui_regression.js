@@ -25,7 +25,7 @@ console.log('Shared board classification, escaping and evidence passed');
 const elements=new Map();
 function element(id){if(!elements.has(id))elements.set(id,{value:'',hidden:false,open:false,textContent:'',addEventListener(){},replaceChildren(){},reset(){}});return elements.get(id);}
 let release,fetchCount=0,timers=[];
-const hosted=vm.createContext({window:{CoopagentsBoard:board,CoopagentsRealtime:{connect:()=>({close(){}})}},
+const hosted=vm.createContext({window:{CoopagentsBoard:board,CoopagentsRealtime:{connect:()=>({close(){}})},addEventListener(){}},
  document:{getElementById:element,querySelectorAll:()=>[],activeElement:null},sessionStorage:{getItem:()=>'',setItem(){},removeItem(){}},
  setTimeout:(fn,delay)=>{timers.push({fn,delay});return fn;},clearTimeout:id=>{timers=timers.filter(t=>t.fn!==id);},AbortController,Date,JSON,
  location:{origin:'http://127.0.0.1:8000'},fetch:async()=>{fetchCount++;return {status:200,ok:true,json:()=>new Promise(resolve=>release=resolve)};}});
