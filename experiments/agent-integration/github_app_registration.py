@@ -20,8 +20,7 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 from uuid import uuid4
 
 REPOSITORY = 'Weichenleeeee123/coopagents-1-0-acceptance-20261031'
-EVENTS = ['push', 'pull_request', 'check_run', 'check_suite', 'status', 'release',
-          'installation', 'installation_repositories']
+EVENTS = ['push', 'pull_request', 'check_run', 'check_suite', 'status', 'release']
 MAX_RESPONSE = 512 * 1024
 
 

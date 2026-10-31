@@ -28,8 +28,9 @@ class RegistrationTests(unittest.TestCase):
         self.assertEqual(manifest['callback_urls'], ['https://acceptance.example/api/git/github/callback'])
         self.assertEqual(manifest['hook_attributes'], {'url': 'https://acceptance.example/api/git/github/webhook', 'active': True})
         self.assertEqual(manifest['default_permissions'], dict.fromkeys(('contents', 'pull_requests', 'checks', 'statuses', 'metadata'), 'read'))
-        self.assertIn('release', manifest['default_events'])
-        self.assertIn('installation_repositories', manifest['default_events'])
+        # GitHub's real registration form rejects implicit installation events.
+        self.assertEqual(manifest['default_events'],
+                         ['push', 'pull_request', 'check_run', 'check_suite', 'status', 'release'])
         for origin in ('http://example.com', 'https://user:pass@example.com', 'https://example.com/path', 'https://example.com?x=y'):
             with self.assertRaises(ValueError):
                 helper.manifest(origin, 'http://127.0.0.1:12345/callback', 'Acceptance')

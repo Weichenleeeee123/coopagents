@@ -4,7 +4,7 @@ G2 使用独立 GitHub App 读取已授权仓库。现有 GitHub 账号登录继
 
 ## App 与运行配置
 
-在 GitHub 注册 App，给 Repository permissions 中的 Contents、Pull requests、Checks、Commit statuses **Read-only** 权限；Metadata 为必需的只读权限。只安装到操作者选择的仓库。订阅 Push、Pull request、Check run、Check suite、Status、Release、Installation、Installation repositories 事件。Release webhook 只触发重新读取，不使用事件正文作为交付证据。设置 webhook secret，Webhook URL 为 `https://你的服务域名/api/git/github/webhook`，用户授权 Callback URL 为 `https://你的服务域名/api/git/github/callback`。这是用户授权回调，不是安装完成后的 setup URL。
+在 GitHub 注册 App，给 Repository permissions 中的 Contents、Pull requests、Checks、Commit statuses **Read-only** 权限；Metadata 为必需的只读权限。只安装到操作者选择的仓库。显式订阅 Push、Pull request、Check run、Check suite、Status、Release 六类事件；Installation 与 Installation repositories 是自动投递的安装生命周期事件，不应写入 Manifest 的 `default_events`，GitHub 注册页面会拒绝这两个显式订阅。Release webhook 只触发重新读取，不使用事件正文作为交付证据。设置 webhook secret，Webhook URL 为 `https://你的服务域名/api/git/github/webhook`，用户授权 Callback URL 为 `https://你的服务域名/api/git/github/callback`。这是用户授权回调，不是安装完成后的 setup URL。
 
 服务配置如下。真实值和私钥文件放在部署机配置或 secret mount，不放进版本库、命令行参数或网页。
 
