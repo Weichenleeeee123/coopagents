@@ -112,6 +112,7 @@ class HarnessAdapter:
         placeholder = '${env:%s}' % token_env if self.spec.harness in ('cursor', 'zcode') else '${%s}' % token_env
         headers = {'Authorization': 'Bearer ' + placeholder}
         if self.spec.format == 'opencode':
+            headers = {'Authorization': 'Bearer {env:%s}' % token_env}
             return {'type': 'remote', 'url': url, 'headers': headers, 'enabled': True}
         return {'url': url, 'headers': headers}
 

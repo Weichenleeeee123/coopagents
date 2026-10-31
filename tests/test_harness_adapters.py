@@ -73,7 +73,13 @@ class HarnessAdapterTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             adapter.plan(Path('.'), service_url='https://team.example/mcp', token_env='TOKEN-NAME')
 
-    def test_each_official_project_config_shape_can_install_remote_mcp_without_a_token_value(self):
+    def test_opencode_remote_plan_uses_native_environment_substitution_syntax(self):
+        # OpenCode 1.1.65 expands {env:NAME}; ${NAME} is sent literally.
+        plan = adapter_for('opencode').plan(
+            Path('.'), service_url='https://team.example/mcp', token_env='ACCEPTANCE_TOKEN')
+        self.assertEqual(plan['entry']['headers']['Authorization'], 'Bearer {env:ACCEPTANCE_TOKEN}')
+
+    def test_each_generated_config_shape_can_install_remote_mcp_without_a_token_value(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
             for name in SUPPORTED_HARNESSES:
@@ -93,6 +99,8 @@ class HarnessAdapterTests(unittest.TestCase):
                     self.assertEqual(entry['bearerTokenEnvVar'], 'COOPAGENTS_AGENT_TOKEN')
                 elif name in ('cursor', 'zcode'):
                     self.assertIn('${env:COOPAGENTS_AGENT_TOKEN}', entry['headers']['Authorization'])
+                elif name == 'opencode':
+                    self.assertEqual(entry['headers']['Authorization'], 'Bearer {env:COOPAGENTS_AGENT_TOKEN}')
                 else:
                     self.assertIn('${COOPAGENTS_AGENT_TOKEN}', entry['headers']['Authorization'])
 
