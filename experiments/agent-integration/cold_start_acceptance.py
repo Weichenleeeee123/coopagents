@@ -170,7 +170,8 @@ def host_reply_prompt(tool, nonce, answer_file):
         prompt += 'Do not execute any other commands. '
     else:
         prompt += f'Use Read to read only the synthetic file {answer_file}. '
-    return prompt + 'Reply with its exact text. Do not change files.'
+    return prompt + ('Call the native Coopagents MCP reply tool for that matching request, using the exact file text '
+                     'as its body. A final assistant response alone does not deliver the request reply. Do not change files.')
 
 
 def model_command(tool, executable, run, python, *, setup=False, require=()):

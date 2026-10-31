@@ -146,6 +146,10 @@ class ColdStartTests(unittest.TestCase):
         self.assertNotIn('Do not execute commands', prompt)
         self.assertIn('Do not execute any other commands', prompt)
         self.assertIn('Do not change files', prompt)
+        for tool in ('claude', 'codex'):
+            reply_prompt = self.runner.host_reply_prompt(tool, 'nonce', answer)
+            self.assertIn('Call the native Coopagents MCP reply tool', reply_prompt)
+            self.assertIn('A final assistant response alone does not deliver', reply_prompt)
 
     def test_failed_owned_host_stop_fails_full_and_partial_acceptance(self):
         # Exercise main's real finalization path without calling native models.
