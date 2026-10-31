@@ -8,6 +8,9 @@ import time
 import subprocess
 import unittest
 from uuid import uuid4
+from contextlib import ExitStack, redirect_stdout
+import io
+from unittest.mock import patch
 
 SPEC = importlib.util.spec_from_file_location('cold_start_acceptance', Path(__file__).with_name('cold_start_acceptance.py'))
 
@@ -31,6 +34,50 @@ class ColdStartTests(unittest.TestCase):
             else:
                 self.assertIn('--allowedTools', command)
                 self.assertNotIn('Bash(*)', joined)
+
+    def test_failed_owned_host_stop_fails_full_and_partial_acceptance(self):
+        # Exercise main's real finalization path without calling native models.
+        for partial, collaboration_status in ((False, 'passed'), (True, 'host_verified_partial')):
+            with self.subTest(partial=partial), ExitStack() as patches:
+                roots = {}
+                def prepare(root, *args, tool=None, **kwargs):
+                    root.mkdir(parents=True)
+                    (root / 'profile.json').write_text('{}', encoding='utf-8')
+                    (root / 'invitation-result.json').write_text('{"message":"synthetic invitation"}', encoding='utf-8')
+                    roots[tool] = root
+                    return {'SYNTHETIC_ROOT': str(root)}
+                def profile(path):
+                    tool = 'claude' if Path(path).parent == roots['claude'] else 'codex'
+                    return {'room_id': 'synthetic-room', 'member_id': tool, 'control_token': 'synthetic'}
+                def native_registration(env, *args):
+                    return {'profile': str(Path(env['SYNTHETIC_ROOT']) / 'profile.json')}
+                def process(command, **kwargs):
+                    stopped = 'stop' in command
+                    return subprocess.CompletedProcess(command, 1 if stopped else 0,
+                                                       stdout='' if '--porcelain' in command else 'synthetic-commit')
+                overrides = {'prepare_homes': prepare, 'bounded': lambda *a, **k: 0,
+                    'registrations': native_registration, 'events_from': lambda *a: [],
+                    'successful_tools': lambda *a: {'whoami', 'read_team', 'send_request', 'read_inbox', 'reply'},
+                    'native_identity_proven': lambda *a: True, 'snapshot': lambda *a: {},
+                    'network_proven': lambda *a: True, 'diagnostics_proven': lambda *a: True,
+                    'exchange_proven': lambda *a: True,
+                    'assistant_text': lambda *a: (roots['claude'] / 'repo/acceptance-answer.txt').read_text()}
+                for name, replacement in overrides.items():
+                    patches.enter_context(patch.object(self.runner, name, replacement))
+                patches.enter_context(patch.object(self.runner.subprocess, 'run', process))
+                patches.enter_context(patch('coopagents.spaces.read_profile', profile))
+                patches.enter_context(patch('coopagents.spaces.read_json', return_value={'network': 'local'}))
+                output = patches.enter_context(redirect_stdout(io.StringIO()))
+                arguments = ['--host', 'claude', '--network', 'local', '--codex', 'synthetic-codex', '--claude', 'synthetic-claude']
+                if partial:
+                    arguments.append('--stop-after-host-verification')
+                code = self.runner.main(arguments)
+                report = json.loads((roots['claude'].parent / 'summary.json').read_text())
+                self.assertEqual(code, 1)
+                self.assertFalse(report['host_stopped'])
+                self.assertEqual(report['status'], 'shutdown_failed')
+                self.assertEqual(report['collaboration_status'], collaboration_status)
+                self.assertIn('Result: shutdown_failed', output.getvalue())
 
     def test_partial_host_cli_is_explicit_and_preparation_spends_no_quota(self):
         result = subprocess.run([sys.executable, str(Path(__file__).with_name('cold_start_acceptance.py')),

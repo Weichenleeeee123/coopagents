@@ -401,49 +401,48 @@ def main(argv=None):
             if not diagnostic:
                 raise RuntimeError('Host diagnostic evidence incomplete')
             report['status'] = 'host_verified_partial'
-            print('Result: host_verified_partial (no join/request/reply/wake/cross-device acceptance)', flush=True)
-            return 0
-        invitation = json.loads(invite_result.read_text(encoding='utf-8'))
-        # Preserve the actual invitation message as supplied to the joiner; no README parsing/version invention.
-        invitation_message = run / guest / 'invitation-message.txt'
-        invitation_message.write_text(invitation['message'], encoding='utf-8')
-        turn(guest, '03-join', cold_prompt(guest) + f'Read my private invitation message at {invitation_message}. '
-             f'I authorize joining that space as {guest}; use join --invitation-file with that path and --connect {guest}. '
-             'The invitation names published package metadata, but for this acceptance I explicitly authorize reusing the '
-             'same already-installed development checkout rather than installing a release. Run doctor.', setup=True, verify_setup=True)
-        member = registrations(environments[guest], guest, projects[guest])
-        guest_profile = read_profile(member['profile'])
-        if guest_profile['room_id'] != host_profile['room_id'] or guest_profile['member_id'] == host_profile['member_id']:
-            raise RuntimeError('Joined identity does not match the expected separate member')
-        report['observed_join_network'] = 'p2p' if guest_profile.get('p2p') else 'local'
-        peer_network_ok = network_proven(args.network, host_state, guest_profile)
-        report['checks'].append({'check': 'joined network matches host and requested mode, including P2P endpoint', 'ok': peer_network_ok})
-        if not peer_network_ok:
-            raise RuntimeError('Joining member did not use the expected host network endpoint')
-        turn(guest, '04-guest-new-session', f'Use only native Coopagents MCP tools. Call whoami and verify '
-             f'room_id={guest_profile["room_id"]}, member_id={guest_profile["member_id"]}; then read_team. '
-             f'Send a request to member {host_profile["member_id"]} asking for the exact text in its '
-             f'acceptance-answer.txt file. Include marker {nonce} in the body.', require=('whoami', 'read_team', 'send_request'),
-             expected_identity=guest_profile)
-        turn(host, '05-host-reply', 'Use native Coopagents MCP tools to read_inbox and read_team. '
-             f'Find request with marker {nonce}. Read acceptance-answer.txt in this repository and reply with its exact text. '
-             'Do not execute commands or change files.', require=('read_inbox', 'reply'))
-        turn(guest, '06-guest-read-reply', f'Use native Coopagents MCP read_team to find the reply to the request '
-             f'with marker {nonce}. Report its answer. Do not send a second request.', require=('read_team',))
-        state = snapshot(owner['profile'])
-        guest_state = snapshot(member['profile'])
-        state.setdefault('collaboration', {}).setdefault('diagnostics', []).extend(
-            guest_state.get('collaboration', {}).get('diagnostics', []))
-        private_write(run / 'backend-snapshot.json', state)
-        proven = exchange_proven(state, guest_profile['member_id'], host_profile['member_id'], nonce, answer)
-        report['checks'].append({'check': 'backend request and real file-derived reply', 'ok': proven})
-        diagnostics = diagnostics_proven(state, {guest_profile['member_id'], host_profile['member_id']})
-        report['checks'].append({'check': 'both members completed doctor challenge', 'ok': diagnostics})
-        consumed = answer in assistant_text(guest, events_from(run / '06-guest-read-reply.jsonl'))
-        report['checks'].append({'check': 'guest model consumed the file-derived reply', 'ok': consumed})
-        if not all((proven, diagnostics, consumed)):
-            raise RuntimeError('Backend or model evidence incomplete')
-        report['status'] = 'passed'
+        else:
+            invitation = json.loads(invite_result.read_text(encoding='utf-8'))
+            # Preserve the actual invitation message as supplied to the joiner; no README parsing/version invention.
+            invitation_message = run / guest / 'invitation-message.txt'
+            invitation_message.write_text(invitation['message'], encoding='utf-8')
+            turn(guest, '03-join', cold_prompt(guest) + f'Read my private invitation message at {invitation_message}. '
+                 f'I authorize joining that space as {guest}; use join --invitation-file with that path and --connect {guest}. '
+                 'The invitation names published package metadata, but for this acceptance I explicitly authorize reusing the '
+                 'same already-installed development checkout rather than installing a release. Run doctor.', setup=True, verify_setup=True)
+            member = registrations(environments[guest], guest, projects[guest])
+            guest_profile = read_profile(member['profile'])
+            if guest_profile['room_id'] != host_profile['room_id'] or guest_profile['member_id'] == host_profile['member_id']:
+                raise RuntimeError('Joined identity does not match the expected separate member')
+            report['observed_join_network'] = 'p2p' if guest_profile.get('p2p') else 'local'
+            peer_network_ok = network_proven(args.network, host_state, guest_profile)
+            report['checks'].append({'check': 'joined network matches host and requested mode, including P2P endpoint', 'ok': peer_network_ok})
+            if not peer_network_ok:
+                raise RuntimeError('Joining member did not use the expected host network endpoint')
+            turn(guest, '04-guest-new-session', f'Use only native Coopagents MCP tools. Call whoami and verify '
+                 f'room_id={guest_profile["room_id"]}, member_id={guest_profile["member_id"]}; then read_team. '
+                 f'Send a request to member {host_profile["member_id"]} asking for the exact text in its '
+                 f'acceptance-answer.txt file. Include marker {nonce} in the body.', require=('whoami', 'read_team', 'send_request'),
+                 expected_identity=guest_profile)
+            turn(host, '05-host-reply', 'Use native Coopagents MCP tools to read_inbox and read_team. '
+                 f'Find request with marker {nonce}. Read acceptance-answer.txt in this repository and reply with its exact text. '
+                 'Do not execute commands or change files.', require=('read_inbox', 'reply'))
+            turn(guest, '06-guest-read-reply', f'Use native Coopagents MCP read_team to find the reply to the request '
+                 f'with marker {nonce}. Report its answer. Do not send a second request.', require=('read_team',))
+            state = snapshot(owner['profile'])
+            guest_state = snapshot(member['profile'])
+            state.setdefault('collaboration', {}).setdefault('diagnostics', []).extend(
+                guest_state.get('collaboration', {}).get('diagnostics', []))
+            private_write(run / 'backend-snapshot.json', state)
+            proven = exchange_proven(state, guest_profile['member_id'], host_profile['member_id'], nonce, answer)
+            report['checks'].append({'check': 'backend request and real file-derived reply', 'ok': proven})
+            diagnostics = diagnostics_proven(state, {guest_profile['member_id'], host_profile['member_id']})
+            report['checks'].append({'check': 'both members completed doctor challenge', 'ok': diagnostics})
+            consumed = answer in assistant_text(guest, events_from(run / '06-guest-read-reply.jsonl'))
+            report['checks'].append({'check': 'guest model consumed the file-derived reply', 'ok': consumed})
+            if not all((proven, diagnostics, consumed)):
+                raise RuntimeError('Backend or model evidence incomplete')
+            report['status'] = 'passed'
     except Exception as error:
         report['status'] = 'failed'
         # Never expose exception text: native errors can contain private response bodies.
@@ -452,6 +451,7 @@ def main(argv=None):
         # A model may create the host but fail before native registration. Stop
         # only retained host profiles beneath this run, even in that failure case.
         owned = list((run / host).rglob('profile.json'))
+        report['collaboration_status'] = report['status']
         report['host_stopped'] = True
         for retained_profile in owned:
             try:
@@ -462,9 +462,11 @@ def main(argv=None):
                 report['host_stopped'] = report['host_stopped'] and result.returncode == 0
             except (OSError, ValueError, subprocess.TimeoutExpired):
                 report['host_stopped'] = False
+        if not report['host_stopped']:
+            report['status'] = 'shutdown_failed'
         private_write(run / 'summary.json', report, update=True)
     print('Result: ' + report['status'] + ' (single machine; no wake/cross-device certification)')
-    return 0 if report['status'] == 'passed' else 1
+    return 0 if report['status'] in ('passed', 'host_verified_partial') else 1
 
 
 if __name__ == '__main__':
