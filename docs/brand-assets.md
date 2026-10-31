@@ -1,6 +1,16 @@
 # 品牌资产
 
-图标：`src/static/icon.png`。使用内置 imagegen 生成，交织的青绿与象牙白带状 C 表达不同 agent 的协作。PNG，1254 × 1254，1,572,812 字节；SHA-256 `6247db54fa0a097b1e9c9224fc8d3320b6d95a85a0a6486d71b5ee6e317b2035`。
+## 当前图标（2026-10-31，v3）
+
+用户已确认并启用黑白灰「协作 C」图标。深色底 `#202124`、白色圆弧与节点，与当前前端保持一致。生产文件为 `src/static/icon.png`，1024 × 1024 PNG，SHA-256 `a973fe97caf11a1ef4aacb9f6a92488f2ee47392f0e7968e1ae1e89b817ce401`。前端、浏览器标签图标、P2P 看板及中英文 README 沿用原资源路径，均使用新版。
+
+设计产物留底：[`assets/coopagents-icon-v3/`](assets/coopagents-icon-v3/)，包含 SVG 矢量稿、高清 PNG、浅色版本、设计展示图和前端位置合成预览。设计说明见 [icon-design-v3.md](icon-design-v3.md)。
+
+旧生产图标备份：[`assets/coopagents-icon-v1-original.png`](assets/coopagents-icon-v1-original.png)。早期 v2 草稿保留于 `assets/coopagents-icon-v2/`，仅作设计历史。现有产品截图记录的是换标前界面，保留作为历史截图。
+
+## 旧图标生成记录
+
+原图标（现备份于 `docs/assets/coopagents-icon-v1-original.png`）：使用内置 imagegen 生成，交织的青绿与象牙白带状 C 表达不同 agent 的协作。PNG，1254 × 1254，1,572,812 字节；SHA-256 `6247db54fa0a097b1e9c9224fc8d3320b6d95a85a0a6486d71b5ee6e317b2035`。
 
 恢复脚本等待当前会话记录超时；本轮图像工具直接返回的唯一新产物已读取、核对并复制到项目，原始生成文件保留。未引用先前回合的图像。
 
