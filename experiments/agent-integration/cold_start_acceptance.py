@@ -8,7 +8,7 @@ The retained host is stopped on exit. Wake is deliberately a separate test.
 import argparse
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 import shutil
 import subprocess
 import sys
@@ -165,7 +165,13 @@ def model_command(tool, executable, run, python, *, setup=False, require=()):
     # The model may read the explicitly authorized source Skill and synthetic repo.
     allowed = ['Read', 'mcp__coopagents_*']
     if setup:
-        allowed.append('Bash("' + str(python) + '" -m coopagents.space_runtime:*)')
+        spellings = [str(python)]
+        windows = PureWindowsPath(python)
+        if windows.is_absolute() and len(windows.drive) == 2 and windows.drive[1] == ':':
+            slash = windows.as_posix()
+            spellings.extend([slash, '/' + windows.drive[0].lower() + slash[2:]])
+        allowed.extend('Bash("' + executable_path + '" -m coopagents.space_runtime:*)'
+                       for executable_path in dict.fromkeys(spellings))
     return [executable, '--print', '--verbose', '--output-format', 'stream-json',
             '--permission-prompts', 'none', '--add-dir', str(run),
             '--allowedTools', ','.join(allowed)]
@@ -189,6 +195,13 @@ def decoded_objects(value, depth=0):
             yield from decoded_objects(child, depth + 1)
 
 
+def claude_content(event):
+    """System/permission records may have a string message instead of content."""
+    message = event.get('message')
+    content = message.get('content') if isinstance(message, dict) else None
+    return [block for block in content if isinstance(block, dict)] if isinstance(content, list) else []
+
+
 def native_results(tool, events):
     """Yield successful completed native calls, rejecting nested MCP error envelopes."""
     pending = {}
@@ -201,7 +214,7 @@ def native_results(tool, events):
                 if not any(v.get('isError') is True or v.get('is_error') is True for v in decoded_objects(result)):
                     yield item.get('tool', '').split('__')[-1], result
         if tool == 'claude':
-            for block in event.get('message', {}).get('content', []) if isinstance(event.get('message', {}).get('content'), list) else []:
+            for block in claude_content(event):
                 if block.get('type') == 'tool_use' and block.get('name', '').startswith('mcp__coopagents_'):
                     pending[block['id']] = block['name'].split('__')[-1]
                 if block.get('type') == 'tool_result' and not block.get('is_error') and block.get('tool_use_id') in pending:
@@ -254,7 +267,7 @@ def assistant_text(tool, events):
         return '\n'.join(e.get('item', {}).get('text', '') for e in events
                          if e.get('type') == 'item.completed' and e.get('item', {}).get('type') == 'agent_message')
     return '\n'.join(block.get('text', '') for e in events if e.get('type') == 'assistant'
-                     for block in e.get('message', {}).get('content', []) if isinstance(block, dict) and block.get('type') == 'text')
+                     for block in claude_content(e) if block.get('type') == 'text')
 
 
 def bounded(command, prompt, path, env, cwd, timeout):

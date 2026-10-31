@@ -2,7 +2,7 @@
 import importlib.util
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 import sys
 import time
 import subprocess
@@ -59,6 +59,42 @@ class ColdStartTests(unittest.TestCase):
             config.write_text('mcp_servers = ' + self.runner.toml_value(foreign))
             with self.assertRaises(ValueError):
                 self.runner.model_command('codex', 'codex', root, python, require=('whoami',))
+
+    def test_claude_setup_allows_only_equivalent_exact_runtime_executable(self):
+        root = Path('/synthetic/run')
+        python = PureWindowsPath('C:/Users/Synthetic User/project/.venv/Scripts/python.exe')
+        command = self.runner.model_command('claude', 'claude', root, python, setup=True)
+        allowed = command[command.index('--allowedTools') + 1].split(',')
+        self.assertEqual(allowed, ['Read', 'mcp__coopagents_*',
+            'Bash("C:\\Users\\Synthetic User\\project\\.venv\\Scripts\\python.exe" -m coopagents.space_runtime:*)',
+            'Bash("C:/Users/Synthetic User/project/.venv/Scripts/python.exe" -m coopagents.space_runtime:*)',
+            'Bash("/c/Users/Synthetic User/project/.venv/Scripts/python.exe" -m coopagents.space_runtime:*)'])
+        self.assertTrue(all(rule.endswith('" -m coopagents.space_runtime:*)')
+                            for rule in allowed if rule.startswith('Bash(')))
+        command = self.runner.model_command('claude', 'claude', root, python)
+        self.assertEqual(command[command.index('--allowedTools') + 1], 'Read,mcp__coopagents_*')
+        posix = self.runner.model_command('claude', 'claude', root, PurePosixPath('/venv/bin/python'), setup=True)
+        self.assertEqual(posix[posix.index('--allowedTools') + 1],
+                         'Read,mcp__coopagents_*,Bash("/venv/bin/python" -m coopagents.space_runtime:*)')
+
+    def test_claude_nonstructured_messages_and_blocks_do_not_crash_or_prove_tools(self):
+        noise = [{'type': kind, 'message': message}
+                 for kind in ('system', 'assistant', 'user')
+                 for message in ('permission denied', None, [], 42, {}, {'content': 'denied'},
+                                 {'content': [None, 'denied', 42]})]
+        noise.append({'type': 'system', 'subtype': 'permission_denied'})
+        events = noise + [
+            {'type': 'assistant', 'message': {'content': [
+                {'type': 'tool_use', 'id': 'ok', 'name': 'mcp__coopagents_x__whoami'},
+                {'type': 'tool_use', 'id': 'foreign', 'name': 'mcp__unrelated_x__read_team'},
+                {'type': 'tool_use', 'id': 'denied', 'name': 'mcp__coopagents_x__reply'}]}},
+            {'type': 'user', 'message': {'content': [
+                {'type': 'tool_result', 'tool_use_id': 'ok', 'content': '{}'},
+                {'type': 'tool_result', 'tool_use_id': 'foreign', 'content': '{}'},
+                {'type': 'tool_result', 'tool_use_id': 'denied', 'is_error': True}]}},
+            {'type': 'assistant', 'message': {'content': [{'type': 'text', 'text': 'actual answer'}]}}]
+        self.assertEqual(self.runner.successful_tools('claude', events), {'whoami'})
+        self.assertEqual(self.runner.assistant_text('claude', events), 'actual answer')
 
     def test_host_reply_authorizes_only_exact_synthetic_file_read(self):
         answer = Path(__file__).resolve().parents[2] / '.local/synthetic answer.txt'
