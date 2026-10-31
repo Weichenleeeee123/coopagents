@@ -229,6 +229,22 @@ class LocalChecksTests(DoctorTestCase):
         self.assertEqual(result['connections'], [entry])
         self.assertNotEqual(result['overall'], 'ready')
 
+    def test_default_discovery_includes_current_claude_project(self):
+        with retained_directory() as directory:
+            root = Path(directory)
+            profile = str(root/'member.json')
+            (root/'.claude.json').write_text(json.dumps({'projects': {str(root): {'mcpServers': {
+                'coopagents_project': {'command':sys.executable, 'args':[
+                    '-m','coopagents.space_bridge','--profile',profile]}}}}}), encoding='utf-8')
+            with patch.dict(os.environ, {'CLAUDE_CONFIG_DIR': str(root)}), \
+                    patch.object(os, 'getcwd', return_value=str(root)), \
+                    patch.object(onboarding_doctor, 'tool_check', return_value=onboarding_doctor.make_check(
+                        'native_tool','pass','Available',evidence={'tool':'claude'})), \
+                    patch.object(onboarding_doctor, 'member_link') as network:
+                result = onboarding_doctor.run(tool='claude')
+            network.assert_not_called()
+            self.assertEqual([e['profile'] for e in result['connections']], [profile])
+
     def test_missing_project_folder_does_not_contact_profile(self):
         with retained_directory() as directory, patch.object(onboarding_doctor, 'member_link') as network:
             result = onboarding_doctor.run(tool='codex', profile_path=Path(directory)/'profile.json',

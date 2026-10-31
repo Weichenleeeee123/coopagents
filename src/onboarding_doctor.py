@@ -224,7 +224,7 @@ def local_checks(*, tool=None, profile_path=None, project_dir=None, cli=None, sk
         checks.append(mcp_check(selected, profile_path, cli=cli, name=name))
     elif selected:
         try:
-            entries = space_connect.registered_spaces(selected, project_dir)
+            entries = space_connect.registered_spaces(selected, project_dir or os.getcwd())
             connections = [{k: entry[k] for k in ('server', 'python', 'profile')} for entry in entries]
             checks.append(make_check('mcp_configuration', 'needs_user',
                                      'Existing connections require a target profile.' if entries else 'No Coopagents connection is registered.',
