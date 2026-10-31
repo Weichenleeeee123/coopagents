@@ -77,7 +77,10 @@ def git_routes(service,sync):
 
     async def callback(request):
         pairs=list(request.query_params.multi_items())
-        if (len(pairs)!=2 or {key for key,value in pairs}!={'state','code'}):
+        keys=[key for key,value in pairs]
+        if (len(keys)!=len(set(keys)) or not {'state','code'}.issubset(keys)
+                or set(keys)-{'state','code','iss'}
+                or ('iss' in keys and request.query_params['iss']!='https://github.com/login/oauth')):
             raise ValidationError('Invalid GitHub authorization callback')
         await run_in_threadpool(sync.complete_authorization,request.query_params['state'],request.query_params['code'])
         return HTMLResponse(binding_page('verified'),headers={

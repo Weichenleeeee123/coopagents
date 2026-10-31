@@ -1,5 +1,6 @@
 from pathlib import Path
 import unittest
+from unittest.mock import patch
 from uuid import uuid4
 from starlette.applications import Starlette
 from starlette.testclient import TestClient
@@ -18,6 +19,32 @@ class GitRoutesTests(unittest.TestCase):
         self.sync=GitHubSync(self.service.identity,self.service.repositories,FakeProvider())
         self.client=TestClient(Starlette(routes=git_routes(self.service,self.sync)))
         self.headers={'authorization':'Bearer '+self.owner['web_token']}
+    def test_authorization_callback_accepts_exact_github_issuer_without_forwarding_it(self):
+        state=self.sync.begin_authorization(self.owner['web_token'])['state']
+        with patch.object(self.sync,'complete_authorization',wraps=self.sync.complete_authorization) as complete:
+            response=self.client.get('/api/git/github/callback',params={
+                'state':state,'code':'synthetic-code','iss':'https://github.com/login/oauth'})
+        self.assertEqual(response.status_code,200)
+        complete.assert_called_once_with(state,'synthetic-code')
+        self.assertNotIn('synthetic-code',response.text)
+        self.assertNotIn(state,response.text)
+
+    def test_authorization_callback_rejects_wrong_issuer_duplicates_and_unknown_fields_before_exchange(self):
+        base=[('state','synthetic-state'),('code','synthetic-code')]
+        queries=[base+[('iss','https://evil.example/login/oauth')],
+                 base+[('iss','https://github.com/login/oauth/')],
+                 base+[('iss','')],
+                 base+[('iss','https://github.com/login/oauth'),('iss','https://github.com/login/oauth')],
+                 base+[('state','synthetic-state')],base+[('code','synthetic-code')],
+                 base+[('unexpected','synthetic')],base+[('installation_id','123')]]
+        with patch.object(self.sync,'complete_authorization') as complete:
+            for query in queries:
+                with self.subTest(keys=[key for key,value in query]):
+                    response=self.client.get('/api/git/github/callback',params=query)
+                    self.assertEqual(response.status_code,400)
+                    self.assertNotIn('synthetic-code',response.text)
+                    self.assertNotIn('evil.example',response.text)
+            complete.assert_not_called()
     def test_authorization_finish_strict_schema_and_callback_no_tokens(self):
         response=self.client.post('/api/git/github/authorize',headers=self.headers,json={'unexpected':True})
         self.assertEqual(response.status_code,400)
