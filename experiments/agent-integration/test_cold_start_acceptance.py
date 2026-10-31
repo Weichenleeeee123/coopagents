@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import sys
 import time
+import subprocess
 import unittest
 from uuid import uuid4
 
@@ -30,6 +31,13 @@ class ColdStartTests(unittest.TestCase):
             else:
                 self.assertIn('--allowedTools', command)
                 self.assertNotIn('Bash(*)', joined)
+
+    def test_partial_host_cli_is_explicit_and_preparation_spends_no_quota(self):
+        result = subprocess.run([sys.executable, str(Path(__file__).with_name('cold_start_acceptance.py')),
+                                 '--host', 'codex', '--stop-after-host-verification', '--prepare-only'],
+                                capture_output=True, text=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn('PASS', result.stdout)
 
     def test_prose_and_failed_tool_calls_do_not_count(self):
         events = [

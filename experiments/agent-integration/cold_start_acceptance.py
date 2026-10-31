@@ -191,6 +191,8 @@ def main(argv=None):
     parser.add_argument('--timeout', type=int, default=600, help='Seconds per new model session (six sessions maximum)')
     parser.add_argument('--prepare-only', action='store_true', help='Prepare private homes without consuming model quota')
     parser.add_argument('--preflight-only', action='store_true', help='Two bounded default-model replies without tools; not acceptance')
+    parser.add_argument('--stop-after-host-verification', action='store_true',
+                        help='Only create/connect and verify the host in a new native model session; explicitly partial')
     parser.add_argument('--codex', default=shutil.which('codex'))
     parser.add_argument('--claude', default=shutil.which('claude'))
     args = parser.parse_args(argv)
@@ -266,11 +268,26 @@ def main(argv=None):
         owner = registrations(environments[host], host, projects[host])
         host_profile = read_profile(owner['profile'])
         invite_result = run / host / 'invitation-result.json'
-        turn(host, '02-host-new-session', f'Using only the native Coopagents MCP tools, call whoami and compare '
+        verification_prompt = (f'Using only the native Coopagents MCP tools, call whoami and compare '
              f'room_id={host_profile["room_id"]} and member_id={host_profile["member_id"]}, then read_team. '
+             'Do not enable wake. ')
+        invitation_prompt = (
              f'I authorize creating one invitation for my other agent: run "{sys.executable}" -m coopagents.space_runtime '
              f'invite --profile "{owner["profile"]}" --message en and redirect the complete JSON to "{invite_result}". '
-             'Keep the invitation private. Do not enable wake.', setup=True, require=('whoami', 'read_team'))
+             'Keep the invitation private. Do not enable wake.')
+        turn(host, '02-host-new-session', verification_prompt + (
+             'Do not create an invitation. This run stops after host verification.' if args.stop_after_host_verification
+             else invitation_prompt), setup=not args.stop_after_host_verification, require=('whoami', 'read_team'))
+        if args.stop_after_host_verification:
+            state = snapshot(owner['profile'])
+            private_write(run / 'host-backend-snapshot.json', state)
+            diagnostic = diagnostics_proven(state, {host_profile['member_id']})
+            report['checks'].append({'check': 'host completed doctor challenge', 'ok': diagnostic})
+            if not diagnostic:
+                raise RuntimeError('Host diagnostic evidence incomplete')
+            report['status'] = 'host_verified_partial'
+            print('Result: host_verified_partial (no join/request/reply/wake/cross-device acceptance)', flush=True)
+            return 0
         invitation = json.loads(invite_result.read_text(encoding='utf-8'))
         # Preserve the actual invitation message as supplied to the joiner; no README parsing/version invention.
         invitation_message = run / guest / 'invitation-message.txt'
