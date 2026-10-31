@@ -27,6 +27,7 @@ THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH RE
     <script src="/static/accounts.js" defer></script>
   </head>
   <body>
+    <a class="skip-link" href="#workspace-content">跳到项目内容</a>
     <section id="invitation-panel" class="project-card" aria-labelledby="invitation-title" hidden>
       <p class="eyebrow">TEAM INVITATION</p>
       <h2 id="invitation-title">加入共同的项目</h2>
@@ -235,7 +236,7 @@ THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH RE
       </section>
     </div>
     <div id="account-hub" class="account-hub" hidden>
-      <aside class="sidebar">
+      <aside class="sidebar" id="hub-sidebar">
         <a class="brand" href="/"
           ><img src="/static/icon.png" alt="" width="36" height="36" />Coopagents
           <span>同频</span></a
@@ -246,12 +247,12 @@ THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH RE
         </div>
         <nav aria-label="团队与账号">
           <button id="hub-nav-projects" aria-current="page">
-            <span>01</span>项目
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>项目
           </button>
-          <button id="hub-nav-members"><span>02</span>成员</button>
-          <button id="hub-nav-settings"><span>03</span>团队设置</button>
+          <button id="hub-nav-members"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M16 3.128a4 4 0 0 1 0 7.744M22 21v-2a4 4 0 0 0-3-3.87"/><circle cx="9" cy="7" r="4"/></svg>成员</button>
+          <button id="hub-nav-settings"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 17H5M19 7h-9"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></svg>团队设置</button>
           <button id="hub-nav-billing">
-            <span>04</span>Plan &amp; billing
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7M6 9v12"/></svg>Plan &amp; billing
           </button>
         </nav>
         <div class="sidebar-foot">
@@ -261,7 +262,7 @@ THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH RE
       </aside>
       <main>
         <header class="topline">
-          <span>团队与项目</span><button id="hub-refresh" class="icon-button" aria-label="刷新团队与项目" title="刷新团队与项目"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg></button>
+          <button id="hub-mobile-menu" class="icon-button mobile-menu" type="button" aria-label="团队导航" aria-controls="hub-sidebar" aria-expanded="false"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16M4 12h16M4 19h16"/></svg></button><span>团队与项目</span><button id="hub-refresh" class="icon-button" aria-label="刷新团队与项目" title="刷新团队与项目"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg></button>
         </header>
         <div class="page-heading">
           <div>
@@ -392,7 +393,7 @@ THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH RE
       </main>
     </div>
     <div id="workspace" class="workspace" hidden>
-      <aside class="sidebar">
+      <aside class="sidebar" id="workspace-sidebar">
         <a class="brand" href="/"
           ><img src="/static/icon.png" alt="" width="36" height="36" />Coopagents
           <span>同频</span></a
@@ -405,23 +406,26 @@ THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH RE
           <h2 id="room-name"></h2>
           <p id="room-repository"></p>
         </div>
-        <nav aria-label="工作台">
-          <button data-view="overview"><span>01</span>概览</button>
-          <button data-view="tasks" aria-current="page"><span>02</span>任务</button>
-          <button data-view="requests"><span>03</span>协作</button>
-          <button data-view="contracts"><span>04</span>共享上下文</button>
-          <button data-view="delivery"><span>05</span>交付</button>
-          <button data-view="members"><span>06</span>成员与 agent</button>
-          <button data-view="repository"><span>07</span>项目设置</button>
+        <p class="nav-label">当前项目</p><nav id="workspace-navigation" aria-label="工作台">
+          <button data-view="overview"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>概览</button>
+          <button data-view="tasks" aria-current="page"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 5h8M13 12h8M13 19h8m-18-2 2 2 4-4"/><rect x="3" y="4" width="6" height="6" rx="1"/></svg>任务</button>
+          <button data-view="requests"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 10a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 14.286V4a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/><path d="M20 9a2 2 0 0 1 2 2v10.286a.71.71 0 0 1-1.212.502l-2.202-2.202A2 2 0 0 0 17.172 19H10a2 2 0 0 1-2-2v-1"/></svg>协作</button>
+          <button data-view="contracts"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m16 6 4 14M12 6v14M8 8v12M4 4v16"/></svg>共享上下文</button>
+          <button data-view="delivery"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7M6 9v12"/></svg>交付</button>
+          <button data-view="members"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M16 3.128a4 4 0 0 1 0 7.744M22 21v-2a4 4 0 0 0-3-3.87"/><circle cx="9" cy="7" r="4"/></svg>成员与 agent</button>
+        </nav>
+        <nav id="workspace-utility" aria-label="项目管理">
+          <button data-view="repository"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 17H5M19 7h-9"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></svg>项目设置</button>
         </nav>
         <div class="sidebar-foot">
           <p id="identity"></p>
           <button id="logout">退出当前标签页</button>
         </div>
       </aside>
-      <main>
+      <main id="workspace-content" tabindex="-1">
         <header class="topline">
-          <span>项目工作台</span>
+          <button id="workspace-mobile-menu" class="icon-button mobile-menu" type="button" aria-label="项目导航" aria-controls="workspace-sidebar" aria-expanded="false"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16M4 12h16M4 19h16"/></svg></button>
+          <nav id="workspace-breadcrumbs" class="breadcrumbs" aria-label="当前位置"><span id="workspace-crumb-team"></span><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg><button id="workspace-crumb-project" class="quiet" type="button">当前项目</button><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg><span id="workspace-crumb-page" aria-current="page">任务</span></nav>
           <div>
             <span id="sync-time" aria-live="polite">正在同步…</span
             >
@@ -432,14 +436,16 @@ THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH RE
         <div class="page-heading">
           <div>
             <p class="eyebrow" id="view-kicker">01 / TEAM FIELD</p>
-            <h1 id="view-title">任务看板</h1>
+            <p id="workspace-page-project" class="page-project"></p><h1 id="view-title">任务</h1>
+            <p id="view-description">每一项工作，都有清晰的去向。</p>
           </div>
-          <p id="view-description">每一项工作，都有清晰的去向。</p>
+          <div class="heading-actions"><button id="new-task" class="primary">＋ 新建任务</button></div>
         </div>
         <p id="action-error" role="alert" class="error"></p>
         <section id="view-overview" hidden>
-          <section id="needs-attention" class="needs-attention"></section>
           <div class="summary-strip" id="summary"></div>
+          <div class="overview-grid"><div>          <section id="needs-attention" class="needs-attention"></section>
+
           <div class="overview-quick-links" aria-label="项目功能入口">
             <button type="button" data-view="tasks">查看任务</button>
             <button type="button" data-view="requests">查看协作</button>
@@ -464,10 +470,11 @@ THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH RE
           </p>
           <div id="git-overlaps"></div>
           </details>
-          <div class="section-heading"><h2>最近变化</h2><button id="overview-recent-activity-link" class="link-button" type="button">查看全部活动 ↗</button></div>
-          <div id="overview-recent-activity"></div>
+</div><aside><button id="overview-recent-activity-link" class="link-button" type="button" hidden>查看全部活动</button>
+          <div id="overview-recent-activity"></div></aside></div>
         </section>
         <section id="view-tasks">
+          <nav class="page-tabs" aria-label="任务视图"><button type="button" data-task-layout="board" aria-current="page">看板</button><button type="button" data-task-layout="list">列表</button></nav>
           <div
             id="board-summary"
             class="summary-strip board-summary"
@@ -490,7 +497,7 @@ THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH RE
             </div>
             <div class="board-actions">
               <span id="board-count" role="status"></span
-              ><button id="new-task" class="primary">＋ 新建任务</button>
+              >
             </div>
           </div>
           <details id="task-create" class="task-create">
@@ -536,6 +543,7 @@ THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH RE
           ></div>
         </section>
         <section id="view-requests" hidden>
+          <div class="object-toolbar"><label class="object-search">搜索协作<input id="request-search" type="search" placeholder="搜索内容或成员"></label><label>处理状态<select id="request-filter"><option value="all">全部请求</option><option value="active">待处理</option><option value="resolved">已解决</option></select></label></div>
           <div id="requests"></div>
         </section>
         <section id="view-contracts" hidden>
@@ -549,7 +557,7 @@ THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH RE
           <div id="shared-context" data-context-view="records" hidden></div>
         </section>
         <section id="view-repository" hidden>
-          <section class="settings-intro"><h2>接入与仓库</h2><p class="muted">项目连接设置在这里管理；交付关系在“交付”页面查看。</p><button id="connection-button" type="button">接入自己的 agent ↗</button></section>
+          <nav class="page-tabs" aria-label="项目设置分类"><button type="button" data-settings-tab="repository" aria-current="page">仓库与同步</button><button type="button" data-settings-tab="connections">连接诊断</button></nav><section class="settings-intro"><h2>接入与仓库</h2><p class="muted">项目连接设置在这里管理；交付关系在“交付”页面查看。</p><button id="connection-button" type="button">接入自己的 agent ↗</button></section>
           <div id="collaboration-status" class="collaboration-panel"></div>
           <div id="git-connection" class="git-connection"></div>
         </section>
@@ -575,14 +583,15 @@ THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH RE
     </dialog>
     <dialog
       id="task-dialog"
-      class="task-dialog"
+      class="task-dialog drawer"
       aria-labelledby="task-detail-title"
     >
       <div class="dialog-heading">
-        <p class="eyebrow">TASK / 工作上下文</p>
-        <button id="close-task" aria-label="关闭任务详情">×</button>
+        <p class="eyebrow" id="drawer-kind">任务详情</p>
+        <button id="close-task" aria-label="关闭详情">×</button>
       </div>
       <div id="task-detail"></div>
+      <p id="drawer-error" class="error" role="alert" aria-live="assertive"></p>
     </dialog>
     <dialog id="private-dialog" aria-labelledby="private-title">
       <div class="dialog-heading">

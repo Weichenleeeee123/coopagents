@@ -11,12 +11,13 @@
     else state.status.textContent=state.assets.length+' 个共享资产';
     if(!state.assets.length&&!state.loading&&!state.error)state.list.append(el('p','尚未显式分享项目文件。','muted'));
     state.assets.forEach(asset=>{
-      const row=el('article','','asset-row');
-      const title=el('h3',String(asset.filename||'文件').slice(0,255));
+      const row=el('article','','content-row asset-row'),body=el('div','','row-content'),end=el('div','','row-end');
+      const title=el(state.context.openDetail?'button':'h3',String(asset.filename||'文件').slice(0,255),state.context.openDetail?'object-title-button':'');
       const metadata=el('p',`${asset.media_type} · ${asset.size_bytes} bytes · SHA-256 ${asset.sha256}`,'meta');
       const sourceType={upload:'成员上传',path:'仓库路径',commit:'Commit',pull_request:'PR',release:'Release'}[asset.source_type]||'显式引用';
       const source=asset.source_type==='upload'?sourceType:`${sourceType} · ${asset.source_ref}`;
-      const details=el('p',`${source} · 分享者 ${asset.uploader_member_id} · ${asset.created_at}`,'meta');
+      const details=el('p',`${source} · 分享者 ${state.context.memberName?.(asset.uploader_member_id)||asset.uploader_member_id} · ${asset.created_at}`,'meta');
+      if(state.context.openDetail){title.type='button';title.addEventListener('click',()=>{const detail=el('div');detail.append(el('p',metadata.textContent,'detail-value'),el('p',details.textContent,'meta'));state.context.openDetail(asset.filename,detail);});}
       const download=el('button','下载');download.type='button';download.title='下载共享资产';
       download.addEventListener('click',async()=>{
         const current=state,context=current?.context;
@@ -29,7 +30,7 @@
         }catch(error){if(state===current&&context.isCurrent()){current.error=error.message;renderList();}}
         finally{download.disabled=false;}
       });
-      row.append(title,metadata,details,download);state.list.append(row);
+      body.append(title,el('p',`${asset.media_type} · ${asset.size_bytes} bytes`,'meta'),details);if(!state.context.openDetail){const evidence=el('details');evidence.append(el('summary','文件校验信息'),metadata);body.append(evidence);}end.append(download);row.append(el('span','▤','object-mark'),body,end);state.list.append(row);
     });
   }
   async function load(current){
@@ -72,7 +73,7 @@
         if(state===current&&current.context.isCurrent()){current.uploading=false;current.error=error.message;upload.disabled=!(input.files&&input.files.length);renderList();}
       }
     });
-    controls.append(label,sourceLabel,upload,refresh);section.append(heading,controls,status,list);root.append(section);
+    controls.append(label,sourceLabel,upload,refresh);const share=el('details','','asset-share');share.append(el('summary','分享文件'),controls);section.append(heading,share,status,list);root.append(section);
     state={roomId:context.roomId,context,assets:[],loading:false,uploading:false,error:'',root,list,status,input,upload,refresh,sourceType,sourceRef};
     refresh.addEventListener('click',()=>{if(state&&!state.loading&&!state.uploading)load(state);});
     load(state);

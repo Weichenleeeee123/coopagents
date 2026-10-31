@@ -9,7 +9,7 @@
     if(task.cancelled_at||task.state==='cancelled')return 'cancelled';
     if(!task.owner_member_id)return 'open';
     if(adapters.dependencies?.blocked(task,snapshot))return 'blocked';
-    const state=adapters.git?.state(task,progress,snapshot?.git)||progress?.state;
+    const state=adapters.git?.state?.(task,progress,snapshot?.git)||progress?.state;
     if(state==='blocked')return 'blocked';
     if(state==='merged')return 'merged';
     if(['local_done','pushed','pr_open'].includes(state))return 'review';
@@ -21,15 +21,28 @@
       (!needle||[t.title,t.scope,t.intent_key,progress.find(p=>p.task_id===t.id)?.summary||''].join(' ').toLocaleLowerCase().includes(needle)));
   }
   function card(t,p,s,adapters={}){
-    const name=id=>member(s,id),requests=s.requests.filter(r=>r.task_id===t.id),card=node('button','','task-card');
+    const name=id=>member(s,id),card=node('button','','task-card'),key=column(t,p,s,adapters),label=columns.find(c=>c[0]===key)?.[1]||key;
     card.type='button';card.id='task-'+t.id;card.setAttribute('aria-label','查看任务 #'+t.id+'：'+t.title);
     card.addEventListener('click',()=>adapters.open?.(t.id));
-    add(card,add(node('div','','card-top'),node('span','CM-'+String(t.id).padStart(3,'0'),'task-number'),node('span','↗','card-arrow')),node('h3',t.title),node('p',p?.summary||(t.cancelled_at?'任务已取消。':'已声明工作范围，等待 agent 推进。'),'card-summary'),node('p',t.scope,'card-scope'));
-    add(card,add(node('div','','card-bottom'),add(node('span','','card-person'),node('span',(t.owner_member_id?name(t.owner_member_id):'?').slice(0,1),'avatar'),node('span',t.cancelled_at?'已取消':t.owner_member_id?name(t.owner_member_id):'待认领')),node('span',requests.length+' 请求','card-meta')),node('p',date(p?.updated_at||t.cancelled_at||t.claimed_at||t.created_at)+' · '+(t.cancelled_at?'已取消':p?'agent 自述':t.owner_member_id?'已认领':'任务声明'),'card-time'));
-    const handoff=s.lifecycle?.handoffs?.find(h=>h.task_id===t.id&&h.status==='pending');if(handoff)card.append(node('p','待 '+name(handoff.target_member_id)+' 接手 · '+handoff.summary,'card-summary'));
-    const deps=(s.dependencies||[]).filter(d=>d.source_task_id===t.id&&d.status==='active');if(deps.length)card.append(node('p','等待 '+deps.map(d=>d.target.title+'（'+(d.target.owner_member_id?name(d.target.owner_member_id):'待分派')+'）').join('、'),'card-summary'));
-    const git=adapters.git?.summarize(t.id,s.git);if(git)card.append(node('p',git,'card-git'));
+    add(card,node('span','CM-'+String(t.id).padStart(3,'0'),'task-number'),node('h3',t.title),node('p',p?.summary||(t.cancelled_at?'任务已取消。':'已声明工作范围，等待 agent 推进。'),'card-summary'));
+    const source=(s.git?.deliveries||[]).some(d=>d.task_id===t.id&&d.source==='github_verified'&&!d.stale)?'GitHub 证据':p?'agent 自述':'任务声明';
+    add(card,add(node('div','','card-bottom'),add(node('span','','card-person'),node('span',(t.owner_member_id?name(t.owner_member_id):'?').slice(0,1),'avatar'),node('span',t.owner_member_id?name(t.owner_member_id):'待认领')),node('span',label+' · '+source,'card-state state-'+key)));
     return card;
+  }
+  function table(tasks,s,adapters={}){
+    const wrap=node('div','','task-table-wrap'),table=node('table','','task-table'),head=node('thead'),headRow=node('tr'),body=node('tbody');
+    for(const label of ['工作项','状态','负责人','更新时间',''])headRow.append(node('th',label));head.append(headRow);
+    for(const task of tasks){
+      const progress=s.progress.find(p=>p.task_id===task.id),key=column(task,progress,s,adapters),row=node('tr'),work=node('td'),open=node('button','','task-table-link');
+      open.type='button';open.addEventListener('click',()=>adapters.open?.(task.id));
+      add(open,node('span','CM-'+String(task.id).padStart(3,'0'),'task-number'),node('strong',task.title),node('span',progress?.summary||'等待 agent 推进','meta'));work.append(open);
+      const state=node('td');state.append(node('span',columns.find(c=>c[0]===key)?.[1]||key,'card-state state-'+key));
+      const person=node('td');person.append(node('span',member(s,task.owner_member_id),'person'));
+      const more=node('td'),view=node('button','查看','link-button');view.type='button';view.addEventListener('click',()=>adapters.open?.(task.id));more.append(view);
+      add(row,work,state,person,node('td',date(progress?.updated_at||task.cancelled_at||task.claimed_at||task.created_at),'meta'),more);body.append(row);
+    }
+    if(!tasks.length){const cell=node('td','没有匹配的任务，请调整筛选。','empty');cell.colSpan=5;body.append(add(node('tr'),cell));}
+    add(table,head,body);wrap.append(table);return wrap;
   }
   function request(r,s){
     const row=node('article','','record');
@@ -41,6 +54,8 @@
     const row=node('article','','record');add(row,node('h3',c.contract_key),node('p','当前 v'+c.current_version+' · 生效 '+(c.effective_version?'v'+c.effective_version:'尚未批准'),'meta'));
     (c.versions||[]).forEach(v=>add(row,node('h4','v'+v.version+' '+v.title),node('p',v.body),node('p',v.commit_ref||'','meta')));return row;
   }
+  function requestSummary(r,s,context={}){const row=node('article','','request-row'),body=node('div','','request-main'),title=node('button',r.body,'object-title-button');title.type='button';title.addEventListener('click',context.open||(()=>{}));body.append(node('span','请求 #'+r.id,'object-reference'),title);const reply=r.replies?.[r.replies.length-1];if(reply)body.append(node('p',member(s,reply.author_member_id)+'：'+reply.body,'reply-preview'));row.append(body,node('p',member(s,r.sender_member_id)+' → '+member(s,r.receiver_member_id),'request-people'),node('span',r.resolved_at?'已解决':reply?'已有回复 · 待确认':'等待回复','object-status '+(r.resolved_at?'good':'pending')));return row;}
+  function contractSummary(c,context={}){const row=node('article','','content-row'),body=node('div','','row-content'),current=c.versions.find(v=>v.version===c.effective_version)||c.versions.find(v=>v.version===c.current_version),title=node('button',current?.title||c.contract_key,'object-title-button');title.type='button';title.addEventListener('click',context.open||(()=>{}));body.append(title,node('p',c.contract_key+' · '+(c.effective_version?'生效 v'+c.effective_version:'尚未生效'),'meta'),node('p',current?.body||'等待团队审核','object-summary'));row.append(node('span','≡','object-mark'),body);return row;}
   function readonlyDetail(t,p,s,adapters={}){
     const root=node('div'),title=node('h2',t.title);title.id='task-detail-title';
     add(root,node('p','CM-'+String(t.id).padStart(3,'0'),'eyebrow'),title,node('p',columns.find(c=>c[0]===column(t,p,s,adapters))[1]+' · '+member(s,t.owner_member_id),'detail-status'),node('p','声明范围','detail-label'),node('p',t.scope,'detail-value'),node('p','去重标识：'+t.intent_key,'meta'),node('p','创建 '+date(t.created_at)+' · 认领 '+date(t.claimed_at),'meta'));
@@ -55,5 +70,5 @@
     s.contracts.filter(c=>c.versions.some(v=>related.some(r=>r.id===v.source_request_id))).forEach(c=>root.append(contract(c)));
     return root;
   }
-  window.CoopagentsBoard={columns,column,matchingTasks,card,readonlyDetail,request,contract};
+  window.CoopagentsBoard={columns,column,matchingTasks,card,table,readonlyDetail,request,contract,requestSummary,contractSummary};
 })();

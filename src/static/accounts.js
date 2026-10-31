@@ -179,11 +179,11 @@
     await loadTeam(teams.some(t=>t.team_id===preferred)?preferred:teams[0]?.team_id || '',isCurrent);
   }
   async function change(path,data){const mine=epoch;await request(path,data);if(mine===epoch)await reload();}
-  async function selectProject(id,isCurrent=()=>true){
+  async function selectProject(id,isCurrent=()=>true,options={}){
     if(!session || !isCurrent() || !projects.some(p=>p.room_id===id))return;
     const selectedTeam=teamId, available=projects;invalidate();showHub();const mine=epoch;
     const credential=await request('/account/projects/'+encodeURIComponent(id)+'/select',{});if(mine!==epoch || selectedTeam!==teamId || !isCurrent())return;
-    projects=available;roomId=id;sessionStorage.setItem('coopagents_selected_project',id);project.enter(credential.web_token);
+    projects=available;roomId=id;sessionStorage.setItem('coopagents_selected_project',id);project.enter(credential.web_token,options);
     el('account-hub').hidden=true;el('account-switchers').hidden=false;el('logout').textContent='返回团队与项目';renderTeams();
   }
   async function switcherProjects(){
@@ -248,7 +248,7 @@
     catch(error){if(mine!==epoch)return;if(error.status===401){if(wasManaged)loggedOut();return;}throw error;}
     if(mine!==epoch)return;session=info;await reload(storedTeam);
     if(['#billing','#billing-return'].includes(window.location?.hash))setHubView('billing');
-    if(wasManaged&&storedProject&&!window.CoopagentsInvitations?.pending()&&!['#billing','#billing-return'].includes(window.location?.hash)&&projects.some(p=>p.room_id===storedProject))await selectProject(storedProject);
+    if(wasManaged&&storedProject&&!window.CoopagentsInvitations?.pending()&&!['#billing','#billing-return'].includes(window.location?.hash)&&projects.some(p=>p.room_id===storedProject))await selectProject(storedProject,()=>true,{restoreView:true});
   }
   window.addEventListener('hashchange',async()=>{
     const hash=window.location.hash,account=session,selectedTeam=teamId;

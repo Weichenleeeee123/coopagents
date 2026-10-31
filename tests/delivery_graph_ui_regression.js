@@ -25,12 +25,22 @@ const graph={items:[
 const git={workspaces:[{id:7,task_id:1,branch:'feat/ui',head:sha,member_id:4,stale:false}],deliveries:[{pr_number:17,branch:'feat/ui',head_sha:sha,state:'open',source:'github_verified',sync_at:'2026-10-30T12:10:00Z',stale:false}],releases:[{release_id:9,tag_name:'v0.9.0',name:'Launch',target_commitish:'main',state:'published',source:'github_verified',sync_at:'2026-10-30T13:00:00Z',stale:false}],github:{deliveries:[{pr_number:17,branch:'feat/ui',head_sha:sha,state:'open',source:'github_verified',sync_at:'2026-10-30T12:10:00Z',stale:false}],releases:[{release_id:9,tag_name:'v0.9.0',name:'Launch',target_commitish:'main',state:'published',source:'github_verified',sync_at:'2026-10-30T13:00:00Z',stale:false}]}};
 const projection=Graph.buildGraph(graph,git);
 assert.equal(projection.nodes.length,5);
+const evidenceOnly=Graph.buildGraph(graph,{...git,workspaces:[]});
+assert.ok(evidenceOnly.groups.find(g=>g.id==='branch:feat/ui').nodes.some(n=>n.key==='commit:'+sha),'Explicit checkpoint evidence must group commit and branch even when the workspace list is absent');
 assert.ok(projection.edges.some(e=>e.kind==='workspace-head'&&e.from==='branch:feat/ui'&&e.to==='commit:'+sha));
 assert.ok(projection.edges.some(e=>e.kind==='pr-head-branch'&&e.from==='branch:feat/ui'&&e.to==='pr:17'));
 assert.ok(projection.edges.some(e=>e.kind==='pr-head-sha'&&e.from==='pr:17'&&e.to==='commit:'+sha));
 assert.ok(!projection.edges.some(e=>e.to==='release:9'));
 assert.ok(!projection.edges.some(e=>e.to==='branch:suspicious'));
 assert.equal(projection.nodes.find(n=>n.key==='release:9').title,'Launch');
+const multiBranch={items:[
+ {kind:'branch',value:'feat/a',task_ids:[10],associations:[{task_id:10,ref_id:11,ownership_epoch:0,relationship_source:'explicit'}]},
+ {kind:'branch',value:'feat/b',task_ids:[10],associations:[{task_id:10,ref_id:12,ownership_epoch:0,relationship_source:'explicit'}]},
+ {kind:'pr',value:42,task_ids:[10],associations:[{task_id:10,ref_id:11,ownership_epoch:0,relationship_source:'observed',evidence:'GitHub PR head matches linked branch'}]}
+]};
+const branchEvidence=Graph.buildGraph(multiBranch,{});
+assert.deepEqual(branchEvidence.edges.filter(e=>e.kind==='pr-head-branch').map(e=>e.from),['branch:feat/a'],'A shared task cannot connect a PR to a different branch reference');
+assert.ok(branchEvidence.groups.find(g=>g.id==='branch:feat/a').nodes.some(n=>n.key==='pr:42'),'Reference-matched PR stays in the evidenced branch lane');
 const root=new E('div');let opened=[],decisions=[];
 Graph.render(root,graph,git,{openTask:id=>opened.push(id),openNode:key=>opened.push(key),canManage:true,api:async(_path,payload)=>decisions.push(payload),sync:async()=>{}});
 assert.match(text(root),/PR #17/);assert.match(text(root),/同一工作区 HEAD/);assert.match(text(root),/PR head SHA 匹配/);
@@ -38,6 +48,22 @@ assert.ok(all(root).some(n=>n.className.split(' ').includes('git-lane')));assert
 const edge=all(root).find(n=>n.tagName==='PATH');
 const marker=all(root).find(n=>n.className.split(' ').includes('git-object-marker'));
 const previousPath=edge.attributes.d;marker.x+=96;resizeGraph();assert.notEqual(edge.attributes.d,previousPath,'Graph connectors must recalculate when responsive layout moves nodes');
+// SVG needs explicit display semantics, and hidden endpoints must never be measured.
+const search=all(root).find(n=>n.tagName==='INPUT');
+search.value='Launch';search.listeners.input();
+assert.equal(edge.attributes.display,'none','Edges touching filtered rows must use SVG display semantics');
+assert.equal(edge.attributes.d,'','Filtered endpoints must never generate paths from zero coordinates');
+resizeGraph();assert.equal(edge.attributes.d,'');
+assert.equal(all(root).filter(n=>n.className==='git-lane'&&!n.hidden).length,1,'Empty branch groups must disappear');
+search.value='no object matches';search.listeners.input();
+assert.ok(all(root).some(n=>n.className==='graph-filter-empty'&&!n.hidden),'Empty filter results need a clear recovery state');
+search.value='';search.listeners.input();
+assert.equal(edge.attributes.display,'');assert.ok(edge.attributes.d.startsWith('M '));
+// A snapshot refresh while filtering must retain the complete object set.
+search.value='Launch';search.listeners.input();
+Graph.render(root,graph,git,{openTask:id=>opened.push(id),openNode:key=>opened.push(key),canManage:true,api:async(_path,payload)=>decisions.push(payload),sync:async()=>{}});
+const restoredSearch=all(root).find(n=>n.tagName==='INPUT');restoredSearch.value='';restoredSearch.listeners.input();
+assert.equal(all(root).filter(n=>n.className==='git-object-row'&&!n.hidden).length,5);
 const node=all(root).find(n=>n.className.split(' ').includes('git-object-link')&&n.attributes['data-node-key']==='pr:17');node.listeners.click();assert.ok(opened.includes('pr:17'));
 const task=all(root).find(n=>n.textContent==='任务 #1');task.listeners.click();assert.ok(opened.includes(1));
 const approve=all(root).find(n=>n.textContent==='确认关联');assert.ok(approve);

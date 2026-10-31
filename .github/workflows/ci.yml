@@ -31,6 +31,8 @@ jobs:
       - run: node tests/delivery_ui_regression.js
       - run: node tests/delivery_graph_ui_regression.js
       - run: node tests/workspace_navigation_regression.js
+      - run: node tests/workspace_shell_ui_regression.js
+      - run: node tests/workspace_objects_ui_regression.js
       - run: node tests/realtime_client_regression.js
       - run: node tests/space_board_session_regression.js
       - run: node --check src/static/accounts.js

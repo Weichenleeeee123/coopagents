@@ -1,4 +1,18 @@
-# Coopagents 文档索引
+# Coopagents documentation
+
+English is the default for the project README, contribution guide and agent-first setup guide. Chinese companions are linked below. Historical design and acceptance records retain their original language.
+
+## Start here
+
+| Guide | English | 简体中文 |
+| --- | --- | --- |
+| Product, quick start and release boundaries | [README](../README.md) | [项目首页](../README.zh-CN.md) |
+| Contributing and development checks | [Contributing](../CONTRIBUTING.md) | [贡献指南](CONTRIBUTING.zh-CN.md) |
+| Agent-first setup and doctor (unreleased) | [Setup](agent-first-setup.md) | [首次配置](agent-first-setup.zh-CN.md) |
+
+For operation and support: [P2P runtime](agent-hosted-runtime.md), [harness adapter matrix](harness-adapters-0.9.md), [security](../SECURITY.md), [self-hosted deployment](deployment.md), [setup acceptance](agent-first-setup-acceptance.md) and [two-machine acceptance](two-machine-acceptance.md).
+
+## Detailed guides and historical records
 
 项目在 0.6.0rc2 之后由 Crewmesh 改名为 Coopagents；历史验收记录里已发布资产的文件名保持原样。
 
@@ -66,6 +80,7 @@
 | [P4 原生验收](p4-native-report.md) | Claude 实际接入与 Codex 取消证据 |
 | [看板升级](kanban-plan.md) | 自动分列、筛选、任务详情与浏览器验收 |
 | [品牌资产](brand-assets.md) | 生成图标、提示词、文件校验与演示截图 |
+| [Current product screenshots](brand-assets.md) | README assets from the 2026-10-31 production frontend capture, with synthetic-data and verification limits |
 | [仓库结构](repository-layout.md) | 目录职责、迁移记录与服务恢复验证 |
 | [P2/P3 实施计划](p2-p3-plan.md) | 状态、消息、约定、认证服务和网页的实施与验收 |
 | [P2/P3 验证报告](p2-p3-report.md) | 正式共享服务与网页的实际完成情况 |

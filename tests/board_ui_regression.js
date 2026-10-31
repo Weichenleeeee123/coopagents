@@ -16,9 +16,15 @@ assert.equal(board.matchingTasks([task],[progress],'SCRIPT','2').length,1);
 assert.equal(board.matchingTasks([task],[progress],'','unassigned').length,0);
 const card=board.card(task,progress,snapshot,{open:()=>{},git:{summarize:()=> 'GitHub 验证 · 检查未知'}});
 function values(n){return [n.textContent,...n.children.flatMap(values)];}
-assert(values(card).includes(task.title));assert(values(card).includes(progress.summary));assert(values(card).includes('GitHub 验证 · 检查未知'));
+assert(values(card).includes(task.title));assert(values(card).includes(progress.summary));assert(values(card).some(v=>v.includes('agent 自述')));
 assert(!Object.hasOwn(card,'innerHTML'));
-console.log('Shared board classification, escaping and evidence passed');
+let selectedTask;
+const table=board.table([task],snapshot,{open:id=>selectedTask=id});
+assert(values(table).includes(task.title));assert(values(table).includes('Owner'));assert(values(table).includes('已合并'));
+function descendants(n){return n.children.flatMap(c=>[c,...descendants(c)]);}
+descendants(table).find(n=>n.tagName==='button').handlers.click();assert.equal(selectedTask,1);
+assert(!descendants(card).some(n=>n.className==='card-scope'||n.className==='card-time'||n.className==='card-git'),'Task cards keep detailed evidence in the task drawer');
+console.log('Shared board classification, list navigation, compact cards and safe text passed');
 
 // The hosted application delegates to the shared module while retaining its
 // standalone fallback for existing embedded integrations.

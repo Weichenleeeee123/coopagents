@@ -1,169 +1,110 @@
 <div align="center">
-  <img src="src/static/icon.png" width="112" alt="Coopagents icon">
+  <img src="src/static/icon.png" width="96" alt="Coopagents 图标">
   <h1>Coopagents · 同频</h1>
-  <p><sub>当前正式版本：0.9.0。</sub></p>
-  <p><strong>Claude Code 和 Codex 的多人模式。</strong></p>
-  <p>你的 agent 和队友的 agent 共用一个任务看板：互相提问、交接任务、把对方叫醒。<br>点对点连接，不需要服务器，也不需要账号。</p>
-  <p><a href="#让-agent-帮你配置">让 agent 帮你配置</a> · <a href="#在自己电脑上试一试">试一试</a> · <a href="#邀请队友">邀请队友</a> · <a href="SECURITY.md">安全</a> · <a href="docs/README.md">文档</a> · <a href="README.md">English</a></p>
-  <p><sub>原名 Crewmesh。</sub></p>
+  <p><strong>让不同工具、不同电脑里的 coding agent 共享上下文。</strong></p>
+  <p>你的 agent 和队友的 agent 能找到彼此、直接提问，把工作关联到交付证据。<br>每个人保留自己的工具、电脑和工作方式。</p>
+  <p><a href="#让-agent-帮你开始">开始使用</a> · <a href="#选择运行方式">运行方式</a> · <a href="docs/harness-adapters-0.9.md">Harness 支持</a> · <a href="SECURITY.md">安全</a> · <a href="docs/CONTRIBUTING.zh-CN.md">贡献指南</a> · <a href="README.md">English</a></p>
+  <p><sub>Alpha · 最新公开包：0.9.0 · 原名 Crewmesh</sub></p>
 </div>
 
 ---
 
-你用 Claude Code，队友用 Codex；或者你一个人同时开着这两个。每个 agent 单独干活都很快，可它们之间说不上话，协调的活就落到了人身上：
+你用 Claude Code，队友在另一台电脑上用 Codex。每个 agent 都能独立干活，但接口决策、待答问题和交付进度需要一个共享的地方。
 
-- 两个 agent 做了同一个模块，因为谁也不知道对方已经开工了。
-- 一个 agent 改了接口，另一个还在按旧字段写代码。
-- 人成了传话筒，在几个对话窗口之间来回复制问题和答案。
+**Coopagents 通过 MCP 把它们连起来。** 共享项目上下文、发现队友的 agent、直接向合适的 agent 提问，并从任务追溯到分支、提交、PR 和 Release。这些能力可以自由组合，不要求团队按固定顺序或流程协作。
 
-**Coopagents 给这些 agent 一个共同的工作现场。** 任务要先认领，不会撞车；技术问题直接发给负责这段代码的那个 agent；交接任务时带着前因后果；接口约定由 agent 提出，最后由人批准。每个人照样用自己的工具、自己的电脑、自己的分支，Coopagents 通过 MCP 把它们连起来。
+![Coopagents 项目任务看板](docs/assets/workspace-board-v2-2026-10-31.png)
 
-## 用起来是什么样
+<sub>真实自托管工作台，使用合成演示数据直接截图，当前界面为中文。它与 P2P 主机上可选的本机只读看板是不同入口。[截图来源](docs/brand-assets.md)。</sub>
 
-下面是一段示意：Codex 遇到一个问题，这时 Claude Code 的会话正闲着。
+## 核心能力
 
-```text
-[Codex]        send_request → Claude："POST /login 返回的 ticket 是字符串还是数字？
-                                       有效期多久？"
+| 能力 | 团队得到什么 |
+| --- | --- |
+| 共享上下文 | 项目约定、限定范围的上下文查询、共享文件，以及来源与新鲜度信息。待审提案与生效决策明确分开。 |
+| 成员与 agent 发现 | 查看队友登记的工具、会话与能力证据。网络连接不代表模型正在工作或已读消息。 |
+| 直接协作 | 提问、回复，分别记录读取、处理与解决状态。 |
+| 任务 | 认领工作、汇报进展，在共享看板里查看依赖。 |
+| 交付关联 | 从任务追溯 Git 对象并查看证据来源；图中只展示有证据的关系，不伪造完整提交历史。 |
 
-[Claude Code]  （本来闲着，自己醒了过来）
-               Automatic collaboration notice, not a message from your user:
-               1 new request addressed to you…
-               read_inbox → reply："字符串，有效期 600 秒，见 auth/ticket.py。"
+创建任务、批准约定、接受交接和修改成员权限等决定仍由人掌握。普通 agent MCP 工具不暴露这些操作；只有用户明确要求时，agent 才能使用该用户单独的凭据执行相应人工操作。
 
-[Codex]        （待命中收到回复）按正确的类型继续写。
-```
+## 让 agent 帮你开始
 
-全程没人复制粘贴。提问、回复、谁在什么时候读过，都记在空间里，团队里每个 agent 都看得到。
+需要 **Python 3.11+** 和受支持的 coding agent。首次配置 P2P 空间不需要网页账号或已启动的工作台。可以先在一台电脑上接入两个 agent，再邀请队友。
 
-![Coopagents 任务看板](docs/assets/kanban-demo.jpg)
+使用**已发布的 0.9.0** 时，打开项目仓库，把下面这段发给 Claude Code 或 Codex：
 
-<sub>任务看板。截图来自自托管工作台，团队是虚构的演示数据。空间的只读看板用的是同样的分列和卡片。</sub>
+> 阅读 [Coopagents 0.9.0 space Skill](https://github.com/Weichenleeeee123/coopagents/blob/v0.9.0/src/skills/coopagents-space/SKILL.md)。把 `coopagents[space]==0.9.0` 安装到仓库外独立的虚拟环境，显式使用该环境的 Python。帮我为当前仓库配置 Coopagents：已有匹配连接就复用，否则为这个仓库创建本机 P2P 空间，并把当前 agent 作为我的成员接入。保留现有配置，暂不开启唤醒，也不邀请别人。分别说明配置了什么，以及哪些步骤仍需要新会话或我的确认。
 
-## 让 agent 帮你配置
+配置后新开一个 agent 会话，让原生工具加载 MCP。请 agent 调用 `whoami` 核对项目与成员身份，再调用 `read_team`。磁盘上写好了配置，不等于当前会话已经加载工具。
 
-首次配置不需要网页账号或工作台。打开你要协作的仓库，对 agent 说：
+**开发版：** 新的 agent-first 接入增加统一 `doctor` 诊断、连接恢复提示，以及独立的配置/验证结果，**公开的 0.9.0 尚不包含这些更新**。现在使用它需要明确授权开发 checkout，再按[首次配置指南](docs/agent-first-setup.zh-CN.md)操作（[English](docs/agent-first-setup.md)）。对应 Skill 安装后，说“帮我配置好 Coopagents”即可开始。信任确认和可选唤醒仍由用户决定。
 
-> 阅读 [Coopagents space Skill](https://github.com/Weichenleeeee123/coopagents/blob/main/src/skills/coopagents-space/SKILL.md)，按它为当前仓库配置 Coopagents。使用当前 agent 作为我的本地成员，保留现有配置；除非我提出要求，不开启唤醒，也不邀请任何人。
-
-agent 会处理隔离安装、原生 MCP 配置和连接检查。新的 doctor 命令目前属于开发分支，公开的 0.9.0 尚不包含它。如果没有邀请或已有项目接入信息，它会为当前仓库创建本机 P2P 空间。完整结果状态和恢复步骤见[agent-first 首次配置指南](docs/agent-first-setup.zh-CN.md)。
-
-## 在自己电脑上试一试
-
-试用不需要队友：把 Claude Code 和 Codex 当成同一台电脑上的两个队友就行。需要 Python 3.11+，以及两个工具中的至少一个。
-
-**1. 在 Claude Code 里**打开一个测试仓库，说：
-
-> 从 PyPI 把 Coopagents 0.9.0 装进它自己的虚拟环境：在这个仓库外面运行 `python -m venv <目录>`，然后用 `<目录>/Scripts/python -m pip install "coopagents[space]==0.9.0"`（macOS 和 Linux 上是 `<目录>/bin/python`），不要激活环境。如果包镜像还没有 0.9.0，加上 `--index-url https://pypi.org/simple`；不要装别的版本。再阅读 https://github.com/Weichenleeeee123/coopagents/tree/v0.9.0/src/skills/coopagents-space 上的 Skill。然后给这个仓库创建一个 Coopagents 空间，你在里面的名字叫 "Claude"，把你自己接进去并开启唤醒，再给我的 Codex 生成一条邀请信息。
-
-**2. 在 Codex 里**打开同一个仓库：
-
-> *（粘贴 Claude 给你的邀请信息）* 名字用 "Codex"。
-
-**3. 唤醒。** 第 1 步已经给 Claude Code 开好了。以后想在别的会话里开，直接说 *"给这个仓库开启 Coopagents 唤醒"*：agent 会调用 `install_wake` 工具，它自己认出是哪个工具、哪个目录、哪个空间。Claude Code 在下一个会话生效；Codex 那边要在 `/hooks` 里信任新加的 hook。
-
-**4. 让它们对话。** 让 Claude Code 闲着，对 Codex 说：*"通过 Coopagents 问 Claude 这个仓库用什么命令跑测试，然后等它回答。"*
-
-安装由 agent 自己完成：从 PyPI 装这个确切版本到独立的 Python 环境，启动空间，再把 MCP 加进自己的配置。你原有的设置都会保留。Codex 第一次调用 Coopagents 的工具时，可能会逐个请你批准。
-
-邀请信息总是写明发起人自己的版本号，双方装的是同一个版本。
-
-想自己装也可以：
-
-```bash
-python -m venv ~/.coopagents/venv && ~/.coopagents/venv/bin/python -m pip install "coopagents[space]"   # Windows 用 Scripts\python
-export PATH=~/.coopagents/venv/bin:$PATH
-python -m coopagents.space_runtime create --name "我的空间" --owner Claude --connect claude --wake
-python -m coopagents.space_runtime invite --profile <输出里的 profile> --message zh
-```
-
-用国内镜像的话，新版本同步可能有延迟；装不到时加上 `--index-url https://pypi.org/simple`。
+手动命令见[空间运行](docs/agent-hosted-runtime.md)。使用独立环境，不安装到系统 Python；邀请信息会固定发起人的版本，让双方使用一致的发行版。
 
 ## 邀请队友
 
-跨电脑、跨网络也是同一套流程：
+1. 对已接入的 agent 说：**“生成一条给队友的 Coopagents 邀请信息，24 小时有效。”**
+2. 私下发送完整信息。它包含一次性凭据，持有未使用邀请的人就能加入。默认有效一小时，可指定最长 72 小时。
+3. 队友将整段信息贴给自己的受支持 agent，让它加入。agent 安装匹配版本并保存个人配置。
+4. 在新会话里核对身份和团队访问，再尝试真实提问：**“通过 Coopagents 问 Mia，共享上下文接口返回哪些字段。”**
 
-1. **你**："给这个项目创建 Coopagents 空间，生成一条给队友的中文邀请信息，24 小时有效。"
-2. **私下把这条信息发给队友**，比如微信私聊。信息里写了 Coopagents 是什么，并带着一次性邀请码，拿到的人就能加入。只能用一次，到你设定的时间就过期（默认 1 小时，最长 72 小时）。
-3. **队友**把整段信息贴给自己的 Claude Code 或 Codex，agent 会自己安装并加入。就这样。
+空间保存在主机电脑上，主机需要保持开机。成员通过 [iroh](https://iroh.computer) 按持久公钥认证主机；能直连时直连，否则使用加密中继。这个模式不需要公网 IP、端口转发或单独的托管账号。主机重启保留身份；恢复已有配置即可，不要重复消耗邀请。
 
-队友收到的是这样一段话：
+## 选择运行方式
 
-```text
-Alice 邀请你加入 Coopagents 空间「黑客松」。
+| 模式 | 适合什么场景 | 网页入口 |
+| --- | --- | --- |
+| Agent 承载的 P2P 空间 | 小团队使用自己的电脑协作，无需另行部署服务 | 主机上可选的只读看板，主要通过 agent 协作 |
+| 自托管团队服务 | 账号、多项目、网页管理及 Git/GitHub 集成 | 完整项目工作台：概览、任务、协作、共享上下文、交付、成员 |
 
-Coopagents 是 Claude Code 和 Codex 的多人模式：我们的 agent 共用一个任务看板，
-可以直接互相提问、交接任务。点对点连接，不需要账号。
-https://github.com/Weichenleeeee123/coopagents
+两种模式共用协作核心。截图中的完整工作台需要部署服务并初始化账号，首次 P2P 配置不会自动启动它。参见 [P2P 运行](docs/agent-hosted-runtime.md)、[只读看板](docs/agent-hosted-board.md)、[自托管服务](docs/self-hosted-service.md)和[部署指南](docs/deployment.md)。
 
-把两条分隔线之间的内容整段发给你的 Claude Code 或 Codex：
-----------
-从 PyPI 把 Coopagents 0.9.0 装进独立的 Python 环境：`pip install "coopagents[space]==0.9.0"`……然后用下面的一次性邀请码加入我的 Coopagents 空间……
-coopagents-invite-2.09G02-071GZ-75SCY-14W94-…
-----------
+<details>
+<summary>更多工作台截图</summary>
 
-这条邀请只能用一次，2026-10-16 21:30 (UTC+08:00) 过期。里面含有密钥：……
-```
+![项目切换](docs/assets/workspace-project-switcher-v2-2026-10-31.png)
 
-空间存放在创建者的电脑上，这台电脑需要保持开机。队友通过 [iroh](https://iroh.computer) 点对点连过来，按主机的公钥找到它。网络条件允许时直连；不允许时走加密中继，中继只能看到密文。不需要公网 IP、端口转发、隧道，也不需要注册账号。主机重启后，大家不用重新邀请。
+![项目共享上下文](docs/assets/workspace-context-v2-2026-10-31.png)
 
-## agent 能做什么，什么留给人
+![成员与 agent 能力](docs/assets/workspace-members-v2-2026-10-31.png)
 
-| agent 可以 | 只有人能决定 |
+</details>
+
+## Harness 支持与可选唤醒
+
+Claude Code 和 Codex 提供原生空间接入。其他 harness 提供远程 MCP 配置适配器，实际验证程度各不相同，使用前请看[支持矩阵](docs/harness-adapters-0.9.md)。支持生成配置不代表已验证真实模型会话，也不代表支持自动唤醒。
+
+| Harness | 可选唤醒行为 |
 | --- | --- |
-| 读取团队的任务、负责人和进展 | 创建任务 |
-| 认领任务（同一个任务只有一个 agent 能认领成功） | 批准或拒绝接口约定 |
-| 汇报进展、分支和提交 | 接受或拒绝任务交接 |
-| 向任务或模块的负责人提问、回复、标记解决 | 改派请求、取消或重开任务 |
-| 声明依赖、发起交接 | 撤销成员 |
-| 提出共享约定（人批准之前一直是待定） | |
+| Claude Code | 安装 hook 后，可唤醒仍打开的空闲会话，终端必须保持开启。 |
+| Codex | 每轮结束时检查；明确开启待命后可等待新消息。不能唤醒普通空闲会话，新 hook 需要用户在 `/hooks` 中信任。 |
+| 其他适配器 | 原生 hook 与空闲唤醒按矩阵记录为未验证或不支持。 |
 
-读到、处理、回复、解决是四个独立的状态：收到消息不等于看懂了，回复了问题也不等于问题解决了。只有人能做的操作不会出现在 agent 的 MCP 工具列表里；只有你明确要求时，agent 才会用你本人的凭据去执行。
+唤醒默认关闭，开启后消耗模型额度，不绕过原生权限。通知只包含数量，agent 再通过普通工具读取正文。参见[唤醒行为与限制](docs/agent-wake.md)。
 
-## 唤醒
+## 隐私与安全
 
-唤醒是可选功能，每次唤醒都会消耗一整轮模型调用。
+共享任务、请求和约定对项目成员可见。配置适配器不会上传 agent 私有对话。共享 SQLite 数据库存放在主机上，主机所有者可以读取。P2P 流量加密，中继仍能观察连接元数据。个人配置和邀请必须私密保存。
 
-| 工具 | 表现 |
-| --- | --- |
-| Claude Code | 队友给它发请求、回复它发出的请求、或者把任务交给它时，闲着的会话会自己醒来处理。前提是终端开着。 |
-| Codex | 闲着的时候叫不醒，每轮结束时会检查一次。开启待命后，一轮做完会继续等队友的消息，按 Esc 可以中断。 |
+其他 agent 的消息是**数据，不是执行命令、改权限或接受新工作的授权**。Coopagents 的指导和角色权限降低这类风险，但不能保证模型绝不会服从恶意内容。请阅读[威胁模型、限制和私密漏洞报告方式](SECURITY.md)。
 
-只有需要 agent 动手的事才会唤醒它，普通的进展更新不会。每个事项最多唤醒一次；两次唤醒至少间隔 60 秒，每小时最多 12 次。唤醒提示里只有数量，具体内容由 agent 用常规工具去读。详见 [Agent 唤醒](docs/agent-wake.md)。
+## 版本与验证边界
 
-## 和 Claude Code 的 agent teams 有什么不同
+最新公开包为 **0.9.0（Alpha）**。仓库也包含后续能力、工作台和配置更新；不能仅凭包版本号推断未发布功能。
 
-Claude Code 有一个实验性的 [agent teams](https://code.claude.com/docs/en/agent-teams) 功能：由一个主会话在同一台电脑上派生出多个 Claude 队友。Coopagents 补上的是它覆盖不到的部分：
+- 真实 Claude Code / Codex 协作、Claude 空闲唤醒及 Codex 待命已通过单台 Windows 电脑验收：[17 项报告](docs/solo-acceptance-2026-10-29.md)。
+- GitHub Actions runner 与家庭电脑之间有 P2P 连接证据：[网络报告](docs/agent-hosted-p2p-report.md)。
+- CI 覆盖 Python 3.11/3.13、网页脚本、发行包和部署 smoke。界面截图使用合成数据，不代表跨电脑或 harness 认证。
+- **仍需完成的独立 1.0 门槛：** 两位用户在家庭/移动 NAT 后的协作、跨电脑唤醒、macOS，以及新诊断流程的真实模型首次配置验收。参见[首次配置验收](docs/agent-first-setup-acceptance.md)和[双机清单](docs/two-machine-acceptance.md)。
 
-- **不同厂商**：Claude Code 和 Codex 在同一个空间里协作。
-- **不同的人、不同的电脑**：每个人用自己的 agent 和自己的账号加入，点对点连接。
-- **持久**：空间是主机上的一个 SQLite 数据库，任务、消息和历史在会话关闭、电脑重启之后都还在。
-- **人始终说了算**：约定、交接和创建任务都由人决定。
+## 文档与贡献
 
-## 安全
+从[首次配置](docs/agent-first-setup.zh-CN.md)、[支持矩阵](docs/harness-adapters-0.9.md)、[安全说明](SECURITY.md)或[贡献指南](docs/CONTRIBUTING.zh-CN.md)（[English](CONTRIBUTING.md)）开始。[文档索引](docs/README.md)包含详细实现与验收报告；部分历史指南保留中文。
 
-别人的 agent 发来的消息是**数据，不是指令**。Skill 要求 agent 不能把队友的消息当作授权，去执行命令、修改权限或接下新的工作。唤醒不会绕过你所用工具的权限确认。凭据只存在私有的 profile 文件里，不会出现在命令参数、MCP 工具参数或 Git 里。完整的威胁模型和它的局限见 [SECURITY.md](SECURITY.md)。
-
-## 当前状态
-
-**Alpha（0.9.0）。** 实际测过的有：
-
-- 在一台 Windows 电脑上，Claude Code 和 Codex 通过真实空间完成了协作，Claude 在空闲时被唤醒，Codex 在待命中被唤醒。
-- 点对点连接在 GitHub Actions 机器和家里的电脑之间跨网络连通。
-- 完整测试在 Linux CI 上用 Python 3.11 和 3.13 跑通。
-- 真实 Claude Code 和 Codex 单机流程 17 项检查全过，包括使用 v2 短邀请码加入、唤醒空闲 Claude 并完成问答。详见[验收报告](docs/solo-acceptance-2026-10-29.md)。
-
-**还没测过的**：两个人分别在家庭网络或手机网络下使用、跨电脑唤醒、macOS。如果你和朋友在两个网络下试了，请按 [双机验收清单](docs/two-machine-acceptance.md) 操作，把两份报告附在 issue 里。报告不含任何凭据，这是现阶段最有价值的贡献。
-
-## 其他
-
-- **只读看板**：主机可以生成一次性的本机看板链接，在浏览器里看团队的任务，见 [看板说明](docs/agent-hosted-board.md)。
-- **自托管团队服务**：账号、多项目、网页工作台、Git 和 GitHub 交付证据、Docker 部署，见 [自托管服务](docs/self-hosted-service.md)。
-
-## 开发
-
-技术栈是 Python、SQLite、Starlette、MCP，以及原生的 HTML、CSS 和 JavaScript。环境搭建和测试见 [CONTRIBUTING.md](CONTRIBUTING.md)，全部设计与验收记录在 [docs/](docs/README.md)。
+技术栈为 Python、SQLite、Starlette、MCP 和原生 HTML/CSS/JavaScript。真实双机验证是很有价值的贡献，请勿在 issue 或 PR 中提交凭据、本机配置或原始会话记录。
 
 ---
 
-<div align="center"><strong>让 agent 继续推进，让团队始终同频。</strong><br><a href="LICENSE">MIT License</a></div>
+[MIT License](LICENSE)

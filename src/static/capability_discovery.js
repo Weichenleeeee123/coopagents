@@ -22,11 +22,12 @@
     section.append(el('h2','成员与 agent'));
     (data.members||[]).forEach(member=>{
       const row=el('article','','capability-member'),profile=el('header','','capability-profile'),agents=el('div','','capability-agents');
-      profile.append(el('h3',member.display_name),el('p',(member.agent_count??member.agents?.length??0)+' 个会话','meta'));row.append(profile,agents);
+      const identity=el('div');identity.append(el('h3',member.display_name),el('p',(member.agent_count??member.agents?.length??0)+' 个会话','meta'));profile.append(el('span',(member.display_name||'?').slice(0,1),'avatar'),identity);row.append(profile,agents);
       if(!(member.agents||[]).length)agents.append(el('p','尚无 agent 会话登记','muted'));
       (member.agents||[]).forEach(agent=>{
         const session=el('div','','capability-session');
-        session.append(el('strong',(agent.harness||agent.tool)+' · '+({registered:'最近登记',stale:'登记已过期',unavailable:'当前不可用'}[agent.status]||'未知')),
+        const heading=el('div','','agent-summary');heading.append(el('span',(agent.harness||agent.tool||'?').slice(0,2),'agent-emblem'),el('strong',agent.harness||agent.tool||'未知工具'),el('span',({registered:'最近登记',stale:'登记已过期',unavailable:'当前不可用'}[agent.status]||'未知'),'agent-presence '+(agent.status||'unknown')));
+        session.append(heading,
           el('p',(agent.version||'unknown')+' · '+(agent.platform||'unknown')+' · '+(agent.repository||'未声明仓库')+' · '+(agent.branch||'未声明分支'),'meta'),
           el('p','最后登记 '+time(agent.updated_at),'meta'));
         const evidence=disclosure(JSON.stringify([member.member_id,agent.session_key,agent.tool]),'能力与连接证据');
