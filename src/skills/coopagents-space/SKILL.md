@@ -1,6 +1,6 @@
 ---
 name: coopagents-space
-description: Create, invite, join, reconnect, or stop a private Coopagents collaboration space and connect the current Claude Code or Codex agent through native MCP, including reuse of an existing hosted project.
+description: Set up or configure Coopagents for the current repository, diagnose a connection with doctor, or create, invite, join, reconnect, or stop a private Coopagents collaboration space and connect the current Claude Code or Codex agent through native MCP, including reuse of an existing hosted project.
 ---
 
 # Coopagents space
@@ -17,14 +17,18 @@ Install the official `coopagents` package from PyPI (`https://pypi.org/project/c
 
 ## Agent-first setup
 
-When the user says “help me configure Coopagents”, do the setup from this agent session. Do not require the user to open the web workbench: first-run setup is an agent/CLI path.
+When the user says “help me configure Coopagents” or “帮我配置好 Coopagents”, do the setup from this agent session. Do not require the user to open the web workbench: first-run setup is an agent/CLI path.
 
 Route the request in this order:
 
 1. If the user supplied an invitation message, code or private invitation file, save the complete text in a private file and run `join --connect <current tool>`. Never put the code in command arguments.
 2. If the user supplied an existing project connection prompt, use only its trusted origin, project ID and personal agent credential, create the agent-only profile, then run `connect` and `doctor`.
-3. If this tool already has a Coopagents entry or a matching profile, run the read-only doctor first. Reuse a matching entry; do not overwrite a conflict. Offer `--name` only after explaining the conflict.
+3. If this tool already has a Coopagents entry or a matching profile, run doctor without a profile first to list registered connections without networking. Confirm that the selected space belongs to the current repository; ask when ambiguous. Use its registered Python interpreter and explicit profile for connection checks. Reuse a matching entry; do not overwrite a conflict. Offer `--name` only after explaining the conflict.
 4. If none of those inputs exists, create a new space for the current repository with default `--network p2p`, use the current tool's name for the local agent, and connect it with `--connect`. Do not create an invitation or enable wake-up unless the user asks.
+
+Before setup, discover the current tool and use the isolated Python belonging to an existing registration when appropriate. Inspect `space_runtime --help` before using doctor. This checkout introduces doctor after 0.9.0; an older installed release may lack it. Use a published exact version that provides the command, or an explicitly authorized development checkout. Never silently install development code, invent a release version, or report an unavailable check as passed.
+
+For a new space, use the current repository folder name for `--name` and the current tool name for `--owner`, unless the user supplied names. If no repository directory is available, ask for it instead of using the home folder. To recover an owner's stopped space, start its retained profile when the user requested setup/recovery; a joining member cannot start the host. Never repeat join with an already consumed invitation when a saved personal profile exists.
 
 After every route, run:
 
@@ -32,7 +36,7 @@ After every route, run:
 <python> -m coopagents.space_runtime doctor --profile <private-profile> --tool <current tool> --project-dir <repository>
 ```
 
-Report the result without secrets. Keep these facts separate: configuration saved, personal identity verified, diagnostic challenge completed, current session loaded, and wake-up installed/trusted. A successful native CLI write does not prove the current session has loaded the MCP server; start a new session and call `whoami`, then `read_team`. Doctor never deletes files, overwrites a conflicting entry, rotates credentials, starts or stops a space, or enables wake-up. If it returns `needs_user`, follow its `next` field and rerun it after the user completes that step.
+Report the result without secrets. Keep these facts separate: configuration saved, personal identity verified, diagnostic challenge completed, current session loaded, and wake-up installed/trusted. A successful native CLI write does not prove the current session has loaded the MCP server; start a new session and call `whoami`, then `read_team`. Doctor never deletes files, overwrites a conflicting entry, rotates credentials, starts or stops a space, or enables wake-up. Doctor with a profile writes a service-side challenge record. It does not prove native MCP loading: report `session_reload` separately even when the HTTP challenge passes. Use `--name` with doctor if connect used a custom name. For hook trust, inspect settings but never grant trust on the user's behalf. Do not keep reinstalling to clear an unobservable native-session status; use the actual MCP tools in the next session.
 
 ## Create, invite or join
 

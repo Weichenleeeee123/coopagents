@@ -360,11 +360,11 @@ def board(profile_path):
     return request(profile['control_origin'], '/board/open', token=profile['control_token'], data={})
 
 
-def doctor(profile_path=None, tool=None, project_dir=None, cli=None, skills=None):
+def doctor(profile_path=None, tool=None, project_dir=None, cli=None, skills=None, name=None):
     """Run secret-free read-only onboarding checks for the current agent setup."""
     from . import onboarding_doctor
     return onboarding_doctor.run(profile_path=profile_path, tool=tool, project_dir=project_dir,
-                                 cli=cli, skills=skills)
+                                 cli=cli, skills=skills, name=name)
 
 
 def main(argv=None):
@@ -410,6 +410,7 @@ def main(argv=None):
     sub.add_argument('--origin', required=True)
     sub.add_argument('--room-id', required=True)
     sub = commands.add_parser('doctor', help='Read-only setup and connection diagnostics')
+    sub.add_argument('--name', help='Registered MCP server name when a custom name was used')
     sub.add_argument('--profile')
     sub.add_argument('--tool', choices=['claude', 'codex'])
     sub.add_argument('--cli', help='Full path of the native CLI to inspect')
@@ -455,7 +456,6 @@ def main(argv=None):
                 resolve_tool(args['tool'])
                 connected = connect(args['tool'], args['profile'], name=args['name'], cli=args['cli'],
                                     wake=args['wake'], project_dir=args['project_dir'])
-                connected['verification'] = doctor(args['profile'], args['tool'], args['project_dir'], args['cli'])
                 print(json.dumps(connected))
                 return 0
             if command == 'join' and args.pop('invitation_code_stdin'):

@@ -23,7 +23,7 @@ if args[:2] == ['mcp', 'get']:
         sys.exit(1)
     entry = servers[name]
     if tool == 'codex':
-        print(json.dumps({'name': name, 'enabled': True,
+        print(json.dumps({'name': name, 'enabled': not bool(os.environ.get('FAKE_DISABLED')),
                           'transport': {'type': 'stdio', 'command': entry[0], 'args': entry[1:], 'env': {}}}, indent=2))
     else:
         print('%s:\n  Scope: User config (available in all your projects)\n  Status: x Failed to connect\n'

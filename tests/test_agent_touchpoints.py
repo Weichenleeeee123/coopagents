@@ -79,6 +79,10 @@ class OneCommand(unittest.TestCase):
         self.assertEqual(state.parent, self.home / 'spaces')
         self.assertTrue(state.name.startswith('demo-space-'))
         self.assertTrue(created['connect']['verified'])
+        created_checks = {c['id']: c for c in created['verification']['checks']}
+        self.assertEqual(created_checks['runtime_reachability']['status'], 'pass')
+        self.assertEqual(created_checks['challenge_round_trip']['status'], 'pass')
+        self.assertEqual(created['verification']['overall'], 'needs_user')
         self.assertEqual(created['connect']['wake']['installed'], 'claude')
         self.assertTrue((self.repo / '.claude' / 'settings.local.json').exists())
 
@@ -90,8 +94,32 @@ class OneCommand(unittest.TestCase):
         self.assertEqual(code, 0, (joined, error))
         self.assertTrue(Path(joined['profile']).parent.name.startswith('codex-'))
         self.assertTrue(joined['connect']['verified'])
+        joined_checks = {c['id']: c for c in joined['verification']['checks']}
+        self.assertEqual(joined_checks['runtime_reachability']['status'], 'pass')
+        self.assertEqual(joined_checks['challenge_round_trip']['status'], 'pass')
         self.assertIn('install_wake', joined['connect']['next'])
         self.assertNotIn(read_profile(joined['profile'])['agent_token'], json.dumps(joined))
+
+        code, configured, error = self.run_cli('connect', '--profile', joined['profile'], '--tool', 'codex',
+                                               '--name', 'coopagents_custom', tool='codex')
+        self.assertEqual(code, 0, error)
+        checks = {c['id']: c for c in configured['verification']['checks']}
+        self.assertEqual(checks['mcp_configuration']['evidence']['server'], 'coopagents_custom')
+        self.assertEqual(checks['mcp_configuration']['status'], 'pass')
+
+        code, report, error = self.run_cli('doctor', '--profile', joined['profile'], '--tool', 'codex',
+                                           '--name', 'coopagents_custom', '--json', tool='codex')
+        self.assertEqual(code, 1, error)  # Native session evidence still requires the real harness.
+        self.assertEqual(next(c for c in report['checks'] if c['id']=='challenge_round_trip')['status'], 'pass')
+        owner = read_profile(created['profile'])
+        runtime.request(owner['origin'], '/api/operations/revoke_member', token=owner['web_token'],
+                        data={'member_id': joined['member_id']})
+        code, report, error = self.run_cli('doctor', '--profile', joined['profile'], '--tool', 'codex',
+                                           '--name', 'coopagents_custom', '--json', tool='codex')
+        self.assertEqual(code, 1, error)
+        self.assertEqual(report['overall'], 'blocked')
+        self.assertEqual(next(c for c in report['checks'] if c['id']=='runtime_reachability')['evidence']['reason'],
+                         'credential_rejected')
 
         code, _, error = self.run_cli('join', '--invitation-file', str(message), '--name', 'Again')
         self.assertEqual(code, 1)

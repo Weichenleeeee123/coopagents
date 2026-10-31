@@ -2,10 +2,17 @@ import json
 import os
 from pathlib import Path
 import sys
-import tempfile
+from uuid import uuid4
 import unittest
 from unittest.mock import patch
-from contextlib import nullcontext
+from contextlib import nullcontext, contextmanager
+
+
+@contextmanager
+def retained_directory():
+    path = (Path('.local/doctor-tests') / uuid4().hex).resolve()
+    path.mkdir(parents=True)
+    yield str(path)
 
 try:
     from coopagents import onboarding_doctor
@@ -62,7 +69,19 @@ class ResultContractTests(DoctorTestCase):
                 item('challenge_round_trip', 'pass'),
                 item('session_reload', 'needs_user'),
                 item('wake_up', 'skipped'),
-            ])['overall'], 'ready')
+            ])['overall'], 'needs_user')
+
+    def test_incomplete_checks_cannot_report_ready(self):
+        for checks in ([], [onboarding_doctor.make_check('python_runtime', 'pass', 'OK')],
+                       [onboarding_doctor.make_check(key, 'skipped', 'Not checked')
+                        for key in onboarding_doctor.REQUIRED_CHECKS]):
+            self.assertEqual(onboarding_doctor.aggregate(checks)['overall'], 'unknown')
+
+    def test_failed_transport_blocks_and_failure_next_takes_priority(self):
+        checks = [onboarding_doctor.make_check('native_tool', 'needs_user', 'Missing', 'Install CLI'),
+                  onboarding_doctor.make_check('transport_path', 'fail', 'Offline', 'Start host')]
+        self.assertEqual(onboarding_doctor.aggregate(checks)['overall'], 'blocked')
+        self.assertEqual(onboarding_doctor.aggregate(checks)['next'], 'Start host')
 
     def test_secret_redaction_covers_summary_next_and_evidence(self):
         secret = 'agent-secret-value'
@@ -103,7 +122,7 @@ class LocalChecksTests(DoctorTestCase):
 
     def test_skill_check_is_read_only_and_distinguishes_missing_and_matching_copy(self):
         source = Path(onboarding_doctor.__file__).resolve().parent / 'skills' / 'coopagents-space'
-        with tempfile.TemporaryDirectory() as directory:
+        with retained_directory() as directory:
             root = Path(directory)
             missing = onboarding_doctor.skill_check('codex', root=root)
             self.assertEqual(missing['status'], 'needs_user')
@@ -120,7 +139,7 @@ class LocalChecksTests(DoctorTestCase):
         self.assertEqual(before, after)
 
     def test_profile_checks_verify_identity_and_complete_challenge_without_secrets(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with retained_directory() as directory:
             profile_path = Path(directory) / 'profile.json'
             profile = {
                 'schema_version': 1,
@@ -159,7 +178,7 @@ class LocalChecksTests(DoctorTestCase):
         self.assertNotIn('proof-value', encoded)
 
     def test_profile_checks_reports_challenge_failure_without_overwriting_reachability(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with retained_directory() as directory:
             profile_path = Path(directory) / 'profile.json'
             profile = {'schema_version': 1, 'origin': 'http://127.0.0.1:8765',
                        'room_id': 'room-1', 'member_id': 'member-1', 'agent_token': 'agent-secret-value'}
@@ -178,6 +197,110 @@ class LocalChecksTests(DoctorTestCase):
         statuses = [item for item in result['checks'] if item['id'] == 'runtime_reachability']
         self.assertEqual([item['status'] for item in statuses], ['pass'])
         self.assertEqual(next(item for item in result['checks'] if item['id'] == 'challenge_round_trip')['status'], 'fail')
+
+    def test_global_interpreter_is_not_reported_as_isolated(self):
+        with patch.object(sys, 'prefix', sys.base_prefix), patch.object(onboarding_doctor, '_check_imports', return_value=[]):
+            result = onboarding_doctor.python_runtime_check()
+        self.assertEqual(result['status'], 'needs_user')
+        self.assertFalse(result['evidence']['isolated'])
+
+    def test_other_agent_tool_is_rejected_before_cli_execution(self):
+        with patch.dict(os.environ, {'CODEX_THREAD_ID': 'x', 'CLAUDECODE': ''}), \
+                patch.object(onboarding_doctor.space_connect, 'cli_candidates') as candidates:
+            result = onboarding_doctor.tool_check('claude')
+        self.assertEqual(result['status'], 'needs_user')
+        candidates.assert_not_called()
+
+    def test_version_probe_falls_back_to_working_cli(self):
+        from subprocess import CompletedProcess
+        with patch.object(onboarding_doctor.space_connect, 'cli_candidates', return_value=[['bad'], ['good']]), \
+                patch.object(onboarding_doctor.space_connect, '_run', side_effect=[
+                    CompletedProcess([], 1, '', 'private failure'), CompletedProcess([], 0, 'codex 1.2.3', '')]):
+            result = onboarding_doctor.tool_check('codex')
+        self.assertEqual(result['status'], 'pass')
+        self.assertEqual(result['evidence']['version'], '1.2.3')
+
+    def test_no_profile_discovers_entries_but_never_contacts_them(self):
+        entry = {'server': 'coopagents_existing', 'python': sys.executable, 'profile': '/private/existing.json'}
+        with patch.object(onboarding_doctor.space_connect, 'registered_spaces', return_value=[entry]), \
+                patch.object(onboarding_doctor, 'member_link') as network:
+            result = onboarding_doctor.run(tool='codex')
+        network.assert_not_called()
+        self.assertEqual(result['connections'], [entry])
+        self.assertNotEqual(result['overall'], 'ready')
+
+    def test_missing_project_folder_does_not_contact_profile(self):
+        with retained_directory() as directory, patch.object(onboarding_doctor, 'member_link') as network:
+            result = onboarding_doctor.run(tool='codex', profile_path=Path(directory)/'profile.json',
+                                           project_dir=Path(directory)/'absent')
+        network.assert_not_called()
+        self.assertEqual(next(c for c in result['checks'] if c['id']=='project_context')['status'], 'fail')
+
+    def test_mcp_inspection_reuses_helper_and_custom_name(self):
+        with patch.object(onboarding_doctor.space_connect, 'inspect_configuration', return_value={
+                'config':'matching', 'server':'custom', 'tool':'codex', 'skill':'present'}) as inspect:
+            result = onboarding_doctor.mcp_check('codex', 'profile.json', name='custom')
+        inspect.assert_called_once()
+        self.assertEqual(inspect.call_args.kwargs['name'], 'custom')
+        self.assertEqual(result['status'], 'pass')
+
+    def test_profile_checks_classify_identity_and_challenge_errors(self):
+        from urllib.error import HTTPError
+        from coopagents.spaces import private_write
+        with retained_directory() as directory:
+            path = Path(directory)/'profile.json'
+            private_write(path, dict(schema_version=1, origin='http://127.0.0.1:8765',
+                                     room_id='r', member_id='m', agent_token='secret-fixture'))
+            for error, reason in [(HTTPError('http://x',401,'private',{},None), 'credential_rejected'),
+                                  (TimeoutError('private'), 'unreachable')]:
+                with patch('coopagents.space_runtime.request', side_effect=error):
+                    result = onboarding_doctor.profile_checks(path)
+                check = next(c for c in result['checks'] if c['id']=='runtime_reachability')
+                self.assertEqual(check['evidence']['reason'], reason)
+                self.assertNotIn('secret-fixture', json.dumps(result))
+
+    def test_reused_p2p_link_path_is_unknown_not_loopback(self):
+        from coopagents.spaces import private_write
+        with retained_directory() as directory:
+            path = Path(directory)/'profile.json'
+            private_write(path, dict(schema_version=1, origin='http://127.0.0.1:8765', room_id='r',
+                                     member_id='m', agent_token='secret-fixture', p2p={'endpoint_id':'a'*64}))
+            with patch.object(onboarding_doctor, 'member_link', return_value=nullcontext()), \
+                    patch('coopagents.space_runtime.request', return_value={'me':{'room_id':'r','member_id':'m','kind':'agent'}}):
+                result = onboarding_doctor.profile_checks(path)
+        check = next(c for c in result['checks'] if c['id']=='transport_path')
+        self.assertEqual(check['status'], 'unknown')
+        self.assertEqual(check['evidence']['state'], 'unknown')
+
+    def test_wake_inspection_reports_matching_hooks_without_trusting_or_writing(self):
+        from coopagents.space_wake import hook_config
+        with retained_directory() as directory:
+            repo = Path(directory)
+            settings = repo/'.codex/hooks.json'
+            settings.parent.mkdir()
+            profile = repo/'profile.json'
+            settings.write_text(json.dumps({'hooks': hook_config(profile, 'codex')}), encoding='utf-8')
+            before = settings.read_bytes()
+            result = onboarding_doctor.wake_check('codex', profile, repo)
+            self.assertEqual(settings.read_bytes(), before)
+            self.assertFalse((repo/'wake-state.sqlite3').exists())
+        self.assertEqual(result['status'], 'needs_user')
+        self.assertTrue(result['evidence']['configured'])
+        self.assertEqual(result['evidence']['trusted'], 'unknown')
+
+    def test_completed_challenge_must_match_the_started_id(self):
+        from coopagents.spaces import private_write
+        with retained_directory() as directory:
+            path = Path(directory)/'profile.json'
+            private_write(path, dict(schema_version=1, origin='http://127.0.0.1:8765',
+                                     room_id='r', member_id='m', agent_token='secret-fixture'))
+            replies = [{'me': {'room_id':'r','member_id':'m','kind':'agent'}},
+                       {'diagnostic_id':'first'}, {'diagnostic_id':'first','challenge':'fixed','proof':'proof'},
+                       {'diagnostic_id':'second','status':'completed'}]
+            with patch('coopagents.space_runtime.request', side_effect=replies), \
+                    patch.object(onboarding_doctor.secrets, 'token_urlsafe', return_value='fixed'):
+                result = onboarding_doctor.profile_checks(path)
+        self.assertEqual(next(c for c in result['checks'] if c['id']=='challenge_round_trip')['status'], 'fail')
 
 
 if __name__ == '__main__':

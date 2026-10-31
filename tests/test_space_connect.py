@@ -33,7 +33,7 @@ class Connect(unittest.TestCase):
     def test_claude_and_codex_register_verify_and_install_skill(self):
         for tool in ('claude', 'codex'):
             with self.subTest(tool=tool):
-                self.state.unlink(missing_ok=True)
+                self.state = self.directory / (tool + '-state.json')
                 result = self.run_connect(tool)
                 self.assertEqual((result['config'], result['verified']), ('added', True))
                 self.assertEqual(result['server'], 'coopagents_e12dd599')
@@ -69,6 +69,14 @@ class Connect(unittest.TestCase):
                                                          skills=self.skills)
         self.assertEqual(result['config'], 'conflict')
         self.assertEqual(result['skill'], 'missing')
+        self.assertEqual(self.state.read_bytes(), before)
+
+    def test_disabled_native_server_is_not_reported_as_connected(self):
+        self.run_connect('codex')
+        before = self.state.read_bytes()
+        with patch.dict(os.environ, {'FAKE_TOOL':'codex', 'FAKE_MCP_STATE':str(self.state), 'FAKE_DISABLED':'1'}):
+            with self.assertRaisesRegex(ConnectError, 'disabled'):
+                space_connect.inspect_configuration('codex', self.profile, cli=[sys.executable, FAKE])
         self.assertEqual(self.state.read_bytes(), before)
 
     def test_different_existing_server_is_never_overwritten(self):
