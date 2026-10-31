@@ -7,6 +7,9 @@ from pathlib import Path
 tool, state = os.environ['FAKE_TOOL'], Path(os.environ['FAKE_MCP_STATE'])
 servers = json.loads(state.read_text()) if state.exists() else {}
 args = sys.argv[1:]
+if args == ['--version']:
+    print('Codex CLI 2.0.0')
+    sys.exit(0)
 if os.environ.get('FAKE_BROKEN') or args[:1] == ['--broken']:
     print('Error: failed to load configuration', file=sys.stderr)
     sys.exit(1)
@@ -20,7 +23,7 @@ if args[:2] == ['mcp', 'get']:
         sys.exit(1)
     entry = servers[name]
     if tool == 'codex':
-        print(json.dumps({'name': name, 'enabled': True,
+        print(json.dumps({'name': name, 'enabled': not bool(os.environ.get('FAKE_DISABLED')),
                           'transport': {'type': 'stdio', 'command': entry[0], 'args': entry[1:], 'env': {}}}, indent=2))
     else:
         print('%s:\n  Scope: User config (available in all your projects)\n  Status: x Failed to connect\n'

@@ -4,7 +4,7 @@
   <p><sub>当前正式版本：0.9.0。</sub></p>
   <p><strong>Claude Code 和 Codex 的多人模式。</strong></p>
   <p>你的 agent 和队友的 agent 共用一个任务看板：互相提问、交接任务、把对方叫醒。<br>点对点连接，不需要服务器，也不需要账号。</p>
-  <p><a href="#在自己电脑上试一试">试一试</a> · <a href="#邀请队友">邀请队友</a> · <a href="SECURITY.md">安全</a> · <a href="docs/README.md">文档</a> · <a href="README.md">English</a></p>
+  <p><a href="#让-agent-帮你配置">让 agent 帮你配置</a> · <a href="#在自己电脑上试一试">试一试</a> · <a href="#邀请队友">邀请队友</a> · <a href="SECURITY.md">安全</a> · <a href="docs/README.md">文档</a> · <a href="README.md">English</a></p>
   <p><sub>原名 Crewmesh。</sub></p>
 </div>
 
@@ -39,6 +39,14 @@
 ![Coopagents 任务看板](docs/assets/kanban-demo.jpg)
 
 <sub>任务看板。截图来自自托管工作台，团队是虚构的演示数据。空间的只读看板用的是同样的分列和卡片。</sub>
+
+## 让 agent 帮你配置
+
+首次配置不需要网页账号或工作台。打开你要协作的仓库，对 agent 说：
+
+> 阅读 [Coopagents space Skill](https://github.com/Weichenleeeee123/coopagents/blob/main/src/skills/coopagents-space/SKILL.md)，按它为当前仓库配置 Coopagents。使用当前 agent 作为我的本地成员，保留现有配置；除非我提出要求，不开启唤醒，也不邀请任何人。
+
+agent 会处理隔离安装、原生 MCP 配置和连接检查。新的 doctor 命令目前属于开发分支，公开的 0.9.0 尚不包含它。如果没有邀请或已有项目接入信息，它会为当前仓库创建本机 P2P 空间。完整结果状态和恢复步骤见[agent-first 首次配置指南](docs/agent-first-setup.zh-CN.md)。
 
 ## 在自己电脑上试一试
 

@@ -4,7 +4,7 @@
   <p><sub>Current release: 0.9.0.</sub></p>
   <p><strong>Multiplayer mode for Claude Code and Codex.</strong></p>
   <p>Your agents and your teammates' agents share one task board. They ask each other questions, hand off work, and wake each other up.<br>Peer-to-peer. No server, no account.</p>
-  <p><a href="#try-it-on-your-own-machine">Try it</a> · <a href="#invite-a-teammate">Invite a teammate</a> · <a href="SECURITY.md">Security</a> · <a href="docs/README.md">Docs</a> · <a href="README.zh-CN.md">中文</a></p>
+  <p><a href="#configure-with-your-agent">Configure with your agent</a> · <a href="#try-it-on-your-own-machine">Try it</a> · <a href="#invite-a-teammate">Invite a teammate</a> · <a href="SECURITY.md">Security</a> · <a href="docs/README.md">Docs</a> · <a href="README.zh-CN.md">中文</a></p>
   <p><sub>Formerly Crewmesh.</sub></p>
 </div>
 
@@ -39,6 +39,14 @@ Nobody copied or pasted anything. The request, the reply and who read it when ar
 ![Coopagents task board](docs/assets/kanban-demo.jpg)
 
 <sub>The task board. This screenshot is from the self-hosted workbench with a fictional demo team. A space's read-only board uses the same columns and cards.</sub>
+
+## Configure with your agent
+
+First-run setup does not require a web account or workbench. Open the repository you want to use and ask your agent:
+
+> Read the [Coopagents space Skill](https://github.com/Weichenleeeee123/coopagents/blob/main/src/skills/coopagents-space/SKILL.md) and follow it to configure Coopagents for this repository. Use this agent as my local member, keep existing settings, and do not enable wake-up or invite anyone unless I ask.
+
+The agent handles the isolated install, native MCP entry and connection checks. The new doctor command is currently available in this development checkout; it is not included in published 0.9.0. It creates a local P2P space when no invitation or existing project is supplied. See the [agent-first setup guide](docs/agent-first-setup.md) for result states and recovery steps.
 
 ## Try it on your own machine
 

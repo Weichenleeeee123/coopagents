@@ -138,21 +138,24 @@ def _run(command, timeout=120):
         raise ConnectError('Could not run the native CLI; pass --cli with the full path of a working one') from None
 
 
-def _registered(tool, cli, name):
+def _registered(tool, cli, name, timeout=120):
     """Return the registered command line for `name`, or None when absent."""
     if tool == 'codex':
-        result = _run(cli + ['mcp', 'get', name, '--json'])
+        result = _run(cli + ['mcp', 'get', name, '--json'], timeout=timeout)
         if result.returncode != 0 or not result.stdout.strip():
             if 'No MCP server named' in result.stderr + result.stdout:
                 return None
             raise ConnectError('The Codex CLI failed to read its configuration; pass --cli with the path '
                                'of a Codex CLI that can (for example the one bundled with the desktop app)')
         try:
-            transport = json.loads(result.stdout)['transport']
+            document = json.loads(result.stdout)
+            if document.get('enabled') is False:
+                raise ConnectError('The native MCP server is disabled; review its settings before reconnecting')
+            transport = document['transport']
             return [transport['command']] + list(transport.get('args') or [])
         except (ValueError, KeyError, TypeError):
             raise ConnectError('Unexpected output from codex mcp get') from None
-    result = _run(cli + ['mcp', 'get', name])
+    result = _run(cli + ['mcp', 'get', name], timeout=timeout)
     text = result.stdout + result.stderr
     if result.returncode != 0:
         if re.search(r'no mcp server', text, re.I):
@@ -197,6 +200,43 @@ def _same_text(left, right):
     # A copy downloaded from GitHub (LF) and one from a Windows-built wheel (CRLF) are the same skill.
     normal = lambda files: {name: data.replace(b'\r\n', b'\n') for name, data in files.items()}
     return normal(left) == normal(right)
+
+
+def inspect_configuration(tool, profile_path, name=None, cli=None, skills=None):
+    """Read the native entry and installed Skill without changing either one."""
+    if tool not in TOOLS:
+        raise ConnectError('Tool must be claude or codex')
+    path = checked_path(profile_path).resolve()
+    profile = read_profile(path)
+    name = name or server_name(profile)
+    if not NAME_PATTERN.match(name):
+        raise ConnectError('Server names may only contain letters, digits, - and _')
+    command = bridge_command(path)
+    failure = None
+    for candidate in cli_candidates(tool, cli):
+        try:
+            registered = _registered(tool, candidate, name, timeout=10)
+            break
+        except ConnectError as error:
+            failure = error
+    else:
+        raise failure or ConnectError('No usable native CLI was found')
+    if registered is None:
+        config = 'missing'
+    elif _matches(registered, command):
+        config = 'matching'
+    else:
+        config = 'conflict'
+    source = Path(__file__).resolve().parent / 'skills' / SKILL_NAME
+    target = Path(skills or skills_root(tool)) / SKILL_NAME
+    if not target.is_dir():
+        skill = 'missing'
+    else:
+        try:
+            skill = 'present' if _same_text(_skill_files(target), _skill_files(source)) else 'different'
+        except (OSError, ValueError):
+            skill = 'different'
+    return {'tool': tool, 'server': name, 'profile': str(path), 'config': config, 'skill': skill}
 
 
 def install_skill(tool, root=None):
@@ -270,6 +310,8 @@ def connect(tool, profile_path, name=None, cli=None, skills=None, wake=False, pr
     result = {'tool': tool, 'cli': cli[-1], 'server': name, 'config': state, 'verified': True, 'profile': str(path),
               'room_id': profile['room_id'], 'member_id': profile['member_id']}
     result.update(install_skill(tool, skills))
+    from . import onboarding_doctor
+    result['configuration'] = {'config': state, 'skill': result['skill'], 'verified': True}
     label = 'Claude Code' if tool == 'claude' else 'Codex'
     steps = ['Tell the user to start a new %s session in the repository folder: the current session cannot load '
              'the new tools. There, the agent calls whoami to check the connection.' % label]
@@ -285,4 +327,8 @@ def connect(tool, profile_path, name=None, cli=None, skills=None, wake=False, pr
         steps.append('Wake-up is off. To turn it on later, the user can say "Turn on Coopagents wake-up for this '
                      'repo" in a session of that folder; the agent then calls the install_wake tool.')
     result['next'] = ' '.join(steps)
+    result['verification'] = onboarding_doctor.run(tool=tool, profile_path=path, project_dir=project_dir,
+                                                  cli=cli, skills=skills, name=name)
+    if result['verification']['overall'] == 'blocked':
+        result['next'] = result['verification']['next'] + ' ' + result['next']
     return result

@@ -360,6 +360,13 @@ def board(profile_path):
     return request(profile['control_origin'], '/board/open', token=profile['control_token'], data={})
 
 
+def doctor(profile_path=None, tool=None, project_dir=None, cli=None, skills=None, name=None):
+    """Run secret-free read-only onboarding checks for the current agent setup."""
+    from . import onboarding_doctor
+    return onboarding_doctor.run(profile_path=profile_path, tool=tool, project_dir=project_dir,
+                                 cli=cli, skills=skills, name=name)
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description='Manage a private agent-hosted Coopagents space')
     commands = parser.add_subparsers(dest='command', required=True)
@@ -402,6 +409,13 @@ def main(argv=None):
     sub.add_argument('--profile', required=True)
     sub.add_argument('--origin', required=True)
     sub.add_argument('--room-id', required=True)
+    sub = commands.add_parser('doctor', help='Read-only setup and connection diagnostics')
+    sub.add_argument('--name', help='Registered MCP server name when a custom name was used')
+    sub.add_argument('--profile')
+    sub.add_argument('--tool', choices=['claude', 'codex'])
+    sub.add_argument('--cli', help='Full path of the native CLI to inspect')
+    sub.add_argument('--project-dir', help='Repository folder for project-scoped checks')
+    sub.add_argument('--json', action='store_true', dest='json_output', help='Print machine-readable JSON')
     args = vars(parser.parse_args(argv))
     command = args.pop('command')
     then_connect = None
@@ -415,6 +429,16 @@ def main(argv=None):
         if command == '_serve':
             serve(args['profile'])
             return 0
+        if command == 'doctor':
+            json_output = args.pop('json_output')
+            args['profile_path'] = args.pop('profile')
+            result = doctor(**args)
+            if json_output:
+                print(json.dumps(result, ensure_ascii=True))
+            else:
+                from .onboarding_doctor import render_text
+                print(render_text(result))
+            return 0 if result.get('overall') == 'ready' else 1
         if command in ('revoke-invitation', 'revoke-member'):
             profile = read_profile(args['profile'])
             if command == 'revoke-invitation':
@@ -430,8 +454,9 @@ def main(argv=None):
             if command == 'connect':
                 from .space_connect import connect, resolve_tool
                 resolve_tool(args['tool'])
-                print(json.dumps(connect(args['tool'], args['profile'], name=args['name'], cli=args['cli'],
-                                         wake=args['wake'], project_dir=args['project_dir'])))
+                connected = connect(args['tool'], args['profile'], name=args['name'], cli=args['cli'],
+                                    wake=args['wake'], project_dir=args['project_dir'])
+                print(json.dumps(connected))
                 return 0
             if command == 'join' and args.pop('invitation_code_stdin'):
                 from .invite_message import read_stdin
@@ -469,6 +494,13 @@ def connect_after(result, tool, wake, project_dir):
     from .space_connect import connect
     try:
         result['connect'] = connect(tool, result['profile'], wake=wake, project_dir=project_dir)
+        connection = result['connect']
+        result['configuration'] = connection.get('configuration', {
+            'config': connection.get('config'), 'skill': connection.get('skill'),
+            'verified': connection.get('verified', False)})
+        result['verification'] = connection.get('verification') or doctor(
+            result['profile'], tool, project_dir, None)
+        result['next'] = connection.get('next', result['verification'].get('next', ''))
     except Exception as error:
         result['connect_error'] = explain(error) or 'Connecting failed'
         result['retry'] = '%s -m coopagents.space_runtime connect --tool %s --profile "%s"%s' % (

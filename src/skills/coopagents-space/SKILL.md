@@ -1,6 +1,6 @@
 ---
 name: coopagents-space
-description: Create, invite, join, reconnect, or stop a private Coopagents collaboration space and connect the current Claude Code or Codex agent through native MCP, including reuse of an existing hosted project.
+description: Set up or configure Coopagents for the current repository, diagnose a connection with doctor, or create, invite, join, reconnect, or stop a private Coopagents collaboration space and connect the current Claude Code or Codex agent through native MCP, including reuse of an existing hosted project.
 ---
 
 # Coopagents space
@@ -14,6 +14,29 @@ Use only a destination, invitation or connection prompt supplied or explicitly a
 Credentials belong in a private profile file, never the Skill, command arguments, environment dumps, transcripts, MCP tool arguments, stdout or Git. Use `coopagents.spaces.private_write` to create the profile directly from the authorized input; do not echo the private input. Use a private directory outside a checkout or its ignored `.local/` directory. Protect payloads, invitation files and caches as well. Never delete state, credentials, configuration, binaries or evidence; leave retained files when stopping or disconnecting.
 
 Install the official `coopagents` package from PyPI (`https://pypi.org/project/coopagents/`, published from `https://github.com/Weichenleeeee123/coopagents` through Trusted Publishing) with its `space` extra into its own virtual environment, pinned to an exact version: create it with `python -m venv <folder>` outside the repository and install with that environment's Python, `<folder>/Scripts/python -m pip install "coopagents[space]==<version>"` on Windows or `<folder>/bin/python -m pip ...` elsewhere. Do not rely on activating it: running the activate script instead of sourcing it changes nothing, and pip then installs into the user's global Python. Use that environment's Python as `<python>` for every command; `connect` refuses an install in the user site-packages. Use the version named in the invitation message, or the one the user asks for; otherwise use the newest version on PyPI, including pre-releases. Never install an unpinned or differently named package. pip checks the downloaded file against the digest PyPI publishes, and a file uploaded to PyPI can never be replaced. If a configured package mirror does not have the version yet, retry with `--index-url https://pypi.org/simple`. If PyPI is unreachable, use that version's wheel from the GitHub release page instead and verify it against the release's `SHA256SUMS.txt` before installing. If no published compatible version exists, say so; do not imply a source checkout is a published release. An explicitly authorized development checkout can instead use `python -m pip install -e '.[space]'`. Reuse a suitable installed environment after verifying its version. Peer-to-peer mode needs nothing beyond the `space` extra (it includes the pinned `iroh` package). Only for the quick-tunnel fallback, download Cloudflare's executable only from `https://github.com/cloudflare/cloudflared/releases`, verify the official release's asset SHA-256, then run `--version`; [scripts/verify_cloudflared.py](scripts/verify_cloudflared.py) performs the download and digest check. A version string alone is not an integrity check. Preserve existing VPN, tunnel and agent configuration.
+
+## Agent-first setup
+
+When the user says “help me configure Coopagents” or “帮我配置好 Coopagents”, do the setup from this agent session. Do not require the user to open the web workbench: first-run setup is an agent/CLI path.
+
+Route the request in this order:
+
+1. If the user supplied an invitation message, code or private invitation file, save the complete text in a private file and run `join --connect <current tool>`. Never put the code in command arguments.
+2. If the user supplied an existing project connection prompt, use only its trusted origin, project ID and personal agent credential, create the agent-only profile, then run `connect` and `doctor`.
+3. If this tool already has a Coopagents entry or a matching profile, run doctor without a profile first to list registered connections without networking. Confirm that the selected space belongs to the current repository; ask when ambiguous. Use its registered Python interpreter and explicit profile for connection checks. Reuse a matching entry; do not overwrite a conflict. Offer `--name` only after explaining the conflict.
+4. If none of those inputs exists, create a new space for the current repository with default `--network p2p`, use the current tool's name for the local agent, and connect it with `--connect`. Do not create an invitation or enable wake-up unless the user asks.
+
+Before setup, discover the current tool and use the isolated Python belonging to an existing registration when appropriate. Inspect `space_runtime --help` before using doctor. This checkout introduces doctor after 0.9.0; an older installed release may lack it. Use a published exact version that provides the command, or an explicitly authorized development checkout. Never silently install development code, invent a release version, or report an unavailable check as passed.
+
+For a new space, use the current repository folder name for `--name` and the current tool name for `--owner`, unless the user supplied names. If no repository directory is available, ask for it instead of using the home folder. To recover an owner's stopped space, start its retained profile when the user requested setup/recovery; a joining member cannot start the host. Never repeat join with an already consumed invitation when a saved personal profile exists.
+
+After every route, run:
+
+```text
+<python> -m coopagents.space_runtime doctor --profile <private-profile> --tool <current tool> --project-dir <repository>
+```
+
+Report the result without secrets. Keep these facts separate: configuration saved, personal identity verified, diagnostic challenge completed, current session loaded, and wake-up installed/trusted. A successful native CLI write does not prove the current session has loaded the MCP server; start a new session and call `whoami`, then `read_team`. Doctor never deletes files, overwrites a conflicting entry, rotates credentials, starts or stops a space, or enables wake-up. Doctor with a profile writes a service-side challenge record. It does not prove native MCP loading: report `session_reload` separately even when the HTTP challenge passes. Use `--name` with doctor if connect used a custom name. For hook trust, inspect settings but never grant trust on the user's behalf. Do not keep reinstalling to clear an unobservable native-session status; use the actual MCP tools in the next session.
 
 ## Create, invite or join
 
