@@ -176,6 +176,7 @@ class ColdStartTests(unittest.TestCase):
                     'registrations': native_registration, 'events_from': lambda *a: [],
                     'successful_tools': lambda *a: {'whoami', 'read_team', 'send_request', 'read_inbox', 'reply'},
                     'native_identity_proven': lambda *a: True, 'snapshot': lambda *a: {},
+                    'setup_diagnostics': lambda *a: {},
                     'network_proven': lambda *a: True, 'diagnostics_proven': lambda *a: True,
                     'exchange_proven': lambda *a: True,
                     'assistant_text': lambda *a: (roots['claude'] / 'repo/acceptance-answer.txt').read_text()}
@@ -386,6 +387,34 @@ class ColdStartTests(unittest.TestCase):
         self.assertNotIn('ANTHROPIC_AUTH_TOKEN', env)
         self.assertNotIn('AWS_SECRET_ACCESS_KEY', env)
         self.assertNotIn('UNRELATED_API_KEY', env)
+
+
+    def test_offline_setup_evidence_is_identity_scoped_and_does_not_launch_host(self):
+        import sqlite3
+        from unittest.mock import patch
+        from coopagents.spaces import private_write
+        root = (Path('.local/cold-start-tests') / uuid4().hex).resolve()
+        root.mkdir(parents=True)
+        path = root / 'profile.json'
+        private_write(path, dict(schema_version=1, origin='http://127.0.0.1:1234',
+                                  room_id='room', member_id='owner', agent_token='fixture-agent',
+                                  control_origin='http://127.0.0.1:1235', control_token='fixture-control'))
+        private_write(root / 'host.json', dict(schema_version=1, network='local'))
+        private_write(root / 'native-host.json', dict(schema_version=1, room_id='room', member_id='owner',
+                                                     desired_running=True, blocked=False))
+        with sqlite3.connect(root / 'space.sqlite3') as db:
+            db.execute('CREATE TABLE collaboration_diagnostics (diagnostic_id,room_id,member_id,status,sent_at,read_at,completed_at)')
+            db.executemany('INSERT INTO collaboration_diagnostics VALUES (?,?,?,?,?,?,?)', [
+                ('correct', 'room', 'owner', 'completed', 'a', 'b', 'c'),
+                ('wrong-member', 'room', 'other', 'completed', 'a', 'b', 'c'),
+                ('wrong-room', 'other', 'owner', 'completed', 'a', 'b', 'c')])
+        with patch('coopagents.space_runtime.status', return_value={'status':'unreachable'}), \
+                patch('coopagents.space_runtime._start', side_effect=AssertionError('No harness startup')):
+            result = self.runner.setup_diagnostics(path)
+        self.assertFalse(result['runtime_live'])
+        self.assertEqual([d['diagnostic_id'] for d in result['collaboration']['diagnostics']], ['correct'])
+        self.assertTrue(self.runner.diagnostics_proven(result, {'owner'}))
+        self.assertFalse(self.runner.diagnostics_proven(result, {'other'}))
 
 
 if __name__ == '__main__':

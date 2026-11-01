@@ -89,6 +89,15 @@ def status(profile_path):
 
 
 def start(profile_path):
+    from .space_host import owner_lock, set_intent
+    if not read_profile(profile_path).get('control_token'):
+        raise ValueError('Owner host profile required')
+    with owner_lock(profile_path):
+        set_intent(profile_path, True)
+        return _start(profile_path)
+
+
+def _start(profile_path):
     profile_path, host_path = runtime_paths(profile_path)
     profile, host = read_profile(profile_path), read_json(host_path)
     if not profile.get('control_token'):
@@ -245,6 +254,18 @@ def runtime_unlocked(profile_path):
 
 
 def stop(profile_path):
+    from .space_host import owner_lock, set_intent
+    profile = read_profile(profile_path)
+    if not profile.get('control_token'):
+        raise ValueError('Owner host profile required')
+    with owner_lock(profile_path):
+        managed = set_intent(profile_path, False)
+        if managed and status(profile_path)['status'] == 'unreachable' and runtime_unlocked(profile_path):
+            return safe_profile(profile, profile_path) | {'status': 'stopped'}
+        return _stop(profile_path)
+
+
+def _stop(profile_path):
     profile = read_profile(profile_path)
     if not profile.get('control_token'):
         raise ValueError('Owner host profile required')

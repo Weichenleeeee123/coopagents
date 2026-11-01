@@ -127,6 +127,8 @@ class Bridge:
         profile = read_profile(self.profile_path)
         if (profile['room_id'], profile['member_id']) != self.identity:
             raise ValueError('Profile identity changed; use a separate profile')
+        from .space_host import ensure
+        await asyncio.to_thread(ensure, self.profile_path)
         me = await asyncio.to_thread(request, profile['origin'], '/api/me', token=profile['agent_token'])
         if (me['me']['room_id'], me['me']['member_id']) != self.identity or me['me']['kind'] != 'agent':
             raise ValueError('Remote personal space identity does not match')

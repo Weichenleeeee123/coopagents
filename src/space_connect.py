@@ -310,11 +310,16 @@ def connect(tool, profile_path, name=None, cli=None, skills=None, wake=False, pr
     result = {'tool': tool, 'cli': cli[-1], 'server': name, 'config': state, 'verified': True, 'profile': str(path),
               'room_id': profile['room_id'], 'member_id': profile['member_id']}
     result.update(install_skill(tool, skills))
+    from .space_host import register
+    result['host_lifecycle'] = register(path)
     from . import onboarding_doctor
     result['configuration'] = {'config': state, 'skill': result['skill'], 'verified': True}
     label = 'Claude Code' if tool == 'claude' else 'Codex'
     steps = ['Tell the user to start a new %s session in the repository folder: the current session cannot load '
              'the new tools. There, the agent calls whoami to check the connection.' % label]
+    if result['host_lifecycle']['enabled']:
+        steps.append('This native MCP connection restores its local owner host after unexpected process exit. '
+                     'Explicit stop stays stopped until start; reconnecting does not resume it.')
     if wake:
         from .space_wake import install as install_wake
         result['wake'] = install_wake(str(path), tool, 'project', project_dir or os.getcwd())

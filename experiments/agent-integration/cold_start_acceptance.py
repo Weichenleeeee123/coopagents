@@ -386,6 +386,33 @@ def snapshot(profile_path):
         return request(profile['origin'], '/api/snapshot', token=profile['web_token'])
 
 
+def setup_diagnostics(profile_path):
+    """Read completed setup evidence even if a sandbox-owned host has exited.
+
+    This never launches a host and cannot satisfy the separate native MCP stage.
+    Only an opted-in local owner may use its own retained database as evidence.
+    """
+    from coopagents.space_host import policy
+    from coopagents.space_runtime import status
+    from coopagents.spaces import checked_path, read_json, read_profile
+    if status(profile_path)['status'] != 'unreachable' or policy(profile_path) is None:
+        return snapshot(profile_path)
+    profile = read_profile(profile_path)
+    path = checked_path(profile_path)
+    host = read_json(path.with_name('host.json'))
+    if host.get('network') not in ('local', 'p2p'):
+        raise ValueError('Offline diagnostic evidence requires a local owner')
+    import sqlite3
+    database = path.with_name('space.sqlite3')
+    with sqlite3.connect(database.as_uri() + '?mode=ro', uri=True) as connection:
+        connection.row_factory = sqlite3.Row
+        rows = connection.execute('''SELECT diagnostic_id,member_id,status,sent_at,read_at,completed_at
+            FROM collaboration_diagnostics WHERE room_id=? AND member_id=? ORDER BY sent_at DESC LIMIT 5''',
+            (profile['room_id'], profile['member_id'])).fetchall()
+    return {'collaboration': {'diagnostics': [dict(row) for row in rows]},
+            'evidence_source': 'retained_owner_database', 'runtime_live': False}
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--host', choices=['claude', 'codex'], default='claude', help='Run again with the other host for both create paths')
@@ -457,7 +484,7 @@ def main(argv=None):
             try:
                 entry = registrations(env, tool, projects[tool])
                 profile = read_profile(entry['profile'])
-                setup_ok = diagnostics_proven(snapshot(entry['profile']), {profile['member_id']})
+                setup_ok = diagnostics_proven(setup_diagnostics(entry['profile']), {profile['member_id']})
             except (OSError, ValueError, KeyError, RuntimeError, subprocess.SubprocessError):
                 setup_ok = False
             report['checks'].append({'check': stage + ' native registration and completed doctor challenge', 'ok': setup_ok})
@@ -509,7 +536,7 @@ def main(argv=None):
              else invitation_prompt), setup=not args.stop_after_host_verification, require=('whoami', 'read_team'),
              expected_identity=host_profile)
         if args.stop_after_host_verification:
-            state = snapshot(owner['profile'])
+            state = setup_diagnostics(owner['profile'])
             private_write(run / 'host-backend-snapshot.json', state)
             diagnostic = diagnostics_proven(state, {host_profile['member_id']})
             report['checks'].append({'check': 'host completed doctor challenge', 'ok': diagnostic})

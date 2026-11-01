@@ -337,7 +337,24 @@ def profile_checks(profile_path, *, tool=None, project_dir=None, cli=None, skill
             checks.append(make_check('transport_path', 'fail', 'The diagnostic transport did not close cleanly.',
                                      'Check the host and rerun doctor.', {'reason': reason}))
         else:
-            checks.append(make_check('runtime_reachability', 'fail', 'Personal identity verification failed.',
+            recovery = None
+            if reason == 'unreachable':
+                from .space_host import policy
+                try:
+                    recovery = policy(profile_path)
+                except (OSError, ValueError):
+                    pass
+            if recovery is not None:
+                paused = not recovery['desired_running']
+                blocked = recovery['blocked']
+                checks.append(make_check('runtime_reachability', 'needs_user',
+                                         'The native-managed owner host is currently offline.',
+                                         'Run start with this owner profile to resume the explicitly stopped host.' if paused
+                                         else 'Run start with this owner profile to retry the failed host recovery.' if blocked
+                                         else 'Open a new native agent session; its registered MCP connection restores this host. Then rerun doctor.',
+                                         {'reason': 'explicitly_stopped' if paused else 'recovery_failed' if blocked else 'awaiting_native_session'}))
+            else:
+                checks.append(make_check('runtime_reachability', 'fail', 'Personal identity verification failed.',
                                      'Obtain a renewed personal credential from the owner.' if reason == 'credential_rejected'
                                      else 'Check that host and member use compatible Coopagents versions.' if reason == 'endpoint_error'
                                      else 'Check the host and network, then rerun doctor.' if reason == 'unreachable'
