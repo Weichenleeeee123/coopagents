@@ -102,6 +102,18 @@ def private_write(value, document, *, update=False):
         raise ValueError('Cannot update absent private state')
     if update:
         os.replace(staging, path)
+    elif os.name == 'nt':
+        # Windows sandboxing can deny hardlinks even within a writable folder.
+        # Rename is atomic and fails if the destination already exists on
+        # Windows. Publish a second protected copy so the original pending
+        # evidence remains, without exposing partially written credentials.
+        publication = path.with_name(path.name + '.' + uuid4().hex + '.publication')
+        with publication.open('xb') as stream:
+            protect(publication)
+            stream.write(encoded)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.rename(publication, path)
     else:
         # Atomic exclusive publication cannot replace a concurrent creator's
         # profile. Retain the staging hardlink as private evidence.

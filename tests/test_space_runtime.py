@@ -28,6 +28,30 @@ class Profiles(unittest.TestCase):
         with self.assertRaises(FileExistsError):
             private_write(path, data)
 
+    @unittest.skipUnless(os.name == 'nt', 'Windows sandbox publication regression')
+    def test_private_publication_without_hardlink_permission_retains_pending(self):
+        path = self.directory / 'profile.json'
+        document = {'schema_version': 1, 'synthetic': 'private fixture'}
+        with patch('coopagents.spaces.os.link', side_effect=PermissionError('sandbox denies hardlinks')):
+            private_write(path, document)
+        self.assertEqual(json.loads(path.read_text()), document)
+        pending = list(self.directory.glob('profile.json.*.pending'))
+        self.assertEqual(len(pending), 1)
+        self.assertEqual(json.loads(pending[0].read_text()), document)
+
+    @unittest.skipUnless(os.name == 'nt', 'Windows exclusive rename semantics')
+    def test_concurrent_private_publisher_cannot_overwrite_winner(self):
+        path = self.directory / 'profile.json'
+        rename = os.rename
+        def competing_publish(source, destination):
+            Path(destination).write_text('concurrent winner')
+            return rename(source, destination)
+        with patch('coopagents.spaces.os.rename', side_effect=competing_publish):
+            with self.assertRaises(FileExistsError):
+                private_write(path, {'schema_version': 1, 'synthetic': 'losing writer'})
+        self.assertEqual(path.read_text(), 'concurrent winner')
+        self.assertTrue(list(self.directory.glob('profile.json.*.pending')))
+
     def test_origin_rejects_credentials_paths_and_remote_http(self):
         for value in ('http://example.com', 'https://x@y.test', 'https://x.test/path',
                       'http://127.0.0.1:9?token=x', 'https://x.test#token'):
