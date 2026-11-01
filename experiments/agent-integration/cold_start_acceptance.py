@@ -360,11 +360,12 @@ def events_from(path):
     return events
 
 
-def registrations(env, tool, project):
+def registrations(env, tool, project, python=None):
     # Read in a child with the isolated environment, never mutate this process's home.
     script = ('import json,sys;from coopagents.space_connect import registered_spaces;'
               'print(json.dumps(registered_spaces(sys.argv[1],sys.argv[2])))')
-    result = subprocess.run([sys.executable, '-c', script, tool, str(project)], env=env,
+    python = python or sys.executable
+    result = subprocess.run([str(python), '-c', script, tool, str(project)], env=env,
                             capture_output=True, text=True, timeout=30, check=True)
     entries = json.loads(result.stdout)
     if len(entries) != 1:
@@ -372,7 +373,7 @@ def registrations(env, tool, project):
     entry = entries[0]
     if not Path(entry['profile']).resolve().is_relative_to(Path(env['COOPAGENTS_HOME']).resolve()):
         raise RuntimeError('Native registration escaped the private run')
-    if Path(entry['python']).resolve() != Path(sys.executable).resolve():
+    if Path(entry['python']).resolve() != Path(python).resolve():
         raise RuntimeError('Native registration used a different Python')
     return entry
 
@@ -384,6 +385,24 @@ def snapshot(profile_path):
     from coopagents.p2p import member_link
     with member_link(profile):
         return request(profile['origin'], '/api/snapshot', token=profile['web_token'])
+
+
+def installed_wheel_identity(wheel):
+    """Bind the interpreter's imported distribution to the exact installed archive."""
+    import hashlib
+    from importlib import metadata
+    import coopagents
+    wheel = wheel.resolve(strict=True)
+    if wheel.suffix != '.whl' or sys.prefix == sys.base_prefix:
+        raise ValueError('Use an exact wheel installed in an isolated environment')
+    if not Path(coopagents.__file__).resolve().is_relative_to(Path(sys.prefix).resolve()):
+        raise ValueError('The imported package is outside the candidate environment')
+    distribution = metadata.distribution('coopagents')
+    direct = json.loads(distribution.read_text('direct_url.json') or '{}')
+    digest = hashlib.sha256(wheel.read_bytes()).hexdigest()
+    if direct.get('dir_info', {}).get('editable') or direct.get('archive_info', {}).get('hashes', {}).get('sha256') != digest:
+        raise ValueError('The installed distribution does not match the candidate wheel')
+    return {'kind': 'wheel', 'version': distribution.version, 'sha256': digest, 'isolated_import': True}
 
 
 def setup_diagnostics(profile_path):
@@ -424,30 +443,56 @@ def main(argv=None):
                         help='Only create/connect and verify the host in a new native model session; explicitly partial')
     parser.add_argument('--codex', default=shutil.which('codex'))
     parser.add_argument('--claude', default=shutil.which('claude'))
+    parser.add_argument('--installed-wheel', type=Path, help='Verify an exact wheel already installed in this isolated Python')
+    parser.add_argument('--guest-python', type=Path, help='A second clean environment installed from the same candidate wheel')
     args = parser.parse_args(argv)
     if not 1 <= args.timeout <= 1800:
         parser.error('timeout must be between 1 and 1800 seconds')
     import coopagents
-    if sys.prefix == sys.base_prefix or not Path(coopagents.__file__).resolve().is_relative_to(REPO / 'src'):
+    if args.installed_wheel:
+        try:
+            distribution_identity = installed_wheel_identity(args.installed_wheel)
+        except (OSError, ValueError):
+            parser.error('Use an isolated environment installed from the exact --installed-wheel archive')
+    elif sys.prefix == sys.base_prefix or not Path(coopagents.__file__).resolve().is_relative_to(REPO / 'src'):
         parser.error('Use this checkout\'s isolated editable-install Python')
+    else:
+        distribution_identity = {'kind': 'development-checkout'}
+    if args.guest_python:
+        if not args.installed_wheel:
+            parser.error('--guest-python requires --installed-wheel')
+        script = ('import sys,json;sys.path.insert(0,sys.argv[1]);'
+                  'from cold_start_acceptance import installed_wheel_identity;'
+                  'from pathlib import Path;print(json.dumps({"distribution":installed_wheel_identity(Path(sys.argv[2])),"prefix":sys.prefix}))')
+        verification = subprocess.run([str(args.guest_python), '-I', '-c', script, str(Path(__file__).resolve().parent),
+                                       str(args.installed_wheel.resolve())], capture_output=True, text=True, timeout=30, check=True)
+        peer_environment = json.loads(verification.stdout)
+        if peer_environment['distribution'] != distribution_identity:
+            parser.error('Both isolated environments must use the same candidate wheel')
+        if Path(peer_environment['prefix']).resolve() == Path(sys.prefix).resolve():
+            parser.error('--guest-python must belong to a separate isolated environment')
     if not args.codex or not args.claude:
         parser.error('Both native CLI executables are required')
     from coopagents.spaces import private_directory, private_write, read_json, read_profile
     run = private_directory(REPO / '.local' / 'cold-start-acceptance' / (time.strftime('%Y%m%d-%H%M%S') + '-' + uuid4().hex[:8]))
     real_home = Path.home()
     host, guest = args.host, 'codex' if args.host == 'claude' else 'claude'
+    interpreters = {host: Path(sys.executable), guest: args.guest_python or Path(sys.executable)}
     environments = {tool: prepare_homes(run / tool, Path(os.environ.get('CODEX_HOME') or real_home / '.codex'),
                     Path(os.environ.get('CLAUDE_CONFIG_DIR') or real_home / '.claude') / 'settings.json', tool=tool) for tool in (host, guest)}
     projects = {tool: private_directory(run / tool / 'repo') for tool in (host, guest)}
     answer, nonce = 'answer-' + uuid4().hex, 'request-' + uuid4().hex
+    reverse_answer, reverse_nonce = 'answer-' + uuid4().hex, 'request-' + uuid4().hex
     for tool, project in projects.items():
-        shutil.copytree(REPO / 'src/skills/coopagents-space', run / tool / 'checkout-skill')
+        shutil.copytree(Path(coopagents.__file__).resolve().parent / 'skills/coopagents-space', run / tool / 'checkout-skill')
         subprocess.run(['git', 'init', '-q', str(project)], check=True, capture_output=True, timeout=30)
         (project / 'README.md').write_text('# Synthetic acceptance repository\n', encoding='utf-8')
         (project / 'AGENTS.md').write_text('Never delete files. Only operate in this synthetic run.\n', encoding='utf-8')
     (projects[host] / 'acceptance-answer.txt').write_text(answer, encoding='utf-8')
+    (projects[guest] / 'acceptance-answer.txt').write_text(reverse_answer, encoding='utf-8')
     report = {'status': 'prepared', 'host': host, 'guest': guest, 'requested_network': args.network,
               'scope': 'single machine, wake disabled', 'sessions': [], 'checks': []}
+    report['distribution'] = distribution_identity
     report['source_commit'] = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=REPO,
                                              capture_output=True, text=True, timeout=30, check=True).stdout.strip()
     report['source_dirty'] = bool(subprocess.run(['git', 'status', '--porcelain', '--', 'src', 'pyproject.toml'],
@@ -474,7 +519,7 @@ def main(argv=None):
     def turn(tool, stage, prompt, *, setup=False, require=(), expected_identity=None, verify_setup=False):
         env = environments[tool]
         path = run / (stage + '.jsonl')
-        code = bounded(model_command(tool, getattr(args, tool), run / tool, Path(sys.executable), setup=setup, require=require),
+        code = bounded(model_command(tool, getattr(args, tool), run / tool, interpreters[tool], setup=setup, require=require),
                        prompt, path, env, projects[tool], args.timeout)
         events = events_from(path)
         tools = successful_tools(tool, events)
@@ -482,7 +527,7 @@ def main(argv=None):
         entry = None
         if verify_setup:
             try:
-                entry = registrations(env, tool, projects[tool])
+                entry = registrations(env, tool, projects[tool], interpreters[tool])
                 profile = read_profile(entry['profile'])
                 setup_ok = diagnostics_proven(setup_diagnostics(entry['profile']), {profile['member_id']})
             except (OSError, ValueError, KeyError, RuntimeError, subprocess.SubprocessError):
@@ -504,9 +549,13 @@ def main(argv=None):
         return entry
 
     def cold_prompt(tool):
-        return (f'Read the development checkout Skill at {(run / tool / "checkout-skill/SKILL.md").as_posix()}. '
-                f'I explicitly authorize this unreleased development checkout. The isolated Python {sys.executable} '
-                f'is already installed editable from that checkout with [space]; reuse it and use it explicitly. '
+        installation = (f'The exact candidate wheel is installed in isolated Python {interpreters[tool]}; '
+                        'reuse it explicitly. This is a private candidate acceptance; do not install from PyPI. '
+                        if args.installed_wheel else
+                        f'I explicitly authorize this unreleased development checkout. The isolated Python {sys.executable} '
+                        'is already installed editable from that checkout with [space]; reuse it and use it explicitly. ')
+        return (f'Read the installed candidate Skill at {(run / tool / "checkout-skill/SKILL.md").as_posix()}. '
+                + installation +
                 f'You are {tool}. All settings and state directories are isolated in {run / tool}. '
                 'Never delete files, change real native configuration or enable wake-up. '
                 'Do not print credentials or environment variables. ')
@@ -554,9 +603,9 @@ def main(argv=None):
             invitation_message.write_text(invitation['message'], encoding='utf-8')
             turn(guest, '03-join', cold_prompt(guest) + f'Read my private invitation message at {invitation_message}. '
                  f'I authorize joining that space as {guest}; use join --invitation-file with that path and --connect {guest}. '
-                 'The invitation names published package metadata, but for this acceptance I explicitly authorize reusing the '
-                 'same already-installed development checkout rather than installing a release. Run doctor.', setup=True, verify_setup=True)
-            member = registrations(environments[guest], guest, projects[guest])
+                 'For this private acceptance reuse the exact already-installed candidate Python named above, '
+                 'even if the invitation mentions a package release. Do not install another package. Run doctor.', setup=True, verify_setup=True)
+            member = registrations(environments[guest], guest, projects[guest], interpreters[guest])
             guest_profile = read_profile(member['profile'])
             if guest_profile['room_id'] != host_profile['room_id'] or guest_profile['member_id'] == host_profile['member_id']:
                 raise RuntimeError('Joined identity does not match the expected separate member')
@@ -574,6 +623,14 @@ def main(argv=None):
                  require=('read_inbox', 'read_team', 'reply'))
             turn(guest, '06-guest-read-reply', f'Use native Coopagents MCP read_team to find the reply to the request '
                  f'with marker {nonce}. Report its answer. Do not send a second request.', require=('read_team',))
+            turn(host, '07-host-request', f'Use native Coopagents MCP whoami and read_team, then send_request to '
+                 f'member {guest_profile["member_id"]} asking for the exact contents of its acceptance-answer.txt file. '
+                 f'Include marker {reverse_nonce} in the body.', require=('whoami', 'read_team', 'send_request'),
+                 expected_identity=host_profile)
+            turn(guest, '08-guest-reply', host_reply_prompt(guest, reverse_nonce, projects[guest] / 'acceptance-answer.txt'),
+                 require=('read_inbox', 'read_team', 'reply'))
+            turn(host, '09-host-read-reply', f'Use native Coopagents MCP read_team to find the reply to the request '
+                 f'with marker {reverse_nonce}. Report its answer. Do not send another request.', require=('read_team',))
             state = snapshot(owner['profile'])
             guest_state = snapshot(member['profile'])
             state.setdefault('collaboration', {}).setdefault('diagnostics', []).extend(
@@ -585,7 +642,11 @@ def main(argv=None):
             report['checks'].append({'check': 'both members completed doctor challenge', 'ok': diagnostics})
             consumed = answer in assistant_text(guest, events_from(run / '06-guest-read-reply.jsonl'))
             report['checks'].append({'check': 'guest model consumed the file-derived reply', 'ok': consumed})
-            if not all((proven, diagnostics, consumed)):
+            reverse_proven = exchange_proven(state, host_profile['member_id'], guest_profile['member_id'], reverse_nonce, reverse_answer)
+            reverse_consumed = reverse_answer in assistant_text(host, events_from(run / '09-host-read-reply.jsonl'))
+            report['checks'].append({'check': 'reverse backend file-derived reply and host model consumption',
+                                     'ok': reverse_proven and reverse_consumed})
+            if not all((proven, diagnostics, consumed, reverse_proven, reverse_consumed)):
                 raise RuntimeError('Backend or model evidence incomplete')
             report['status'] = 'passed'
     except Exception as error:

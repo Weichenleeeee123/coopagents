@@ -179,7 +179,7 @@ class ColdStartTests(unittest.TestCase):
                     'setup_diagnostics': lambda *a: {},
                     'network_proven': lambda *a: True, 'diagnostics_proven': lambda *a: True,
                     'exchange_proven': lambda *a: True,
-                    'assistant_text': lambda *a: (roots['claude'] / 'repo/acceptance-answer.txt').read_text()}
+                    'assistant_text': lambda *a: '\n'.join((root / 'repo/acceptance-answer.txt').read_text() for root in roots.values())}
                 for name, replacement in overrides.items():
                     patches.enter_context(patch.object(self.runner, name, replacement))
                 patches.enter_context(patch.object(self.runner.subprocess, 'run', process))
@@ -415,6 +415,36 @@ class ColdStartTests(unittest.TestCase):
         self.assertEqual([d['diagnostic_id'] for d in result['collaboration']['diagnostics']], ['correct'])
         self.assertTrue(self.runner.diagnostics_proven(result, {'owner'}))
         self.assertFalse(self.runner.diagnostics_proven(result, {'other'}))
+
+
+    def test_candidate_wheel_provenance_rejects_editable_foreign_and_different_archive(self):
+        import hashlib
+        from importlib import metadata
+        import coopagents
+        root = (Path('.local/cold-start-tests') / uuid4().hex).resolve()
+        root.mkdir(parents=True)
+        wheel = root / 'synthetic.whl'
+        wheel.write_bytes(b'synthetic-wheel-only-for-provenance-test')
+        digest = hashlib.sha256(wheel.read_bytes()).hexdigest()
+        class Distribution:
+            version = '1.0.0rc1'
+            direct = {'archive_info': {'hashes': {'sha256': digest}}}
+            def read_text(self, name):
+                return json.dumps(self.direct)
+        distribution = Distribution()
+        with patch.object(sys, 'prefix', str(root / 'venv')), patch.object(sys, 'base_prefix', str(root / 'base')), \
+                patch.object(coopagents, '__file__', str(root / 'venv/site-packages/coopagents/__init__.py')), \
+                patch.object(metadata, 'distribution', return_value=distribution):
+            result = self.runner.installed_wheel_identity(wheel)
+            self.assertEqual(result['sha256'], digest)
+            for invalid in ({'archive_info': {'hashes': {'sha256': 'wrong'}}},
+                            {'archive_info': {'hashes': {'sha256': digest}}, 'dir_info': {'editable': True}}):
+                distribution.direct = invalid
+                with self.assertRaises(ValueError):
+                    self.runner.installed_wheel_identity(wheel)
+            with patch.object(coopagents, '__file__', str(root / 'checkout/src/__init__.py')):
+                with self.assertRaises(ValueError):
+                    self.runner.installed_wheel_identity(wheel)
 
 
 if __name__ == '__main__':
