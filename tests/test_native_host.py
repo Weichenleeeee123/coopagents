@@ -28,7 +28,8 @@ class NativeHost(unittest.TestCase):
 
     def configure(self):
         fake = str(Path(__file__).with_name('fake_mcp_cli.py').resolve())
-        with patch.dict(os.environ, {'FAKE_TOOL': 'codex', 'FAKE_MCP_STATE': str(self.directory / 'native.json')}):
+        with patch.dict(os.environ, {'FAKE_TOOL': 'codex', 'FAKE_MCP_STATE': str(self.directory / 'native.json'),
+                                     'CODEX_HOME': str(self.directory / 'codex-home')}):
             return connect('codex', self.path, cli=[sys.executable, fake], skills=self.directory / 'skills')
 
     def lose_supervisor(self):

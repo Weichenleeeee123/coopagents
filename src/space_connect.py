@@ -185,6 +185,74 @@ def _add(tool, cli, name, command):
         raise ConnectError('The native CLI refused to add the MCP server')
 
 
+def configure_discovery_budget(name, command):
+    """Adjust only our verified native table; retain formatting and the old file.
+
+    An optional server can miss the turn's catalog even with a longer timeout.
+    Require this explicit connection to finish discovery within a bounded budget.
+    The native mcp add CLI has no persistent options for either setting.
+    """
+    import copy
+    import math
+    import tomllib
+    from uuid import uuid4
+    from .spaces import protect
+    from .space_host import owner_lock
+    path = checked_path(Path(os.environ.get('CODEX_HOME') or Path.home() / '.codex') / 'config.toml')
+    with owner_lock(path):
+        original = path.read_bytes()
+        text = original.decode('utf-8')
+        document = tomllib.loads(text)
+        entry = document.get('mcp_servers', {}).get(name, {})
+        if not _matches([entry.get('command', ''), *entry.get('args', [])], command):
+            raise ConnectError('The native startup budget requires the same verified Coopagents entry')
+        budget = entry.get('startup_timeout_sec')
+        if budget is not None:
+            if type(budget) not in (int, float) or not math.isfinite(budget):
+                raise ConnectError('The native Coopagents startup timeout must be a finite number')
+            if budget >= 120 and entry.get('required') is True:
+                return {'startup_timeout_sec': budget, 'required': True}
+        budget = max(budget or 120, 120)
+        pattern = re.compile(r'^\s*\[\s*mcp_servers\s*\.\s*(?:' + re.escape(name)
+                             + r'|"' + re.escape(name) + r'"|\x27' + re.escape(name)
+                             + r'\x27)\s*\]\s*(?:#.*)?$')
+        lines = text.splitlines(keepends=True)
+        headers = [i for i, line in enumerate(lines) if pattern.fullmatch(line.rstrip('\r\n'))]
+        if len(headers) != 1:
+            raise ConnectError('The native Coopagents table uses an unsupported TOML layout; '
+                               'set required = true and startup_timeout_sec = 120 for this server with the native configuration editor')
+        begin = headers[0]
+        end = next((i for i in range(begin + 1, len(lines)) if lines[i].lstrip().startswith('[')), len(lines))
+        newline = '\r\n' if '\r\n' in text else '\n'
+        if not lines[begin].endswith(('\n', '\r')):
+            lines[begin] += newline
+        inserts = []
+        for key, value in (('startup_timeout_sec', str(budget)), ('required', 'true')):
+            replacements = [i for i in range(begin + 1, end) if re.match(r'^\s*' + key + r'\s*=', lines[i])]
+            if replacements:
+                lines[replacements[0]] = key + ' = ' + value + newline
+            else:
+                inserts.append(key + ' = ' + value + newline)
+        lines[begin + 1:begin + 1] = inserts
+        updated = ''.join(lines).encode('utf-8')
+        expected = copy.deepcopy(document)
+        expected['mcp_servers'][name].update(startup_timeout_sec=budget, required=True)
+        if tomllib.loads(updated.decode('utf-8')) != expected:
+            raise ConnectError('The native startup-budget update would change unrelated configuration; no update was applied')
+        backup = checked_path(path.with_name(path.name + '.coopagents-' + uuid4().hex + '.bak'))
+        staging = checked_path(path.with_name(path.name + '.' + uuid4().hex + '.pending'))
+        for target, data in ((backup, original), (staging, updated)):
+            with target.open('xb') as stream:
+                protect(target)
+                stream.write(data)
+                stream.flush()
+                os.fsync(stream.fileno())
+        if path.read_bytes() != original:
+            raise ConnectError('Native configuration changed during the update; retained both files, rerun connect')
+        os.replace(staging, path)
+        return {'startup_timeout_sec': budget, 'required': True, 'backup': str(backup)}
+
+
 def skills_root(tool):
     if tool == 'codex':
         return Path(os.environ.get('CODEX_HOME') or Path.home() / '.codex') / 'skills'
@@ -236,7 +304,17 @@ def inspect_configuration(tool, profile_path, name=None, cli=None, skills=None):
             skill = 'present' if _same_text(_skill_files(target), _skill_files(source)) else 'different'
         except (OSError, ValueError):
             skill = 'different'
-    return {'tool': tool, 'server': name, 'profile': str(path), 'config': config, 'skill': skill}
+    result = {'tool': tool, 'server': name, 'profile': str(path), 'config': config, 'skill': skill}
+    if tool == 'codex' and config == 'matching':
+        import math
+        import tomllib
+        native = checked_path(Path(os.environ.get('CODEX_HOME') or Path.home() / '.codex') / 'config.toml')
+        if native.is_file():
+            entry = tomllib.loads(native.read_text(encoding='utf-8')).get('mcp_servers', {}).get(name, {})
+            budget = entry.get('startup_timeout_sec')
+            result['discovery'] = {'ready': entry.get('required') is True and type(budget) in (int, float)
+                                  and math.isfinite(budget) and budget >= 120}
+    return result
 
 
 def install_skill(tool, root=None):
@@ -309,6 +387,8 @@ def connect(tool, profile_path, name=None, cli=None, skills=None, wake=False, pr
         raise ConnectError('The MCP server was not found in the native configuration after adding it')
     result = {'tool': tool, 'cli': cli[-1], 'server': name, 'config': state, 'verified': True, 'profile': str(path),
               'room_id': profile['room_id'], 'member_id': profile['member_id']}
+    if tool == 'codex':
+        result['discovery'] = configure_discovery_budget(name, command)
     result.update(install_skill(tool, skills))
     from .space_host import register
     result['host_lifecycle'] = register(path)

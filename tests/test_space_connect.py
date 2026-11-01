@@ -24,6 +24,9 @@ class Connect(unittest.TestCase):
                                          web_token='web-secret', agent_token='agent-secret'))
         self.state = self.directory / 'mcp.json'
         self.skills = self.directory / 'skills'
+        environment = patch.dict(os.environ, {'CODEX_HOME': str(self.directory / 'codex-home')})
+        environment.start()
+        self.addCleanup(environment.stop)
 
     def run_connect(self, tool, **kwargs):
         env = {'FAKE_TOOL': tool, 'FAKE_MCP_STATE': str(self.state)} | kwargs.pop('env', {})
@@ -44,6 +47,9 @@ class Connect(unittest.TestCase):
                 self.assertTrue((skill / 'SKILL.md').read_text(encoding='utf-8').startswith('---'))
                 self.assertTrue((skill / 'scripts' / 'verify_cloudflared.py').exists())
                 self.assertNotIn('secret', json.dumps(result))
+                if tool == 'codex':
+                    self.assertEqual(result['discovery']['startup_timeout_sec'], 120)
+                    self.assertIs(result['discovery']['required'], True)
 
     def test_rerun_is_idempotent_and_skill_stays_present(self):
         first = self.run_connect('claude')

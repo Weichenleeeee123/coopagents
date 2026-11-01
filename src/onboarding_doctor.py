@@ -203,6 +203,11 @@ def mcp_check(tool, profile_path, *, cli=None, name=None):
         config = inspected['config']
         evidence = {'tool': tool, 'server': inspected['server'], 'state': config}
         if config == 'matching':
+            if inspected.get('discovery', {}).get('ready') is False:
+                return make_check('mcp_configuration', 'needs_user',
+                                  'The Codex entry can omit Coopagents tools while the host is starting.',
+                                  'Rerun connect with this profile to configure bounded required discovery, then open a new session.',
+                                  evidence=evidence)
             return make_check('mcp_configuration', 'pass', 'The native MCP entry matches this profile.',
                               evidence=evidence)
         if config == 'missing':
