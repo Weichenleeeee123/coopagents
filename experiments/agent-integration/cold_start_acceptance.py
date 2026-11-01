@@ -201,6 +201,23 @@ def model_command(tool, executable, run, python, *, setup=False, require=()):
             '--allowedTools', ','.join(allowed)]
 
 
+def setup_prompt(tool, run, python, skill_path, *, installed_wheel):
+    if installed_wheel:
+        installation = (f'The exact candidate wheel is already installed in isolated Python {python}; '
+                        'the harness verified its archive hash and import path. Reuse it; do not install packages. ')
+    else:
+        installation = (f'The authorized development checkout is already installed editable in isolated Python {python}. '
+                        'Reuse it; do not install packages. ')
+    return (f'Read the installed candidate Skill at {Path(skill_path).as_posix()}. ' + installation +
+            f'You are {tool}. All settings and state directories are isolated in {run}. '
+            'The harness has already checked Python and package installation. Do not run pip, git, '
+            'shell inspection commands, or any command except the Coopagents space_runtime commands '
+            'needed to complete the requested create/join, connect and doctor workflow. '
+            'The native runtime command permission for this exact Python is pre-authorized for this run. '
+            'Never delete files, change real native configuration or enable wake-up. '
+            'Do not print credentials or environment variables. ')
+
+
 def decoded_objects(value, depth=0):
     """Read native structured content and JSON TextContent, never assistant prose."""
     if depth > 12:
@@ -548,20 +565,12 @@ def main(argv=None):
             raise RuntimeError('Native model session failed; inspect private evidence')
         return entry
 
-    def cold_prompt(tool):
-        installation = (f'The exact candidate wheel is installed in isolated Python {interpreters[tool]}; '
-                        'reuse it explicitly. This is a private candidate acceptance; do not install from PyPI. '
-                        if args.installed_wheel else
-                        f'I explicitly authorize this unreleased development checkout. The isolated Python {sys.executable} '
-                        'is already installed editable from that checkout with [space]; reuse it and use it explicitly. ')
-        return (f'Read the installed candidate Skill at {(run / tool / "checkout-skill/SKILL.md").as_posix()}. '
-                + installation +
-                f'You are {tool}. All settings and state directories are isolated in {run / tool}. '
-                'Never delete files, change real native configuration or enable wake-up. '
-                'Do not print credentials or environment variables. ')
-
     try:
-        owner = turn(host, '01-create', cold_prompt(host) + f'Help me configure Coopagents here. Create a new {args.network} space '
+        host_setup = setup_prompt(host, run / host, interpreters[host], run / host / 'checkout-skill/SKILL.md',
+                                  installed_wheel=bool(args.installed_wheel))
+        guest_setup = setup_prompt(guest, run / guest, interpreters[guest], run / guest / 'checkout-skill/SKILL.md',
+                                   installed_wheel=bool(args.installed_wheel))
+        owner = turn(host, '01-create', host_setup + f'Help me configure Coopagents here. Create a new {args.network} space '
              f'for this repository with owner {host}, connect this agent, then run doctor. Use the current configured model.',
              setup=True, verify_setup=True)
         host_profile = read_profile(owner['profile'])
@@ -601,7 +610,7 @@ def main(argv=None):
             # Preserve the actual invitation message as supplied to the joiner; no README parsing/version invention.
             invitation_message = run / guest / 'invitation-message.txt'
             invitation_message.write_text(invitation['message'], encoding='utf-8')
-            turn(guest, '03-join', cold_prompt(guest) + f'Read my private invitation message at {invitation_message}. '
+            turn(guest, '03-join', guest_setup + f'Read my private invitation message at {invitation_message}. '
                  f'I authorize joining that space as {guest}; use join --invitation-file with that path and --connect {guest}. '
                  'For this private acceptance reuse the exact already-installed candidate Python named above, '
                  'even if the invitation mentions a package release. Do not install another package. Run doctor.', setup=True, verify_setup=True)

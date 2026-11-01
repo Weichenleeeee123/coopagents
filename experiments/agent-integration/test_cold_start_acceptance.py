@@ -79,6 +79,17 @@ class ColdStartTests(unittest.TestCase):
         self.assertEqual(posix[posix.index('--allowedTools') + 1],
                          'Read,Bash("/venv/bin/python" -m coopagents.space_runtime:*)')
 
+    def test_setup_prompt_avoids_unapproved_environment_probes(self):
+        prompt = self.runner.setup_prompt('claude', Path('/private/run'),
+            PureWindowsPath('C:/private/python.exe'), Path('/private/skill/SKILL.md'), installed_wheel=True)
+        self.assertIn('harness has already checked Python and package installation', prompt)
+        self.assertIn('Do not run pip, git, shell inspection commands', prompt)
+        self.assertIn('native runtime command permission for this exact Python is pre-authorized', prompt)
+        self.assertIn('do not install packages', prompt)
+        dev_prompt = self.runner.setup_prompt('codex', Path('/private/run'), Path('/private/python'),
+                                               Path('/private/skill/SKILL.md'), installed_wheel=False)
+        self.assertIn('authorized development checkout is already installed editable', dev_prompt)
+
     def test_claude_required_permissions_use_verified_exact_server_and_tools(self):
         root = Path(__file__).resolve().parents[2] / '.local/cold-start-tests' / uuid4().hex
         profile = root / 'coopagents-home/member/profile.json'
