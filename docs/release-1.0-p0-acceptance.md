@@ -13,7 +13,7 @@
 
 | P0 | 状态 | 后续条件 |
 | --- | --- | --- |
-| Claude/Codex 新流程真实冷启动 | Claude 创建、Codex 加入及新会话文件问答经恢复验收完成；Codex 创建尚未通过 | 原完整流程在最后消费阶段中断；恢复会话及独立检查通过。Windows 私有 profile 硬链接限制已修复，真实 Codex 创建与原生配置成功，但随后独立 doctor 发现宿主不可达，进程生命周期仍待查。当前仍基于预装开发 checkout，不能当作发行包安装证据 |
+| Claude/Codex 新流程真实冷启动 | Claude 创建、Codex 加入及新会话文件问答经恢复完成；Codex 创建、跨会话宿主恢复与原生身份读取通过 | Windows 私有文件发布与宿主生命周期已修复；干净开发提交完成 Codex P2P 创建、注册、已完成诊断挑战及新会话 whoami/read_team。仍需发行包首次安装与完整冷启动问答重验，不能将 host-only 验收算作全部冷启动通过 |
 | 双设备 P2P 与恢复 | Windows ↔ Linux 真实中继连接、持久身份和主机重启恢复通过；两个方向真实模型问答经恢复完成 | Windows 模型发问、Linux 模型读取本地文件回复、Windows 新模型会话消费准确回复；反向 Windows 原生回复已验证，Linux 升级官方 Codex 0.166.0 后新会话消费准确答案；两位用户及双方家用/移动 NAT 待验 |
 | 跨设备 Claude 唤醒与 Codex 待命 | 两者实际跨设备事件触发的模型回复通过；Codex Esc/后续输入通过 | Linux 合成 MCP 驱动发送，Windows 原生会话读取请求并 reply 准确文件内容，服务端独立核对。Codex 正常界面审查唯一 Stop hook、显式待命 120 秒；Esc 后输入标记获准确回应，恢复待命后处理远端请求。不算 Linux 模型发问通过 |
 | 七种 Harness / Windows、macOS、Linux | Pi 原生同机闭环通过；Kimi 经请求方恢复完成同机闭环；Codex 跨设备两个方向经恢复完成；OpenCode 原生 MCP 握手通过 | 其余实际闭环及 macOS 待验；OpenCode 旧配置所选模型返回 401，官方免费模型受额度限制，Claude 旧模型返回 503、有效模型已完成文件问答，但后续交互调用仍有 API 错误；Cursor/ZCode 仍需实际桌面会话；Kimi 原回复会话超时保留；恢复会话已消费并解决；OpenCode 官方最新免费模型被上游明确拒绝（额度耗尽） |
@@ -102,3 +102,15 @@ Windows 私有文件发布问题已定位并修复（ebec0b6）：同一实际�
 本轮还尝试进入 Cursor 桌面验收，但电脑控制工具初始化报本地资源路径不存在，未能进入实际 GUI；本机 Cursor CLI 也没有 agent/chat 子命令。没有因此宣称 Cursor 模型或认证失败，仍保留为原生桌面流程待验。
 
 ebec0b6 完整 Windows Python 回归 663 项通过、1 项跳过（452.226 秒）；发行 sdist/wheel 构建通过。该候选对应 CI 的 Python 3.11、3.13 及 container 作业均成功，包含实验、Node、构建与容器/TLS 检查。版本字符串仍为 0.9.0；这是未发布候选构建，不是 1.0 发布证明。
+
+## Windows 原生命令宿主生命周期修复
+
+`e74bb04` 实现显式注册的 local/P2P owner 原生 MCP 连接恢复宿主：使用原 profile、数据库、端口及 P2P key，跨进程管理锁串行化启动，失败锁定防止反复拉起。显式 stop 持久暂停，重连不会解除；显式 start 恢复。成员、未注册 owner、quick tunnel 和外部部署不自动启动。doctor 只报告当前离线与下一步，不替调用者启动宿主。[设计与边界](windows-native-host-lifecycle.md)说明关闭所有 owner 原生会话后可能离线，协作时须保持 owner 会话打开。
+
+干净 `3d1edc3` 使用 Windows 原生 Codex `0.166.0-alpha.5.1`、正常 MXC 沙箱及既有默认模型，完成全新 P2P 创建、原生注册、持久诊断挑战和新模型会话 whoami/read_team 的保存身份匹配。结果为 `host_verified_partial`，测试后主动停止原空间，未由验收器替原生 MCP 执行恢复。会话退出后离线的已完成挑战，仅用绑定 room/member 的 owner 数据库只读核对；这不是当前在线证明。
+
+独立真实生命周期验收完成 9 项检查：先模拟意外进程退出，原生新会话恢复并 whoami/read_team；会话存活期间独立 HTTP doctor 完成身份和挑战；profile 字节不变；显式 stop 后新会话无成功工具访问、运行锁释放且没有宿主；显式 start 后新模型会话再次 whoami/read_team、在线 doctor 及身份保留。全部通过，随后停止合成宿主。未修改真实配置、模型、沙箱权限或 GitHub App 服务。
+
+失败过程保留：首次验收器在整个 Codex 会话结束后要求宿主在线，导致诊断失败；调整为会话存活期间验证在线挑战，会话结束后只核对历史证据。另外两次原生会话没有提供 Coopagents 工具，其中一次在显式恢复阶段；局部 MCP 连接诊断下重跑全部通过。尚未证明这些原生工具发现差异的原因，不能把一次完整通过外推为所有客户端会话均稳定。
+
+本机完整核心回归 670 项通过、1 项跳过（500.220 秒）；实验回归 53 项通过；sdist/wheel 构建成功，wheel 包含新的宿主恢复模块和 Skill。`3d1edc3` 对应 [CI](https://github.com/Weichenleeeee123/coopagents/actions/runs/41270097304) 的 Python 3.11/3.13、实验、Node、构建及容器/TLS 均通过。独立代码审查未发现确定的产品正确性或安全缺陷，提出的跨进程竞争、quick/external 排除及数据保留覆盖随后补验；本轮仍不发布 1.0。
