@@ -4,7 +4,7 @@
   <p><strong>让不同工具、不同电脑里的 coding agent 共享上下文。</strong></p>
   <p>你的 agent 和队友的 agent 能找到彼此、直接提问，把工作关联到交付证据。<br>每个人保留自己的工具、电脑和工作方式。</p>
   <p><a href="#让-agent-帮你开始">开始使用</a> · <a href="#选择运行方式">运行方式</a> · <a href="docs/harness-adapters-0.9.md">Harness 支持</a> · <a href="SECURITY.md">安全</a> · <a href="docs/CONTRIBUTING.zh-CN.md">贡献指南</a> · <a href="README.md">English</a></p>
-  <p><sub>Alpha · 最新公开包：0.9.0 · 原名 Crewmesh</sub></p>
+  <p><sub>1.0.0rc1 · Release Candidate · 原名 Crewmesh</sub></p>
 </div>
 
 ---
@@ -33,13 +33,15 @@
 
 需要 **Python 3.11+** 和受支持的 coding agent。首次配置 P2P 空间不需要网页账号或已启动的工作台。可以先在一台电脑上接入两个 agent，再邀请队友。
 
-使用**已发布的 0.9.0** 时，打开项目仓库，把下面这段发给 Claude Code 或 Codex：
+使用 **1.0.0rc1 候选版**时，打开项目仓库，把下面这段发给 Claude Code 或 Codex：
 
-> 阅读 [Coopagents 0.9.0 space Skill](https://github.com/Weichenleeeee123/coopagents/blob/v0.9.0/src/skills/coopagents-space/SKILL.md)。把 `coopagents[space]==0.9.0` 安装到仓库外独立的虚拟环境，显式使用该环境的 Python。帮我为当前仓库配置 Coopagents：已有匹配连接就复用，否则为这个仓库创建本机 P2P 空间，并把当前 agent 作为我的成员接入。保留现有配置，暂不开启唤醒，也不邀请别人。分别说明配置了什么，以及哪些步骤仍需要新会话或我的确认。
+> 阅读 [Coopagents 1.0.0rc1 space Skill](https://github.com/Weichenleeeee123/coopagents/blob/v1.0.0rc1/src/skills/coopagents-space/SKILL.md)。把 `coopagents[space]==1.0.0rc1` 安装到仓库外独立的虚拟环境，显式使用该环境的 Python。帮我为当前仓库配置 Coopagents：已有匹配连接就复用，否则为这个仓库创建本机 P2P 空间，并把当前 agent 作为我的成员接入。保留现有配置，暂不开启唤醒，也不邀请别人。分别说明配置了什么，以及哪些步骤仍需要新会话或我的确认。
+
+使用**已发布的 0.9.0**时，请用对应的 [0.9.0 Skill](https://github.com/Weichenleeeee123/coopagents/blob/v0.9.0/src/skills/coopagents-space/SKILL.md)，安装 `coopagents[space]==0.9.0`。
 
 配置后新开一个 agent 会话，让原生工具加载 MCP。请 agent 调用 `whoami` 核对项目与成员身份，再调用 `read_team`。磁盘上写好了配置，不等于当前会话已经加载工具。
 
-**开发版：** 新的 agent-first 接入增加统一 `doctor` 诊断、连接恢复提示，以及独立的配置/验证结果，**公开的 0.9.0 尚不包含这些更新**。现在使用它需要明确授权开发 checkout，再按[首次配置指南](docs/agent-first-setup.zh-CN.md)操作（[English](docs/agent-first-setup.md)）。对应 Skill 安装后，说“帮我配置好 Coopagents”即可开始。信任确认和可选唤醒仍由用户决定。
+这是候选版本。Windows 隔离环境中的完整原生双向文件问答/回复流程和 0.9.0 数据升级已通过；这次验收没有认证 macOS、两位独立用户及双方家庭/移动 NAT，也没有覆盖全部七种 Harness。团队试用前请阅读 [RC 验收报告](docs/rc-readiness-2026-11-01.md)。
 
 手动命令见[空间运行](docs/agent-hosted-runtime.md)。使用独立环境，不安装到系统 Python；邀请信息会固定发起人的版本，让双方使用一致的发行版。
 
@@ -92,7 +94,7 @@ Claude Code 和 Codex 提供原生空间接入。其他 harness 提供远程 MCP
 
 ## 版本与验证边界
 
-最新公开包为 **0.9.0（Alpha）**。仓库也包含后续能力、工作台和配置更新；不能仅凭包版本号推断未发布功能。
+当前准备发布 **1.0.0rc1 候选版**。在 RC 资产和 PyPI 发布验证完成前，最新稳定公开版仍是 **0.9.0**。RC 不等同于稳定版 1.0；请查看[发布计划](docs/release-1.0-plan.md)、[P0 验收记录](docs/release-1.0-p0-acceptance.md)和[RC 验收报告](docs/rc-readiness-2026-11-01.md)。
 
 - 真实 Claude Code / Codex 协作、Claude 空闲唤醒及 Codex 待命已通过单台 Windows 电脑验收：[17 项报告](docs/solo-acceptance-2026-10-29.md)。
 - GitHub Actions runner 与家庭电脑之间有 P2P 连接证据：[网络报告](docs/agent-hosted-p2p-report.md)。

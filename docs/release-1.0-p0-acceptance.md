@@ -19,6 +19,10 @@
 | 七种 Harness / Windows、macOS、Linux | Pi 原生同机闭环通过；Kimi 经请求方恢复完成同机闭环；Codex 跨设备两个方向经恢复完成；OpenCode 原生 MCP 握手通过 | 其余实际闭环及 macOS 待验；OpenCode 旧配置所选模型返回 401，官方免费模型受额度限制，Claude 旧模型返回 503、有效模型已完成文件问答，但后续交互调用仍有 API 错误；Cursor/ZCode 仍需实际桌面会话；Kimi 原回复会话超时保留；恢复会话已消费并解决；OpenCode 官方最新免费模型被上游明确拒绝（额度耗尽） |
 | 真实 GitHub App | 安装/实际用户授权/四类关联/实际检查/签名 webhook/去重/卸载撤权/重装重新授权与刷新恢复通过 | 普通 push/PR/check/Release 事件的签名投递与自动同步也通过；组织审批、PR 合并、线上限流等扩展场景不外推 |
 
+## 1.0.0rc1 候选版补验（2026-11-01）
+
+完整记录见 [RC 就绪验收](rc-readiness-2026-11-01.md) 和 [RC 发布说明](release-notes-1.0.0rc1.md)。独立环境中的实际 Claude Code/Codex 创建、邀请加入、双方新会话身份、双向本地文件问答/回复及模型消费均通过；候选 wheel 也完成已发布 0.9.0 数据升级。Codex 首轮 MCP 工具缺失已通过 `required = true` 与至少 120 秒发现预算修复，受控延迟实验和连续新会话通过。另一个真实 Claude 运行因模型误触发沙箱禁止的 `pip`/`git` 探测而失败；验收提示收紧后新运行全流程通过，未放宽沙箱权限。双独立用户、两台设备/NAT、macOS 和全部 Harness 组合仍未通过/未验证，因此这只是 RC，不能作为 1.0 稳定版门槛通过。
+
 ## 环境核查
 
 - Windows 原生 CLI：Claude Code 2.1.282、Codex 0.146.0、OpenCode 1.1.65；Cursor desktop 1.2.4。

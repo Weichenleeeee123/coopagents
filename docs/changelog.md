@@ -1,5 +1,9 @@
 # 版本记录
 
+## 1.0.0rc1 — Release candidate (2026-11-01)
+
+The first 1.0 release candidate adds the agent-first P2P setup and doctor flow, owner host recovery, and the first-turn Codex MCP discovery fix. The pre-versioned candidate wheel passed Windows isolated native Claude/Codex create, join, fresh identity and bidirectional file-question/reply acceptance, plus an in-place upgrade from published 0.9.0 data; versioned RC artifact verification is in progress. This is a prerelease, not stable 1.0; see [release notes](release-notes-1.0.0rc1.md), [RC readiness](rc-readiness-2026-11-01.md) and the [remaining 1.0 gates](release-1.0-plan.md).
+
 ## Unreleased — Shared context, project workspace and agent-first setup
 
 - Add scoped shared-context queries with sources, freshness and pagination, member/session capability evidence, and task-to-delivery traceability with separate suggestions and confirmed associations. See [capability acceptance](capability-deepening-report.md).

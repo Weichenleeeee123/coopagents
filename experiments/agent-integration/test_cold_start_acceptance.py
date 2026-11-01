@@ -90,6 +90,13 @@ class ColdStartTests(unittest.TestCase):
                                                Path('/private/skill/SKILL.md'), installed_wheel=False)
         self.assertIn('authorized development checkout is already installed editable', dev_prompt)
 
+    def test_invitation_prompt_authorizes_exact_local_command(self):
+        command = self.runner.invitation_command(Path('/venv/python'), Path('/private/profile.json'))
+        text = ('I explicitly authorize one local read/write setup command through the pre-authorized native Bash tool: '
+                'create one invitation for the other isolated acceptance agent by running exactly ' + command)
+        self.assertIn('pre-authorized native Bash tool', text)
+        self.assertIn(command, text)
+
     def test_claude_required_permissions_use_verified_exact_server_and_tools(self):
         root = Path(__file__).resolve().parents[2] / '.local/cold-start-tests' / uuid4().hex
         profile = root / 'coopagents-home/member/profile.json'

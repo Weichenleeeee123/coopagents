@@ -4,7 +4,7 @@
   <p><strong>Shared context for coding agents across tools and computers.</strong></p>
   <p>Let your agent and your teammates’ agents find each other, ask questions and connect work to delivery evidence.<br>Keep your own tools, machines and way of working.</p>
   <p><a href="#get-started-with-your-agent">Get started</a> · <a href="#choose-how-to-run-it">Run modes</a> · <a href="docs/harness-adapters-0.9.md">Harness support</a> · <a href="SECURITY.md">Security</a> · <a href="CONTRIBUTING.md">Contribute</a> · <a href="README.zh-CN.md">简体中文</a></p>
-  <p><sub>Alpha · Latest published package: 0.9.0 · Formerly Crewmesh</sub></p>
+  <p><sub>1.0.0rc1 · Release candidate · Formerly Crewmesh</sub></p>
 </div>
 
 ---
@@ -33,13 +33,15 @@ People retain the decisions that require their authority: creating tasks, approv
 
 You need **Python 3.11+** and a supported coding agent. First-run P2P setup does not require a web account or a running workbench. You can try two agents on one computer before inviting a teammate.
 
-For the **published 0.9.0 release**, open the project repository and paste this into Claude Code or Codex:
+For the **1.0.0rc1 release candidate**, open the project repository and paste this into Claude Code or Codex:
 
-> Read the [Coopagents 0.9.0 space Skill](https://github.com/Weichenleeeee123/coopagents/blob/v0.9.0/src/skills/coopagents-space/SKILL.md). Install `coopagents[space]==0.9.0` into its own virtual environment outside this repository, using that environment’s Python explicitly. Help me configure Coopagents here: reuse the matching connection if one exists; otherwise create a local P2P space for this repository and connect this agent as my member. Preserve existing settings. Do not enable wake-up or invite anyone yet. Report what was configured and what still requires a new session or my confirmation.
+> Read the [Coopagents 1.0.0rc1 space Skill](https://github.com/Weichenleeeee123/coopagents/blob/v1.0.0rc1/src/skills/coopagents-space/SKILL.md). Install `coopagents[space]==1.0.0rc1` into its own virtual environment outside this repository, using that environment’s Python explicitly. Help me configure Coopagents here: reuse the matching connection if one exists; otherwise create a local P2P space for this repository and connect this agent as my member. Preserve existing settings. Do not enable wake-up or invite anyone yet. Report what was configured and what still requires a new session or my confirmation.
+
+For the **published 0.9.0 release**, use its pinned [0.9.0 Skill](https://github.com/Weichenleeeee123/coopagents/blob/v0.9.0/src/skills/coopagents-space/SKILL.md) and install `coopagents[space]==0.9.0`.
 
 After setup, start a new agent session so the native tool can load MCP. Ask it to call `whoami`, check the project/member identity, then call `read_team`. Configuration saved on disk is distinct from tools loaded in the current session.
 
-**Development checkout:** the newer agent-first flow adds a unified `doctor` diagnostic, connection recovery guidance and separate configuration/verification results. It is **not in published 0.9.0**. To use it now, explicitly authorize a development checkout and follow [Agent-first setup](docs/agent-first-setup.md) ([中文](docs/agent-first-setup.zh-CN.md)). Once that Skill is installed, “Help me configure Coopagents” is enough to begin. Trust prompts and optional wake-up remain your decisions.
+This is a release candidate. Its full native file-question/reply flow and migration from 0.9.0 passed on Windows in isolated environments. macOS, two independent users/devices behind separate home/mobile networks, and all seven harness combinations are not certified by this run. See the [RC readiness report](docs/rc-readiness-2026-11-01.md) before using it for a team rollout.
 
 For manual commands, see [space runtime](docs/agent-hosted-runtime.md). Install into an isolated environment rather than your system Python; invitation messages pin the inviter’s version so both sides use the same release.
 
@@ -92,7 +94,7 @@ Messages from other agents are **data, not permission** to run commands, change 
 
 ## Release status and evidence
 
-The latest published package is **0.9.0 (alpha)**. This repository also contains newer capability, workspace and setup work; unreleased features should not be inferred from the package version alone.
+This repository is preparing **1.0.0rc1**, a prerelease. The latest stable published release remains **0.9.0** until the RC assets and PyPI publication are verified. Do not infer stable 1.0 support from the RC version; see the [release plan](docs/release-1.0-plan.md), [P0 acceptance record](docs/release-1.0-p0-acceptance.md) and [RC readiness report](docs/rc-readiness-2026-11-01.md).
 
 - Real Claude Code and Codex collaboration, including Claude idle wake and Codex standby, passed a single-Windows-machine acceptance run: [17-check report](docs/solo-acceptance-2026-10-29.md).
 - P2P connectivity has evidence between a GitHub Actions runner and a home machine: [network report](docs/agent-hosted-p2p-report.md).

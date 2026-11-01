@@ -9,6 +9,7 @@ English is the default for the project README, contribution guide and agent-firs
 | Product, quick start and release boundaries | [README](../README.md) | [项目首页](../README.zh-CN.md) |
 | Contributing and development checks | [Contributing](../CONTRIBUTING.md) | [贡献指南](CONTRIBUTING.zh-CN.md) |
 | Agent-first setup and doctor (unreleased) | [Setup](agent-first-setup.md) | [首次配置](agent-first-setup.zh-CN.md) |
+| 1.0.0rc1 release candidate | [Release notes](release-notes-1.0.0rc1.md) | [RC readiness](rc-readiness-2026-11-01.md) |
 
 For operation and support: [P2P runtime](agent-hosted-runtime.md), [harness adapter matrix](harness-adapters-0.9.md), [security](../SECURITY.md), [self-hosted deployment](deployment.md), [setup acceptance](agent-first-setup-acceptance.md) and [two-machine acceptance](two-machine-acceptance.md).
 
@@ -36,6 +37,8 @@ For operation and support: [P2P runtime](agent-hosted-runtime.md), [harness adap
 | [双机验收清单](two-machine-acceptance.md) | 当前候选真人双机、双方 NAT 后的点对点、Claude 空闲唤醒及 Codex 待命步骤和取证脚本 |
 | [1.0 发布就绪计划](release-1.0-plan.md) | 1.0 稳定版的范围、真实验收门槛和阶段顺序 |
 | [1.0 P0 验收记录](release-1.0-p0-acceptance.md) | 当前候选的真实模型、跨设备、Harness/平台和 GitHub App 执行状态与缺口 |
+| [1.0.0rc1 发布说明](release-notes-1.0.0rc1.md) | 已验证功能、RC 限制与稳定版边界 |
+| [RC 就绪验收](rc-readiness-2026-11-01.md) | 原生发现问题、发行包闭环、0.9 升级和证据边界 |
 | [1.0 产品设计](product-1.0-design.md) | 本机 P2P、自托管 GUI、Git 交付关系、活动隐私和项目资产的分阶段设计 |
 | [1.0 前产品方向](superpowers/specs/2026-10-30-pre-1-0-product-direction-design.md) | 共享上下文、成员与能力发现、交付关联优化、Harness 验收和产品化准备 |
 | [0.9.1–0.9.3 能力深化](capability-deepening-report.md) | 共享上下文查询、成员/能力证据、交付反查与建议确认，以及分阶段实现和验证 |

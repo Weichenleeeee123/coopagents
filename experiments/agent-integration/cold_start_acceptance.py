@@ -581,11 +581,12 @@ def main(argv=None):
         if not host_network_ok:
             raise RuntimeError('Persisted host network did not match requested acceptance mode')
         invite_result = run / host / 'invitation-result.json'
-        verification_prompt = (f'Using only the native Coopagents MCP tools, call whoami and compare '
+        verification_prompt = (f'Using native Coopagents MCP tools, call whoami and compare '
              f'room_id={host_profile["room_id"]} and member_id={host_profile["member_id"]}, then read_team. '
              'Do not enable wake. ')
         invite_command = invitation_command(sys.executable, owner['profile'])
-        invitation_prompt = (f'I authorize creating one invitation for my other agent: run exactly {invite_command}. '
+        invitation_prompt = (f'I explicitly authorize one local read/write setup command through the pre-authorized native Bash tool: '
+             f'create one invitation for the other isolated acceptance agent by running exactly {invite_command}. '
              + ('Do not redirect output or write another file; the private runner retains the native CLI result. '
                 if host == 'claude' else f'Redirect the complete JSON to "{invite_result}". ')
              + 'Keep the invitation private. Do not enable wake.')
