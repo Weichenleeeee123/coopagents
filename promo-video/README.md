@@ -1,28 +1,21 @@
 # Coopagents Promo
 
-An original three-minute animated film about Coopagents, written in Remotion and React. The main 1920 × 1080, 30 fps composition is `CoopagentsPromo`. It contains ten independent Studio compositions that follow the story from disconnected context through agent discovery, messages, work, evidence and human decisions.
+The current English advert is a 44-second, 1080p60 launch film using the supplied Funk Caravan track with a three-second fade-out.
 
-The film uses the current Coopagents icon and a purpose-composed three-minute stereo synthesizer score. Re-create the waveform any time with `npm run generate:music`; no stock footage, external images or third-party music are used.
+It opens with the human relay problem, then shows agents connecting across real device setups and regions, a question and sourced answer, the answer turning into code, and the human review. Each 6-8 second chapter changes composition several times instead of holding a title card. The light product palette is grounded with dimensional devices, editorial closeups, staged depth and a moving shared-context motif.
 
-## Start the preview
+## Run
+
+The original recording stays at `public/funk-caravan.m4a` and is excluded from Git. The composition ends the music after 44 seconds with a three-second volume fade. Python 3 and FFmpeg must be on PATH for the music analyzer.
 
 ```powershell
-npm install
 npm run dev
-```
-
-## Verify the film
-
-```powershell
 npm run verify
+npm run verify:transitions
 ```
 
-This runs ESLint and TypeScript, checks that the film and soundtrack are exactly three minutes, opens the composition in Chrome headless mode, and exports ten chapter keyframes under the repository's ignored `.local/promo-video-qa/` folder.
+The main Studio composition is `CoopagentsPromo`. Six individual `Launch-*` sections are also available for inspection.
 
-## Export MP4
+Edit `src/ad/LaunchFilm.tsx` for timing and `src/ad/launchArt.ts` for artwork. The `storyboard` and `promo-cut` commands are legacy generators for retained earlier cuts; they must not be used to update the launch film because they overwrite `Film.tsx` and `Root.tsx`.
 
-```powershell
-npm run render
-```
-
-The result is `out/coopagents-promo.mp4` in 1920 × 1080 at 30 fps with the original soundtrack mixed in. The staged copy used to repair the original interrupted npm install is retained under `.local/promo-video-verified/`; the project now runs from this directory.
+`npm run render` exports an MP4 when requested. The maintained creative brief, evidence boundaries and references are in `../docs/coopagents-promo-video.md`.
