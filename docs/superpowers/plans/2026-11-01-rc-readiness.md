@@ -29,6 +29,6 @@
 
 ## 4. Enter RC
 
-- [ ] Only after both requested gates pass, set `1.0.0rc1`, create RC notes with tested client versions and outstanding macOS/two-user/NAT/Harness limits, and synchronize installation/support documentation.
-- [ ] Build and smoke the versioned RC artifacts; record SHA256SUMS. Commit source, tests and maintained documentation in stages.
-- [ ] Prepare the prerelease with the exact verified assets; use the existing Trusted Publishing workflow for any published RC. Do not publish a final 1.0 or claim unverified combinations as supported.
+- [x] Set `1.0.0rc1`, record tested client versions and known macOS/two-user/NAT/Harness limits in RC notes, and synchronize installation/support documentation.
+- [x] Build versioned RC artifacts and verify clean install/CLI smoke plus published 0.9 migration. The exact-RC1 full native exchange stopped before its reverse reply when the chosen provider reported insufficient balance.
+- [ ] Prepare/publish the prerelease with the exact verified assets using Trusted Publishing. Complete the exact-RC1 native flow and configure a GPG signing key first. Do not publish a final 1.0 or claim unverified combinations as supported.

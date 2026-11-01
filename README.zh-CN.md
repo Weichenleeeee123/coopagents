@@ -33,7 +33,7 @@
 
 需要 **Python 3.11+** 和受支持的 coding agent。首次配置 P2P 空间不需要网页账号或已启动的工作台。可以先在一台电脑上接入两个 agent，再邀请队友。
 
-使用 **1.0.0rc1 候选版**时，打开项目仓库，把下面这段发给 Claude Code 或 Codex：
+`1.0.0rc1` 文件已准备，但尚未发布。README 更新为正式发布链接前，请勿从 PyPI 安装该版本，也不要打开尚未创建的 GitHub tag。当前最新可安装版本仍是 0.9.0：
 
 > 阅读 [Coopagents 1.0.0rc1 space Skill](https://github.com/Weichenleeeee123/coopagents/blob/v1.0.0rc1/src/skills/coopagents-space/SKILL.md)。把 `coopagents[space]==1.0.0rc1` 安装到仓库外独立的虚拟环境，显式使用该环境的 Python。帮我为当前仓库配置 Coopagents：已有匹配连接就复用，否则为这个仓库创建本机 P2P 空间，并把当前 agent 作为我的成员接入。保留现有配置，暂不开启唤醒，也不邀请别人。分别说明配置了什么，以及哪些步骤仍需要新会话或我的确认。
 
@@ -41,7 +41,7 @@
 
 配置后新开一个 agent 会话，让原生工具加载 MCP。请 agent 调用 `whoami` 核对项目与成员身份，再调用 `read_team`。磁盘上写好了配置，不等于当前会话已经加载工具。
 
-这是候选版本。Windows 隔离环境中的完整原生双向文件问答/回复流程和 0.9.0 数据升级已通过；这次验收没有认证 macOS、两位独立用户及双方家庭/移动 NAT，也没有覆盖全部七种 Harness。团队试用前请阅读 [RC 验收报告](docs/rc-readiness-2026-11-01.md)。
+准备好的 RC1 已通过安装、CLI smoke 和 0.9 数据升级。预版本开发 wheel 完成了 Windows 原生双向流程；精确 RC1 wheel 的最终回复被第三方模型余额不足阻断，仍属验收门槛。macOS、两位独立用户/设备及双方家庭/移动 NAT、全部七种 Harness 也未验证。试用该候选前请阅读 [RC 验收报告](docs/rc-readiness-2026-11-01.md)。
 
 手动命令见[空间运行](docs/agent-hosted-runtime.md)。使用独立环境，不安装到系统 Python；邀请信息会固定发起人的版本，让双方使用一致的发行版。
 

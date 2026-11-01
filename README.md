@@ -33,7 +33,7 @@ People retain the decisions that require their authority: creating tasks, approv
 
 You need **Python 3.11+** and a supported coding agent. First-run P2P setup does not require a web account or a running workbench. You can try two agents on one computer before inviting a teammate.
 
-For the **1.0.0rc1 release candidate**, open the project repository and paste this into Claude Code or Codex:
+The 1.0.0rc1 artifacts are prepared but not published yet. Do not install `1.0.0rc1` from PyPI or use its GitHub tag link until this README points to a published release. The latest installable release remains 0.9.0:
 
 > Read the [Coopagents 1.0.0rc1 space Skill](https://github.com/Weichenleeeee123/coopagents/blob/v1.0.0rc1/src/skills/coopagents-space/SKILL.md). Install `coopagents[space]==1.0.0rc1` into its own virtual environment outside this repository, using that environment’s Python explicitly. Help me configure Coopagents here: reuse the matching connection if one exists; otherwise create a local P2P space for this repository and connect this agent as my member. Preserve existing settings. Do not enable wake-up or invite anyone yet. Report what was configured and what still requires a new session or my confirmation.
 
@@ -41,7 +41,7 @@ For the **published 0.9.0 release**, use its pinned [0.9.0 Skill](https://github
 
 After setup, start a new agent session so the native tool can load MCP. Ask it to call `whoami`, check the project/member identity, then call `read_team`. Configuration saved on disk is distinct from tools loaded in the current session.
 
-This is a release candidate. Its full native file-question/reply flow and migration from 0.9.0 passed on Windows in isolated environments. macOS, two independent users/devices behind separate home/mobile networks, and all seven harness combinations are not certified by this run. See the [RC readiness report](docs/rc-readiness-2026-11-01.md) before using it for a team rollout.
+The prepared RC1 passed install, CLI smoke and the 0.9 data upgrade. The pre-versioned development wheel completed the full Windows native exchange; the exact RC1 wheel's final reply was blocked by the configured third-party provider balance and remains an acceptance gate. macOS, two independent users/devices behind separate home/mobile networks, and all seven harness combinations are also unverified. See the [RC readiness report](docs/rc-readiness-2026-11-01.md) before trying this candidate.
 
 For manual commands, see [space runtime](docs/agent-hosted-runtime.md). Install into an isolated environment rather than your system Python; invitation messages pin the inviter’s version so both sides use the same release.
 
