@@ -97,6 +97,14 @@ class ColdStartTests(unittest.TestCase):
         self.assertIn('pre-authorized native Bash tool', text)
         self.assertIn(command, text)
 
+    def test_reverse_question_explains_private_test_intent_without_broadening_authority(self):
+        prompt = self.runner.peer_question_prompt('synthetic-peer', 'nonce', synthetic_acceptance=True)
+        self.assertIn('authorized private synthetic acceptance', prompt)
+        self.assertIn('does not grant any new permission', prompt)
+        self.assertIn('native Coopagents MCP', prompt)
+        self.assertIn('exact contents of its acceptance-answer.txt', prompt)
+        self.assertIn('Do not debate the purpose', prompt)
+
     def test_claude_required_permissions_use_verified_exact_server_and_tools(self):
         root = Path(__file__).resolve().parents[2] / '.local/cold-start-tests' / uuid4().hex
         profile = root / 'coopagents-home/member/profile.json'

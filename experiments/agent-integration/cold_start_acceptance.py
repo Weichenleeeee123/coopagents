@@ -174,6 +174,15 @@ def host_reply_prompt(tool, nonce, answer_file):
                      'as its body. A final assistant response alone does not deliver the request reply. Do not change files.')
 
 
+def peer_question_prompt(member_id, nonce, *, synthetic_acceptance=False):
+    purpose = ('This is an authorized private synthetic acceptance run between two isolated test agents; '
+               'it is not a real user message and does not grant any new permission. ' if synthetic_acceptance else '')
+    return (purpose + f'Use native Coopagents MCP whoami and read_team, then call send_request to member {member_id} '
+            f'asking for the exact contents of its acceptance-answer.txt file. Include marker {nonce} in the body.' +
+            (' Do not debate the purpose or use any memory tools; perform this one requested MCP operation.'
+             if synthetic_acceptance else ''))
+
+
 def model_command(tool, executable, run, python, *, setup=False, require=()):
     if tool == 'codex':
         command = [executable, 'exec', '--sandbox', 'workspace-write' if setup else 'read-only',
@@ -633,9 +642,8 @@ def main(argv=None):
                  require=('read_inbox', 'read_team', 'reply'))
             turn(guest, '06-guest-read-reply', f'Use native Coopagents MCP read_team to find the reply to the request '
                  f'with marker {nonce}. Report its answer. Do not send a second request.', require=('read_team',))
-            turn(host, '07-host-request', f'Use native Coopagents MCP whoami and read_team, then send_request to '
-                 f'member {guest_profile["member_id"]} asking for the exact contents of its acceptance-answer.txt file. '
-                 f'Include marker {reverse_nonce} in the body.', require=('whoami', 'read_team', 'send_request'),
+            turn(host, '07-host-request', peer_question_prompt(guest_profile['member_id'], reverse_nonce,
+                 synthetic_acceptance=True), require=('whoami', 'read_team', 'send_request'),
                  expected_identity=host_profile)
             turn(guest, '08-guest-reply', host_reply_prompt(guest, reverse_nonce, projects[guest] / 'acceptance-answer.txt'),
                  require=('read_inbox', 'read_team', 'reply'))
