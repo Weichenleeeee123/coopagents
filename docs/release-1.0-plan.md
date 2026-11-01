@@ -4,7 +4,7 @@
 
 0.9.x 的产品能力深化、Harness 验收并行主线及宣发准备见[1.0 前产品方向](superpowers/specs/2026-10-30-pre-1-0-product-direction-design.md)。进入 1.0 RC 后按本文执行功能冻结、缺陷收敛和发布门槛验证。
 
-更新：2026-10-31。当前验收起点为 `bbb0b60`（已发布 0.9.0 之后的开发代码），包版本仍为 0.9.0，不能从版本字符串推断代码一致。1.0 的目标是让新用户能在两台真实设备上独立安装、邀请、互相问答、恢复连接，并清楚知道哪些能力已验证、哪些仍依赖网络或工具本身。本轮执行状态见 [P0 验收记录](release-1.0-p0-acceptance.md)。
+更新：2026-11-01。当前验收起点为 `bbb0b60`（已发布 0.9.0 之后的开发代码），包版本仍为 0.9.0，不能从版本字符串推断代码一致。1.0 的目标是让新用户能在两台真实设备上独立安装、邀请、互相问答、恢复连接，并清楚知道哪些能力已验证、哪些仍依赖网络或工具本身。本轮执行状态见 [P0 验收记录](release-1.0-p0-acceptance.md)。
 
 ## 1.0 范围
 
@@ -21,8 +21,8 @@
 | 单机真实 agent 闭环 | 2026-10-29 真实 Claude/Codex 四步验收 17 项通过；新 doctor 只有 CLI/协议证据 | 当前候选在隔离环境中执行真实模型冷启动；创建、邀请加入后分别在新会话调用 whoami/read_team，完成实际请求和回复；保留服务器状态与原生工具调用证据 |
 | 不同网络间 P2P | Windows ↔ Linux 当前候选跨网络中继及主机重启恢复、单向真实模型闭环通过；非两位用户/双方 NAT | 至少两位用户、两台设备；分别记录 direct/relay 与无代理结果 |
 | 双方都在 NAT 后 | 尚无证据 | 家庭 Wi-Fi/移动热点至少一组；验证邀请、双向问答、重启恢复 |
-| 跨电脑唤醒 | 单机 Claude 闲置唤醒及 Codex 待命有历史证据 | 远端 Claude 空闲会话及 Codex 显式待命各完成一次模型回复；验证 Codex Esc 中断和输入行为。Codex 普通空闲不会自动唤醒，不以此作为通过条件 |
-| Multi-harness | Pi 1.4.0 真实同机模型闭环通过，Codex 跨设备单向模型闭环通过，OpenCode 真实 MCP 连接通过；其余组合见 P0 记录 | 七个 harness 的 MCP 基础加入和任务闭环；各自 native hook 只在官方提供且真实验收通过时声明 |
+| 跨电脑唤醒 | Windows 原生 Claude 空闲唤醒、Codex 显式待命/跨设备回复及 Esc 后续输入通过；Linux 使用合成 MCP 事件驱动，详见 P0 记录 | 远端 Claude 空闲会话及 Codex 显式待命各完成一次模型回复；验证 Codex Esc 中断和输入行为。Codex 普通空闲不会自动唤醒，不以此作为通过条件 |
+| Multi-harness | Pi 1.4.0 真实同机模型闭环通过，Codex 跨设备两个方向经恢复完成，OpenCode 真实 MCP 连接通过；其余组合见 P0 记录 | 七个 harness 的 MCP 基础加入和任务闭环；各自 native hook 只在官方提供且真实验收通过时声明 |
 | Windows/macOS/Linux | Windows Git Bash、PowerShell、cmd hook 测试通过 | 三个平台按 harness capability matrix 完成 CLI/MCP 安装和闭环；native hook 逐组合单测，不跨平台外推 |
 | 发行包与容器 | `bbb0b60` 的 GitHub CI 全绿（Python 3.11/3.13、网页、打包及容器 smoke） | 最终冻结候选提交 CI 全绿；干净 wheel 安装及从 0.9 数据升级；候选容器 smoke 由 CI 或可用 Engine 提供新证据 |
 | 真实 GitHub App | 专用只读 App 的安装、真实用户 callback/finish、分支/PR/提交/Release 关联、签名 webhook/去重、卸载撤权及重装重新授权刷新恢复已通过，详见 P0 记录 | 使用专用测试仓库验证真实 App 安装与只读权限、用户授权 callback/finish、branch/PR/checks/Release 读取、签名 webhook 投递及补偿同步、移除安装后的撤权，以及重新授权后的恢复；记录每步的服务端状态和 GitHub 侧事件 |
