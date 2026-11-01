@@ -21,6 +21,21 @@ To connect a profile to Claude Code or Codex, run `python -m coopagents.space_ru
 It registers the stdio bridge with the native `mcp add` command, reads the entry back to verify it, installs the
 skill and prints JSON with `verified`. A new session of that tool then loads the tools.
 
+For local/P2P owners, successful `connect` also registers private native host
+recovery. On Windows, a command sandbox may terminate the background host when
+its command exits. Open a new native agent session: the registered MCP bridge
+restores the same host before identity verification. Keep an owner session open
+during collaboration. Closing all native sessions may stop its process tree;
+the next session restores the host, but peers cannot use an offline host in the
+meantime. This does not install a Windows service or disable the sandbox.
+`stop` durably pauses recovery, including when the host is already offline;
+only explicit `start` resumes it. Reconnecting does not undo stop. A failed
+automatic recovery is locked until explicit `start`, rather than repeatedly
+spawning children. Members, unregistered owners, quick tunnels and external
+services do not acquire automatic host recovery. Doctor reports offline state
+and the next step without launching a host. See the
+[lifecycle design and verification](windows-native-host-lifecycle.md).
+
 Peer-to-peer mode (`--network p2p`) is the default. The host keeps a private
 iroh endpoint key in `host.json`; its public endpoint id goes into invitations
 and member profiles and stays the same across restarts. Each member's link
