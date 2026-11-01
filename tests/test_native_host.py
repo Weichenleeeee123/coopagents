@@ -1,9 +1,9 @@
 import asyncio
-from concurrent.futures import ThreadPoolExecutor
 import json
 import os
 from pathlib import Path
 import sys
+import subprocess
 import time
 import unittest
 from unittest.mock import patch
@@ -47,13 +47,20 @@ class NativeHost(unittest.TestCase):
     def test_native_owner_recovers_original_runtime_after_command_process_loss(self):
         result = self.configure()
         original = self.path.read_bytes()
+        task = runtime.request(self.profile['origin'], '/api/operations/create_task',
+                               token=self.profile['web_token'],
+                               data={'intent_key': 'retained-task', 'title': 'Keep this task', 'scope': 'Synthetic lifecycle regression'})
+        host = self.path.with_name('host.json').read_bytes()
         self.lose_supervisor()
         recovered = self.verify()
         self.assertTrue(result['host_lifecycle']['enabled'])
         self.assertEqual(recovered['room_id'], self.profile['room_id'])
         self.assertEqual(recovered['member_id'], self.profile['member_id'])
         self.assertEqual(self.path.read_bytes(), original)
+        self.assertEqual(self.path.with_name('host.json').read_bytes(), host)
         self.assertEqual(runtime.status(self.path)['status'], 'running')
+        snapshot = runtime.request(self.profile['origin'], '/api/snapshot', token=self.profile['web_token'])
+        self.assertIn(task, snapshot['tasks'])
 
     def test_explicit_stop_survives_reconnect_until_explicit_start(self):
         self.configure()
@@ -70,8 +77,15 @@ class NativeHost(unittest.TestCase):
         self.configure()
         self.lose_supervisor()
         before = set(self.path.parent.glob('runtime-*.log'))
-        with ThreadPoolExecutor(max_workers=2) as workers:
-            identities = list(workers.map(lambda _: self.verify()['member_id'], range(2)))
+        script = ('import asyncio,sys; from coopagents.space_bridge import Bridge; '
+                  'print(asyncio.run(Bridge(sys.argv[1]).verified_profile())["member_id"])')
+        processes = [subprocess.Popen([sys.executable, '-c', script, str(self.path)],
+                                      stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True) for _ in range(2)]
+        identities = []
+        for process in processes:
+            output, error = process.communicate(timeout=90)
+            self.assertEqual(process.returncode, 0, error)
+            identities.append(output.strip())
         self.assertEqual(identities, [self.profile['member_id']] * 2)
         self.assertEqual(len(set(self.path.parent.glob('runtime-*.log')) - before), 1)
 
@@ -84,6 +98,17 @@ class NativeHost(unittest.TestCase):
                 with self.assertRaises((OSError, ValueError)):
                     self.verify(path)
         self.assertEqual(runtime.status(self.path)['status'], 'unreachable')
+
+    def test_registered_quick_and_external_owners_do_not_opt_into_recovery(self):
+        from coopagents.spaces import read_json
+        host_path = self.path.with_name('host.json')
+        host = read_json(host_path)
+        for network in ('quick', 'external'):
+            with self.subTest(network=network):
+                private_write(host_path, dict(host, network=network), update=True)
+                self.assertFalse(self.configure()['host_lifecycle']['enabled'])
+                self.assertFalse(self.path.with_name('native-host.json').exists())
+        private_write(host_path, host, update=True)
 
     def test_failed_recovery_is_bounded_until_explicit_start(self):
         self.configure()
