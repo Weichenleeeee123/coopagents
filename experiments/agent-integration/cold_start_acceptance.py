@@ -223,6 +223,7 @@ def setup_prompt(tool, run, python, skill_path, *, installed_wheel):
             'The harness has already checked Python and package installation. Do not run pip, git, '
             'shell inspection commands, or any command except the Coopagents space_runtime commands '
             'needed to complete the requested create/join, connect and doctor workflow. '
+            'The one exception: read that Skill and the protocol.md beside it, with a read-only file command if this agent has no file-read tool. '
             'The native runtime command permission for this exact Python is pre-authorized for this run. '
             'Never delete files, change real native configuration or enable wake-up. '
             'Do not print credentials or environment variables. ')
@@ -279,6 +280,17 @@ def successful_tools(tool, events):
 
 def invitation_command(python, profile):
     return f'"{python}" -m coopagents.space_runtime invite --profile "{profile}" --message en'
+
+
+def doctor_command(python, profile, tool, project):
+    return f'"{python}" -m coopagents.space_runtime doctor --profile "{profile}" --tool {tool} --project-dir "{project}"'
+
+
+def owner_host_exited(profile_path):
+    """A sandbox can stop an owner's background host when the creating command exits."""
+    from coopagents.space_runtime import status
+    from coopagents.spaces import read_profile
+    return 'control_token' in read_profile(profile_path) and status(profile_path)['status'] == 'unreachable'
 
 
 def native_invitation_result(tool, events, command, profile):
@@ -542,6 +554,7 @@ def main(argv=None):
         private_write(run / 'summary.json', report, update=True)
         return 0 if report['status'] == 'preflight_passed' else 1
     owner = None
+    deferred_challenges = set()
 
     def turn(tool, stage, prompt, *, setup=False, require=(), expected_identity=None, verify_setup=False):
         env = environments[tool]
@@ -557,9 +570,14 @@ def main(argv=None):
                 entry = registrations(env, tool, projects[tool], interpreters[tool])
                 profile = read_profile(entry['profile'])
                 setup_ok = diagnostics_proven(setup_diagnostics(entry['profile']), {profile['member_id']})
+                if not setup_ok and owner_host_exited(entry['profile']):
+                    # The new session restores the host; the challenge must then pass there or the run fails.
+                    deferred_challenges.add(tool)
+                    setup_ok = True
             except (OSError, ValueError, KeyError, RuntimeError, subprocess.SubprocessError):
                 setup_ok = False
-            report['checks'].append({'check': stage + ' native registration and completed doctor challenge', 'ok': setup_ok})
+            check = ' native registration, challenge deferred to the host-restoring session' if tool in deferred_challenges                 else ' native registration and completed doctor challenge'
+            report['checks'].append({'check': stage + check, 'ok': setup_ok})
             ok = ok and setup_ok
         if expected_identity is not None:
             identity_ok = native_identity_proven(tool, events, expected_identity)
@@ -600,10 +618,18 @@ def main(argv=None):
              + ('Do not redirect output or write another file; the private runner retains the native CLI result. '
                 if host == 'claude' else f'Redirect the complete JSON to "{invite_result}". ')
              + 'Keep the invitation private. Do not enable wake.')
+        if host in deferred_challenges and not args.stop_after_host_verification:
+            verification_prompt += ('The owner host stopped when the setup command exited and this session restored it, '
+                f'so also run exactly {doctor_command(interpreters[host], owner["profile"], host, projects[host])}. ')
         turn(host, '02-host-new-session', verification_prompt + (
              'Do not create an invitation. This run stops after host verification.' if args.stop_after_host_verification
              else invitation_prompt), setup=not args.stop_after_host_verification, require=('whoami', 'read_team'),
              expected_identity=host_profile)
+        if host in deferred_challenges and not args.stop_after_host_verification:
+            restored = diagnostics_proven(setup_diagnostics(owner['profile']), {host_profile['member_id']})
+            report['checks'].append({'check': '02-host-new-session completed doctor challenge on the restored host', 'ok': restored})
+            if not restored:
+                raise RuntimeError('Restored host diagnostic evidence incomplete')
         if args.stop_after_host_verification:
             state = setup_diagnostics(owner['profile'])
             private_write(run / 'host-backend-snapshot.json', state)
