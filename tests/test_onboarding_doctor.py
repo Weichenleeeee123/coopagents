@@ -23,6 +23,12 @@ except ImportError:
 class DoctorTestCase(unittest.TestCase):
     def setUp(self):
         self.assertIsNotNone(onboarding_doctor, 'onboarding doctor module is missing')
+        # Doctor identifies its caller from these variables, so a suite started inside an agent must not inherit them.
+        environment = patch.dict(os.environ)
+        environment.start()
+        self.addCleanup(environment.stop)
+        for name in ('CLAUDECODE', 'CODEX_THREAD_ID', 'CODEX_SESSION_ID'):
+            os.environ.pop(name, None)
 
 
 class ResultContractTests(DoctorTestCase):
