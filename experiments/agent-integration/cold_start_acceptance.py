@@ -613,7 +613,7 @@ def main(argv=None):
              f'room_id={host_profile["room_id"]} and member_id={host_profile["member_id"]}, then read_team. '
              'Do not enable wake. ')
         invite_command = invitation_command(sys.executable, owner['profile'])
-        invitation_prompt = (f'I explicitly authorize one local read/write setup command through the pre-authorized native Bash tool: '
+        invitation_prompt = (f'I explicitly authorize one local read/write setup command through {"the pre-authorized native Bash tool" if host == "claude" else "your normal shell command tool, without launching another shell"}: '
              f'create one invitation for the other isolated acceptance agent by running exactly {invite_command}. '
              + ('Do not redirect output or write another file; the private runner retains the native CLI result. '
                 if host == 'claude' else f'Redirect the complete JSON to "{invite_result}". ')
