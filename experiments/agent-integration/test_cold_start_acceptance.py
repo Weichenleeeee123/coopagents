@@ -66,6 +66,7 @@ class ColdStartTests(unittest.TestCase):
         root = Path('/synthetic/run')
         python = PureWindowsPath('C:/Users/Synthetic User/project/.venv/Scripts/python.exe')
         command = self.runner.model_command('claude', 'claude', root, python, setup=True)
+        self.assertEqual(command[command.index('--disallowedTools') + 1], 'PowerShell')
         allowed = command[command.index('--allowedTools') + 1].split(',')
         self.assertEqual(allowed, ['Read',
             'Bash("C:\\Users\\Synthetic User\\project\\.venv\\Scripts\\python.exe" -m coopagents.space_runtime:*)',

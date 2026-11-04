@@ -207,7 +207,8 @@ def model_command(tool, executable, run, python, *, setup=False, require=()):
                        for executable_path in dict.fromkeys(spellings))
     return [executable, '--print', '--verbose', '--output-format', 'stream-json',
             '--permission-prompts', 'none', '--add-dir', str(run),
-            '--allowedTools', ','.join(allowed)]
+            # Claude Code 2.1.316 prefers PowerShell on Windows, where the exact-path Bash rules above do not apply.
+            '--disallowedTools', 'PowerShell', '--allowedTools', ','.join(allowed)]
 
 
 def setup_prompt(tool, run, python, skill_path, *, installed_wheel):
