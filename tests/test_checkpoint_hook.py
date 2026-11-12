@@ -343,6 +343,78 @@ class HookTests(unittest.TestCase):
         self.assertEqual(value['hookSpecificOutput']['hookEventName'], 'PostToolUse')
         self.assertEqual(self.view()['checkpoints'][0]['tool'], 'zcode')
 
+    def test_kimi_fragment_is_valid_toml_with_only_allowed_fields(self):
+        import tomllib
+        from coopagents.checkpoint_hook import config_fragment, kimi_hooks_text
+        from coopagents.errors import ValidationError
+        with self.assertRaises(ValidationError):
+            config_fragment('kimi-code')
+        parsed = tomllib.loads(kimi_hooks_text('kimi-code'))
+        self.assertEqual([rule['event'] for rule in parsed['hooks']],
+                         ['SessionStart', 'UserPromptSubmit', 'PostToolUse'])
+        for rule in parsed['hooks']:
+            self.assertEqual(set(rule), {'event', 'command', 'timeout'})
+            self.assertEqual(rule['timeout'], 10)
+            self.assertIn('coopagents.checkpoint_hook', rule['command'])
+            self.assertIn('--tool kimi-code', rule['command'])
+            self.assertNotIn(self.owner['agent_token'], rule['command'])
+
+    def test_kimi_merge_preserves_foreign_config_and_is_idempotent(self):
+        import tomllib
+        from coopagents.checkpoint_hook import kimi_hooks_text, merge_kimi_hooks
+        fragment = kimi_hooks_text('kimi-code')
+        existing = ('# User settings\n[workspace]\nrequire_trust = false\n\n'
+                    '[[hooks]]\nevent = "Notification"\nmatcher = "task\\\\.completed"\n'
+                    'command = "terminal-notifier -title Kimi -message \'Task done\'"\n\n'
+                    '# coopagents checkpoint hook (managed; do not edit)\n[[hooks]]\n'
+                    'event = "SessionStart"\ncommand = "python -I -m coopagents.checkpoint_hook --tool kimi-code"\n'
+                    'timeout = 30\n')
+        merged = merge_kimi_hooks(existing, fragment)
+        parsed = tomllib.loads(merged)
+        self.assertFalse(parsed['workspace']['require_trust'])
+        self.assertIn('# User settings', merged)
+        self.assertEqual([rule['event'] for rule in parsed['hooks']],
+                         ['Notification', 'SessionStart', 'UserPromptSubmit', 'PostToolUse'])
+        self.assertEqual(parsed['hooks'][0]['command'], "terminal-notifier -title Kimi -message 'Task done'")
+        self.assertNotIn('timeout = 30', merged)
+        self.assertEqual(merge_kimi_hooks(merged, fragment), merged)
+        self.assertEqual(merge_kimi_hooks('', fragment), fragment)
+        self.assertEqual(merge_kimi_hooks('# only a comment\n', fragment),
+                         '# only a comment\n\n' + fragment)
+
+    def test_kimi_preview_and_export_emit_toml_and_preserve_existing_files(self):
+        import tomllib
+        command = [sys.executable, '-m', 'coopagents.checkpoint_hook', '--tool', 'kimi-code']
+        result = subprocess.run([*command, '--config-preview'], text=True, capture_output=True,
+                                env=self.env, timeout=15)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        parsed = tomllib.loads(result.stdout)
+        self.assertEqual(len(parsed['hooks']), 3)
+        existing = self.root / 'config.toml'
+        existing.write_text('[workspace]\n', encoding='utf-8')
+        refused = subprocess.run([*command, '--export', str(existing)], text=True, capture_output=True,
+                                 env=self.env, timeout=15)
+        self.assertNotEqual(refused.returncode, 0)
+        self.assertEqual(existing.read_text(), '[workspace]\n')
+        target = self.root / 'fragment.toml'
+        exported = subprocess.run([*command, '--export', str(target)], text=True, capture_output=True,
+                                  env=self.env, timeout=15)
+        self.assertEqual(exported.returncode, 0, exported.stderr)
+        self.assertEqual(tomllib.loads(target.read_text()), parsed)
+
+    def test_kimi_payload_runs_unchanged_through_the_handler(self):
+        payload = {'hook_event_name': 'PostToolUse', 'session_id': 'kimi-session',
+                   'session_title': 'Fix the login page', 'client_type': 'kimi_code_cli',
+                   'cwd': '/private/project', 'tool_name': 'Bash'}
+        result = subprocess.run([sys.executable, '-m', 'coopagents.checkpoint_hook', '--tool', 'kimi-code'],
+            input=json.dumps(payload), text=True, capture_output=True, env=self.env, timeout=15)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        value = json.loads(result.stdout)
+        self.assertEqual(value['hookSpecificOutput']['hookEventName'], 'PostToolUse')
+        checkpoint = self.view()['checkpoints'][0]
+        self.assertEqual((checkpoint['tool'], checkpoint['session_key'], checkpoint['event']),
+                         ('kimi-code', 'kimi-session', 'PostToolUse'))
+
     def test_first_setup_guide_commands_ignore_repository_module_shadowing(self):
         (self.root/'coopagents.py').write_text("print('repository-module-shadowed-hook')",encoding='utf-8')
         guide=Path('docs/collaboration-checkpoints.md').read_text(encoding='utf-8')

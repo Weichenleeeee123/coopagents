@@ -38,8 +38,8 @@ SPECS = {
                             notes='Local and remote MCP servers use the opencode mcp object.'),
     'pi': HarnessSpec('pi', '.pi/mcp.json', 'mcpServers', native_hook='unsupported',
                       notes='Pi project MCP configuration is supported (Pi 0.99+ built-in MCP); entries use exposure direct so the tools are declared to the model, and project config loads only after workspace trust; extension lifecycle is not installed by this adapter.'),
-    'kimi-code': HarnessSpec('kimi-code', '.kimi-code/mcp.json', 'mcpServers', native_hook='unsupported',
-                             notes='Kimi Code project MCP configuration is supported; bearerTokenEnvVar and project autodiscovery are verified against the official Kimi Code MCP docs; project servers need workspace trust; ACP is not required for MCP.'),
+    'kimi-code': HarnessSpec('kimi-code', '.kimi-code/mcp.json', 'mcpServers', native_hook='unknown',
+                             notes='Kimi Code project MCP configuration is supported; bearerTokenEnvVar and project autodiscovery are verified against the official Kimi Code MCP docs; project servers need workspace trust; ACP is not required for MCP. Checkpoint hooks generate as [[hooks]] TOML for user-scope ~/.kimi-code/config.toml (Kimi has no project hook file) and live hook acceptance is unverified; the Stop-block contract needed for wake-up is unverified.'),
     'zcode': HarnessSpec('zcode', '.zcode/config.json', 'zcode', native_hook='unknown',
                          notes='ZCode workspace config uses mcp.servers; config files do not expand ${env:}, so the bearer token belongs in user-scope config; wake hooks install to user config only (ZCode ignores project hooks) and live hook acceptance is unverified.'),
 }

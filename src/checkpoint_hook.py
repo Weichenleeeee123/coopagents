@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import secrets
 import shlex
 import sqlite3
@@ -28,6 +29,11 @@ CONTEXT_CHARACTERS = 9000
 # conversation_id (session_id is only present on sessionStart/sessionEnd).
 CURSOR_EVENTS = {'sessionStart': 'SessionStart', 'postToolUse': 'PostToolUse',
                  'beforeSubmitPrompt': 'UserPromptSubmit'}
+# Kimi Code hooks live only in user-scope ~/.kimi-code/config.toml as [[hooks]]
+# TOML; there is no project-level hook file. Each rule allows only the event,
+# matcher, command and timeout fields — extras fail the config load.
+KIMI_HOOK_TIMEOUT = 10
+KIMI_HOOK_MARKER = 'coopagents checkpoint hook'
 
 
 def bounded_call(operation, seconds):
@@ -160,6 +166,9 @@ def hook_command(tool):
 
 
 def config_fragment(tool):
+    if tool == 'kimi-code':
+        raise ValidationError('Kimi Code hooks are [[hooks]] TOML in ~/.kimi-code/config.toml; '
+                              'use --config-preview or --export to generate that fragment')
     if tool == 'cursor':
         # Cursor hooks.json: version 1, flat per-event command definitions.
         return {'version': 1, 'hooks': {event: [{'command': hook_command(tool), 'timeout': 10}]
@@ -180,6 +189,82 @@ def config_fragment(tool):
         # The payload is hard-capped below in ASCII characters; this finite threshold covers it.
         handler['additionalContextLimit'] = CONTEXT_CHARACTERS
     return {'hooks': {event: [{'hooks': [dict(handler)]}] for event in HOOK_EVENTS}}
+
+
+def _toml_string(value):
+    return '"' + value.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n').replace('\t', '\\t') + '"'
+
+
+def kimi_hooks_text(tool):
+    """[[hooks]] TOML for user-scope ~/.kimi-code/config.toml.
+
+    No matchers: every occurrence of the three checkpoint events fires, and
+    the handler throttles PostToolUse itself. The handler needs no Kimi
+    adaptation — Kimi sends the same session_id/hook_event_name fields.
+    """
+    blocks = []
+    for event in HOOK_EVENTS:
+        blocks.append('\n'.join((
+            '# %s (managed; do not edit)' % KIMI_HOOK_MARKER,
+            '[[hooks]]',
+            'event = %s' % _toml_string(event),
+            'command = %s' % _toml_string(hook_command(tool)),
+            'timeout = %d' % KIMI_HOOK_TIMEOUT,
+        )))
+    return '\n\n'.join(blocks) + '\n'
+
+
+def _kimi_block_is_ours(lines):
+    text = '\n'.join(lines)
+    return KIMI_HOOK_MARKER in text or 'coopagents.checkpoint_hook' in text
+
+
+def merge_kimi_hooks(existing_text, fragment_text):
+    """Append managed [[hooks]] blocks to a Kimi config.toml, preserving everything else.
+
+    Existing managed blocks are dropped first, so re-applying is idempotent.
+    Only [[hooks]] blocks are inspected; every other line — comments, blank
+    lines, other tables, foreign hook rules — is kept verbatim.
+    """
+    marker = '# %s (managed; do not edit)' % KIMI_HOOK_MARKER
+    header = re.compile(r'\s*\[\[hooks\]\]\s*(#.*)?$')
+
+    def boundary(line):
+        # A new table header, or the marker comment that starts a managed
+        # block, ends the block being scanned; anything else is body trivia.
+        return line.lstrip().startswith('[') or line.strip() == marker
+
+    lines = existing_text.splitlines()
+    kept, index = [], 0
+    while index < len(lines):
+        line = lines[index]
+        if line.strip() == marker and index + 1 < len(lines) and header.match(lines[index + 1]):
+            end = index + 2
+            while end < len(lines) and not boundary(lines[end]):
+                end += 1
+            index = end  # Drop the whole managed block, marker comment included.
+            continue
+        if header.match(line):
+            end = index + 1
+            while end < len(lines) and not boundary(lines[end]):
+                end += 1
+            if not _kimi_block_is_ours(lines[index:end]):
+                kept.extend(lines[index:end])
+            index = end
+            continue
+        kept.append(line)
+        index += 1
+    body = '\n'.join(kept).rstrip('\n')
+    fragment = fragment_text.strip('\n')
+    if body:
+        return body + '\n\n' + fragment + '\n'
+    return fragment + '\n'
+
+
+def config_preview_text(tool):
+    if tool == 'kimi-code':
+        return kimi_hooks_text(tool)
+    return json.dumps(config_fragment(tool), indent=2)
 
 
 def brief_text(result):
@@ -252,7 +337,7 @@ def main(argv=None):
         if not .05<=args.timeout<=3:
             raise ValidationError('Timeout must be between 0.05 and 3 seconds')
         if args.config_preview or args.export:
-            fragment = json.dumps(config_fragment(args.tool), indent=2)
+            fragment = config_preview_text(args.tool).rstrip('\n')
             if args.export:
                 with Path(args.export).open('x', encoding='utf-8') as output:
                     output.write(fragment+'\n')
