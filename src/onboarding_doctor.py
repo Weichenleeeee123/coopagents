@@ -6,7 +6,9 @@ import os
 from pathlib import Path
 import re
 import secrets
+import shutil
 import site
+import subprocess
 import sys
 from urllib.error import HTTPError, URLError
 
@@ -169,6 +171,48 @@ def tool_check(tool=None, project_dir=None, cli=None):
 
 def skill_root(tool, root=None):
     return Path(root) if root is not None else space_connect.skills_root(tool)
+
+
+HARNESS_CLIS = (
+    ('claude-code', 'claude'),
+    ('codex', 'codex'),
+    ('cursor', 'cursor'),
+    ('opencode', 'opencode'),
+    ('pi', 'pi'),
+    ('kimi-code', 'kimi'),
+    ('zcode', 'zcode'),
+)
+
+
+def harness_cli_check():
+    """Inventory which supported harness CLIs are on PATH, with versions.
+
+    Presence only: a CLI on PATH says nothing about login state, model
+    backend reachability, or whether a session has loaded Coopagents. The
+    check always passes so the inventory can never block setup. Kimi Code
+    and the legacy kimi-cli share the `kimi` command name; the reported
+    version tells them apart (2.x is the current CLI, 1.x the legacy one).
+    """
+    found = {}
+    for harness, binary in HARNESS_CLIS:
+        path = shutil.which(binary)
+        if not path:
+            found[harness] = {'present': False}
+            continue
+        version = 'unknown'
+        try:
+            result = subprocess.run([path, '--version'], capture_output=True, text=True,
+                                    errors='replace', timeout=10)
+            match = re.search(r'\b(\d+\.\d+(?:\.\d+)?)\b', result.stdout + result.stderr)
+            if result.returncode == 0 and match:
+                version = match.group(1)
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+        found[harness] = {'present': True, 'path': path, 'version': version}
+    present = [name for name, info in found.items() if info['present']]
+    summary = ('Harness CLIs on PATH: %s.' % ', '.join(present)) if present \
+        else 'No supported harness CLI was found on PATH.'
+    return make_check('harness_clis', 'pass', summary, evidence={'harnesses': found})
 
 
 def _skill_files(root):
@@ -439,6 +483,7 @@ def run(*, profile_path=None, tool=None, project_dir=None, cli=None, skills=None
                        'Run doctor again after connecting the profile.'),
             make_check('wake_up', 'skipped', 'Wake-up is optional and was not changed.'),
         ])
+    checks.append(harness_cli_check())
     result = aggregate(checks)
     if profile_path:
         selected = next(c for c in checks if c['id'] == 'native_tool')['evidence'].get('tool')

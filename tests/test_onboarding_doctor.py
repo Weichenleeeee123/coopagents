@@ -319,5 +319,43 @@ class LocalChecksTests(DoctorTestCase):
         self.assertEqual(next(c for c in result['checks'] if c['id']=='challenge_round_trip')['status'], 'fail')
 
 
+class HarnessCliCheckTests(DoctorTestCase):
+    def test_inventory_reports_presence_and_versions(self):
+        from subprocess import CompletedProcess
+
+        def fake_which(binary):
+            return {'claude': '/usr/bin/claude', 'kimi': '/home/u/.kimi-code/bin/kimi'}.get(binary)
+
+        def fake_run(argv, **kw):
+            versions = {'/usr/bin/claude': 'claude 1.2.3\n', '/home/u/.kimi-code/bin/kimi': 'kimi 2.4.1\n'}
+            return CompletedProcess(argv, 0, stdout=versions.get(argv[0], ''), stderr='')
+
+        with patch.object(onboarding_doctor.shutil, 'which', side_effect=fake_which), \
+                patch.object(onboarding_doctor.subprocess, 'run', side_effect=fake_run):
+            check = onboarding_doctor.harness_cli_check()
+        self.assertEqual(check['id'], 'harness_clis')
+        self.assertEqual(check['status'], 'pass')
+        evidence = check['evidence']['harnesses']
+        self.assertEqual(set(evidence), {'claude-code', 'codex', 'cursor', 'opencode', 'pi', 'kimi-code', 'zcode'})
+        self.assertEqual(evidence['claude-code'], {'present': True, 'path': '/usr/bin/claude', 'version': '1.2.3'})
+        self.assertEqual(evidence['kimi-code']['version'], '2.4.1')
+        self.assertEqual(evidence['codex'], {'present': False})
+        self.assertIn('claude-code', check['summary'])
+
+    def test_version_failures_stay_present_and_pass(self):
+        with patch.object(onboarding_doctor.shutil, 'which', return_value='/usr/bin/pi'), \
+                patch.object(onboarding_doctor.subprocess, 'run', side_effect=OSError('no exec')):
+            check = onboarding_doctor.harness_cli_check()
+        self.assertEqual(check['status'], 'pass')
+        self.assertTrue(all(info['present'] for info in check['evidence']['harnesses'].values()))
+        self.assertTrue(all(info['version'] == 'unknown' for info in check['evidence']['harnesses'].values()))
+
+    def test_run_includes_the_inventory_without_changing_overall(self):
+        result = onboarding_doctor.run(project_dir='/nonexistent-dir-for-doctor-test')
+        check = next(item for item in result['checks'] if item['id'] == 'harness_clis')
+        self.assertEqual(check['status'], 'pass')
+        self.assertEqual(result['overall'], 'blocked')
+
+
 if __name__ == '__main__':
     unittest.main()
