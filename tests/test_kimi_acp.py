@@ -67,6 +67,16 @@ class RoundTripTests(KimiAcpTestCase):
         created = next(record for record in self.records() if record['method'] == 'session/new')
         self.assertEqual(created['params']['mcpServers'], servers)
 
+    def test_new_session_always_sends_mcp_servers_even_when_none_given(self):
+        # Regression: live kimi rejects session/new without the mcpServers
+        # key (Invalid params); an omitted key is not the same as [].
+        with self.env():
+            with self.client() as client:
+                client.initialize()
+                client.new_session(self._directory.name)
+        created = next(record for record in self.records() if record['method'] == 'session/new')
+        self.assertEqual(created['params']['mcpServers'], [])
+
     def test_authenticate_passes_method_id_through(self):
         with self.env():
             with self.client() as client:

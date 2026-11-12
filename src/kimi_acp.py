@@ -206,12 +206,15 @@ class AcpClient:
     def new_session(self, cwd, *, mcp_servers=None, timeout=None):
         """Create a session. mcp_servers forwards MCP servers into the
         session (http/stdio/sse per the kimi acp reference); it is how a
-        Coopagents MCP server reaches a Kimi session driven over ACP."""
+        Coopagents MCP server reaches a Kimi session driven over ACP.
+        The mcpServers key is always sent: live kimi rejects session/new
+        without it (Invalid params), even when no servers are forwarded."""
         params = {'cwd': _text(cwd, 'working directory', 4096)}
-        if mcp_servers is not None:
-            if not isinstance(mcp_servers, list) or any(not isinstance(entry, dict) for entry in mcp_servers):
-                raise ValueError('MCP servers must be a list of objects')
-            params['mcpServers'] = mcp_servers
+        if mcp_servers is None:
+            mcp_servers = []
+        if not isinstance(mcp_servers, list) or any(not isinstance(entry, dict) for entry in mcp_servers):
+            raise ValueError('MCP servers must be a list of objects')
+        params['mcpServers'] = mcp_servers
         return _result_dict(self.request('session/new', params, timeout), 'session/new')
 
     def prompt(self, session_id, text, *, timeout=PROMPT_TIMEOUT):
