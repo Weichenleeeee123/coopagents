@@ -74,10 +74,36 @@ class HarnessAdapterTests(unittest.TestCase):
             adapter.plan(Path('.'), service_url='https://team.example/mcp', token_env='TOKEN-NAME')
 
     def test_opencode_remote_plan_uses_native_environment_substitution_syntax(self):
-        # OpenCode 1.1.65 expands {env:NAME}; ${NAME} is sent literally.
+        # OpenCode expands {env:NAME}; ${NAME} is sent literally.
         plan = adapter_for('opencode').plan(
             Path('.'), service_url='https://team.example/mcp', token_env='ACCEPTANCE_TOKEN')
         self.assertEqual(plan['entry']['headers']['Authorization'], 'Bearer {env:ACCEPTANCE_TOKEN}')
+        self.assertEqual(plan['config_variant'], 'v2')
+
+    def test_opencode_v1_variant_keeps_the_legacy_shape(self):
+        adapter = adapter_for('opencode', 'v1')
+        self.assertEqual(adapter.capabilities()['config_variant'], 'v1')
+        merged = adapter.merge_remote({}, 'coopagents', 'https://team.example/mcp')
+        entry = merged['mcp']['coopagents']
+        self.assertTrue(entry['enabled'])
+        self.assertNotIn('oauth', entry)
+        self.assertNotIn('servers', merged['mcp'])
+        local = adapter.merge({}, 'coopagents', 'python', ['-m', 'coopagents.mcp_service'])
+        self.assertEqual(local['mcp']['coopagents'],
+                         {'type': 'local', 'command': ['python', '-m', 'coopagents.mcp_service'], 'enabled': True})
+
+    def test_opencode_v2_local_entry_has_no_enabled_field(self):
+        merged = adapter_for('opencode').merge({}, 'coopagents', 'python', ['-m', 'coopagents.mcp_service'])
+        self.assertEqual(merged['mcp']['servers']['coopagents'],
+                         {'type': 'local', 'command': ['python', '-m', 'coopagents.mcp_service']})
+
+    def test_config_variants_are_opencode_only_and_validated(self):
+        with self.assertRaises(ValueError):
+            adapter_for('cursor', 'v1')
+        with self.assertRaises(ValueError):
+            adapter_for('opencode', 'v3')
+        with self.assertRaises(ValueError):
+            adapter_for('opencode').merge({'mcp': {'servers': 'nope'}}, 'coopagents', 'python', [])
 
     def test_each_generated_config_shape_can_install_remote_mcp_without_a_token_value(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -91,7 +117,7 @@ class HarnessAdapterTests(unittest.TestCase):
                 if name == 'zcode':
                     entry = document['mcp']['servers']['coopagents']
                 elif name == 'opencode':
-                    entry = document['mcp']['coopagents']
+                    entry = document['mcp']['servers']['coopagents']
                 else:
                     entry = document['mcpServers']['coopagents']
                 self.assertEqual(entry['url'], 'https://team.example/mcp')
@@ -107,7 +133,11 @@ class HarnessAdapterTests(unittest.TestCase):
                 elif name == 'cursor':
                     self.assertIn('${env:COOPAGENTS_AGENT_TOKEN}', entry['headers']['Authorization'])
                 elif name == 'opencode':
+                    # Native V2 shape: grouped under mcp.servers, no enabled
+                    # field, oauth off so the bearer header is used as-is.
                     self.assertEqual(entry['headers']['Authorization'], 'Bearer {env:COOPAGENTS_AGENT_TOKEN}')
+                    self.assertNotIn('enabled', entry)
+                    self.assertIs(entry['oauth'], False)
                 elif name == 'windsurf':
                     # Header expansion is disputed across sources and the
                     # project file is committed, so no header is written.
