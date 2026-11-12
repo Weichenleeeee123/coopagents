@@ -335,7 +335,13 @@ class MemberLink:
         async def shutdown():
             self.server.close()
             await self.endpoint.close()
-        _run(shutdown(), 10)
+        try:
+            _run(shutdown(), 10)
+        except Exception as error:
+            # Cleanup must not fail the operation that used the link: on a
+            # slow path the endpoint close can stall past its budget after a
+            # request already succeeded, and join would then lose its profile.
+            log.debug('member link shutdown did not finish cleanly: %r', error)
 
     def __enter__(self):
         return self

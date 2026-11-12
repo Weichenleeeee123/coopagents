@@ -251,6 +251,38 @@ class ProfileLinks(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, 'space extra'):
                 p2p._iroh()
 
+    def test_member_close_shuts_down_server_and_endpoint(self):
+        link = p2p.MemberLink.__new__(p2p.MemberLink)
+        calls = []
+
+        class FakeServer:
+            def close(self):
+                calls.append('server')
+
+        class FakeEndpoint:
+            async def close(self):
+                calls.append('endpoint')
+
+        link.server = FakeServer()
+        link.endpoint = FakeEndpoint()
+
+        def run(coro, timeout):
+            asyncio.run(coro)
+
+        with patch.object(p2p, '_run', side_effect=run):
+            link.close()
+        self.assertEqual(calls, ['server', 'endpoint'])
+
+    def test_member_close_ignores_stuck_endpoint_shutdown(self):
+        link = p2p.MemberLink.__new__(p2p.MemberLink)
+
+        def stuck(coro, timeout):
+            coro.close()
+            raise TimeoutError('endpoint close stalled')
+
+        with patch.object(p2p, '_run', side_effect=stuck):
+            link.close()  # cleanup cannot fail the operation that used the link
+
 
 class RuntimeP2P(unittest.TestCase):
     """Real supervisor in p2p mode. The member runs on the host's computer, so its
