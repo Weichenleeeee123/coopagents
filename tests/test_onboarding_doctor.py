@@ -328,6 +328,140 @@ class LocalChecksTests(DoctorTestCase):
         self.assertEqual(next(c for c in result['checks'] if c['id']=='challenge_round_trip')['status'], 'fail')
 
 
+class WakeCheckExtensionTests(DoctorTestCase):
+    def test_cursor_project_hooks_report_configured_without_writing(self):
+        from coopagents.space_wake import hook_config
+        with retained_directory() as directory:
+            repo = Path(directory)
+            hooks = repo / '.cursor' / 'hooks.json'
+            hooks.parent.mkdir()
+            profile = repo / 'profile.json'
+            hooks.write_text(json.dumps({'version': 1, 'hooks': hook_config(profile, 'cursor')}), encoding='utf-8')
+            before = hooks.read_bytes()
+            result = onboarding_doctor.wake_check('cursor', profile, repo)
+            self.assertEqual(hooks.read_bytes(), before)
+            self.assertFalse((repo / 'wake-state.sqlite3').exists())
+        self.assertEqual(result['status'], 'needs_user')
+        self.assertTrue(result['evidence']['configured'])
+        self.assertEqual(result['evidence']['execution'], 'unknown')
+
+    def test_cursor_user_hooks_report_configured(self):
+        from coopagents.space_wake import hook_config
+        with retained_directory() as directory:
+            repo = Path(directory)
+            home = repo / 'home'
+            hooks = home / '.cursor' / 'hooks.json'
+            hooks.parent.mkdir(parents=True)
+            profile = repo / 'profile.json'
+            hooks.write_text(json.dumps({'version': 1, 'hooks': hook_config(profile, 'cursor')}), encoding='utf-8')
+            with patch.dict('os.environ', {'HOME': str(home)}):
+                result = onboarding_doctor.wake_check('cursor', profile, repo)
+        self.assertEqual(result['status'], 'needs_user')
+        self.assertTrue(result['evidence']['configured'])
+
+    def test_cursor_partial_hooks_are_unknown_and_foreign_hooks_skipped(self):
+        from coopagents.space_wake import hook_config
+        with retained_directory() as directory:
+            repo = Path(directory)
+            hooks = repo / '.cursor' / 'hooks.json'
+            hooks.parent.mkdir()
+            profile = repo / 'profile.json'
+            config = hook_config(profile, 'cursor')
+            hooks.write_text(json.dumps({'version': 1, 'hooks': {'stop': config['stop']}}), encoding='utf-8')
+            partial = onboarding_doctor.wake_check('cursor', profile, repo)
+            hooks.write_text(json.dumps({'version': 1, 'hooks': {'stop': [{'command': 'echo hi'}]}}), encoding='utf-8')
+            foreign = onboarding_doctor.wake_check('cursor', profile, repo)
+        self.assertEqual(partial['status'], 'unknown')
+        self.assertFalse(partial['evidence']['configured'])
+        self.assertEqual(foreign['status'], 'skipped')
+
+    def test_cursor_malformed_hooks_are_unknown(self):
+        with retained_directory() as directory:
+            repo = Path(directory)
+            hooks = repo / '.cursor' / 'hooks.json'
+            hooks.parent.mkdir()
+            hooks.write_text('{"hooks": "nope"}', encoding='utf-8')
+            result = onboarding_doctor.wake_check('cursor', repo / 'profile.json', repo)
+        self.assertEqual(result['status'], 'unknown')
+
+    def test_zcode_user_hooks_report_configured_without_writing(self):
+        from coopagents.space_wake import hook_config, merge_zcode_hooks
+        with retained_directory() as directory:
+            repo = Path(directory)
+            home = repo / 'home'
+            config = home / '.zcode' / 'cli' / 'config.json'
+            config.parent.mkdir(parents=True)
+            profile = repo / 'profile.json'
+            config.write_text(json.dumps(merge_zcode_hooks({}, hook_config(profile, 'zcode'))), encoding='utf-8')
+            before = config.read_bytes()
+            with patch.dict('os.environ', {'HOME': str(home)}):
+                result = onboarding_doctor.wake_check('zcode', profile, repo)
+            self.assertEqual(config.read_bytes(), before)
+        self.assertEqual(result['status'], 'needs_user')
+        self.assertTrue(result['evidence']['configured'])
+        self.assertTrue(result['evidence']['hooks_enabled'])
+
+    def test_zcode_hooks_present_but_disabled_are_unknown(self):
+        from coopagents.space_wake import hook_config, merge_zcode_hooks
+        with retained_directory() as directory:
+            repo = Path(directory)
+            home = repo / 'home'
+            config = home / '.zcode' / 'cli' / 'config.json'
+            config.parent.mkdir(parents=True)
+            profile = repo / 'profile.json'
+            document = merge_zcode_hooks({}, hook_config(profile, 'zcode'))
+            document['hooks']['enabled'] = False
+            config.write_text(json.dumps(document), encoding='utf-8')
+            with patch.dict('os.environ', {'HOME': str(home)}):
+                result = onboarding_doctor.wake_check('zcode', profile, repo)
+        self.assertEqual(result['status'], 'unknown')
+        self.assertFalse(result['evidence']['configured'])
+        self.assertFalse(result['evidence']['hooks_enabled'])
+
+    def test_zcode_project_hooks_are_ignored_and_missing_config_is_skipped(self):
+        from coopagents.space_wake import hook_config, merge_zcode_hooks
+        with retained_directory() as directory:
+            repo = Path(directory)
+            home = repo / 'home'
+            home.mkdir()
+            project_config = repo / '.zcode' / 'config.json'
+            project_config.parent.mkdir()
+            profile = repo / 'profile.json'
+            project_config.write_text(json.dumps(merge_zcode_hooks({}, hook_config(profile, 'zcode'))), encoding='utf-8')
+            with patch.dict('os.environ', {'HOME': str(home)}):
+                result = onboarding_doctor.wake_check('zcode', profile, repo)
+        self.assertEqual(result['status'], 'skipped')
+
+    def test_codex_desktop_alias_inspects_codex_hooks(self):
+        from coopagents.space_wake import hook_config
+        with retained_directory() as directory:
+            repo = Path(directory)
+            settings = repo / '.codex' / 'hooks.json'
+            settings.parent.mkdir()
+            profile = repo / 'profile.json'
+            settings.write_text(json.dumps({'hooks': hook_config(profile, 'codex')}), encoding='utf-8')
+            result = onboarding_doctor.wake_check('codex-desktop', profile, repo)
+        self.assertEqual(result['status'], 'needs_user')
+        self.assertTrue(result['evidence']['configured'])
+
+    def test_run_reports_cursor_wake_hooks_for_a_requested_tool(self):
+        from coopagents.space_wake import hook_config
+        with retained_directory() as directory:
+            repo = Path(directory)
+            hooks = repo / '.cursor' / 'hooks.json'
+            hooks.parent.mkdir()
+            profile = repo / 'profile.json'
+            hooks.write_text(json.dumps({'version': 1, 'hooks': hook_config(profile, 'cursor')}), encoding='utf-8')
+            result = onboarding_doctor.run(profile_path=str(profile), tool='cursor', project_dir=str(repo))
+        check = next(item for item in result['checks'] if item['id'] == 'wake_up')
+        self.assertEqual(check['status'], 'needs_user')
+        self.assertTrue(check['evidence']['configured'])
+
+    def test_unknown_tool_wake_check_is_skipped(self):
+        self.assertEqual(onboarding_doctor.wake_check('pi', '/tmp/profile.json')['status'], 'skipped')
+        self.assertEqual(onboarding_doctor.wake_check('cursor', None)['status'], 'skipped')
+
+
 class HarnessCliCheckTests(DoctorTestCase):
     def test_inventory_reports_presence_and_versions(self):
         from subprocess import CompletedProcess

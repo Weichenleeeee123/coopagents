@@ -433,7 +433,8 @@ def main(argv=None):
     sub = commands.add_parser('doctor', help='Read-only setup and connection diagnostics')
     sub.add_argument('--name', help='Registered MCP server name when a custom name was used')
     sub.add_argument('--profile')
-    sub.add_argument('--tool', choices=['claude', 'codex', 'codex-desktop'])
+    sub.add_argument('--tool', choices=['claude', 'codex', 'codex-desktop', 'cursor', 'zcode'],
+                     help='Tool whose wake hooks doctor inspects; only claude and codex resolve a native bridge')
     sub.add_argument('--cli', help='Full path of the native CLI to inspect')
     sub.add_argument('--project-dir', help='Repository folder for project-scoped checks')
     sub.add_argument('--json', action='store_true', dest='json_output', help='Print machine-readable JSON')
