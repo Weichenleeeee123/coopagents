@@ -336,7 +336,7 @@ def join(invitation_file, name, state_dir, invitation_code=None):
         raise FileExistsError('A personal profile already exists in %s; omit --state-dir to use a new folder' % state)
     target = {'origin': origin, 'room_id': descriptor['room_id']} | ({'p2p': link} if link else {})
     try:
-        with member_link(target):
+        with member_link(target, warm=True):
             identity = request(origin, '/api/join', data={'room_id': descriptor['room_id'],
                                                         'invite_token': descriptor['invite_token'], 'display_name': name})
     except urllib.error.HTTPError as error:

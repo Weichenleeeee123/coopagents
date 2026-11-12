@@ -291,6 +291,22 @@ class MemberLink:
             self.connection = await asyncio.wait_for(self.endpoint.connect(addr, ALPN), self.connect_timeout)
             return self.connection
 
+    def ensure_connected(self):
+        """Dial the host now, within the connection budget.
+
+        The first HTTP request over a fresh link otherwise pays the whole
+        relay/discovery dial out of its own much shorter timeout and fails
+        with a generic unreachable message even though the dial would have
+        succeeded. Warming here surfaces a peer-to-peer-specific failure
+        instead, and consumes no invitation: only a QUIC connection is made.
+        """
+        try:
+            return _run(self._connect(), self.connect_timeout + 10)
+        except Exception as error:
+            self.connection = None
+            raise ValueError('Could not reach the space over its peer-to-peer transport. '
+                             'The host may be offline, or unreachable from this network.') from error
+
     async def _local(self, reader, writer):
         # One retry covers a connection the host closed since the last use.
         for attempt in range(2):
@@ -337,20 +353,31 @@ def _serves_space(origin, room_id):
         return False
 
 
-def member_link(profile):
+def member_link(profile, *, warm=False):
     """Context manager making a member profile's origin reachable on this computer.
 
     The space's loopback port may already serve this space: the bridge holds
     the link, or the host runs on this same computer. Reuse it after verifying
     the space identity; any other program on the port is an error.
+
+    With warm=True, the QUIC connection is established before returning, so a
+    caller about to make a short-timeout HTTP request (join) does not pay the
+    relay/discovery dial out of that request's budget.
     """
     link = profile.get('p2p')
     if not link:
         return nullcontext()
     port = urlsplit(profile['origin']).port
     try:
-        return MemberLink(validate_link(link)['endpoint_id'], port)
+        member = MemberLink(validate_link(link)['endpoint_id'], port)
     except OSError:
         if _serves_space(profile['origin'], profile['room_id']):
             return nullcontext()
         raise ValueError('The local port for this space is used by another program')
+    if warm:
+        try:
+            member.ensure_connected()
+        except Exception:
+            member.close()
+            raise
+    return member

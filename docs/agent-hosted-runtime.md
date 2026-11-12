@@ -45,8 +45,12 @@ public loopback port. HTTP Host and Origin therefore match local access, and
 the shared boundary, MCP and WebSocket checks are unchanged. Connections are
 encrypted end to end and authenticated by the host key; iroh connects directly
 when the networks allow and otherwise relays through n0's public relays, which
-see only encrypted bytes. The owner's control `/status` reports the endpoint id
-and whether it is online; a member's `status` reports a direct or relayed path.
+see only encrypted bytes. The owner's control `/status` reports the endpoint id,
+whether a home relay is currently usable, the relay URL and the published direct
+addresses, and the current connection count; a member's `status` reports a direct or relayed path.
+`join` establishes the peer-to-peer connection before sending its HTTP request, so a slow
+relay/discovery dial cannot exhaust the request's shorter timeout; a dial failure is reported
+as a peer-to-peer reachability failure and consumes no invitation.
 If another program already uses the space's port on a member computer, the
 link refuses to start rather than pick another port. Details and measurements:
 [p2p report](agent-hosted-p2p-report.md).
