@@ -82,7 +82,7 @@ def create_control_app(control_origin, control_token, stop_event, room_id, ready
             status = 'stopping' if stop_event.is_set() else 'starting' if ready_event and not ready_event.is_set() else 'running'
             result = {'status': status, 'room_id': room_id}
             if p2p is not None:
-                result['p2p'] = {'endpoint_id': p2p.endpoint_id, 'online': p2p.online, 'members': len(p2p.connections)}
+                result['p2p'] = p2p.status()
             return JSONResponse(result)
         except Exception as error:
             payload, status = error_payload(error)

@@ -135,6 +135,17 @@ class Transport(unittest.TestCase):
         self.assertEqual(host.endpoint_id, p2p.endpoint_id(secret))
         self.assertNotEqual(p2p.endpoint_id(p2p.new_secret()), host.endpoint_id)
 
+    def test_host_status_reports_live_relay_state(self):
+        host = p2p.HostLink(p2p.new_secret(), start_echo(), local_only=True)
+        self.addCleanup(host.close)
+        self.assertIs(host.online, False)  # a local-only endpoint never has a relay
+        status = host.status()
+        self.assertEqual(status['endpoint_id'], host.endpoint_id)
+        self.assertIs(status['online'], False)
+        self.assertEqual(status['members'], 0)
+        self.assertIsNone(status['relay_url'])
+        self.assertIsInstance(status['direct_addresses'], list)
+
     def test_member_reconnects_after_host_restart(self):
         target, secret = start_echo(), p2p.new_secret()
         host = p2p.HostLink(secret, target, local_only=True)

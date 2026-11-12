@@ -145,21 +145,57 @@ class HostLink:
     def __init__(self, secret, target_port, *, local_only=False, online_timeout=10):
         self.target_port = target_port
         self.connections = set()
-        self.online = False
+        self._online = False
+        self._closed = False
+        self.endpoint = None
         self.endpoint = _run(self._bind(secret, local_only, online_timeout), online_timeout + 20)
         self.endpoint_id = str(self.endpoint.id())
         self.accepting = asyncio.run_coroutine_threadsafe(self._accept(), _background_loop())
+
+    @property
+    def online(self):
+        """Whether the endpoint currently has a usable home relay.
+
+        The home relay can arrive after the bind-time wait (slow networks,
+        relay rotation), so this re-reads the endpoint's current address
+        instead of trusting the one-shot bind result. A local-only endpoint
+        never has a relay and stays offline.
+        """
+        if self._closed or self.endpoint is None:
+            return self._online
+        try:
+            return self.endpoint.addr().relay_url() is not None
+        except Exception:
+            return self._online
+
+    def status(self):
+        """Secret-free diagnostics for the owner control endpoint."""
+        result = {'endpoint_id': self.endpoint_id, 'online': self.online, 'members': len(self.connections)}
+        try:
+            addresses = self.addresses()
+        except Exception:
+            return result
+        result['relay_url'] = addresses['relay_url']
+        result['direct_addresses'] = addresses['addresses']
+        return result
 
     async def _bind(self, secret, local_only, online_timeout):
         endpoint = await _iroh().Endpoint.bind(_options(secret=secret, alpns=[ALPN], local_only=local_only))
         if not local_only:
             # Remote members need the relay and discovery record. Without them
             # the space still serves direct dialers, so report rather than fail.
+            # The live `online` property re-reads the home relay afterwards;
+            # this wait only seeds the initial value and surfaces slow relays.
             try:
                 await asyncio.wait_for(endpoint.online(), online_timeout)
-                self.online = True
+                self._online = True
             except asyncio.TimeoutError:
-                self.online = False
+                self._online = False
+                log.warning('p2p endpoint has no home relay after %ss; remote members cannot discover this host yet',
+                            online_timeout)
+            except Exception as error:
+                self._online = False
+                log.warning('p2p endpoint online check failed: %r', error)
         return endpoint
 
     def addresses(self):
@@ -215,8 +251,11 @@ class HostLink:
             self.connections.discard(connection)
 
     def close(self):
+        self._online = False
+        self._closed = True
         try:
-            _run(self.endpoint.close(), 10)
+            if self.endpoint is not None:
+                _run(self.endpoint.close(), 10)
         finally:
             self.accepting.cancel()
 
