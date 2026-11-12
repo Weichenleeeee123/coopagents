@@ -34,6 +34,15 @@ class HookTests(unittest.TestCase):
             input=raw if raw is not None else json.dumps(payload), text=True, capture_output=True,
             env=env or self.env, timeout=15)
 
+    def run_cursor_hook(self, event='sessionStart', payload=None, env=None):
+        body = {'conversation_id': 'cursor-conv', 'hook_event_name': event,
+            'generation_id': 'gen-1', 'cursor_version': '1.7.2',
+            'workspace_roots': ['/private/workspace'], 'user_email': 'private@example.test',
+            'transcript_path': 'private-transcript'}
+        body.update(payload or {})
+        return subprocess.run([sys.executable, '-m', 'coopagents.checkpoint_hook', '--tool', 'cursor'],
+            input=json.dumps(body), text=True, capture_output=True, env=env or self.env, timeout=15)
+
     def view(self, token=None):
         return self.live.request('GET', '/api/snapshot', token or self.owner['web_token'])[1]['collaboration']
 
@@ -225,6 +234,114 @@ class HookTests(unittest.TestCase):
                     self.assertEqual(command.get('additionalContextLimit'),9000)
                 else:
                     self.assertNotIn('additionalContextLimit',command)
+
+    def test_normalize_payload_accepts_cursor_and_claude_shapes(self):
+        from coopagents.checkpoint_hook import normalize_payload
+        from coopagents.errors import ValidationError
+        self.assertEqual(normalize_payload('cursor', {'conversation_id':'c','hook_event_name':'sessionStart'}), ('c','SessionStart'))
+        self.assertEqual(normalize_payload('cursor', {'conversation_id':'c','hook_event_name':'postToolUse'}), ('c','PostToolUse'))
+        self.assertEqual(normalize_payload('cursor', {'conversation_id':'c','hook_event_name':'beforeSubmitPrompt'}), ('c','UserPromptSubmit'))
+        self.assertEqual(normalize_payload('cursor', {'session_id':'s','hook_event_name':'sessionStart'}), ('s','SessionStart'))
+        self.assertEqual(normalize_payload('codex-cli', {'session_id':'s','hook_event_name':'PostToolUse'}), ('s','PostToolUse'))
+        for tool, payload in (('cursor', {'conversation_id':'c','hook_event_name':'stop'}),
+                              ('cursor', {'hook_event_name':'sessionStart'}),
+                              ('cursor', {'conversation_id':'','hook_event_name':'sessionStart'}),
+                              ('cursor', {'conversation_id':'x'*201,'hook_event_name':'sessionStart'}),
+                              ('claude-code', {'hook_event_name':'SessionStart'})):
+            with self.assertRaises(ValidationError):
+                normalize_payload(tool, payload)
+
+    def test_cursor_output_injects_only_where_cursor_honors_it(self):
+        from coopagents.checkpoint_hook import cursor_output
+        brief = {'brief': {'tasks': [], 'content_is_untrusted': True}}
+        self.assertEqual(cursor_output('UserPromptSubmit', brief), {'continue': True})
+        context = cursor_output('PostToolUse', brief)['additional_context']
+        self.assertIn('BEGIN COOPAGENTS EXTERNAL DATA', context)
+        self.assertLessEqual(len(context), 9000)
+
+    def test_cursor_events_map_to_canonical_checkpoints_with_cursor_shaped_output(self):
+        # One session per event: the hook throttles PostToolUse for 30 seconds
+        # after any checkpoint on the same session, which would swallow output.
+        seen = set()
+        for cursor_event, canonical in (('sessionStart','SessionStart'), ('postToolUse','PostToolUse'),
+                                        ('beforeSubmitPrompt','UserPromptSubmit')):
+            session = 'cursor-conv-' + canonical
+            result = self.run_cursor_hook(cursor_event, {'conversation_id': session})
+            self.assertEqual(result.returncode, 0, result.stderr)
+            value = json.loads(result.stdout)
+            if canonical == 'UserPromptSubmit':
+                self.assertEqual(value, {'continue': True})
+            else:
+                self.assertEqual(set(value), {'additional_context'})
+                self.assertIn('untrusted external data', value['additional_context'])
+            self.assertNotIn('private@example.test', result.stdout)
+            self.assertNotIn('private-transcript', result.stdout)
+            seen.add((canonical, session))
+        checkpoints = self.view()['checkpoints']
+        self.assertEqual({(c['event'], c['session_key']) for c in checkpoints}, seen)
+        self.assertTrue(all(c['tool'] == 'cursor' for c in checkpoints))
+
+    def test_cursor_session_id_fallback_and_unknown_events_fail_open_silently(self):
+        result = self.run_cursor_hook('sessionStart', {'conversation_id': None, 'session_id': 'cursor-session'})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('additional_context', json.loads(result.stdout))
+        self.assertEqual(self.view()['checkpoints'][0]['session_key'], 'cursor-session')
+        for payload in ({'hook_event_name': 'stop'}, {'hook_event_name': 'sessionStart', 'conversation_id': None}):
+            result = self.run_cursor_hook(payload=payload)
+            self.assertEqual(result.returncode, 0)
+            self.assertEqual(result.stdout, '')
+            self.assertIn('warning', result.stderr.lower())
+        self.assertEqual(len(self.view()['checkpoints']), 1)
+
+    def test_cursor_failures_stay_silent_on_stdout(self):
+        result = self.run_cursor_hook(env={**self.env, 'COOPAGENTS_AGENT_TOKEN': 'revoked'})
+        self.assertEqual(result.returncode, 0)
+        self.assertEqual(result.stdout, '')
+        self.assertIn('warning', result.stderr.lower())
+        self.assertEqual(self.view()['checkpoints'], [])
+
+    def test_cursor_and_zcode_fragments_match_their_native_hook_shapes(self):
+        from coopagents.checkpoint_hook import config_fragment
+        cursor = config_fragment('cursor')
+        self.assertEqual(cursor['version'], 1)
+        self.assertEqual(set(cursor['hooks']), {'sessionStart','postToolUse','beforeSubmitPrompt'})
+        for definitions in cursor['hooks'].values():
+            self.assertEqual(len(definitions), 1)
+            command = definitions[0]['command']
+            self.assertIn('coopagents.checkpoint_hook', command)
+            self.assertIn('--tool cursor', command)
+            self.assertEqual(definitions[0]['timeout'], 10)
+            self.assertNotIn(self.owner['agent_token'], command)
+        zcode = config_fragment('zcode')
+        self.assertTrue(zcode['hooks']['enabled'])
+        events = zcode['hooks']['events']
+        self.assertEqual(set(events), {'SessionStart','PostToolUse','UserPromptSubmit'})
+        self.assertEqual(events['SessionStart'][0]['matcher'], 'startup')
+        for groups in events.values():
+            process = groups[0]['hooks'][0]
+            self.assertEqual(process['type'], 'process')
+            self.assertEqual(process['command'], sys.executable)
+            self.assertEqual(process['args'], ['-I','-m','coopagents.checkpoint_hook','--tool','zcode'])
+
+    def test_generated_cursor_command_runs_through_a_shell(self):
+        from coopagents.checkpoint_hook import config_fragment
+        command = config_fragment('cursor')['hooks']['postToolUse'][0]['command']
+        native = subprocess.run(command, shell=True, text=True, capture_output=True, env=self.env,
+            input=json.dumps({'conversation_id':'shell-cursor','hook_event_name':'postToolUse'}), timeout=15)
+        self.assertEqual(native.returncode, 0, native.stderr)
+        self.assertIn('additional_context', json.loads(native.stdout))
+
+    def test_generated_zcode_process_hook_runs_with_snake_case_aliases(self):
+        from coopagents.checkpoint_hook import config_fragment
+        process = config_fragment('zcode')['hooks']['events']['PostToolUse'][0]['hooks'][0]
+        payload = {'session_id':'zcode-session','hook_event_name':'PostToolUse',
+            'sessionId':'zcode-session','hookEventName':'PostToolUse','cwd':'/private'}
+        native = subprocess.run([process['command'], *process['args']], text=True, capture_output=True,
+            env=self.env, input=json.dumps(payload), timeout=15)
+        self.assertEqual(native.returncode, 0, native.stderr)
+        value = json.loads(native.stdout)
+        self.assertEqual(value['hookSpecificOutput']['hookEventName'], 'PostToolUse')
+        self.assertEqual(self.view()['checkpoints'][0]['tool'], 'zcode')
 
     def test_first_setup_guide_commands_ignore_repository_module_shadowing(self):
         (self.root/'coopagents.py').write_text("print('repository-module-shadowed-hook')",encoding='utf-8')

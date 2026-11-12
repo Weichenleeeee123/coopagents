@@ -14,7 +14,7 @@ from coopagents.errors import AccessDenied
 from coopagents.spaces import checked_path, private_write
 from coopagents import space_wake
 from coopagents.space_wake import (AuthDenied, Policy, Watcher, WakeSetupError, WakeState, disable, hook_config,
-                                 install, merge_hooks, merge_zcode_hooks, remote_digest, settings_path, wake_text, watch)
+                                 install, merge_cursor_hooks, merge_hooks, merge_zcode_hooks, remote_digest, settings_path, wake_text, watch)
 from transport_support import LiveService
 
 
@@ -295,6 +295,22 @@ class HookEntryTests(unittest.TestCase):
         self.assertEqual(decision['decision'], 'block')
         self.assertIn('1 new reply to your request', decision['reason'])
 
+    def test_cursor_stop_returns_followup_and_session_start_only_baselines(self):
+        items = [{'kind': 'request', 'id': 1}]
+        code, out, _ = self.run_hook('cursor', items, payload={'conversation_id': 'cs', 'hook_event_name': 'sessionStart'})
+        self.assertEqual((code, out), (0, ''), 'sessionStart baselines without waking')
+        code, out, _ = self.run_hook('cursor', items, payload={'conversation_id': 'cs', 'hook_event_name': 'stop'})
+        self.assertEqual((code, out), (0, ''), 'Baselined items do not wake the first stop')
+        code, out, _ = self.run_hook('cursor', items + [{'kind': 'reply', 'id': 2}],
+                                     payload={'conversation_id': 'cs', 'hook_event_name': 'stop'})
+        self.assertEqual(code, 0)
+        self.assertIn('1 new reply to your request', json.loads(out)['followup_message'])
+        # session_id fallback: sessionStart payloads carry both identifiers.
+        code, out, _ = self.run_hook('cursor', [], payload={'session_id': 'cs2', 'hook_event_name': 'sessionStart'})
+        self.assertEqual((code, out), (0, ''))
+        with WakeState(self.profile).connect() as c:
+            self.assertIsNotNone(c.execute("SELECT 1 FROM watchers WHERE session='cs2'").fetchone())
+
     def test_malformed_input_is_quiet(self):
         stdin = io.BytesIO(b'not json')
         self.assertEqual(watch(self.profile, 'claude', stdin, io.StringIO(), io.StringIO()), 0)
@@ -449,6 +465,115 @@ class InstallTests(unittest.TestCase):
             result = json.loads(out.getvalue())
             self.assertEqual(result['settings'], str(home / '.zcode' / 'cli' / 'config.json'))
             self.assertIn('Stop', result['hooks'])
+
+    def test_cursor_hook_config_uses_flat_definitions_with_stop_timeout(self):
+        config = hook_config(self.profile, 'cursor', standby=400)
+        self.assertEqual(sorted(config), ['sessionStart', 'stop'])
+        start = config['sessionStart'][0]
+        self.assertEqual(start['timeout'], space_wake.CURSOR_SESSION_TIMEOUT)
+        stop = config['stop'][0]
+        self.assertEqual(stop['timeout'], 400 + space_wake.DEADLINE_MARGIN)
+        for definition in (start, stop):
+            self.assertIn('coopagents.space_wake watch --tool cursor', hook_script(definition['command']))
+            self.assertNotIn('asyncRewake', definition)
+
+    def test_cursor_merge_preserves_version_and_foreign_hooks_and_is_idempotent(self):
+        foreign = {'command': './hooks/format.sh', 'timeout': 30}
+        document = {'version': 1, 'hooks': {'stop': [foreign], 'afterFileEdit': [foreign]}}
+        once = merge_cursor_hooks(document, hook_config(self.profile, 'cursor'))
+        twice = merge_cursor_hooks(once, hook_config(self.profile, 'cursor'))
+        self.assertEqual(once, twice)
+        self.assertEqual(once['version'], 1)
+        self.assertEqual(len(once['hooks']['stop']), 2)
+        self.assertEqual(once['hooks']['afterFileEdit'], [foreign])
+        self.assertEqual(merge_cursor_hooks(twice, {}), document)
+        fresh = merge_cursor_hooks({}, hook_config(self.profile, 'cursor'))
+        self.assertEqual(fresh['version'], 1)
+
+    def test_cursor_hooks_installed_before_the_rename_are_replaced_and_removable(self):
+        legacy = {'command': 'python -I -m crewmesh.space_wake watch --tool cursor --profile p'}
+        foreign = {'command': './hooks/format.sh'}
+        document = {'version': 1, 'hooks': {'stop': [foreign, legacy], 'sessionStart': [legacy]}}
+        upgraded = merge_cursor_hooks(document, hook_config(self.profile, 'cursor'))
+        commands = [d['command'] for groups in upgraded['hooks'].values() for d in groups]
+        self.assertFalse(any('crewmesh.space_wake' in c for c in commands))
+        self.assertEqual(sum('coopagents.space_wake' in hook_script(c) for c in commands), 2)
+        self.assertEqual(merge_cursor_hooks(document, {}),
+                         {'version': 1, 'hooks': {'stop': [foreign]}})
+
+    def test_cursor_command_runs_as_a_subprocess(self):
+        command = hook_config(self.profile, 'cursor')['stop'][0]['command']
+        payload = json.dumps({'conversation_id': 'cursor-proc', 'hook_event_name': 'stop'}).encode()
+        proc = subprocess.run(command, shell=True, input=payload, capture_output=True, timeout=60)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        with WakeState(self.profile).connect() as c:
+            row = c.execute("SELECT status FROM watchers WHERE session='cursor-proc'").fetchone()
+        self.assertIsNotNone(row, 'The Cursor hook did not reach the watcher')
+        self.assertEqual(row[0], 'deadline')
+
+    def test_cursor_install_and_disable_cover_project_and_user_scopes(self):
+        from unittest.mock import patch
+        home = self.root / 'home-cursor'
+        home.mkdir()
+        project_hooks = self.project / '.cursor' / 'hooks.json'
+        project_hooks.parent.mkdir(parents=True)
+        project_hooks.write_text(json.dumps({'version': 1, 'hooks': {'afterFileEdit': [{'command': './hooks/format.sh'}]}}),
+                                 encoding='utf-8')
+        with patch.dict('os.environ', {'HOME': str(home)}):
+            result = install(self.profile, 'cursor', project_dir=self.project, standby=400)
+            self.assertEqual(result['settings'], str(project_hooks.absolute()))
+            self.assertEqual(result['events'], ['sessionStart', 'stop'])
+            document = json.loads(project_hooks.read_text(encoding='utf-8'))
+            self.assertEqual(document['version'], 1)
+            self.assertEqual(document['hooks']['afterFileEdit'][0]['command'], './hooks/format.sh')
+            self.assertEqual(document['hooks']['stop'][0]['timeout'], 400 + space_wake.DEADLINE_MARGIN)
+            self.assertTrue(list(project_hooks.parent.glob('hooks.json.coopagents-*.bak')), 'Previous settings are kept')
+            self.assertTrue(disable('cursor', project_dir=self.project)['changed'])
+            self.assertEqual(json.loads(project_hooks.read_text(encoding='utf-8')),
+                             {'version': 1, 'hooks': {'afterFileEdit': [{'command': './hooks/format.sh'}]}})
+            user_hooks = home / '.cursor' / 'hooks.json'
+            result = install(self.profile, 'cursor', scope='user')
+            self.assertEqual(result['settings'], str(user_hooks))
+            self.assertEqual(json.loads(user_hooks.read_text(encoding='utf-8'))['version'], 1)
+            self.assertTrue(disable('cursor', scope='user')['changed'])
+
+    def test_cursor_missing_profile_is_refused(self):
+        with self.assertRaises(WakeSetupError):
+            install(None, 'cursor', project_dir=self.project)
+        with self.assertRaises(WakeSetupError):
+            install(None, 'cursor', scope='user')
+
+    def test_cursor_preview_cli_accepts_explicit_tool_and_profile(self):
+        from contextlib import redirect_stdout
+        from unittest.mock import patch
+        home = self.root / 'home-cursor2'
+        home.mkdir()
+        with patch.dict('os.environ', {'HOME': str(home), 'CLAUDECODE': '1'}):
+            out = io.StringIO()
+            with redirect_stdout(out):
+                code = space_wake.main(['preview', '--tool', 'cursor', '--scope', 'user',
+                                        '--profile', str(self.profile)])
+            self.assertEqual(code, 0)
+            result = json.loads(out.getvalue())
+            self.assertEqual(result['version'], 1)
+            self.assertEqual(result['settings'], str(home / '.cursor' / 'hooks.json'))
+            self.assertIn('stop', result['hooks'])
+
+    def test_zcode_checkpoint_and_wake_fragments_coexist_in_one_config(self):
+        from coopagents.checkpoint_hook import config_fragment
+        checkpoint = config_fragment('zcode')['hooks']['events']
+        merged = merge_zcode_hooks({}, checkpoint)
+        merged = merge_zcode_hooks(merged, hook_config(self.profile, 'zcode'))
+        events = merged['hooks']['events']
+        self.assertEqual(len(events['SessionStart']), 2, 'Checkpoint and wake baselines share the event')
+        self.assertEqual(len(events['Stop']), 1)
+        self.assertEqual(len(events['PostToolUse']), 1)
+        self.assertEqual(len(events['UserPromptSubmit']), 1)
+        removed = merge_zcode_hooks(merged, {})
+        events = removed['hooks']['events']
+        self.assertEqual(len(events['SessionStart']), 1, 'Wake disable keeps the checkpoint hook')
+        self.assertNotIn('Stop', events)
+        self.assertIn('PostToolUse', events)
 
     def test_install_and_disable_claude_and_codex(self):
         settings = self.project / '.claude' / 'settings.local.json'

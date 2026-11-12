@@ -33,7 +33,7 @@ class HarnessSpec:
 
 SPECS = {
     'cursor': HarnessSpec('cursor', '.cursor/mcp.json', 'mcpServers', native_hook='unknown',
-                          notes='Project MCP configuration is supported; ${env:NAME} interpolation in url and headers is verified against the official Cursor MCP docs; Cursor hooks are not verified here.'),
+                          notes='Project MCP configuration is supported; ${env:NAME} interpolation in url and headers is verified against the official Cursor MCP docs; checkpoint and wake hooks install to hooks.json (project or user scope) and live hook acceptance is unverified.'),
     'opencode': HarnessSpec('opencode', 'opencode.json', 'opencode', native_hook='unknown',
                             notes='Local and remote MCP servers use the opencode mcp object.'),
     'pi': HarnessSpec('pi', '.pi/mcp.json', 'mcpServers', native_hook='unsupported',

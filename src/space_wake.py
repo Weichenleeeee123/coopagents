@@ -7,6 +7,11 @@ ZCode: the same end-of-turn model as Codex, through a process hook on Stop;
 its SessionStart hook only baselines, because ZCode hooks are synchronous and
 there is no async re-wake.  ZCode ignores project-level hooks, so ZCode hooks
 install to the user config only.
+Cursor: a stop hook in hooks.json returns a followup_message to keep the turn
+going when items are pending; its sessionStart hook only baselines, because
+Cursor runs it fire-and-forget.  Cursor hooks install to the project
+(.cursor/hooks.json, shared through version control in trusted workspaces) or
+to the user file (~/.cursor/hooks.json).
 
 The wake text is a fixed template with counts only.  Teammate content never
 enters it, and waking never reads, acknowledges or answers anything.
@@ -25,9 +30,13 @@ from uuid import uuid4
 
 from .spaces import checked_path, private_directory, protect, read_profile
 
-TOOLS = ('claude', 'codex', 'zcode')
+TOOLS = ('claude', 'codex', 'zcode', 'cursor')
 INPUT_BYTES = 65536
 CLAUDE_HOOK_TIMEOUT = 3600
+CURSOR_SESSION_TIMEOUT = 60
+# Cursor sends camelCase event names; they map to the canonical names the
+# watcher stores and compares.
+CURSOR_EVENTS = {'sessionStart': 'SessionStart', 'stop': 'Stop'}
 DEADLINE_MARGIN = 120
 DEFAULT_STANDBY = 900
 MARKER = 'coopagents.space_wake'
@@ -387,12 +396,18 @@ class Watcher:
         return 'quiet', status
 
 
-def read_hook_input(stream):
+def read_hook_input(stream, tool=None):
     raw = stream.read(INPUT_BYTES + 1)
     if len(raw) > INPUT_BYTES:
         raise ValueError('Hook input too large')
     payload = json.loads(raw or b'{}')
-    session, event = payload.get('session_id'), payload.get('hook_event_name')
+    if tool == 'cursor':
+        # Cursor identifies the session with conversation_id (session_id is
+        # only present on sessionStart/sessionEnd) and names events camelCase.
+        session = payload.get('conversation_id') or payload.get('session_id')
+        event = CURSOR_EVENTS.get(payload.get('hook_event_name'), payload.get('hook_event_name'))
+    else:
+        session, event = payload.get('session_id'), payload.get('hook_event_name')
     if not isinstance(session, str) or not session.strip() or len(session) > 200 or not isinstance(event, str) or len(event) > 64:
         raise ValueError('Unsupported hook input')
     return session, event
@@ -405,7 +420,7 @@ def _default_watcher(profile_path, tool, session, event):
 def watch(profile_path, tool, stdin, stdout, stderr, *, watcher_factory=_default_watcher, claude_seconds=None):
     """Hook entry point. Returns the process exit code."""
     try:
-        session, event = read_hook_input(stdin)
+        session, event = read_hook_input(stdin, tool)
         if tool == 'claude' and headless():
             return 0  # Headless runs wait for background hooks; never hold them open.
         watcher = watcher_factory(profile_path, tool, session, event)
@@ -422,10 +437,19 @@ def watch(profile_path, tool, stdin, stdout, stderr, *, watcher_factory=_default
             # check, and ZCode caps consecutive Stop continuations at 3.
             watcher.run(0, baseline=True)
             return 0
+        if tool == 'cursor' and event == 'SessionStart':
+            # Baseline only: Cursor runs sessionStart fire-and-forget, so it
+            # cannot keep watching; the stop hook performs the end-of-turn
+            # check, capped by Cursor's loop_limit (default 5 follow-ups).
+            watcher.run(0, baseline=True)
+            return 0
         standby = watcher.state.standby()
         outcome, text = watcher.run(standby)
         if outcome == 'wake':
-            stdout.write(json.dumps({'decision': 'block', 'reason': text}) + '\n')
+            if tool == 'cursor':
+                stdout.write(json.dumps({'followup_message': text}) + '\n')
+            else:
+                stdout.write(json.dumps({'decision': 'block', 'reason': text}) + '\n')
         return 0
     except Exception:
         # Never break the native session; the board and checkpoints still work.
@@ -468,6 +492,12 @@ def _powershell_literal(value):
 
 
 def hook_config(profile_path, tool, standby=DEFAULT_STANDBY):
+    if tool == 'cursor':
+        # Cursor hooks.json entries are flat per-event command definitions;
+        # the same watch command baselines on sessionStart and checks on stop.
+        command = hook_command(profile_path, tool)
+        return {'sessionStart': [{'command': command, 'timeout': CURSOR_SESSION_TIMEOUT}],
+                'stop': [{'command': command, 'timeout': standby + DEADLINE_MARGIN}]}
     if tool == 'zcode':
         command, args = hook_process(profile_path, tool)
         # SessionStart matches `source`; only startup/clear baseline, so a
@@ -487,6 +517,11 @@ def hook_config(profile_path, tool, standby=DEFAULT_STANDBY):
 
 
 def settings_path(tool, scope, project_dir=None):
+    if tool == 'cursor':
+        if scope == 'user':
+            return Path.home() / '.cursor' / 'hooks.json'
+        # Agents run from the repository folder, so that is the default project.
+        return Path(project_dir or os.getcwd()).absolute() / '.cursor' / 'hooks.json'
     if tool == 'zcode':
         # ZCode ignores project-level hooks as a whole (logged as
         # config_project_hooks_ignored); only the user config runs them.
@@ -500,26 +535,31 @@ def settings_path(tool, scope, project_dir=None):
     return base / ('.claude/settings.local.json' if tool == 'claude' else '.codex/hooks.json')
 
 
+def _command_is_ours(text):
+    text = str(text)
+    if any(marker in text for marker in (MARKER,) + LEGACY_MARKERS):
+        return True
+    encoded = re.search(r'(?:^|\s)-EncodedCommand\s+([A-Za-z0-9+/=]+)(?:\s|$)', text, re.I)
+    if encoded:
+        try:
+            script = base64.b64decode(encoded.group(1), validate=True).decode('utf-16-le')
+        except (ValueError, UnicodeDecodeError):
+            return False
+        return any(marker in script for marker in (MARKER,) + LEGACY_MARKERS)
+    return False
+
+
 def _ours(group):
     for hook in group.get('hooks', []):
         if not isinstance(hook, dict):
             continue
-        command = str(hook.get('command', ''))
-        text = command
+        text = str(hook.get('command', ''))
         args = hook.get('args')
         if isinstance(args, list):
             # Process hooks carry the marker in argv, not in the command.
-            text = command + ' ' + ' '.join(str(item) for item in args)
-        if any(marker in text for marker in (MARKER,) + LEGACY_MARKERS):
+            text = text + ' ' + ' '.join(str(item) for item in args)
+        if _command_is_ours(text):
             return True
-        encoded = re.search(r'(?:^|\s)-EncodedCommand\s+([A-Za-z0-9+/=]+)(?:\s|$)', command, re.I)
-        if encoded:
-            try:
-                script = base64.b64decode(encoded.group(1), validate=True).decode('utf-16-le')
-            except (ValueError, UnicodeDecodeError):
-                continue
-            if any(marker in script for marker in (MARKER,) + LEGACY_MARKERS):
-                return True
     return False
 
 
@@ -539,6 +579,47 @@ def merge_hooks(document, additions):
         document['hooks'] = hooks
     else:
         document.pop('hooks', None)
+    return document
+
+
+def merge_cursor_hooks(document, additions):
+    """Merge hook definitions into a Cursor hooks.json, preserving its version and other hooks.
+
+    Cursor definitions are flat per-event command entries (no nested hooks
+    list). A fresh file gets ``version: 1``; an existing version is never
+    downgraded. Removing our hooks never removes the file's other content.
+    """
+    document = dict(document)
+    hooks = document.get('hooks')
+    if hooks is None:
+        hooks = {}
+    elif not isinstance(hooks, dict):
+        raise ValueError('Cursor hooks configuration must be an object')
+    hooks = dict(hooks)
+    for event in list(hooks):
+        definitions = hooks[event]
+        if not isinstance(definitions, list):
+            continue  # Leave a malformed section untouched.
+        kept = [d for d in definitions
+                if not (isinstance(d, dict) and _command_is_ours(d.get('command', '')))]
+        if kept:
+            hooks[event] = kept
+        else:
+            hooks.pop(event)
+    for event, definitions in additions.items():
+        current = hooks.get(event)
+        if current is None:
+            hooks[event] = list(definitions)
+        elif isinstance(current, list):
+            hooks[event] = current + list(definitions)
+        else:
+            raise ValueError('Cursor hook event %s must be a list' % event)
+    if hooks:
+        document['hooks'] = hooks
+    else:
+        document.pop('hooks', None)
+    if 'version' not in document:
+        document['version'] = 1
     return document
 
 
@@ -663,15 +744,23 @@ def install(profile_path, tool, scope='project', project_dir=None, standby=DEFAU
         if not profile_path:
             raise WakeSetupError('ZCode has no native Coopagents bridge registration to discover; '
                                  'pass --profile with the space profile path')
+    if tool == 'cursor' and not profile_path:
+        raise WakeSetupError('Cursor has no native Coopagents bridge registration to discover; '
+                             'pass --profile with the space profile path')
     if scope == 'project':
         project_dir = check_project(project_dir)
     profile_path = profile_path or find_profile(tool, project_dir)
     read_profile(profile_path)
     path = settings_path(tool, scope, project_dir)
     config = hook_config(profile_path, tool, standby)
-    merged = merge_zcode_hooks(_load(path), config) if tool == 'zcode' else merge_hooks(_load(path), config)
+    if tool == 'cursor':
+        merged = merge_cursor_hooks(_load(path), config)
+    elif tool == 'zcode':
+        merged = merge_zcode_hooks(_load(path), config)
+    else:
+        merged = merge_hooks(_load(path), config)
     _write_settings(path, merged)
-    if tool in ('codex', 'zcode'):
+    if tool in ('codex', 'zcode', 'cursor'):
         WakeState(profile_path).set_budget(standby)
     return {'installed': tool, 'settings': str(path), 'profile': str(profile_path),
             'events': sorted(config)}
@@ -684,7 +773,12 @@ def disable(tool, scope='project', project_dir=None):
     if not path.exists():
         return {'disabled': tool, 'settings': str(path), 'changed': False}
     before = _load(path)
-    after = merge_zcode_hooks(before, {}) if tool == 'zcode' else merge_hooks(before, {})
+    if tool == 'cursor':
+        after = merge_cursor_hooks(before, {})
+    elif tool == 'zcode':
+        after = merge_zcode_hooks(before, {})
+    else:
+        after = merge_hooks(before, {})
     if after != before:
         _write_settings(path, after)
     return {'disabled': tool, 'settings': str(path), 'changed': after != before}
@@ -719,7 +813,7 @@ def main(argv=None):
     d.add_argument('--tool', choices=TOOLS, required=True)
     d.add_argument('--scope', choices=('project', 'user'), default='project')
     d.add_argument('--project-dir')
-    s = commands.add_parser('standby', help='Codex/ZCode: keep a finished turn waiting for collaboration items')
+    s = commands.add_parser('standby', help='Codex/ZCode/Cursor: keep a finished turn waiting for collaboration items')
     s.add_argument('mode', choices=('on', 'off'))
     s.add_argument('--profile', required=True)
     s.add_argument('--seconds', type=int, default=DEFAULT_STANDBY)
@@ -730,8 +824,8 @@ def main(argv=None):
         return watch(args.profile, args.tool, sys.stdin.buffer, sys.stdout, sys.stderr)
     try:
         if args.command in ('install', 'preview'):
-            if args.tool == 'zcode':
-                pass  # ZCode has no calling-agent marker; the explicit --tool is authoritative.
+            if args.tool in ('zcode', 'cursor'):
+                pass  # Neither has a calling-agent marker; the explicit --tool is authoritative.
             else:
                 from .space_connect import resolve_tool
                 args.tool = resolve_tool(args.tool)
@@ -740,16 +834,19 @@ def main(argv=None):
         if args.command == 'install':
             if args.scope == 'project':
                 check_project(args.project_dir)
-            if args.profile and args.tool != 'zcode':
+            if args.profile and args.tool not in ('zcode', 'cursor'):
                 check_own_profile(args.tool, args.profile, args.project_dir)
             result = install(args.profile, args.tool, args.scope, args.project_dir, args.standby_limit)
         elif args.command == 'preview':
-            if args.tool == 'zcode' and not args.profile:
-                raise WakeSetupError('ZCode has no native Coopagents bridge registration to discover; '
-                                     'pass --profile with the space profile path')
+            if args.tool in ('zcode', 'cursor') and not args.profile:
+                label = 'ZCode' if args.tool == 'zcode' else 'Cursor'
+                raise WakeSetupError('%s has no native Coopagents bridge registration to discover; '
+                                     'pass --profile with the space profile path' % label)
             profile = args.profile or find_profile(args.tool, args.project_dir)
-            result = {'hooks': hook_config(profile, args.tool, args.standby_limit),
-                      'settings': str(settings_path(args.tool, args.scope, args.project_dir))}
+            config = hook_config(profile, args.tool, args.standby_limit)
+            result = {'hooks': config, 'settings': str(settings_path(args.tool, args.scope, args.project_dir))}
+            if args.tool == 'cursor':
+                result = {'version': 1, **result}
         elif args.command == 'disable':
             result = disable(args.tool, args.scope, args.project_dir)
         elif args.command == 'standby':

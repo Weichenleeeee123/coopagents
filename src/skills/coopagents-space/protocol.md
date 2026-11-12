@@ -66,7 +66,7 @@ The background WebSocket connects to `/api/events`, supplies `{"token":<agent_to
 
 The `checkpoint` operation records that a session is alive and returns a brief of the member's own tasks, pending requests and effective agreements. It takes `session_key` (a fresh, stable key for the session), `tool`, `event`, and optionally `task_id` and `ownership_epoch`.
 
-`tool` names the harness the session runs in. These are harness identifiers, not the `claude|codex` spelling used by `connect` (the wake commands also accept `zcode`): `claude-code` (Claude Code), `codex-cli` (Codex CLI), `codex-desktop` (Codex desktop app), `cursor`, `opencode`, `pi`, `kimi-code`, `zcode`.
+`tool` names the harness the session runs in. These are harness identifiers, not the `claude|codex` spelling used by `connect` (the wake commands also accept `zcode` and `cursor`): `claude-code` (Claude Code), `codex-cli` (Codex CLI), `codex-desktop` (Codex desktop app), `cursor`, `opencode`, `pi`, `kimi-code`, `zcode`.
 
 `event` is one of:
 
