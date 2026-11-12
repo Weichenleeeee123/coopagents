@@ -88,6 +88,18 @@ class CheckpointTests(unittest.TestCase):
         with self.assertRaises(AccessDenied):
             self.checkpoint()
 
+    def test_checkpoint_rejects_unknown_tool_and_event_with_supported_values(self):
+        with self.assertRaises(ValidationError) as caught:
+            self.service.call('checkpoint', self.owner['agent_token'],
+                {'session_key': 's', 'tool': 'codex', 'event': 'startup'})
+        self.assertIn("'codex'", str(caught.exception))
+        self.assertIn('codex-cli', str(caught.exception))
+        with self.assertRaises(ValidationError) as caught:
+            self.service.call('checkpoint', self.owner['agent_token'],
+                {'session_key': 's', 'tool': 'codex-cli', 'event': 'session_start'})
+        self.assertIn('SessionStart', str(caught.exception))
+        self.assertIn('manual', str(caught.exception))
+
     def test_freshness_exact_five_minutes_and_hook_evidence_survives_manual(self):
         self.checkpoint()
         at = datetime(2026, 1, 1, tzinfo=timezone.utc)

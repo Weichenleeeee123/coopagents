@@ -62,6 +62,20 @@ The background WebSocket connects to `/api/events`, supplies `{"token":<agent_to
 
 `read_changes` reauthenticates before returning cached data. Its result includes `events`, `cursor`, `high_water`, `has_more`, `reset`, `room_id`, `transport_status` and `model_read_acknowledged: false`. Status describes the transport only. Cache expiry, server retention expiry or a future cursor sets reset and returns a recovery cursor. Read current business state before advancing to that cursor. A disconnected bridge cannot prove completeness; query the business tools when working while offline. HTTP/MCP authentication failure returns a tool error or an empty discovery list, never stale authorized tools or a completion claim. Bridge CLI errors suppress credential-bearing response bodies and tracebacks.
 
+## Checkpoint calls
+
+The `checkpoint` operation records that a session is alive and returns a brief of the member's own tasks, pending requests and effective agreements. It takes `session_key` (a fresh, stable key for the session), `tool`, `event`, and optionally `task_id` and `ownership_epoch`.
+
+`tool` names the harness the session runs in. These are harness identifiers, not the `claude|codex` spelling used by `connect` and the wake commands: `claude-code` (Claude Code), `codex-cli` (Codex CLI), `codex-desktop` (Codex desktop app), `cursor`, `opencode`, `pi`, `kimi-code`, `zcode`.
+
+`event` is one of:
+
+- Hook events, sent by native hooks: `SessionStart`, `UserPromptSubmit`, `PostToolUse`.
+- Tool events, reported by the agent itself: `startup` (session start), `blocker` (stopped on something it cannot resolve), `completion` (work finished).
+- `manual`, when a person asked for the checkpoint explicitly.
+
+For the new-session check in SKILL.md, pass the session's own harness as `tool` and use `startup` when no native hook fired. An unsupported `tool` or `event` is rejected with an error that lists the supported values.
+
 ## Wake-up hooks
 
 ```text
