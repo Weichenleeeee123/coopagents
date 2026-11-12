@@ -1,6 +1,7 @@
 import io
 import base64
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -10,10 +11,10 @@ from uuid import uuid4
 
 from coopagents.api import Service
 from coopagents.errors import AccessDenied
-from coopagents.spaces import private_write
+from coopagents.spaces import checked_path, private_write
 from coopagents import space_wake
-from coopagents.space_wake import (AuthDenied, Policy, Watcher, WakeState, disable, hook_config,
-                                 install, merge_hooks, remote_digest, wake_text, watch)
+from coopagents.space_wake import (AuthDenied, Policy, Watcher, WakeSetupError, WakeState, disable, hook_config,
+                                 install, merge_cursor_hooks, merge_hooks, merge_zcode_hooks, remote_digest, settings_path, wake_text, watch)
 from transport_support import LiveService
 
 
@@ -281,6 +282,40 @@ class HookEntryTests(unittest.TestCase):
         with WakeState(member).connect() as c:
             self.assertEqual(c.execute("SELECT status FROM watchers WHERE session='p2p'").fetchone()[0], 'deadline')
 
+    def test_zcode_stop_blocks_with_reason_and_session_start_only_baselines(self):
+        items = [{'kind': 'request', 'id': 1}]
+        code, out, _ = self.run_hook('zcode', items, payload={'session_id': 'zs', 'hook_event_name': 'SessionStart'})
+        self.assertEqual((code, out), (0, ''), 'SessionStart baselines without waking')
+        code, out, _ = self.run_hook('zcode', items, payload={'session_id': 'zs', 'hook_event_name': 'Stop'})
+        self.assertEqual((code, out), (0, ''), 'Baselined items do not wake the first Stop')
+        code, out, _ = self.run_hook('zcode', items + [{'kind': 'reply', 'id': 2}],
+                                     payload={'session_id': 'zs', 'hook_event_name': 'Stop'})
+        self.assertEqual(code, 0)
+        decision = json.loads(out)
+        self.assertEqual(decision['decision'], 'block')
+        self.assertIn('1 new reply to your request', decision['reason'])
+
+    def test_cursor_stop_returns_followup_and_session_start_only_baselines(self):
+        items = [{'kind': 'request', 'id': 1}]
+        code, out, _ = self.run_hook('cursor', items, payload={'conversation_id': 'cs', 'hook_event_name': 'sessionStart'})
+        self.assertEqual((code, out), (0, ''), 'sessionStart baselines without waking')
+        code, out, _ = self.run_hook('cursor', items, payload={'conversation_id': 'cs', 'hook_event_name': 'stop'})
+        self.assertEqual((code, out), (0, ''), 'Baselined items do not wake the first stop')
+        code, out, _ = self.run_hook('cursor', items + [{'kind': 'reply', 'id': 2}],
+                                     payload={'conversation_id': 'cs', 'hook_event_name': 'stop'})
+        self.assertEqual(code, 0)
+        self.assertIn('1 new reply to your request', json.loads(out)['followup_message'])
+        # session_id fallback: sessionStart payloads carry both identifiers.
+        code, out, _ = self.run_hook('cursor', [], payload={'session_id': 'cs2', 'hook_event_name': 'sessionStart'})
+        self.assertEqual((code, out), (0, ''))
+        with WakeState(self.profile).connect() as c:
+            self.assertIsNotNone(c.execute("SELECT 1 FROM watchers WHERE session='cs2'").fetchone())
+
+    def test_codex_desktop_watch_blocks_like_codex(self):
+        code, out, _ = self.run_hook('codex-desktop', [{'kind': 'request', 'id': 1}])
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(out)['decision'], 'block')
+
     def test_malformed_input_is_quiet(self):
         stdin = io.BytesIO(b'not json')
         self.assertEqual(watch(self.profile, 'claude', stdin, io.StringIO(), io.StringIO()), 0)
@@ -332,6 +367,265 @@ class InstallTests(unittest.TestCase):
                 row = c.execute('SELECT status FROM watchers WHERE session=?', (session,)).fetchone()
             self.assertIsNotNone(row, f'{name} did not reach the watcher')
             self.assertEqual(row[0], 'deadline', name)
+
+    def test_zcode_hook_config_uses_process_hooks_with_stop_timeout(self):
+        config = hook_config(self.profile, 'zcode', standby=400)
+        self.assertEqual(sorted(config), ['SessionStart', 'Stop'])
+        start = config['SessionStart'][0]
+        self.assertEqual(start['matcher'], 'startup|clear')
+        hook = start['hooks'][0]
+        self.assertEqual(hook['type'], 'process')
+        self.assertEqual(hook['command'], str(Path(sys.executable)))
+        self.assertEqual(hook['args'], ['-I', '-m', 'coopagents.space_wake', 'watch', '--tool', 'zcode',
+                                        '--profile', str(checked_path(self.profile))])
+        stop = config['Stop'][0]['hooks'][0]
+        self.assertEqual(stop['timeoutMs'], (400 + space_wake.DEADLINE_MARGIN) * 1000)
+        self.assertNotIn('timeout', stop)
+
+    def test_zcode_merge_preserves_mcp_and_foreign_hooks_and_is_idempotent(self):
+        foreign = {'type': 'process', 'command': 'node', 'args': ['scripts/check.mjs']}
+        document = {'mcp': {'servers': {'other': {'type': 'http', 'url': 'https://other.example/mcp'}}},
+                    'hooks': {'enabled': True, 'timeoutMs': 60000,
+                              'events': {'Stop': [{'hooks': [foreign]}],
+                                         'PreToolUse': [{'matcher': 'Bash', 'hooks': [foreign]}]}}}
+        once = merge_zcode_hooks(document, hook_config(self.profile, 'zcode'))
+        twice = merge_zcode_hooks(once, hook_config(self.profile, 'zcode'))
+        self.assertEqual(once, twice)
+        self.assertEqual(twice['mcp'], document['mcp'])
+        self.assertEqual(twice['hooks']['timeoutMs'], 60000)
+        self.assertTrue(twice['hooks']['enabled'])
+        self.assertEqual(len(twice['hooks']['events']['Stop']), 2)
+        self.assertEqual(twice['hooks']['events']['PreToolUse'], document['hooks']['events']['PreToolUse'])
+        self.assertEqual(merge_zcode_hooks(twice, {}), document)
+
+    def test_zcode_hooks_installed_before_the_rename_are_replaced_and_removable(self):
+        legacy = {'type': 'process', 'command': sys.executable,
+                  'args': ['-I', '-m', 'crewmesh.space_wake', 'watch', '--tool', 'zcode', '--profile', 'p']}
+        foreign = {'type': 'process', 'command': 'node', 'args': ['scripts/check.mjs']}
+        document = {'hooks': {'enabled': True, 'events': {'Stop': [{'hooks': [foreign]}, {'hooks': [legacy]}],
+                                                          'SessionStart': [{'hooks': [legacy]}]}}}
+        upgraded = merge_zcode_hooks(document, hook_config(self.profile, 'zcode'))
+        argv = [str(a) for groups in upgraded['hooks']['events'].values() for g in groups
+                for h in g['hooks'] for a in h.get('args', [])]
+        self.assertFalse(any('crewmesh.space_wake' in a for a in argv))
+        self.assertEqual(sum('coopagents.space_wake' in a for a in argv), 2)
+        self.assertEqual(merge_zcode_hooks(document, {}),
+                         {'hooks': {'enabled': True, 'events': {'Stop': [{'hooks': [foreign]}]}}})
+
+    def test_zcode_process_hook_runs_as_a_subprocess(self):
+        hook = hook_config(self.profile, 'zcode')['Stop'][0]['hooks'][0]
+        payload = json.dumps({'session_id': 'zcode-proc', 'hook_event_name': 'Stop'}).encode()
+        proc = subprocess.run([hook['command'], *hook['args']], input=payload, capture_output=True, timeout=60)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        with WakeState(self.profile).connect() as c:
+            row = c.execute("SELECT status FROM watchers WHERE session='zcode-proc'").fetchone()
+        self.assertIsNotNone(row, 'The process hook did not reach the watcher')
+        self.assertEqual(row[0], 'deadline')
+
+    def test_zcode_install_and_disable_use_user_config_only(self):
+        from unittest.mock import patch
+        home = self.root / 'home'
+        home.mkdir()
+        config = home / '.zcode' / 'cli' / 'config.json'
+        config.parent.mkdir(parents=True)
+        config.write_text(json.dumps({'mcp': {'servers': {'other': {'type': 'http', 'url': 'https://other.example/mcp'}}}}),
+                          encoding='utf-8')
+        with patch.dict('os.environ', {'HOME': str(home)}):
+            self.assertEqual(settings_path('zcode', 'user'), config)
+            result = install(self.profile, 'zcode', scope='user', standby=400)
+            self.assertEqual(result['settings'], str(config))
+            self.assertEqual(result['events'], ['SessionStart', 'Stop'])
+            document = json.loads(config.read_text(encoding='utf-8'))
+            self.assertTrue(document['hooks']['enabled'])
+            self.assertEqual(document['mcp']['servers']['other']['url'], 'https://other.example/mcp')
+            stop = document['hooks']['events']['Stop'][0]['hooks'][0]
+            self.assertEqual(stop['timeoutMs'], (400 + space_wake.DEADLINE_MARGIN) * 1000)
+            self.assertTrue(list(config.parent.glob('config.json.coopagents-*.bak')), 'Previous settings are kept')
+            self.assertTrue(disable('zcode', scope='user')['changed'])
+            after = json.loads(config.read_text(encoding='utf-8'))
+            self.assertEqual(after['mcp'], document['mcp'])
+            self.assertNotIn('events', after['hooks'])
+
+    def test_zcode_project_scope_and_missing_profile_are_refused(self):
+        with self.assertRaises(WakeSetupError):
+            install(self.profile, 'zcode', scope='project', project_dir=self.project)
+        with self.assertRaises(WakeSetupError):
+            install(None, 'zcode', scope='user')
+        with self.assertRaises(WakeSetupError):
+            disable('zcode', scope='project', project_dir=self.project)
+        with self.assertRaises(WakeSetupError):
+            settings_path('zcode', 'project', self.project)
+
+    def test_zcode_preview_cli_accepts_explicit_tool_and_profile(self):
+        from contextlib import redirect_stdout
+        from unittest.mock import patch
+        home = self.root / 'home2'
+        home.mkdir()
+        with patch.dict('os.environ', {'HOME': str(home), 'CLAUDECODE': '1'}):
+            out = io.StringIO()
+            with redirect_stdout(out):
+                code = space_wake.main(['preview', '--tool', 'zcode', '--scope', 'user',
+                                        '--profile', str(self.profile)])
+            self.assertEqual(code, 0)
+            result = json.loads(out.getvalue())
+            self.assertEqual(result['settings'], str(home / '.zcode' / 'cli' / 'config.json'))
+            # Regression: the preview must emit the config.json hooks shape
+            # {"enabled": true, "events": {...}}, never the plugin-file
+            # events map — ZCode's strict schema rejects the latter and the
+            # loader then discards the whole config file.
+            self.assertEqual(sorted(result['hooks']), ['enabled', 'events'])
+            self.assertIs(result['hooks']['enabled'], True)
+            self.assertEqual(sorted(result['hooks']['events']), ['SessionStart', 'Stop'])
+
+    def test_zcode_preview_matches_what_install_writes_to_a_fresh_config(self):
+        from contextlib import redirect_stdout
+        from unittest.mock import patch
+        home = self.root / 'home3'
+        home.mkdir()
+        config = home / '.zcode' / 'cli' / 'config.json'
+        with patch.dict('os.environ', {'HOME': str(home), 'CLAUDECODE': '1'}):
+            out = io.StringIO()
+            with redirect_stdout(out):
+                code = space_wake.main(['preview', '--tool', 'zcode', '--scope', 'user',
+                                        '--profile', str(self.profile)])
+            self.assertEqual(code, 0)
+            preview_hooks = json.loads(out.getvalue())['hooks']
+            install(self.profile, 'zcode', scope='user')
+            installed = json.loads(config.read_text(encoding='utf-8'))
+            self.assertEqual(preview_hooks, installed['hooks'])
+            self.assertEqual(installed, merge_zcode_hooks({}, hook_config(self.profile, 'zcode')))
+
+    def test_cursor_hook_config_uses_flat_definitions_with_stop_timeout(self):
+        config = hook_config(self.profile, 'cursor', standby=400)
+        self.assertEqual(sorted(config), ['sessionStart', 'stop'])
+        start = config['sessionStart'][0]
+        self.assertEqual(start['timeout'], space_wake.CURSOR_SESSION_TIMEOUT)
+        stop = config['stop'][0]
+        self.assertEqual(stop['timeout'], 400 + space_wake.DEADLINE_MARGIN)
+        for definition in (start, stop):
+            self.assertIn('coopagents.space_wake watch --tool cursor', hook_script(definition['command']))
+            self.assertNotIn('asyncRewake', definition)
+
+    def test_cursor_merge_preserves_version_and_foreign_hooks_and_is_idempotent(self):
+        foreign = {'command': './hooks/format.sh', 'timeout': 30}
+        document = {'version': 1, 'hooks': {'stop': [foreign], 'afterFileEdit': [foreign]}}
+        once = merge_cursor_hooks(document, hook_config(self.profile, 'cursor'))
+        twice = merge_cursor_hooks(once, hook_config(self.profile, 'cursor'))
+        self.assertEqual(once, twice)
+        self.assertEqual(once['version'], 1)
+        self.assertEqual(len(once['hooks']['stop']), 2)
+        self.assertEqual(once['hooks']['afterFileEdit'], [foreign])
+        self.assertEqual(merge_cursor_hooks(twice, {}), document)
+        fresh = merge_cursor_hooks({}, hook_config(self.profile, 'cursor'))
+        self.assertEqual(fresh['version'], 1)
+
+    def test_cursor_hooks_installed_before_the_rename_are_replaced_and_removable(self):
+        legacy = {'command': 'python -I -m crewmesh.space_wake watch --tool cursor --profile p'}
+        foreign = {'command': './hooks/format.sh'}
+        document = {'version': 1, 'hooks': {'stop': [foreign, legacy], 'sessionStart': [legacy]}}
+        upgraded = merge_cursor_hooks(document, hook_config(self.profile, 'cursor'))
+        commands = [d['command'] for groups in upgraded['hooks'].values() for d in groups]
+        self.assertFalse(any('crewmesh.space_wake' in c for c in commands))
+        self.assertEqual(sum('coopagents.space_wake' in hook_script(c) for c in commands), 2)
+        self.assertEqual(merge_cursor_hooks(document, {}),
+                         {'version': 1, 'hooks': {'stop': [foreign]}})
+
+    def test_cursor_command_runs_as_a_subprocess(self):
+        command = hook_config(self.profile, 'cursor')['stop'][0]['command']
+        payload = json.dumps({'conversation_id': 'cursor-proc', 'hook_event_name': 'stop'}).encode()
+        proc = subprocess.run(command, shell=True, input=payload, capture_output=True, timeout=60)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        with WakeState(self.profile).connect() as c:
+            row = c.execute("SELECT status FROM watchers WHERE session='cursor-proc'").fetchone()
+        self.assertIsNotNone(row, 'The Cursor hook did not reach the watcher')
+        self.assertEqual(row[0], 'deadline')
+
+    def test_cursor_install_and_disable_cover_project_and_user_scopes(self):
+        from unittest.mock import patch
+        home = self.root / 'home-cursor'
+        home.mkdir()
+        project_hooks = self.project / '.cursor' / 'hooks.json'
+        project_hooks.parent.mkdir(parents=True)
+        project_hooks.write_text(json.dumps({'version': 1, 'hooks': {'afterFileEdit': [{'command': './hooks/format.sh'}]}}),
+                                 encoding='utf-8')
+        with patch.dict('os.environ', {'HOME': str(home)}):
+            result = install(self.profile, 'cursor', project_dir=self.project, standby=400)
+            self.assertEqual(result['settings'], str(project_hooks.absolute()))
+            self.assertEqual(result['events'], ['sessionStart', 'stop'])
+            document = json.loads(project_hooks.read_text(encoding='utf-8'))
+            self.assertEqual(document['version'], 1)
+            self.assertEqual(document['hooks']['afterFileEdit'][0]['command'], './hooks/format.sh')
+            self.assertEqual(document['hooks']['stop'][0]['timeout'], 400 + space_wake.DEADLINE_MARGIN)
+            self.assertTrue(list(project_hooks.parent.glob('hooks.json.coopagents-*.bak')), 'Previous settings are kept')
+            self.assertTrue(disable('cursor', project_dir=self.project)['changed'])
+            self.assertEqual(json.loads(project_hooks.read_text(encoding='utf-8')),
+                             {'version': 1, 'hooks': {'afterFileEdit': [{'command': './hooks/format.sh'}]}})
+            user_hooks = home / '.cursor' / 'hooks.json'
+            result = install(self.profile, 'cursor', scope='user')
+            self.assertEqual(result['settings'], str(user_hooks))
+            self.assertEqual(json.loads(user_hooks.read_text(encoding='utf-8'))['version'], 1)
+            self.assertTrue(disable('cursor', scope='user')['changed'])
+
+    def test_cursor_missing_profile_is_refused(self):
+        with self.assertRaises(WakeSetupError):
+            install(None, 'cursor', project_dir=self.project)
+        with self.assertRaises(WakeSetupError):
+            install(None, 'cursor', scope='user')
+
+    def test_cursor_preview_cli_accepts_explicit_tool_and_profile(self):
+        from contextlib import redirect_stdout
+        from unittest.mock import patch
+        home = self.root / 'home-cursor2'
+        home.mkdir()
+        with patch.dict('os.environ', {'HOME': str(home), 'CLAUDECODE': '1'}):
+            out = io.StringIO()
+            with redirect_stdout(out):
+                code = space_wake.main(['preview', '--tool', 'cursor', '--scope', 'user',
+                                        '--profile', str(self.profile)])
+            self.assertEqual(code, 0)
+            result = json.loads(out.getvalue())
+            self.assertEqual(result['version'], 1)
+            self.assertEqual(result['settings'], str(home / '.cursor' / 'hooks.json'))
+            self.assertIn('stop', result['hooks'])
+
+    def test_zcode_checkpoint_and_wake_fragments_coexist_in_one_config(self):
+        from coopagents.checkpoint_hook import config_fragment
+        checkpoint = config_fragment('zcode')['hooks']['events']
+        merged = merge_zcode_hooks({}, checkpoint)
+        merged = merge_zcode_hooks(merged, hook_config(self.profile, 'zcode'))
+        events = merged['hooks']['events']
+        self.assertEqual(len(events['SessionStart']), 2, 'Checkpoint and wake baselines share the event')
+        self.assertEqual(len(events['Stop']), 1)
+        self.assertEqual(len(events['PostToolUse']), 1)
+        self.assertEqual(len(events['UserPromptSubmit']), 1)
+        removed = merge_zcode_hooks(merged, {})
+        events = removed['hooks']['events']
+        self.assertEqual(len(events['SessionStart']), 1, 'Wake disable keeps the checkpoint hook')
+        self.assertNotIn('Stop', events)
+        self.assertIn('PostToolUse', events)
+
+    def test_codex_desktop_alias_installs_and_disables_as_codex(self):
+        self.project.mkdir(parents=True, exist_ok=True)
+        result = install(self.profile, 'codex-desktop', project_dir=self.project, standby=400)
+        self.assertEqual(result['installed'], 'codex')
+        hooks = json.loads((self.project / '.codex' / 'hooks.json').read_text(encoding='utf-8'))
+        self.assertEqual(hooks['hooks']['Stop'][0]['hooks'][0]['timeout'], 400 + space_wake.DEADLINE_MARGIN)
+        self.assertIn('--tool codex', hook_script(hooks['hooks']['Stop'][0]['hooks'][0]['command']))
+        self.assertTrue(disable('codex-desktop', project_dir=self.project)['changed'])
+
+    def test_codex_desktop_preview_cli_accepts_the_alias(self):
+        from contextlib import redirect_stdout
+        from unittest.mock import patch
+        self.project.mkdir(parents=True, exist_ok=True)
+        with patch.dict('os.environ', {'CLAUDECODE': '', 'CODEX_THREAD_ID': '', 'CODEX_SESSION_ID': ''}):
+            out = io.StringIO()
+            with redirect_stdout(out):
+                code = space_wake.main(['preview', '--tool', 'codex-desktop', '--profile', str(self.profile),
+                                        '--project-dir', str(self.project)])
+            self.assertEqual(code, 0)
+            result = json.loads(out.getvalue())
+            self.assertIn('Stop', result['hooks'])
+            self.assertTrue(result['settings'].endswith('.codex/hooks.json'))
 
     def test_install_and_disable_claude_and_codex(self):
         settings = self.project / '.claude' / 'settings.local.json'

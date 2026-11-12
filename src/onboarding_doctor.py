@@ -6,7 +6,9 @@ import os
 from pathlib import Path
 import re
 import secrets
+import shutil
 import site
+import subprocess
 import sys
 from urllib.error import HTTPError, URLError
 
@@ -135,6 +137,7 @@ def python_runtime_check():
 
 def _tool_and_cli(tool=None, cli=None):
     try:
+        tool = space_connect.normalize_tool(tool)
         if tool and tool not in space_connect.TOOLS:
             raise space_connect.ConnectError('Unsupported tool')
         selected = space_connect.resolve_tool(tool)
@@ -169,6 +172,89 @@ def tool_check(tool=None, project_dir=None, cli=None):
 
 def skill_root(tool, root=None):
     return Path(root) if root is not None else space_connect.skills_root(tool)
+
+
+HARNESS_CLIS = (
+    ('claude-code', 'claude'),
+    ('codex', 'codex'),
+    ('deepseek', 'dsh'),
+    ('cursor', 'cursor'),
+    ('opencode', 'opencode'),
+    ('pi', 'pi'),
+    ('kimi-code', 'kimi'),
+    ('zcode', 'zcode'),
+)
+
+
+def harness_cli_check():
+    """Inventory which supported harness CLIs are on PATH, with versions.
+
+    Presence only: a CLI on PATH says nothing about login state, model
+    backend reachability, or whether a session has loaded Coopagents. The
+    check always passes so the inventory can never block setup. Kimi Code
+    and the legacy kimi-cli share the `kimi` command name; the reported
+    version tells them apart (2.x is the current CLI, 1.x the legacy one).
+    """
+    found = {}
+    for harness, binary in HARNESS_CLIS:
+        path = shutil.which(binary)
+        if not path:
+            found[harness] = {'present': False}
+            continue
+        version = 'unknown'
+        try:
+            result = subprocess.run([path, '--version'], capture_output=True, text=True,
+                                    errors='replace', timeout=10)
+            match = re.search(r'\b(\d+\.\d+(?:\.\d+)?)\b', result.stdout + result.stderr)
+            if result.returncode == 0 and match:
+                version = match.group(1)
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+        found[harness] = {'present': True, 'path': path, 'version': version}
+    present = [name for name, info in found.items() if info['present']]
+    summary = ('Harness CLIs on PATH: %s.' % ', '.join(present)) if present \
+        else 'No supported harness CLI was found on PATH.'
+    return make_check('harness_clis', 'pass', summary, evidence={'harnesses': found})
+
+
+def deepseek_mcp_check(profile=None, home=None, server_name='coopagents'):
+    """Presence-only check for the Coopagents MCP row in DSH patch layers.
+
+    Evidence carries booleans and counts only: patch text is never returned,
+    logged, or quoted, because patch layers can carry credentials. Files are
+    read with a size cap; unreadable files yield unknown, never fail.
+    """
+    from .deepseek_harness import dsh_home, patch_layers, row_present
+    root = Path(home) if home is not None else dsh_home()
+    binary = shutil.which('dsh')
+    layers = patch_layers(profile, root)
+    existing = [path for path in layers if path.is_file()]
+    if binary is None and not root.is_dir() and not existing:
+        return make_check('deepseek_mcp', 'skipped', 'DeepSeek Harness is not installed on this machine.',
+                          evidence={'dsh_on_path': False, 'home_exists': False})
+    found, unreadable = False, False
+    for path in existing:
+        try:
+            if path.stat().st_size > 1024 * 1024:
+                raise ValueError('Patch layer too large')
+            found = found or row_present(path.read_text(encoding='utf-8'), server_name)
+        except (OSError, ValueError, UnicodeError):
+            unreadable = True
+    evidence = {'dsh_on_path': binary is not None, 'home_exists': root.is_dir(),
+                'layers_checked': len(existing), 'row_found': found}
+    if found:
+        return make_check('deepseek_mcp', 'pass',
+                          'A Coopagents MCP row is present in a DeepSeek Harness patch layer.',
+                          'Restart dsh and verify the tools load in a real session; '
+                          'doctor cannot observe a live session.',
+                          evidence)
+    if unreadable:
+        return make_check('deepseek_mcp', 'unknown', 'A DeepSeek Harness patch layer could not be read.',
+                          'Inspect the patch layer; doctor did not change it.', evidence)
+    return make_check('deepseek_mcp', 'needs_user',
+                      'No Coopagents MCP row was found in the DeepSeek Harness patch layers.',
+                      'Merge the generated dsh-mcp-client row into a patch layer, then restart dsh.',
+                      evidence)
 
 
 def _skill_files(root):
@@ -376,39 +462,147 @@ def profile_checks(profile_path, *, tool=None, project_dir=None, cli=None, skill
     return aggregate(checks)
 
 
+def _read_hook_settings(path):
+    path = checked_path(path)
+    if path.stat().st_size > 1024 * 1024:
+        raise ValueError('Settings too large')
+    document = json.loads(path.read_text(encoding='utf-8'))
+    if not isinstance(document, dict):
+        raise ValueError('Settings are not a JSON object')
+    return document
+
+
 def wake_check(tool, profile_path, project_dir=None):
     """Inspect hook files only; never initialize wake state or grant native trust."""
-    if tool not in space_connect.TOOLS or not profile_path:
+    from .space_wake import (TOOLS as WAKE_TOOLS, _command_is_ours, _ours, hook_command,
+                             hook_process, normalize_tool as normalize_wake_tool, settings_path)
+    tool = normalize_wake_tool(tool) if isinstance(tool, str) else tool
+    if tool not in WAKE_TOOLS or not profile_path:
         return make_check('wake_up', 'skipped', 'Wake-up is optional; no profile and tool were selected.')
-    from .space_wake import hook_command, settings_path, _ours
-    try:
-        expected = hook_command(profile_path, tool)
-        user_root = Path(os.environ.get('CODEX_HOME') or Path.home()/'.codex') if tool == 'codex' else Path(
-            os.environ.get('CLAUDE_CONFIG_DIR') or Path.home()/'.claude')
-        paths = [settings_path(tool, 'project', project_dir),
-                 user_root / ('hooks.json' if tool == 'codex' else 'settings.json')]
+
+    def scan_nested(document, expected, require_async):
+        # Claude/Codex: hooks live under hooks.{event}[].hooks[].
+        hooks = document.get('hooks')
+        if hooks is None:
+            return False, set()
+        if not isinstance(hooks, dict):
+            raise ValueError('Hook settings must be an object')
         found, matched = False, set()
-        for path in dict.fromkeys(paths):
-            if not path.exists():
+        for event, groups in hooks.items():
+            if not isinstance(groups, list):
                 continue
-            path = checked_path(path)
-            if path.stat().st_size > 1024 * 1024:
-                raise ValueError('Settings too large')
-            document = json.loads(path.read_text(encoding='utf-8'))
-            for event, groups in document.get('hooks', {}).items():
-                for group in groups:
-                    found = found or _ours(group)
-                    if any(h.get('command') == expected and h.get('type') == 'command'
-                           and (tool == 'codex' or h.get('asyncRewake') is True)
-                           for h in group.get('hooks', [])):
-                        matched.add(event)
-        configured = {'Stop'}.issubset(matched) if tool == 'codex' else {'Stop', 'SessionStart'}.issubset(matched)
+            for group in groups:
+                if not isinstance(group, dict):
+                    continue
+                found = found or _ours(group)
+                if any(isinstance(hook, dict) and hook.get('command') == expected
+                       and hook.get('type') == 'command'
+                       and (not require_async or hook.get('asyncRewake') is True)
+                       for hook in group.get('hooks', [])):
+                    matched.add(event)
+        return found, matched
+
+    def scan_cursor(document, expected):
+        # Cursor: hooks.json holds flat per-event command definitions.
+        hooks = document.get('hooks')
+        if hooks is None:
+            return False, set()
+        if not isinstance(hooks, dict):
+            raise ValueError('Cursor hooks configuration must be an object')
+        found, matched = False, set()
+        for event, definitions in hooks.items():
+            if not isinstance(definitions, list):
+                continue
+            for definition in definitions:
+                if not isinstance(definition, dict):
+                    continue
+                command = definition.get('command', '')
+                found = found or _command_is_ours(command)
+                if command == expected:
+                    matched.add(event)
+        return found, matched
+
+    def scan_zcode(document, expected_command, expected_args):
+        # ZCode: hooks live under hooks.events, as process hooks (argv, no shell).
+        hooks = document.get('hooks')
+        if hooks is None:
+            return False, set(), None
+        if not isinstance(hooks, dict):
+            raise ValueError('ZCode hooks configuration must be an object')
+        events = hooks.get('events')
+        if events is None:
+            return False, set(), hooks.get('enabled')
+        if not isinstance(events, dict):
+            raise ValueError('ZCode hook events must be an object')
+        found, matched = False, set()
+        for event, groups in events.items():
+            if not isinstance(groups, list):
+                continue
+            for group in groups:
+                if not isinstance(group, dict):
+                    continue
+                found = found or _ours(group)
+                if any(isinstance(hook, dict) and hook.get('command') == expected_command
+                       and hook.get('args') == expected_args
+                       for hook in group.get('hooks', [])):
+                    matched.add(event)
+        return found, matched, hooks.get('enabled')
+
+    try:
+        found, matched = False, set()
+        hooks_enabled = None
+        if tool == 'cursor':
+            expected = hook_command(profile_path, tool)
+            paths = [settings_path(tool, 'project', project_dir), settings_path(tool, 'user')]
+            for path in dict.fromkeys(paths):
+                if not path.exists():
+                    continue
+                partial_found, partial_matched = scan_cursor(_read_hook_settings(path), expected)
+                found, matched = found or partial_found, matched | partial_matched
+            required = {'sessionStart', 'stop'}
+            configured = required.issubset(matched)
+        elif tool == 'zcode':
+            # ZCode ignores project-level hooks, so only the user config runs them.
+            expected_command, expected_args = hook_process(profile_path, tool)
+            path = settings_path(tool, 'user')
+            if path.exists():
+                found, matched, hooks_enabled = scan_zcode(_read_hook_settings(path),
+                                                           expected_command, expected_args)
+            required = {'SessionStart', 'Stop'}
+            configured = required.issubset(matched) and hooks_enabled is True
+        else:
+            expected = hook_command(profile_path, tool)
+            user_root = Path(os.environ.get('CODEX_HOME') or Path.home() / '.codex') if tool == 'codex' else Path(
+                os.environ.get('CLAUDE_CONFIG_DIR') or Path.home() / '.claude')
+            paths = [settings_path(tool, 'project', project_dir),
+                     user_root / ('hooks.json' if tool == 'codex' else 'settings.json')]
+            for path in dict.fromkeys(paths):
+                if not path.exists():
+                    continue
+                partial_found, partial_matched = scan_nested(
+                    _read_hook_settings(path), expected, require_async=(tool != 'codex'))
+                found, matched = found or partial_found, matched | partial_matched
+            required = {'Stop'} if tool == 'codex' else {'Stop', 'SessionStart'}
+            configured = required.issubset(matched)
         if configured:
-            return make_check('wake_up', 'needs_user' if tool == 'codex' else 'pass',
+            if tool == 'claude':
+                status, next_step = 'pass', 'Verify wake-up separately in a real open session.'
+            elif tool == 'codex':
+                status, next_step = 'needs_user', 'Review the hook in /hooks; doctor cannot observe native trust.'
+            else:
+                status, next_step = ('needs_user',
+                                     'Verify wake-up separately in a real open session; '
+                                     'doctor cannot observe native trust or hook execution.')
+            evidence = {'configured': True, 'trusted': 'unknown', 'execution': 'unknown'}
+            if tool == 'zcode':
+                evidence['hooks_enabled'] = True
+            return make_check('wake_up', status,
                               'Matching wake hooks are configured; execution has not been verified.',
-                              'Review the hook in /hooks; doctor cannot observe native trust.' if tool == 'codex'
-                              else 'Verify wake-up separately in a real open session.',
-                              {'configured': True, 'trusted': 'unknown', 'execution': 'unknown'})
+                              next_step, evidence)
+        if tool == 'zcode' and required.issubset(matched):
+            return make_check('wake_up', 'unknown', 'Wake hooks are configured but ZCode hooks are disabled.',
+                              'Set hooks.enabled in the ZCode user config, or reinstall wake-up.',
+                              {'configured': False, 'hooks_enabled': False})
         return make_check('wake_up', 'unknown' if found else 'skipped',
                           'Other or partial Coopagents hooks exist.' if found else 'Wake-up is not configured in the inspected files.',
                           'Ask to enable wake-up only if wanted; existing hooks were not changed.',
@@ -420,6 +614,7 @@ def wake_check(tool, profile_path, project_dir=None):
 
 def run(*, profile_path=None, tool=None, project_dir=None, cli=None, skills=None, name=None):
     """Run local checks and, when supplied, profile/network checks."""
+    tool = space_connect.normalize_tool(tool)
     local = local_checks(tool=tool, profile_path=profile_path, project_dir=project_dir,
                          cli=cli, skills=skills, name=name)
     checks = local['checks']
@@ -439,11 +634,15 @@ def run(*, profile_path=None, tool=None, project_dir=None, cli=None, skills=None
                        'Run doctor again after connecting the profile.'),
             make_check('wake_up', 'skipped', 'Wake-up is optional and was not changed.'),
         ])
+    checks.append(harness_cli_check())
+    checks.append(deepseek_mcp_check())
     result = aggregate(checks)
     if profile_path:
         selected = next(c for c in checks if c['id'] == 'native_tool')['evidence'].get('tool')
         checks = [c for c in checks if c['id'] != 'wake_up']
-        checks.append(wake_check(selected, profile_path, project_dir))
+        # Tools without a native bridge (cursor, zcode) never resolve as the
+        # selected tool, but their wake hooks are still inspectable by name.
+        checks.append(wake_check(selected or tool, profile_path, project_dir))
         result = aggregate(checks)
     result['connections'] = local['connections']
     if not profile_path and result['overall'] == 'ready':

@@ -51,6 +51,45 @@ class Connect(unittest.TestCase):
                     self.assertEqual(result['discovery']['startup_timeout_sec'], 120)
                     self.assertIs(result['discovery']['required'], True)
 
+    def test_codex_desktop_alias_resolves_and_connects_as_codex(self):
+        self.assertEqual(space_connect.normalize_tool('codex-desktop'), 'codex')
+        self.assertEqual(space_connect.normalize_tool('codex'), 'codex')
+        self.assertIsNone(space_connect.normalize_tool(None))
+        self.assertEqual(space_connect.resolve_tool('codex-desktop'), 'codex')
+        with patch.dict(os.environ, {'CODEX_THREAD_ID': 'x'}):
+            self.assertEqual(space_connect.resolve_tool('codex-desktop'), 'codex')
+        with patch.dict(os.environ, {'CLAUDECODE': '1'}):
+            with self.assertRaises(ConnectError):
+                space_connect.resolve_tool('codex-desktop')
+        self.assertEqual(space_connect.skills_root('codex-desktop'), space_connect.skills_root('codex'))
+        self.state = self.directory / 'desktop-state.json'
+        result = self.run_connect('codex-desktop', env={'FAKE_TOOL': 'codex'})
+        self.assertEqual((result['config'], result['verified']), ('added', True))
+        self.assertIn('new Codex session', result['next'])
+        self.assertEqual(result['discovery']['startup_timeout_sec'], 120)
+
+    def test_registered_spaces_alias_reads_codex_home(self):
+        home = self.directory / 'codex-home'
+        home.mkdir(parents=True, exist_ok=True)
+        args = ['-m', 'coopagents.space_bridge', '--profile', str(self.profile)]
+        (home / 'config.toml').write_text(
+            '[mcp_servers.coopagents_x]\ncommand = %s\nargs = %s\n' % (json.dumps(sys.executable), json.dumps(args)),
+            encoding='utf-8')
+        expected = [{'server': 'coopagents_x', 'python': sys.executable, 'profile': str(self.profile)}]
+        self.assertEqual(space_connect.registered_spaces('codex-desktop'), expected)
+        self.assertEqual(space_connect.registered_spaces('codex'), expected)
+
+    def test_codex_connect_creates_a_missing_codex_home_before_probing(self):
+        # Regression: real codex fails `mcp get` when CODEX_HOME does not
+        # exist, and connect used to surface that as a misleading
+        # "failed to read its configuration" error.
+        home = self.directory / 'missing-codex-home'
+        self.assertFalse(home.exists())
+        with patch.dict(os.environ, {'CODEX_HOME': str(home)}):
+            result = self.run_connect('codex', env={'FAKE_REQUIRE_CODEX_HOME': '1'})
+        self.assertEqual((result['config'], result['verified']), ('added', True))
+        self.assertTrue(home.is_dir())
+
     def test_rerun_is_idempotent_and_skill_stays_present(self):
         first = self.run_connect('claude')
         second = self.run_connect('claude')

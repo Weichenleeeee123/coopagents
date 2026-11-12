@@ -211,6 +211,15 @@ class LocalChecksTests(DoctorTestCase):
         self.assertEqual(result['status'], 'needs_user')
         candidates.assert_not_called()
 
+    def test_codex_desktop_alias_reports_codex(self):
+        from subprocess import CompletedProcess
+        with patch.object(onboarding_doctor.space_connect, 'cli_candidates', return_value=[['good']]), \
+                patch.object(onboarding_doctor.space_connect, '_run',
+                             return_value=CompletedProcess([], 0, 'codex 1.2.3', '')):
+            result = onboarding_doctor.tool_check('codex-desktop')
+        self.assertEqual(result['status'], 'pass')
+        self.assertEqual(result['evidence']['tool'], 'codex')
+
     def test_version_probe_falls_back_to_working_cli(self):
         from subprocess import CompletedProcess
         with patch.object(onboarding_doctor.space_connect, 'cli_candidates', return_value=[['bad'], ['good']]), \
@@ -317,6 +326,235 @@ class LocalChecksTests(DoctorTestCase):
                     patch.object(onboarding_doctor.secrets, 'token_urlsafe', return_value='fixed'):
                 result = onboarding_doctor.profile_checks(path)
         self.assertEqual(next(c for c in result['checks'] if c['id']=='challenge_round_trip')['status'], 'fail')
+
+
+class WakeCheckExtensionTests(DoctorTestCase):
+    def test_cursor_project_hooks_report_configured_without_writing(self):
+        from coopagents.space_wake import hook_config
+        with retained_directory() as directory:
+            repo = Path(directory)
+            hooks = repo / '.cursor' / 'hooks.json'
+            hooks.parent.mkdir()
+            profile = repo / 'profile.json'
+            hooks.write_text(json.dumps({'version': 1, 'hooks': hook_config(profile, 'cursor')}), encoding='utf-8')
+            before = hooks.read_bytes()
+            result = onboarding_doctor.wake_check('cursor', profile, repo)
+            self.assertEqual(hooks.read_bytes(), before)
+            self.assertFalse((repo / 'wake-state.sqlite3').exists())
+        self.assertEqual(result['status'], 'needs_user')
+        self.assertTrue(result['evidence']['configured'])
+        self.assertEqual(result['evidence']['execution'], 'unknown')
+
+    def test_cursor_user_hooks_report_configured(self):
+        from coopagents.space_wake import hook_config
+        with retained_directory() as directory:
+            repo = Path(directory)
+            home = repo / 'home'
+            hooks = home / '.cursor' / 'hooks.json'
+            hooks.parent.mkdir(parents=True)
+            profile = repo / 'profile.json'
+            hooks.write_text(json.dumps({'version': 1, 'hooks': hook_config(profile, 'cursor')}), encoding='utf-8')
+            with patch.dict('os.environ', {'HOME': str(home)}):
+                result = onboarding_doctor.wake_check('cursor', profile, repo)
+        self.assertEqual(result['status'], 'needs_user')
+        self.assertTrue(result['evidence']['configured'])
+
+    def test_cursor_partial_hooks_are_unknown_and_foreign_hooks_skipped(self):
+        from coopagents.space_wake import hook_config
+        with retained_directory() as directory:
+            repo = Path(directory)
+            hooks = repo / '.cursor' / 'hooks.json'
+            hooks.parent.mkdir()
+            profile = repo / 'profile.json'
+            config = hook_config(profile, 'cursor')
+            hooks.write_text(json.dumps({'version': 1, 'hooks': {'stop': config['stop']}}), encoding='utf-8')
+            partial = onboarding_doctor.wake_check('cursor', profile, repo)
+            hooks.write_text(json.dumps({'version': 1, 'hooks': {'stop': [{'command': 'echo hi'}]}}), encoding='utf-8')
+            foreign = onboarding_doctor.wake_check('cursor', profile, repo)
+        self.assertEqual(partial['status'], 'unknown')
+        self.assertFalse(partial['evidence']['configured'])
+        self.assertEqual(foreign['status'], 'skipped')
+
+    def test_cursor_malformed_hooks_are_unknown(self):
+        with retained_directory() as directory:
+            repo = Path(directory)
+            hooks = repo / '.cursor' / 'hooks.json'
+            hooks.parent.mkdir()
+            hooks.write_text('{"hooks": "nope"}', encoding='utf-8')
+            result = onboarding_doctor.wake_check('cursor', repo / 'profile.json', repo)
+        self.assertEqual(result['status'], 'unknown')
+
+    def test_zcode_user_hooks_report_configured_without_writing(self):
+        from coopagents.space_wake import hook_config, merge_zcode_hooks
+        with retained_directory() as directory:
+            repo = Path(directory)
+            home = repo / 'home'
+            config = home / '.zcode' / 'cli' / 'config.json'
+            config.parent.mkdir(parents=True)
+            profile = repo / 'profile.json'
+            config.write_text(json.dumps(merge_zcode_hooks({}, hook_config(profile, 'zcode'))), encoding='utf-8')
+            before = config.read_bytes()
+            with patch.dict('os.environ', {'HOME': str(home)}):
+                result = onboarding_doctor.wake_check('zcode', profile, repo)
+            self.assertEqual(config.read_bytes(), before)
+        self.assertEqual(result['status'], 'needs_user')
+        self.assertTrue(result['evidence']['configured'])
+        self.assertTrue(result['evidence']['hooks_enabled'])
+
+    def test_zcode_hooks_present_but_disabled_are_unknown(self):
+        from coopagents.space_wake import hook_config, merge_zcode_hooks
+        with retained_directory() as directory:
+            repo = Path(directory)
+            home = repo / 'home'
+            config = home / '.zcode' / 'cli' / 'config.json'
+            config.parent.mkdir(parents=True)
+            profile = repo / 'profile.json'
+            document = merge_zcode_hooks({}, hook_config(profile, 'zcode'))
+            document['hooks']['enabled'] = False
+            config.write_text(json.dumps(document), encoding='utf-8')
+            with patch.dict('os.environ', {'HOME': str(home)}):
+                result = onboarding_doctor.wake_check('zcode', profile, repo)
+        self.assertEqual(result['status'], 'unknown')
+        self.assertFalse(result['evidence']['configured'])
+        self.assertFalse(result['evidence']['hooks_enabled'])
+
+    def test_zcode_project_hooks_are_ignored_and_missing_config_is_skipped(self):
+        from coopagents.space_wake import hook_config, merge_zcode_hooks
+        with retained_directory() as directory:
+            repo = Path(directory)
+            home = repo / 'home'
+            home.mkdir()
+            project_config = repo / '.zcode' / 'config.json'
+            project_config.parent.mkdir()
+            profile = repo / 'profile.json'
+            project_config.write_text(json.dumps(merge_zcode_hooks({}, hook_config(profile, 'zcode'))), encoding='utf-8')
+            with patch.dict('os.environ', {'HOME': str(home)}):
+                result = onboarding_doctor.wake_check('zcode', profile, repo)
+        self.assertEqual(result['status'], 'skipped')
+
+    def test_codex_desktop_alias_inspects_codex_hooks(self):
+        from coopagents.space_wake import hook_config
+        with retained_directory() as directory:
+            repo = Path(directory)
+            settings = repo / '.codex' / 'hooks.json'
+            settings.parent.mkdir()
+            profile = repo / 'profile.json'
+            settings.write_text(json.dumps({'hooks': hook_config(profile, 'codex')}), encoding='utf-8')
+            result = onboarding_doctor.wake_check('codex-desktop', profile, repo)
+        self.assertEqual(result['status'], 'needs_user')
+        self.assertTrue(result['evidence']['configured'])
+
+    def test_run_reports_cursor_wake_hooks_for_a_requested_tool(self):
+        from coopagents.space_wake import hook_config
+        with retained_directory() as directory:
+            repo = Path(directory)
+            hooks = repo / '.cursor' / 'hooks.json'
+            hooks.parent.mkdir()
+            profile = repo / 'profile.json'
+            hooks.write_text(json.dumps({'version': 1, 'hooks': hook_config(profile, 'cursor')}), encoding='utf-8')
+            result = onboarding_doctor.run(profile_path=str(profile), tool='cursor', project_dir=str(repo))
+        check = next(item for item in result['checks'] if item['id'] == 'wake_up')
+        self.assertEqual(check['status'], 'needs_user')
+        self.assertTrue(check['evidence']['configured'])
+
+    def test_unknown_tool_wake_check_is_skipped(self):
+        self.assertEqual(onboarding_doctor.wake_check('pi', '/tmp/profile.json')['status'], 'skipped')
+        self.assertEqual(onboarding_doctor.wake_check('cursor', None)['status'], 'skipped')
+
+
+class HarnessCliCheckTests(DoctorTestCase):
+    def test_inventory_reports_presence_and_versions(self):
+        from subprocess import CompletedProcess
+
+        def fake_which(binary):
+            return {'claude': '/usr/bin/claude', 'kimi': '/home/u/.kimi-code/bin/kimi'}.get(binary)
+
+        def fake_run(argv, **kw):
+            versions = {'/usr/bin/claude': 'claude 1.2.3\n', '/home/u/.kimi-code/bin/kimi': 'kimi 2.4.1\n'}
+            return CompletedProcess(argv, 0, stdout=versions.get(argv[0], ''), stderr='')
+
+        with patch.object(onboarding_doctor.shutil, 'which', side_effect=fake_which), \
+                patch.object(onboarding_doctor.subprocess, 'run', side_effect=fake_run):
+            check = onboarding_doctor.harness_cli_check()
+        self.assertEqual(check['id'], 'harness_clis')
+        self.assertEqual(check['status'], 'pass')
+        evidence = check['evidence']['harnesses']
+        self.assertEqual(set(evidence), {'claude-code', 'codex', 'deepseek', 'cursor', 'opencode', 'pi', 'kimi-code', 'zcode'})
+        self.assertEqual(evidence['claude-code'], {'present': True, 'path': '/usr/bin/claude', 'version': '1.2.3'})
+        self.assertEqual(evidence['kimi-code']['version'], '2.4.1')
+        self.assertEqual(evidence['codex'], {'present': False})
+        self.assertIn('claude-code', check['summary'])
+
+    def test_version_failures_stay_present_and_pass(self):
+        with patch.object(onboarding_doctor.shutil, 'which', return_value='/usr/bin/pi'), \
+                patch.object(onboarding_doctor.subprocess, 'run', side_effect=OSError('no exec')):
+            check = onboarding_doctor.harness_cli_check()
+        self.assertEqual(check['status'], 'pass')
+        self.assertTrue(all(info['present'] for info in check['evidence']['harnesses'].values()))
+        self.assertTrue(all(info['version'] == 'unknown' for info in check['evidence']['harnesses'].values()))
+
+    def test_run_includes_the_inventory_without_changing_overall(self):
+        result = onboarding_doctor.run(project_dir='/nonexistent-dir-for-doctor-test')
+        check = next(item for item in result['checks'] if item['id'] == 'harness_clis')
+        self.assertEqual(check['status'], 'pass')
+        self.assertEqual(result['overall'], 'blocked')
+
+
+class DeepseekMcpCheckTests(DoctorTestCase):
+    def test_absent_install_is_skipped(self):
+        with retained_directory() as directory:
+            home = Path(directory) / 'no-dsh'
+            with patch.object(onboarding_doctor.shutil, 'which', return_value=None):
+                check = onboarding_doctor.deepseek_mcp_check(home=str(home))
+        self.assertEqual(check['status'], 'skipped')
+        self.assertFalse(check['evidence']['dsh_on_path'])
+
+    def test_row_present_in_a_patch_layer_passes_without_quoting_contents(self):
+        from coopagents.deepseek_harness import mcp_client_row
+        with retained_directory() as directory:
+            home = Path(directory)
+            layer = home / 'cordis.patch.yml'
+            layer.write_text(mcp_client_row('https://team.example/mcp') + '# secret-shaped line: token hunter2\n',
+                             encoding='utf-8')
+            with patch.object(onboarding_doctor.shutil, 'which', return_value='/usr/bin/dsh'):
+                check = onboarding_doctor.deepseek_mcp_check(home=str(home))
+        self.assertEqual(check['status'], 'pass')
+        self.assertTrue(check['evidence']['row_found'])
+        self.assertNotIn('hunter2', json.dumps(check))
+
+    def test_home_without_a_row_needs_the_user(self):
+        with retained_directory() as directory:
+            home = Path(directory)
+            (home / 'cordis.patch.yml').write_text('- insert:\n  - id: "other"\n', encoding='utf-8')
+            with patch.object(onboarding_doctor.shutil, 'which', return_value=None):
+                check = onboarding_doctor.deepseek_mcp_check(home=str(home))
+        self.assertEqual(check['status'], 'needs_user')
+        self.assertFalse(check['evidence']['row_found'])
+
+    def test_profile_layer_is_checked_before_the_home_layer(self):
+        from coopagents.deepseek_harness import mcp_client_row
+        with retained_directory() as directory:
+            home = Path(directory)
+            profile_layer = home / 'profiles' / 'web' / 'cordis.patch.yml'
+            profile_layer.parent.mkdir(parents=True)
+            profile_layer.write_text(mcp_client_row('https://team.example/mcp'), encoding='utf-8')
+            with patch.object(onboarding_doctor.shutil, 'which', return_value=None):
+                check = onboarding_doctor.deepseek_mcp_check(profile='web', home=str(home))
+        self.assertEqual(check['status'], 'pass')
+
+    def test_oversized_layer_is_unknown(self):
+        with retained_directory() as directory:
+            home = Path(directory)
+            layer = home / 'cordis.patch.yml'
+            layer.write_text('# padding\n' * (1024 * 1024 // 10 + 10), encoding='utf-8')
+            with patch.object(onboarding_doctor.shutil, 'which', return_value=None):
+                check = onboarding_doctor.deepseek_mcp_check(home=str(home))
+        self.assertEqual(check['status'], 'unknown')
+
+    def test_run_includes_the_deepseek_check(self):
+        result = onboarding_doctor.run(project_dir='/nonexistent-dir-for-doctor-test')
+        check = next(item for item in result['checks'] if item['id'] == 'deepseek_mcp')
+        self.assertIn(check['status'], ('skipped', 'needs_user', 'pass', 'unknown'))
 
 
 if __name__ == '__main__':

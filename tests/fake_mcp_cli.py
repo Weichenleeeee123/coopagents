@@ -15,6 +15,12 @@ if os.environ.get('FAKE_BROKEN') or args[:1] == ['--broken']:
     sys.exit(1)
 if args[:2] == ['mcp', 'get']:
     name = args[2]
+    if tool == 'codex' and os.environ.get('FAKE_REQUIRE_CODEX_HOME') \
+            and not Path(os.environ.get('CODEX_HOME', '')).is_dir():
+        # Real codex refuses to read its configuration when CODEX_HOME
+        # does not exist yet; connect must create it before probing.
+        print('Error: failed to resolve CODEX_HOME: the path does not exist', file=sys.stderr)
+        sys.exit(1)
     if name not in servers:
         if tool == 'codex':
             print("Error: No MCP server named '%s' found." % name, file=sys.stderr)

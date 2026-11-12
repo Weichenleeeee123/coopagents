@@ -11,6 +11,16 @@ import time
 from .spaces import checked_path, read_profile
 
 TOOLS = ('claude', 'codex')
+# The Codex desktop app shares CODEX_HOME with the Codex CLI: the same
+# config.toml, hooks, MCP settings and skills. It is set up exactly like
+# the CLI, so codex-desktop is an alias for codex everywhere a native tool
+# is named. Auto-detection from inside a desktop session is unverified;
+# pass --tool explicitly there.
+TOOL_ALIASES = {'codex-desktop': 'codex'}
+
+
+def normalize_tool(tool):
+    return TOOL_ALIASES.get(tool, tool)
 NAME_PATTERN = re.compile(r'^[A-Za-z0-9_-]{1,64}$')
 SKILL_NAME = 'coopagents-space'
 
@@ -32,6 +42,7 @@ def _bridge_entry(name, command, args):
 
 def registered_spaces(tool, project_dir=None):
     """Read the native configuration (read-only, no processes) for registered Coopagents bridges."""
+    tool = normalize_tool(tool)
     entries = []
     if tool == 'codex':
         import tomllib
@@ -78,6 +89,7 @@ def calling_agent(environ=None):
 
 def resolve_tool(tool, environ=None):
     """Each agent sets up only itself: refuse a tool that differs from the agent running the command."""
+    tool = normalize_tool(tool)
     caller = calling_agent(environ)
     if tool and caller and tool != caller:
         raise ConnectError('This command runs inside %s, but --tool %s sets up %s. Each agent sets up only itself: '
@@ -115,6 +127,7 @@ def _running_paths(name):
 
 def cli_candidates(tool, cli=None):
     """Explicit path only, or else every likely location in order; the first that works is used."""
+    tool = normalize_tool(tool)
     if cli:
         return [list(cli) if isinstance(cli, (list, tuple)) else [str(cli)]]
     home, appdata = Path.home(), Path(os.environ.get('APPDATA') or Path.home())
@@ -254,7 +267,7 @@ def configure_discovery_budget(name, command):
 
 
 def skills_root(tool):
-    if tool == 'codex':
+    if normalize_tool(tool) == 'codex':
         return Path(os.environ.get('CODEX_HOME') or Path.home() / '.codex') / 'skills'
     return Path(os.environ.get('CLAUDE_CONFIG_DIR') or Path.home() / '.claude') / 'skills'
 
@@ -272,6 +285,7 @@ def _same_text(left, right):
 
 def inspect_configuration(tool, profile_path, name=None, cli=None, skills=None):
     """Read the native entry and installed Skill without changing either one."""
+    tool = normalize_tool(tool)
     if tool not in TOOLS:
         raise ConnectError('Tool must be claude or codex')
     path = checked_path(profile_path).resolve()
@@ -357,6 +371,7 @@ def check_own_environment():
 
 
 def connect(tool, profile_path, name=None, cli=None, skills=None, wake=False, project_dir=None):
+    tool = normalize_tool(tool)
     if tool not in TOOLS:
         raise ConnectError('Tool must be claude or codex')
     check_own_environment()
@@ -366,6 +381,16 @@ def connect(tool, profile_path, name=None, cli=None, skills=None, wake=False, pr
     if not NAME_PATTERN.match(name):
         raise ConnectError('Server names may only contain letters, digits, - and _')
     command = bridge_command(path)
+    if tool == 'codex':
+        # Codex refuses to read its configuration when CODEX_HOME does not
+        # exist yet; create it so the probe below reads an empty config
+        # instead of failing with a misleading error.
+        codex_home = Path(os.environ.get('CODEX_HOME') or Path.home() / '.codex')
+        try:
+            codex_home.mkdir(parents=True, exist_ok=True)
+        except OSError as error:
+            raise ConnectError('Could not create the Codex configuration directory %s: %s'
+                               % (codex_home, error.strerror or error)) from error
     failure = None
     for cli in cli_candidates(tool, cli):
         try:

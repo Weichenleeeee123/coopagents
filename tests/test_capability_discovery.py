@@ -22,7 +22,7 @@ class CapabilityDiscoveryTests(unittest.TestCase):
             capabilities={'mcp': 'supported', 'native_hook': 'unknown'})
         result = self.service.read_capabilities(self.owner['web_token'])
         self.assertEqual({row['harness'] for row in result['harnesses']},
-                         {'claude-code', 'codex', 'cursor', 'opencode', 'pi', 'kimi-code', 'zcode'})
+                         {'claude-code', 'codex', 'deepseek', 'cursor', 'opencode', 'pi', 'kimi-code', 'zcode'})
         member = next(row for row in result['members'] if row['member_id'] == self.member['member_id'])
         self.assertEqual(len(member['agents']), 1)
         agent = member['agents'][0]
@@ -41,8 +41,21 @@ class CapabilityDiscoveryTests(unittest.TestCase):
         self.assertEqual(cursor['capabilities']['mcp'], 'unknown')
         self.assertEqual(cursor['configuration']['mcp'], 'supported')
         self.assertEqual(cursor['capabilities']['native_hook'], 'unknown')
-        self.assertEqual(pi['capabilities']['native_hook'], 'unsupported')
+        # Pi ships an in-process extension file, so its hook cell is unknown
+        # (implemented, live acceptance unverified), not unsupported; idle
+        # wake stays unsupported because end-of-turn hooks are not idle wake.
+        self.assertEqual(pi['capabilities']['native_hook'], 'unknown')
+        self.assertEqual(pi['capabilities']['idle_wake'], 'unsupported')
         self.assertIn(cursor['evidence']['source'], ('adapter_contract', 'unverified'))
+
+    def test_deepseek_sits_third_with_unverified_cells(self):
+        result = self.service.read_capabilities(self.owner['agent_token'])
+        names = [row['harness'] for row in result['harnesses']]
+        self.assertEqual(names[:3], ['claude-code', 'codex', 'deepseek'])
+        deepseek = next(row for row in result['harnesses'] if row['harness'] == 'deepseek')
+        self.assertEqual(deepseek['name'], 'DeepSeek')
+        self.assertEqual(set(deepseek['capabilities'].values()), {'unknown'})
+        self.assertEqual(deepseek['evidence']['source'], 'unverified')
 
     def test_capability_payload_is_bounded_and_old_session_shape_is_preserved(self):
         row = self.service.activity.register_session(
