@@ -34,6 +34,12 @@ CURSOR_EVENTS = {'sessionStart': 'SessionStart', 'postToolUse': 'PostToolUse',
 # matcher, command and timeout fields — extras fail the config load.
 KIMI_HOOK_TIMEOUT = 10
 KIMI_HOOK_MARKER = 'coopagents checkpoint hook'
+# OpenCode and Pi have no shell-hook surface; their checkpoint code runs
+# in-process. The pointers below name the generator for each.
+PLUGIN_SURFACES = {
+    'opencode': 'OpenCode has no shell-hook surface; it uses in-process plugins. Generate one with: python -m coopagents.harness_extensions --harness opencode --export <file>',
+    'pi': 'Pi has no shell-hook surface; it uses in-process extensions. Generate one with: python -m coopagents.harness_extensions --harness pi --export <file>',
+}
 
 
 def bounded_call(operation, seconds):
@@ -169,6 +175,8 @@ def config_fragment(tool):
     if tool == 'kimi-code':
         raise ValidationError('Kimi Code hooks are [[hooks]] TOML in ~/.kimi-code/config.toml; '
                               'use --config-preview or --export to generate that fragment')
+    if tool in PLUGIN_SURFACES:
+        raise ValidationError(PLUGIN_SURFACES[tool])
     if tool == 'cursor':
         # Cursor hooks.json: version 1, flat per-event command definitions.
         return {'version': 1, 'hooks': {event: [{'command': hook_command(tool), 'timeout': 10}]
@@ -337,7 +345,12 @@ def main(argv=None):
         if not .05<=args.timeout<=3:
             raise ValidationError('Timeout must be between 0.05 and 3 seconds')
         if args.config_preview or args.export:
-            fragment = config_preview_text(args.tool).rstrip('\n')
+            try:
+                fragment = config_preview_text(args.tool).rstrip('\n')
+            except ValidationError as error:
+                # A fixed pointer to the right generator, never payload text.
+                print(str(error), file=sys.stderr)
+                return 1
             if args.export:
                 with Path(args.export).open('x', encoding='utf-8') as output:
                     output.write(fragment+'\n')

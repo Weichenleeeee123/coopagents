@@ -415,6 +415,19 @@ class HookTests(unittest.TestCase):
         self.assertEqual((checkpoint['tool'], checkpoint['session_key'], checkpoint['event']),
                          ('kimi-code', 'kimi-session', 'PostToolUse'))
 
+    def test_plugin_harnesses_point_at_the_extension_generator(self):
+        from coopagents.checkpoint_hook import PLUGIN_SURFACES, config_fragment
+        from coopagents.errors import ValidationError
+        for tool in ('opencode', 'pi'):
+            with self.assertRaises(ValidationError) as caught:
+                config_fragment(tool)
+            self.assertEqual(str(caught.exception), PLUGIN_SURFACES[tool])
+            result = subprocess.run([sys.executable, '-m', 'coopagents.checkpoint_hook', '--tool', tool,
+                                     '--config-preview'], text=True, capture_output=True, env=self.env, timeout=15)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertEqual(result.stdout, '')
+            self.assertIn('harness_extensions', result.stderr)
+
     def test_first_setup_guide_commands_ignore_repository_module_shadowing(self):
         (self.root/'coopagents.py').write_text("print('repository-module-shadowed-hook')",encoding='utf-8')
         guide=Path('docs/collaboration-checkpoints.md').read_text(encoding='utf-8')
