@@ -381,6 +381,16 @@ def connect(tool, profile_path, name=None, cli=None, skills=None, wake=False, pr
     if not NAME_PATTERN.match(name):
         raise ConnectError('Server names may only contain letters, digits, - and _')
     command = bridge_command(path)
+    if tool == 'codex':
+        # Codex refuses to read its configuration when CODEX_HOME does not
+        # exist yet; create it so the probe below reads an empty config
+        # instead of failing with a misleading error.
+        codex_home = Path(os.environ.get('CODEX_HOME') or Path.home() / '.codex')
+        try:
+            codex_home.mkdir(parents=True, exist_ok=True)
+        except OSError as error:
+            raise ConnectError('Could not create the Codex configuration directory %s: %s'
+                               % (codex_home, error.strerror or error)) from error
     failure = None
     for cli in cli_candidates(tool, cli):
         try:

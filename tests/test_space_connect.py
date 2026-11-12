@@ -79,6 +79,17 @@ class Connect(unittest.TestCase):
         self.assertEqual(space_connect.registered_spaces('codex-desktop'), expected)
         self.assertEqual(space_connect.registered_spaces('codex'), expected)
 
+    def test_codex_connect_creates_a_missing_codex_home_before_probing(self):
+        # Regression: real codex fails `mcp get` when CODEX_HOME does not
+        # exist, and connect used to surface that as a misleading
+        # "failed to read its configuration" error.
+        home = self.directory / 'missing-codex-home'
+        self.assertFalse(home.exists())
+        with patch.dict(os.environ, {'CODEX_HOME': str(home)}):
+            result = self.run_connect('codex', env={'FAKE_REQUIRE_CODEX_HOME': '1'})
+        self.assertEqual((result['config'], result['verified']), ('added', True))
+        self.assertTrue(home.is_dir())
+
     def test_rerun_is_idempotent_and_skill_stays_present(self):
         first = self.run_connect('claude')
         second = self.run_connect('claude')
