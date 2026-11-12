@@ -62,7 +62,7 @@ Every helper and tool states the specific reason when it fails (a missing folder
 
 For Codex, the helper also marks this verified connection as required and gives discovery at least 120 seconds, retaining a larger existing timeout. This prevents a slow MCP startup from being omitted from the first turn's tools. It backs up the native configuration and preserves unrelated settings. Users upgrading an existing connection should run connect again; doctor reports an outdated discovery setting without changing it. A required connection that cannot start will block native startup until the problem is corrected or the user disables that connection in their native settings.
 
-The current session cannot load the new server. Tell the user to start a new session; there, call `whoami`, compare room and member with the profile, then `read_team` and `checkpoint` with a fresh session key and the real detected tool/event. Saved configuration and verification inside the user's native agent are distinct; report which one you have.
+The current session cannot load the new server. Tell the user to start a new session; there, call `whoami`, compare room and member with the profile, then `read_team` and `checkpoint` with a fresh session key and the real detected tool/event (protocol.md, Checkpoint calls, lists the accepted values). Saved configuration and verification inside the user's native agent are distinct; report which one you have.
 
 ## Events and human operations
 

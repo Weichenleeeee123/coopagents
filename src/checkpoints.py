@@ -42,8 +42,14 @@ class CheckpointStore:
 
     def checkpoint(self, token, session_key, tool, event, task_id=None, ownership_epoch=None):
         session_key = _text(session_key, 'Session key', 200)
-        if tool not in TOOLS or event not in (*HOOK_EVENTS, *TOOL_EVENTS, 'manual'):
-            raise ValidationError('Unsupported checkpoint tool or event')
+        if tool not in TOOLS:
+            raise ValidationError(
+                f'Unsupported checkpoint tool {tool!r}; '
+                f'supported tools: {", ".join(TOOLS)}')
+        if event not in (*HOOK_EVENTS, *TOOL_EVENTS, 'manual'):
+            raise ValidationError(
+                f'Unsupported checkpoint event {event!r}; supported events: '
+                f'{", ".join((*HOOK_EVENTS, *TOOL_EVENTS, "manual"))}')
         if task_id is not None:
             task_id = _task_id(task_id)
         source = 'hook' if event in HOOK_EVENTS else 'manual' if event == 'manual' else 'tool'
