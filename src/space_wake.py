@@ -855,6 +855,13 @@ def main(argv=None):
                                      'pass --profile with the space profile path' % label)
             profile = args.profile or find_profile(args.tool, args.project_dir)
             config = hook_config(profile, args.tool, args.standby_limit)
+            if args.tool == 'zcode':
+                # ZCode's config.json schema is strict: the hooks value must
+                # be {"enabled": true, "events": {...}}. The raw events map
+                # is the plugin hooks-file shape; pasting it into config.json
+                # makes the loader discard the whole file. Show the merged
+                # section instead, exactly as install would write it.
+                config = merge_zcode_hooks({}, config)['hooks']
             result = {'hooks': config, 'settings': str(settings_path(args.tool, args.scope, args.project_dir))}
             if args.tool == 'cursor':
                 result = {'version': 1, **result}

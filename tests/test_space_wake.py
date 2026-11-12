@@ -469,7 +469,31 @@ class InstallTests(unittest.TestCase):
             self.assertEqual(code, 0)
             result = json.loads(out.getvalue())
             self.assertEqual(result['settings'], str(home / '.zcode' / 'cli' / 'config.json'))
-            self.assertIn('Stop', result['hooks'])
+            # Regression: the preview must emit the config.json hooks shape
+            # {"enabled": true, "events": {...}}, never the plugin-file
+            # events map — ZCode's strict schema rejects the latter and the
+            # loader then discards the whole config file.
+            self.assertEqual(sorted(result['hooks']), ['enabled', 'events'])
+            self.assertIs(result['hooks']['enabled'], True)
+            self.assertEqual(sorted(result['hooks']['events']), ['SessionStart', 'Stop'])
+
+    def test_zcode_preview_matches_what_install_writes_to_a_fresh_config(self):
+        from contextlib import redirect_stdout
+        from unittest.mock import patch
+        home = self.root / 'home3'
+        home.mkdir()
+        config = home / '.zcode' / 'cli' / 'config.json'
+        with patch.dict('os.environ', {'HOME': str(home), 'CLAUDECODE': '1'}):
+            out = io.StringIO()
+            with redirect_stdout(out):
+                code = space_wake.main(['preview', '--tool', 'zcode', '--scope', 'user',
+                                        '--profile', str(self.profile)])
+            self.assertEqual(code, 0)
+            preview_hooks = json.loads(out.getvalue())['hooks']
+            install(self.profile, 'zcode', scope='user')
+            installed = json.loads(config.read_text(encoding='utf-8'))
+            self.assertEqual(preview_hooks, installed['hooks'])
+            self.assertEqual(installed, merge_zcode_hooks({}, hook_config(self.profile, 'zcode')))
 
     def test_cursor_hook_config_uses_flat_definitions_with_stop_timeout(self):
         config = hook_config(self.profile, 'cursor', standby=400)
