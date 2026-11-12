@@ -37,7 +37,7 @@ KIMI_HOOK_MARKER = 'coopagents checkpoint hook'
 # OpenCode and Pi have no shell-hook surface; their checkpoint code runs
 # in-process. The pointers below name the generator for each.
 PLUGIN_SURFACES = {
-    'opencode': 'OpenCode has no shell-hook surface; it uses in-process plugins. Generate one with: python -m coopagents.harness_extensions --harness opencode --export <file>',
+    'opencode': 'OpenCode has no shell-hook surface; it uses in-process plugins. Generate one with: python -m coopagents.harness_extensions --harness opencode --export <file> (add --plugin-version v1 for OpenCode 1.x)',
     'pi': 'Pi has no shell-hook surface; it uses in-process extensions. Generate one with: python -m coopagents.harness_extensions --harness pi --export <file>',
 }
 
