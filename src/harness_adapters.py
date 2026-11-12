@@ -33,15 +33,15 @@ class HarnessSpec:
 
 SPECS = {
     'cursor': HarnessSpec('cursor', '.cursor/mcp.json', 'mcpServers', native_hook='unknown',
-                          notes='Project MCP configuration is supported; Cursor hooks are not verified here.'),
+                          notes='Project MCP configuration is supported; ${env:NAME} interpolation in url and headers is verified against the official Cursor MCP docs; Cursor hooks are not verified here.'),
     'opencode': HarnessSpec('opencode', 'opencode.json', 'opencode', native_hook='unknown',
                             notes='Local and remote MCP servers use the opencode mcp object.'),
     'pi': HarnessSpec('pi', '.pi/mcp.json', 'mcpServers', native_hook='unsupported',
-                      notes='Pi project MCP configuration is supported; extension lifecycle is not installed by this adapter.'),
+                      notes='Pi project MCP configuration is supported (Pi 0.99+ built-in MCP); entries use exposure direct so the tools are declared to the model, and project config loads only after workspace trust; extension lifecycle is not installed by this adapter.'),
     'kimi-code': HarnessSpec('kimi-code', '.kimi-code/mcp.json', 'mcpServers', native_hook='unsupported',
-                             notes='Kimi Code project MCP configuration is supported; ACP is not required for MCP.'),
+                             notes='Kimi Code project MCP configuration is supported; bearerTokenEnvVar and project autodiscovery are verified against the official Kimi Code MCP docs; project servers need workspace trust; ACP is not required for MCP.'),
     'zcode': HarnessSpec('zcode', '.zcode/config.json', 'zcode', native_hook='unsupported',
-                         notes='ZCode workspace config uses mcp.servers; project hooks are not claimed.'),
+                         notes='ZCode workspace config uses mcp.servers; config files do not expand ${env:}, so the bearer token belongs in user-scope config; project hooks are not claimed.'),
 }
 
 
@@ -102,19 +102,39 @@ class HarnessAdapter:
         args = _args(args)
         if self.spec.format == 'opencode':
             return {'type': 'local', 'command': [command, *args], 'enabled': True}
-        return {'command': command, 'args': args}
+        entry = {'command': command, 'args': args}
+        if self.spec.format == 'zcode':
+            entry = {'type': 'stdio', **entry}
+        if self.spec.harness == 'pi':
+            # Pi defaults MCP tools to codemode exposure (callable only from
+            # scripts, not declared to the model); direct declares them like
+            # built-in tools, which is what a collaboration server needs.
+            entry['exposure'] = 'direct'
+            entry['description'] = 'Coopagents team collaboration tools'
+        return entry
 
     def _remote_entry(self, url, token_env):
         url = _remote_url(url)
         token_env = _env_name(token_env)
         if self.spec.harness == 'kimi-code':
             return {'url': url, 'bearerTokenEnvVar': token_env}
-        placeholder = '${env:%s}' % token_env if self.spec.harness in ('cursor', 'zcode') else '${%s}' % token_env
+        if self.spec.harness == 'zcode':
+            # ZCode config files do not expand ${env:} or any other template:
+            # a placeholder would reach the server literally as the token.
+            # The entry therefore carries no Authorization header; the bearer
+            # token belongs in user-scope config under the same server name,
+            # which overrides this workspace entry.
+            return {'type': 'http', 'url': url, 'enabled': True}
+        placeholder = '${env:%s}' % token_env if self.spec.harness == 'cursor' else '${%s}' % token_env
         headers = {'Authorization': 'Bearer ' + placeholder}
         if self.spec.format == 'opencode':
             headers = {'Authorization': 'Bearer {env:%s}' % token_env}
             return {'type': 'remote', 'url': url, 'headers': headers, 'enabled': True}
-        return {'url': url, 'headers': headers}
+        entry = {'url': url, 'headers': headers}
+        if self.spec.harness == 'pi':
+            entry['exposure'] = 'direct'
+            entry['description'] = 'Coopagents team collaboration tools'
+        return entry
 
     def _container(self, document):
         document = deepcopy(document)
@@ -219,6 +239,10 @@ class HarnessAdapter:
         if service_url is not None:
             plan['entry'] = self._remote_entry(service_url, token_env)
             plan['transport'] = 'streamable_http'
+            if self.spec.harness == 'zcode':
+                plan['notes'] = (plan['notes'] + ' Add the bearer token in user-scope '
+                                 '~/.zcode/cli/config.json under the same server name: ZCode does not expand '
+                                 '${env:} in config files, and a user entry overrides this workspace entry.')
         else:
             plan['entry'] = None
             plan['transport'] = 'manual'

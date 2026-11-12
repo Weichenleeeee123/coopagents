@@ -97,12 +97,48 @@ class HarnessAdapterTests(unittest.TestCase):
                 self.assertEqual(entry['url'], 'https://team.example/mcp')
                 if name == 'kimi-code':
                     self.assertEqual(entry['bearerTokenEnvVar'], 'COOPAGENTS_AGENT_TOKEN')
-                elif name in ('cursor', 'zcode'):
+                elif name == 'zcode':
+                    # ZCode config files do not expand ${env:}; a placeholder
+                    # would reach the server literally, so no header is written.
+                    self.assertEqual(entry['type'], 'http')
+                    self.assertTrue(entry['enabled'])
+                    self.assertNotIn('headers', entry)
+                    self.assertNotIn('${env:', json.dumps(entry))
+                elif name == 'cursor':
                     self.assertIn('${env:COOPAGENTS_AGENT_TOKEN}', entry['headers']['Authorization'])
                 elif name == 'opencode':
                     self.assertEqual(entry['headers']['Authorization'], 'Bearer {env:COOPAGENTS_AGENT_TOKEN}')
                 else:
                     self.assertIn('${COOPAGENTS_AGENT_TOKEN}', entry['headers']['Authorization'])
+                    self.assertEqual(entry['exposure'], 'direct')
+                    self.assertIn('Coopagents', entry['description'])
+
+    def test_zcode_remote_plan_explains_user_scope_auth(self):
+        plan = adapter_for('zcode').plan(Path('.'), service_url='https://team.example/mcp')
+        self.assertNotIn('headers', plan['entry'])
+        self.assertIn('~/.zcode/cli/config.json', plan['notes'])
+        self.assertIn('does not expand', plan['notes'])
+
+    def test_zcode_stdio_entry_declares_its_transport(self):
+        entry = adapter_for('zcode').merge({}, 'coopagents', 'python', ['-m', 'coopagents.mcp_service'])
+        server = entry['mcp']['servers']['coopagents']
+        self.assertEqual(server, {'type': 'stdio', 'command': 'python', 'args': ['-m', 'coopagents.mcp_service']})
+
+    def test_pi_entries_declare_tools_directly_to_the_model(self):
+        # Pi's default codemode exposure hides MCP tools from the model; direct
+        # exposure declares them like built-in tools, for both transports.
+        stdio = adapter_for('pi').merge({}, 'coopagents', 'python', ['-m', 'coopagents.mcp_service'])
+        self.assertEqual(stdio['mcpServers']['coopagents']['exposure'], 'direct')
+        remote = adapter_for('pi').plan(Path('.'), service_url='https://team.example/mcp')
+        self.assertEqual(remote['entry']['exposure'], 'direct')
+
+    def test_kimi_and_cursor_notes_record_verified_interpolation(self):
+        kimi = adapter_for('kimi-code').capabilities(project_root=Path('.'))
+        self.assertIn('bearerTokenEnvVar', kimi['notes'])
+        self.assertIn('workspace trust', kimi['notes'])
+        cursor = adapter_for('cursor').capabilities(project_root=Path('.'))
+        self.assertIn('${env:NAME}', cursor['notes'])
+        self.assertIn('official Cursor MCP docs', cursor['notes'])
 
 
 if __name__ == '__main__':
