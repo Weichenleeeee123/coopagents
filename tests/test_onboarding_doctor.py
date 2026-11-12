@@ -479,7 +479,7 @@ class HarnessCliCheckTests(DoctorTestCase):
         self.assertEqual(check['id'], 'harness_clis')
         self.assertEqual(check['status'], 'pass')
         evidence = check['evidence']['harnesses']
-        self.assertEqual(set(evidence), {'claude-code', 'codex', 'cursor', 'opencode', 'pi', 'kimi-code', 'zcode'})
+        self.assertEqual(set(evidence), {'claude-code', 'codex', 'deepseek', 'cursor', 'opencode', 'pi', 'kimi-code', 'zcode'})
         self.assertEqual(evidence['claude-code'], {'present': True, 'path': '/usr/bin/claude', 'version': '1.2.3'})
         self.assertEqual(evidence['kimi-code']['version'], '2.4.1')
         self.assertEqual(evidence['codex'], {'present': False})
@@ -498,6 +498,63 @@ class HarnessCliCheckTests(DoctorTestCase):
         check = next(item for item in result['checks'] if item['id'] == 'harness_clis')
         self.assertEqual(check['status'], 'pass')
         self.assertEqual(result['overall'], 'blocked')
+
+
+class DeepseekMcpCheckTests(DoctorTestCase):
+    def test_absent_install_is_skipped(self):
+        with retained_directory() as directory:
+            home = Path(directory) / 'no-dsh'
+            with patch.object(onboarding_doctor.shutil, 'which', return_value=None):
+                check = onboarding_doctor.deepseek_mcp_check(home=str(home))
+        self.assertEqual(check['status'], 'skipped')
+        self.assertFalse(check['evidence']['dsh_on_path'])
+
+    def test_row_present_in_a_patch_layer_passes_without_quoting_contents(self):
+        from coopagents.deepseek_harness import mcp_client_row
+        with retained_directory() as directory:
+            home = Path(directory)
+            layer = home / 'cordis.patch.yml'
+            layer.write_text(mcp_client_row('https://team.example/mcp') + '# secret-shaped line: token hunter2\n',
+                             encoding='utf-8')
+            with patch.object(onboarding_doctor.shutil, 'which', return_value='/usr/bin/dsh'):
+                check = onboarding_doctor.deepseek_mcp_check(home=str(home))
+        self.assertEqual(check['status'], 'pass')
+        self.assertTrue(check['evidence']['row_found'])
+        self.assertNotIn('hunter2', json.dumps(check))
+
+    def test_home_without_a_row_needs_the_user(self):
+        with retained_directory() as directory:
+            home = Path(directory)
+            (home / 'cordis.patch.yml').write_text('- insert:\n  - id: "other"\n', encoding='utf-8')
+            with patch.object(onboarding_doctor.shutil, 'which', return_value=None):
+                check = onboarding_doctor.deepseek_mcp_check(home=str(home))
+        self.assertEqual(check['status'], 'needs_user')
+        self.assertFalse(check['evidence']['row_found'])
+
+    def test_profile_layer_is_checked_before_the_home_layer(self):
+        from coopagents.deepseek_harness import mcp_client_row
+        with retained_directory() as directory:
+            home = Path(directory)
+            profile_layer = home / 'profiles' / 'web' / 'cordis.patch.yml'
+            profile_layer.parent.mkdir(parents=True)
+            profile_layer.write_text(mcp_client_row('https://team.example/mcp'), encoding='utf-8')
+            with patch.object(onboarding_doctor.shutil, 'which', return_value=None):
+                check = onboarding_doctor.deepseek_mcp_check(profile='web', home=str(home))
+        self.assertEqual(check['status'], 'pass')
+
+    def test_oversized_layer_is_unknown(self):
+        with retained_directory() as directory:
+            home = Path(directory)
+            layer = home / 'cordis.patch.yml'
+            layer.write_text('# padding\n' * (1024 * 1024 // 10 + 10), encoding='utf-8')
+            with patch.object(onboarding_doctor.shutil, 'which', return_value=None):
+                check = onboarding_doctor.deepseek_mcp_check(home=str(home))
+        self.assertEqual(check['status'], 'unknown')
+
+    def test_run_includes_the_deepseek_check(self):
+        result = onboarding_doctor.run(project_dir='/nonexistent-dir-for-doctor-test')
+        check = next(item for item in result['checks'] if item['id'] == 'deepseek_mcp')
+        self.assertIn(check['status'], ('skipped', 'needs_user', 'pass', 'unknown'))
 
 
 if __name__ == '__main__':

@@ -177,6 +177,7 @@ def skill_root(tool, root=None):
 HARNESS_CLIS = (
     ('claude-code', 'claude'),
     ('codex', 'codex'),
+    ('deepseek', 'dsh'),
     ('cursor', 'cursor'),
     ('opencode', 'opencode'),
     ('pi', 'pi'),
@@ -214,6 +215,46 @@ def harness_cli_check():
     summary = ('Harness CLIs on PATH: %s.' % ', '.join(present)) if present \
         else 'No supported harness CLI was found on PATH.'
     return make_check('harness_clis', 'pass', summary, evidence={'harnesses': found})
+
+
+def deepseek_mcp_check(profile=None, home=None, server_name='coopagents'):
+    """Presence-only check for the Coopagents MCP row in DSH patch layers.
+
+    Evidence carries booleans and counts only: patch text is never returned,
+    logged, or quoted, because patch layers can carry credentials. Files are
+    read with a size cap; unreadable files yield unknown, never fail.
+    """
+    from .deepseek_harness import dsh_home, patch_layers, row_present
+    root = Path(home) if home is not None else dsh_home()
+    binary = shutil.which('dsh')
+    layers = patch_layers(profile, root)
+    existing = [path for path in layers if path.is_file()]
+    if binary is None and not root.is_dir() and not existing:
+        return make_check('deepseek_mcp', 'skipped', 'DeepSeek Harness is not installed on this machine.',
+                          evidence={'dsh_on_path': False, 'home_exists': False})
+    found, unreadable = False, False
+    for path in existing:
+        try:
+            if path.stat().st_size > 1024 * 1024:
+                raise ValueError('Patch layer too large')
+            found = found or row_present(path.read_text(encoding='utf-8'), server_name)
+        except (OSError, ValueError, UnicodeError):
+            unreadable = True
+    evidence = {'dsh_on_path': binary is not None, 'home_exists': root.is_dir(),
+                'layers_checked': len(existing), 'row_found': found}
+    if found:
+        return make_check('deepseek_mcp', 'pass',
+                          'A Coopagents MCP row is present in a DeepSeek Harness patch layer.',
+                          'Restart dsh and verify the tools load in a real session; '
+                          'doctor cannot observe a live session.',
+                          evidence)
+    if unreadable:
+        return make_check('deepseek_mcp', 'unknown', 'A DeepSeek Harness patch layer could not be read.',
+                          'Inspect the patch layer; doctor did not change it.', evidence)
+    return make_check('deepseek_mcp', 'needs_user',
+                      'No Coopagents MCP row was found in the DeepSeek Harness patch layers.',
+                      'Merge the generated dsh-mcp-client row into a patch layer, then restart dsh.',
+                      evidence)
 
 
 def _skill_files(root):
@@ -594,6 +635,7 @@ def run(*, profile_path=None, tool=None, project_dir=None, cli=None, skills=None
             make_check('wake_up', 'skipped', 'Wake-up is optional and was not changed.'),
         ])
     checks.append(harness_cli_check())
+    checks.append(deepseek_mcp_check())
     result = aggregate(checks)
     if profile_path:
         selected = next(c for c in checks if c['id'] == 'native_tool')['evidence'].get('tool')

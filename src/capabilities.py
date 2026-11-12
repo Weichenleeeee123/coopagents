@@ -7,8 +7,8 @@ from .harness_adapters import adapter_for, SUPPORTED_HARNESSES
 from .repositories import require_manager
 from .tasks import _text, _utc_now
 
-TARGET_HARNESSES = ('claude-code', 'codex', 'cursor', 'opencode', 'pi', 'kimi-code', 'zcode')
-DISPLAY_NAMES = {'claude-code': 'Claude Code', 'codex': 'Codex', 'cursor': 'Cursor',
+TARGET_HARNESSES = ('claude-code', 'codex', 'deepseek', 'cursor', 'opencode', 'pi', 'kimi-code', 'zcode')
+DISPLAY_NAMES = {'claude-code': 'Claude Code', 'codex': 'Codex', 'deepseek': 'DeepSeek', 'cursor': 'Cursor',
                  'opencode': 'OpenCode', 'pi': 'Pi', 'kimi-code': 'Kimi Code', 'zcode': 'ZCode'}
 CAPABILITIES = ('mcp', 'project_context', 'session_lifecycle', 'native_hook', 'idle_wake')
 STATUSES = ('supported', 'unsupported', 'unknown', 'unavailable')

@@ -33,6 +33,7 @@ Pi is the other special case: Pi defaults MCP tools to `codemode` exposure, call
 
 | Harness | Project config | Entry shape | Native hook / idle wake |
 | --- | --- | --- | --- |
+| DeepSeek Harness | `$DSH_HOME/.../cordis.patch.yml` (profile or home layer; no project file) | `dsh-mcp-client` row, Streamable HTTP, no header | Cordis plugin (in-process TypeScript), no shell hooks / unsupported |
 | Cursor | `.cursor/mcp.json` | `mcpServers[name]` with remote URL | hook install (project or user scope), live acceptance unverified / unsupported |
 | OpenCode | `opencode.json` | `mcp.servers[name]` with `type: remote` (V1 shape with `--variant v1`) | plugin file (V2 `Plugin.define`; V1 form for 1.x), live acceptance unverified / unsupported |
 | Pi | `.pi/mcp.json` | `mcpServers[name]` with remote URL, `exposure: direct` | extension file, live acceptance unverified / unsupported |
@@ -47,6 +48,14 @@ Pi's wake avenue is its [extension API](https://pi.dev/docs/latest/extensions), 
 Kimi Code's [official MCP docs](https://www.kimi.com/code/docs/en/kimi-code-cli/customization/mcp.html) document `bearerTokenEnvVar` as a field for HTTP/SSE servers and automatic discovery of project-level `.kimi-code/mcp.json` (a same-named project entry overrides the user-level file). The earlier note citing the archived `kimi-cli` guide (`~/.kimi/mcp.json`, explicit `--mcp-config-file`) described the old Python CLI, not the current Kimi Code CLI. Verified-against-docs is not live acceptance: native Kimi authentication and session loading in a real Kimi session remain acceptance blockers.
 
 The adapter does not install a native hook, parse session files, inspect prompts, or upload any project files. It only makes the MCP server available to a new session. Existing local P2P board security and the rule against sharing full conversation text are unchanged.
+
+### DeepSeek Harness (dsh)
+
+DeepSeek Harness is DeepSeek's first-party agent runtime ([repository](https://github.com/deepseek-ai/deepseek-harness), MIT, developer preview with breaking changes expected; checked 2026-11-12). It is not a JSON-config harness: MCP servers are Cordis plugin rows in a YAML patch layer — `$DSH_HOME/profiles/<profile>/cordis.patch.yml` or `$DSH_HOME/cordis.patch.yml` (default home `~/.dsh`) — one `@deepseek-ai/dsh-mcp-client` entry per server, per the [official MCP guide](https://deepseek-harness.github.io/deepseek-harness/en/guide/mcp-memory). There is no project-level MCP config file. `python -m coopagents.deepseek_harness --service-url <url>` prints a merge plan with the row text; nothing is written, because YAML merging without a parser could corrupt user config. The row carries no Authorization header: no documented env expansion exists for MCP client headers, and a literal placeholder would reach the server as the token. The setup doctor's `deepseek_mcp` check reports row presence only (booleans, never file contents), and the harness CLI inventory reports `dsh` presence.
+
+Hooks in DSH are in-process Cordis plugins (TypeScript) on interception points such as `tools/pre-execute`, `tools/post-execute` and `agent/turn-stopping`, or the experimental `dsh-hooks-claude-code` / `dsh-hooks-codex` bridges; there is no shell-hook config file. There is no documented external wake API and no checkpoint-hook vocabulary ("checkpoint" in DSH docs means session-log durability). A Cordis checkpoint plugin and any wake design need a live `dsh` session and are recorded in the [DeepSeek gap note](deepseek-harness-gaps.md). Live `dsh` acceptance — a real session loading the MCP row — is unverified.
+
+DeepSeek is also a model provider for other agents: the [API docs](https://api-docs.deepseek.com/) are OpenAI/Anthropic-compatible at `https://api.deepseek.com` (Anthropic flavor at `https://api.deepseek.com/anthropic`), with current models `deepseek-flash` and `deepseek-v4-pro` and auth via `DEEPSEEK_API_KEY`. Official integration guides exist for Claude Code, Codex (Responses API), OpenCode and Pi, among others; no official DeepSeek guide exists for Cursor, Windsurf, ZCode or Kimi Code, so pointing those at DeepSeek would be a Coopagents recipe, not DeepSeek's. There is no official DeepSeek MCP server or IDE extension on current evidence.
 
 ### ZCode wake hooks (user scope)
 
@@ -95,6 +104,7 @@ Windsurf was renamed Devin Desktop on 2026-06-02 (Cognition) and the Cascade age
 ## Verification
 
 - Six adapter capability reports and configuration contracts pass focused tests.
+- The DeepSeek Harness row generator, patch-layer resolution and doctor presence check pass focused tests; live `dsh` acceptance remains unverified.
 - `codex-desktop` is accepted as an alias for `codex` by the connect, doctor and wake commands and passes alias tests; the shared-`CODEX_HOME` behavior is documented, and auto-detection from inside a desktop session is unverified.
 - The Windsurf adapter generates the shared Devin project entry without a header and passes shape, merge and plan tests; live Devin Desktop acceptance remains unverified.
 - ZCode wake hooks install to user-scope config and pass merge, idempotence and subprocess tests; a ZCode checkpoint-hook fragment is generated in the same events shape and coexists with the wake hooks; live ZCode session acceptance remains unverified.
