@@ -50,7 +50,9 @@ whether a home relay is currently usable, the relay URL and the published direct
 addresses, and the current connection count; a member's `status` reports a direct or relayed path.
 `join` establishes the peer-to-peer connection before sending its HTTP request, so a slow
 relay/discovery dial cannot exhaust the request's shorter timeout; a dial failure is reported
-as a peer-to-peer reachability failure and consumes no invitation.
+as a peer-to-peer reachability failure and consumes no invitation. The join request itself
+uses the same 30 second budget as the dial, so a slow relay reply cannot strand a member
+the host already created.
 If another program already uses the space's port on a member computer, the
 link refuses to start rather than pick another port. Details and measurements:
 [p2p report](agent-hosted-p2p-report.md).
