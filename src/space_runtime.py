@@ -420,7 +420,7 @@ def main(argv=None):
     sub.add_argument('--state-dir', help='New private folder (default: a new folder under ~/.coopagents/spaces)')
     connect_options(sub)
     sub = commands.add_parser('connect', help='Register this profile with Claude Code or Codex, install the skill and verify')
-    sub.add_argument('--tool', required=True, choices=['claude', 'codex'])
+    sub.add_argument('--tool', required=True, choices=['claude', 'codex', 'codex-desktop'])
     sub.add_argument('--profile', required=True)
     sub.add_argument('--name', help='MCP server name (default coopagents_<room>)')
     sub.add_argument('--cli', help='Full path of the claude or codex command when PATH has none or a broken one')
@@ -433,7 +433,7 @@ def main(argv=None):
     sub = commands.add_parser('doctor', help='Read-only setup and connection diagnostics')
     sub.add_argument('--name', help='Registered MCP server name when a custom name was used')
     sub.add_argument('--profile')
-    sub.add_argument('--tool', choices=['claude', 'codex'])
+    sub.add_argument('--tool', choices=['claude', 'codex', 'codex-desktop'])
     sub.add_argument('--cli', help='Full path of the native CLI to inspect')
     sub.add_argument('--project-dir', help='Repository folder for project-scoped checks')
     sub.add_argument('--json', action='store_true', dest='json_output', help='Print machine-readable JSON')
@@ -504,7 +504,7 @@ def main(argv=None):
 
 
 def connect_options(parser):
-    parser.add_argument('--connect', choices=['claude', 'codex'],
+    parser.add_argument('--connect', choices=['claude', 'codex', 'codex-desktop'],
                         help='Then connect this agent: same as running connect --tool with the new profile')
     parser.add_argument('--wake', action='store_true', help='With --connect: also turn on wake-up for the repository')
     parser.add_argument('--project-dir', help='Repository folder for --wake (default: current folder)')

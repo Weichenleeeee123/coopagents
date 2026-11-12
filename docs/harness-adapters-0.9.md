@@ -9,6 +9,8 @@ The primary P2P setup path uses the bundled `coopagents-space` Skill and the har
 | Claude Code | Native MCP registration and personal space profile | Idle wake through installed hooks, while the session remains open | Real single-machine Windows collaboration; other OS and cross-device wake remain separate acceptance gates |
 | Codex | Native MCP registration and personal space profile | End-of-turn check; explicit standby can wait. No ordinary idle wake. User reviews new hooks in `/hooks` | Real single-machine Windows collaboration; CLI registration is separate from loading MCP in a fresh model session |
 
+Codex desktop (the Codex app) shares `CODEX_HOME` with the Codex CLI — the same `config.toml`, hooks, MCP settings and skills — so the native connection, wake-up and doctor commands accept `codex-desktop` as an alias for `codex` (`--tool codex-desktop`). Auto-detection of the calling agent from inside a desktop session is unverified; pass `--tool` explicitly there.
+
 The [single-machine acceptance report](solo-acceptance-2026-10-29.md), [setup diagnostic acceptance](agent-first-setup-acceptance.md) and [two-machine checklist](two-machine-acceptance.md) describe what has and has not been verified. A session registration is not proof that a model is currently active, and an MCP configuration adapter is not a native wake adapter.
 
 ## Remote MCP configuration adapters
@@ -36,6 +38,7 @@ Pi is the other special case: Pi defaults MCP tools to `codemode` exposure, call
 | Pi | `.pi/mcp.json` | `mcpServers[name]` with remote URL, `exposure: direct` | extension file, live acceptance unverified / unsupported |
 | Kimi Code | `.kimi-code/mcp.json` | `mcpServers[name]` with remote URL; `bearerTokenEnvVar` verified against official docs | hook fragment (user scope), live acceptance unverified / unsupported |
 | ZCode | `.zcode/config.json` | `mcp.servers[name]` with remote URL, no header (auth in user scope) | hook install (user scope), live acceptance unverified / unsupported |
+| Windsurf (Devin Desktop) | `.devin/mcp_config.json` | `mcpServers[name]` with remote URL, no header (auth in local/user override) | unsupported / unsupported |
 
 These statuses are intentionally conservative. MCP setup is implemented and tested as a remote configuration contract; a harness's native hooks, plugins, ACP transport or idle wake are not claimed until that exact combination has a real acceptance result. Kimi ACP remains available for a later verified adapter extension. Without `--service-url`, the CLI emits a manual plan and deliberately does not write a dead local runner.
 
@@ -83,12 +86,18 @@ The Pi extension (`.pi/extensions/coopagents.ts` project-local after trust, `~/.
 
 Both files are executed in tests under Node against stubbed runtimes (event delivery, checkpoint POST shape, throttle, injection call, silence without a connection or with an empty brief). Whether real OpenCode and Pi sessions load the files, fire the events and deliver the briefs is unverified: live acceptance needs a real session with a model backend for each.
 
+### Windsurf / Devin Desktop (adapter spec only)
+
+Windsurf was renamed Devin Desktop on 2026-06-02 (Cognition) and the Cascade agent was retired on 2026-07-01; the default agent is Devin Local, and the adapter keeps the client id `windsurf` for compatibility. The adapter generates a shared project entry in `.devin/mcp_config.json` with `url` only. Local overrides live in `.devin/mcp_config.local.json` (gitignored) or user `~/.config/devin/mcp_config.json` (Windows `%APPDATA%\devin\mcp_config.json`); `serverUrl` is the legacy Cascade key and is also accepted. Whether Devin expands variables in MCP headers is disputed across secondary sources and no official Devin docs page was fetched, so the project entry carries no Authorization header and the plan output points auth at the local/user override (for example `devin mcp add -s local`). A legacy `~/.codeium/windsurf/mcp_config.json` is imported by Devin Local. Windsurf is not added to the session/capability tracking harnesses, and native hooks and idle wake are unsupported. Live acceptance — a real Devin Desktop session loading the entry — is unverified.
+
 ## Verification
 
-- Five adapter capability reports and configuration contracts pass focused tests.
+- Six adapter capability reports and configuration contracts pass focused tests.
+- `codex-desktop` is accepted as an alias for `codex` by the connect, doctor and wake commands and passes alias tests; the shared-`CODEX_HOME` behavior is documented, and auto-detection from inside a desktop session is unverified.
+- The Windsurf adapter generates the shared Devin project entry without a header and passes shape, merge and plan tests; live Devin Desktop acceptance remains unverified.
 - ZCode wake hooks install to user-scope config and pass merge, idempotence and subprocess tests; a ZCode checkpoint-hook fragment is generated in the same events shape and coexists with the wake hooks; live ZCode session acceptance remains unverified.
 - Cursor checkpoint and wake hooks pass payload-mapping, merge, idempotence and subprocess tests; live Cursor session acceptance remains unverified.
 - Kimi Code checkpoint hooks generate as valid `[[hooks]]` TOML and merge idempotently into an existing `config.toml`; live Kimi session acceptance remains unverified, and the Stop-block contract for wake-up is unverified.
 - OpenCode plugin and Pi extension files pass Node execution tests against stubbed runtimes; live OpenCode/Pi session acceptance remains unverified.
-- Cursor, OpenCode, Pi and Kimi Code remote config shapes are generated with a placeholder environment reference and no credential value. ZCode's entry carries no header because ZCode config files do not expand templates; its auth step is documented in the plan output.
+- Cursor, OpenCode, Pi and Kimi Code remote config shapes are generated with a placeholder environment reference and no credential value. ZCode's entry carries no header because ZCode config files do not expand templates; Windsurf's entry likewise carries no header because header expansion is disputed across sources; both auth steps are documented in the plan output.
 - Existing authenticated MCP task/message behavior remains covered by the full Python suite; unavailable native CLIs are reported as unverified rather than simulated.

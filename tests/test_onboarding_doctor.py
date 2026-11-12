@@ -211,6 +211,15 @@ class LocalChecksTests(DoctorTestCase):
         self.assertEqual(result['status'], 'needs_user')
         candidates.assert_not_called()
 
+    def test_codex_desktop_alias_reports_codex(self):
+        from subprocess import CompletedProcess
+        with patch.object(onboarding_doctor.space_connect, 'cli_candidates', return_value=[['good']]), \
+                patch.object(onboarding_doctor.space_connect, '_run',
+                             return_value=CompletedProcess([], 0, 'codex 1.2.3', '')):
+            result = onboarding_doctor.tool_check('codex-desktop')
+        self.assertEqual(result['status'], 'pass')
+        self.assertEqual(result['evidence']['tool'], 'codex')
+
     def test_version_probe_falls_back_to_working_cli(self):
         from subprocess import CompletedProcess
         with patch.object(onboarding_doctor.space_connect, 'cli_candidates', return_value=[['bad'], ['good']]), \

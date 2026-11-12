@@ -31,6 +31,13 @@ from uuid import uuid4
 from .spaces import checked_path, private_directory, protect, read_profile
 
 TOOLS = ('claude', 'codex', 'zcode', 'cursor')
+# The Codex desktop app shares CODEX_HOME with the CLI (see
+# space_connect.TOOL_ALIASES); codex-desktop is an alias for codex here too.
+TOOL_ALIASES = {'codex-desktop': 'codex'}
+
+
+def normalize_tool(tool):
+    return TOOL_ALIASES.get(tool, tool)
 INPUT_BYTES = 65536
 CLAUDE_HOOK_TIMEOUT = 3600
 CURSOR_SESSION_TIMEOUT = 60
@@ -419,6 +426,7 @@ def _default_watcher(profile_path, tool, session, event):
 
 def watch(profile_path, tool, stdin, stdout, stderr, *, watcher_factory=_default_watcher, claude_seconds=None):
     """Hook entry point. Returns the process exit code."""
+    tool = normalize_tool(tool)
     try:
         session, event = read_hook_input(stdin, tool)
         if tool == 'claude' and headless():
@@ -738,6 +746,7 @@ def check_project(project_dir):
 
 
 def install(profile_path, tool, scope='project', project_dir=None, standby=DEFAULT_STANDBY):
+    tool = normalize_tool(tool)
     if tool == 'zcode':
         if scope != 'user':
             raise WakeSetupError('ZCode ignores project-level hooks; install wake-up with --scope user')
@@ -767,6 +776,7 @@ def install(profile_path, tool, scope='project', project_dir=None, standby=DEFAU
 
 
 def disable(tool, scope='project', project_dir=None):
+    tool = normalize_tool(tool)
     if tool == 'zcode' and scope != 'user':
         raise WakeSetupError('ZCode ignores project-level hooks; disable wake-up with --scope user')
     path = settings_path(tool, scope, project_dir)
@@ -800,17 +810,17 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description='Wake idle native agents for Coopagents collaboration items')
     commands = parser.add_subparsers(dest='command', required=True)
     w = commands.add_parser('watch', help='Hook entry point; reads hook JSON from stdin')
-    w.add_argument('--tool', choices=TOOLS, required=True)
+    w.add_argument('--tool', choices=TOOLS + tuple(TOOL_ALIASES), required=True)
     w.add_argument('--profile', required=True)
     for name in ('install', 'preview'):
         p = commands.add_parser(name)
-        p.add_argument('--tool', choices=TOOLS, help='Default: the agent running this command')
+        p.add_argument('--tool', choices=TOOLS + tuple(TOOL_ALIASES), help='Default: the agent running this command')
         p.add_argument('--profile', help='Default: the single Coopagents connection registered with the tool')
         p.add_argument('--scope', choices=('project', 'user'), default='project')
         p.add_argument('--project-dir')
         p.add_argument('--standby-limit', type=int, default=DEFAULT_STANDBY, help='Codex hook timeout budget in seconds')
     d = commands.add_parser('disable')
-    d.add_argument('--tool', choices=TOOLS, required=True)
+    d.add_argument('--tool', choices=TOOLS + tuple(TOOL_ALIASES), required=True)
     d.add_argument('--scope', choices=('project', 'user'), default='project')
     d.add_argument('--project-dir')
     s = commands.add_parser('standby', help='Codex/ZCode/Cursor: keep a finished turn waiting for collaboration items')
@@ -820,6 +830,7 @@ def main(argv=None):
     t = commands.add_parser('status')
     t.add_argument('--profile', required=True)
     args = parser.parse_args(argv)
+    args.tool = normalize_tool(getattr(args, 'tool', None))
     if args.command == 'watch':
         return watch(args.profile, args.tool, sys.stdin.buffer, sys.stdout, sys.stderr)
     try:

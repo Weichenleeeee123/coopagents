@@ -13,7 +13,7 @@ import re
 from urllib.parse import urlsplit
 
 
-SUPPORTED_HARNESSES = ('cursor', 'opencode', 'pi', 'kimi-code', 'zcode')
+SUPPORTED_HARNESSES = ('cursor', 'opencode', 'pi', 'kimi-code', 'zcode', 'windsurf')
 
 
 class ConfigConflict(ValueError):
@@ -42,6 +42,9 @@ SPECS = {
                              notes='Kimi Code project MCP configuration is supported; bearerTokenEnvVar and project autodiscovery are verified against the official Kimi Code MCP docs; project servers need workspace trust; ACP is not required for MCP. Checkpoint hooks generate as [[hooks]] TOML for user-scope ~/.kimi-code/config.toml (Kimi has no project hook file) and live hook acceptance is unverified; the Stop-block contract needed for wake-up is unverified.'),
     'zcode': HarnessSpec('zcode', '.zcode/config.json', 'zcode', native_hook='unknown',
                          notes='ZCode workspace config uses mcp.servers; config files do not expand ${env:}, so the bearer token belongs in user-scope config; wake hooks install to user config only (ZCode ignores project hooks) and live hook acceptance is unverified.'),
+    'windsurf': HarnessSpec('windsurf', '.devin/mcp_config.json', 'mcpServers', native_hook='unsupported',
+                            idle_wake='unsupported',
+                            notes='Windsurf was renamed Devin Desktop (2026-06-02) and the Cascade agent retired (2026-07-01); the client id stays windsurf for compatibility. Project config is .devin/mcp_config.json (committed/shared); local overrides go in .devin/mcp_config.local.json (gitignored) or user ~/.config/devin/mcp_config.json. Remote entries use url (Devin files); serverUrl is the legacy Cascade key, also accepted. Header variable expansion is disputed across sources, so the shared project entry carries no Authorization header; add the token in the local/user override, for example via devin mcp add -s local. A legacy ~/.codeium/windsurf/mcp_config.json is imported by Devin Local. Native hooks and idle wake are unsupported; live MCP acceptance is unverified.'),
 }
 
 
@@ -125,6 +128,13 @@ class HarnessAdapter:
             # token belongs in user-scope config under the same server name,
             # which overrides this workspace entry.
             return {'type': 'http', 'url': url, 'enabled': True}
+        if self.spec.harness == 'windsurf':
+            # Header variable expansion in Devin MCP files is disputed
+            # across sources, and the shared project file is committed: the
+            # entry carries no Authorization header, so no placeholder can
+            # reach the server literally as the token. The token belongs in
+            # the local/user override under the same server name.
+            return {'url': url}
         placeholder = '${env:%s}' % token_env if self.spec.harness == 'cursor' else '${%s}' % token_env
         headers = {'Authorization': 'Bearer ' + placeholder}
         if self.spec.format == 'opencode':
@@ -243,6 +253,11 @@ class HarnessAdapter:
                 plan['notes'] = (plan['notes'] + ' Add the bearer token in user-scope '
                                  '~/.zcode/cli/config.json under the same server name: ZCode does not expand '
                                  '${env:} in config files, and a user entry overrides this workspace entry.')
+            if self.spec.harness == 'windsurf':
+                plan['notes'] = (plan['notes'] + ' Add the bearer token in the local override '
+                                 '.devin/mcp_config.local.json or user ~/.config/devin/mcp_config.json under the same '
+                                 'server name (for example via devin mcp add -s local): header variable expansion is '
+                                 'disputed across sources, so the shared project entry carries no Authorization header.')
         else:
             plan['entry'] = None
             plan['transport'] = 'manual'

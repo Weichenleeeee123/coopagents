@@ -137,6 +137,7 @@ def python_runtime_check():
 
 def _tool_and_cli(tool=None, cli=None):
     try:
+        tool = space_connect.normalize_tool(tool)
         if tool and tool not in space_connect.TOOLS:
             raise space_connect.ConnectError('Unsupported tool')
         selected = space_connect.resolve_tool(tool)
@@ -464,6 +465,7 @@ def wake_check(tool, profile_path, project_dir=None):
 
 def run(*, profile_path=None, tool=None, project_dir=None, cli=None, skills=None, name=None):
     """Run local checks and, when supplied, profile/network checks."""
+    tool = space_connect.normalize_tool(tool)
     local = local_checks(tool=tool, profile_path=profile_path, project_dir=project_dir,
                          cli=cli, skills=skills, name=name)
     checks = local['checks']

@@ -8,8 +8,8 @@ from coopagents.harness_adapters import ConfigConflict, SUPPORTED_HARNESSES, ada
 
 
 class HarnessAdapterTests(unittest.TestCase):
-    def test_all_five_adapters_report_shared_mcp_contract_and_conservative_capabilities(self):
-        self.assertEqual(SUPPORTED_HARNESSES, ('cursor', 'opencode', 'pi', 'kimi-code', 'zcode'))
+    def test_all_adapters_report_shared_mcp_contract_and_conservative_capabilities(self):
+        self.assertEqual(SUPPORTED_HARNESSES, ('cursor', 'opencode', 'pi', 'kimi-code', 'zcode', 'windsurf'))
         for name in SUPPORTED_HARNESSES:
             report = adapter_for(name).capabilities(project_root=Path('.'))
             with self.subTest(name=name):
@@ -108,6 +108,11 @@ class HarnessAdapterTests(unittest.TestCase):
                     self.assertIn('${env:COOPAGENTS_AGENT_TOKEN}', entry['headers']['Authorization'])
                 elif name == 'opencode':
                     self.assertEqual(entry['headers']['Authorization'], 'Bearer {env:COOPAGENTS_AGENT_TOKEN}')
+                elif name == 'windsurf':
+                    # Header expansion is disputed across sources and the
+                    # project file is committed, so no header is written.
+                    self.assertEqual(entry, {'url': 'https://team.example/mcp'})
+                    self.assertNotIn('${', json.dumps(entry))
                 else:
                     self.assertIn('${COOPAGENTS_AGENT_TOKEN}', entry['headers']['Authorization'])
                     self.assertEqual(entry['exposure'], 'direct')
@@ -139,6 +144,29 @@ class HarnessAdapterTests(unittest.TestCase):
         cursor = adapter_for('cursor').capabilities(project_root=Path('.'))
         self.assertIn('${env:NAME}', cursor['notes'])
         self.assertIn('official Cursor MCP docs', cursor['notes'])
+
+    def test_windsurf_spec_names_the_devin_config_and_rename(self):
+        report = adapter_for('windsurf').capabilities(project_root=Path('.'))
+        self.assertEqual(report['config_path'], str(Path('.').resolve() / '.devin' / 'mcp_config.json'))
+        self.assertEqual(report['config_scope'], 'project')
+        self.assertEqual(report['native_hook'], 'unsupported')
+        self.assertEqual(report['idle_wake'], 'unsupported')
+        self.assertIn('Devin Desktop', report['notes'])
+        self.assertIn('serverUrl', report['notes'])
+        self.assertIn('.devin/mcp_config.local.json', report['notes'])
+        self.assertIn('~/.codeium/windsurf/mcp_config.json', report['notes'])
+        self.assertIn('unverified', report['notes'])
+
+    def test_windsurf_stdio_entry_is_a_plain_command(self):
+        entry = adapter_for('windsurf').merge({}, 'coopagents', 'python', ['-m', 'coopagents.mcp_service'])
+        server = entry['mcpServers']['coopagents']
+        self.assertEqual(server, {'command': 'python', 'args': ['-m', 'coopagents.mcp_service']})
+
+    def test_windsurf_remote_plan_points_auth_at_the_local_override(self):
+        plan = adapter_for('windsurf').plan(Path('.'), service_url='https://team.example/mcp')
+        self.assertEqual(plan['entry'], {'url': 'https://team.example/mcp'})
+        self.assertIn('.devin/mcp_config.local.json', plan['notes'])
+        self.assertIn('devin mcp add -s local', plan['notes'])
 
     def test_zcode_capabilities_report_hook_install_without_claiming_live_acceptance(self):
         report = adapter_for('zcode').capabilities(project_root=Path('.'))

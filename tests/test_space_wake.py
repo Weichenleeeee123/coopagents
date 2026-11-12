@@ -311,6 +311,11 @@ class HookEntryTests(unittest.TestCase):
         with WakeState(self.profile).connect() as c:
             self.assertIsNotNone(c.execute("SELECT 1 FROM watchers WHERE session='cs2'").fetchone())
 
+    def test_codex_desktop_watch_blocks_like_codex(self):
+        code, out, _ = self.run_hook('codex-desktop', [{'kind': 'request', 'id': 1}])
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(out)['decision'], 'block')
+
     def test_malformed_input_is_quiet(self):
         stdin = io.BytesIO(b'not json')
         self.assertEqual(watch(self.profile, 'claude', stdin, io.StringIO(), io.StringIO()), 0)
@@ -574,6 +579,29 @@ class InstallTests(unittest.TestCase):
         self.assertEqual(len(events['SessionStart']), 1, 'Wake disable keeps the checkpoint hook')
         self.assertNotIn('Stop', events)
         self.assertIn('PostToolUse', events)
+
+    def test_codex_desktop_alias_installs_and_disables_as_codex(self):
+        self.project.mkdir(parents=True, exist_ok=True)
+        result = install(self.profile, 'codex-desktop', project_dir=self.project, standby=400)
+        self.assertEqual(result['installed'], 'codex')
+        hooks = json.loads((self.project / '.codex' / 'hooks.json').read_text(encoding='utf-8'))
+        self.assertEqual(hooks['hooks']['Stop'][0]['hooks'][0]['timeout'], 400 + space_wake.DEADLINE_MARGIN)
+        self.assertIn('--tool codex', hook_script(hooks['hooks']['Stop'][0]['hooks'][0]['command']))
+        self.assertTrue(disable('codex-desktop', project_dir=self.project)['changed'])
+
+    def test_codex_desktop_preview_cli_accepts_the_alias(self):
+        from contextlib import redirect_stdout
+        from unittest.mock import patch
+        self.project.mkdir(parents=True, exist_ok=True)
+        with patch.dict('os.environ', {'CLAUDECODE': '', 'CODEX_THREAD_ID': '', 'CODEX_SESSION_ID': ''}):
+            out = io.StringIO()
+            with redirect_stdout(out):
+                code = space_wake.main(['preview', '--tool', 'codex-desktop', '--profile', str(self.profile),
+                                        '--project-dir', str(self.project)])
+            self.assertEqual(code, 0)
+            result = json.loads(out.getvalue())
+            self.assertIn('Stop', result['hooks'])
+            self.assertTrue(result['settings'].endswith('.codex/hooks.json'))
 
     def test_install_and_disable_claude_and_codex(self):
         settings = self.project / '.claude' / 'settings.local.json'
