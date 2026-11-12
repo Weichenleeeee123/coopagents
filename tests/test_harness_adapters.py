@@ -140,6 +140,13 @@ class HarnessAdapterTests(unittest.TestCase):
         self.assertIn('${env:NAME}', cursor['notes'])
         self.assertIn('official Cursor MCP docs', cursor['notes'])
 
+    def test_zcode_capabilities_report_hook_install_without_claiming_live_acceptance(self):
+        report = adapter_for('zcode').capabilities(project_root=Path('.'))
+        self.assertEqual(report['native_hook'], 'unknown')
+        self.assertEqual(report['idle_wake'], 'unsupported')
+        self.assertIn('user config only', report['notes'])
+        self.assertIn('unverified', report['notes'])
+
 
 if __name__ == '__main__':
     unittest.main()

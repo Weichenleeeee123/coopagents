@@ -35,16 +35,25 @@ Pi is the other special case: Pi defaults MCP tools to `codemode` exposure, call
 | OpenCode | `opencode.json` | `mcp[name]` with `type: remote` | unknown / unsupported |
 | Pi | `.pi/mcp.json` | `mcpServers[name]` with remote URL, `exposure: direct` | unsupported / unsupported |
 | Kimi Code | `.kimi-code/mcp.json` | `mcpServers[name]` with remote URL; `bearerTokenEnvVar` verified against official docs | unsupported / unsupported |
-| ZCode | `.zcode/config.json` | `mcp.servers[name]` with remote URL, no header (auth in user scope) | unsupported / unsupported |
+| ZCode | `.zcode/config.json` | `mcp.servers[name]` with remote URL, no header (auth in user scope) | hook install (user scope), live acceptance unverified / unsupported |
 
-These statuses are intentionally conservative. MCP setup is implemented and tested as a remote configuration contract; a harness's native hooks, plugins, ACP transport or idle wake are not claimed until that exact combination has a real acceptance result. Pi's extension API, Kimi ACP and ZCode hooks remain available for a later verified adapter extension. Without `--service-url`, the CLI emits a manual plan and deliberately does not write a dead local runner.
+These statuses are intentionally conservative. MCP setup is implemented and tested as a remote configuration contract; a harness's native hooks, plugins, ACP transport or idle wake are not claimed until that exact combination has a real acceptance result. Pi's extension API and Kimi ACP remain available for a later verified adapter extension. Without `--service-url`, the CLI emits a manual plan and deliberately does not write a dead local runner.
 
 Kimi Code's [official MCP docs](https://www.kimi.com/code/docs/en/kimi-code-cli/customization/mcp.html) document `bearerTokenEnvVar` as a field for HTTP/SSE servers and automatic discovery of project-level `.kimi-code/mcp.json` (a same-named project entry overrides the user-level file). The earlier note citing the archived `kimi-cli` guide (`~/.kimi/mcp.json`, explicit `--mcp-config-file`) described the old Python CLI, not the current Kimi Code CLI. Verified-against-docs is not live acceptance: native Kimi authentication and session loading in a real Kimi session remain acceptance blockers.
 
 The adapter does not install a native hook, parse session files, inspect prompts, or upload any project files. It only makes the MCP server available to a new session. Existing local P2P board security and the rule against sharing full conversation text are unchanged.
 
+### ZCode wake hooks (user scope)
+
+Wake-up for ZCode is installed separately by `coopagents.space_wake`, not by the MCP adapter above. ZCode's [official hooks docs](https://zcode.z.ai/en/docs/hooks) specify the contract: hooks are subprocesses that read one JSON line on stdin and reply with stdout JSON; configuration-file hooks require `hooks.enabled: true`; and **project-level hooks are not executed** — any `hooks` configuration in `<workspace>/.zcode/config.json` is ignored as a whole and logged as `config_project_hooks_ignored`. Hooks therefore install to user-scope `~/.zcode/cli/config.json` only, and the installer refuses project scope.
+
+The installed hooks mirror the Codex end-of-turn model: a `SessionStart` hook (matcher `startup|clear`, so a compact never swallows items that arrived during the session) only baselines the current items, and a `Stop` hook checks once when a turn ends and, with standby enabled (`space_wake standby on`), keeps the session waiting. On wake it returns `{"decision": "block", "reason": ...}` with the fixed counts-only template; ZCode caps consecutive Stop continuations at 3. The Stop hook sets `timeoutMs` to cover the standby budget, since ZCode's default hook timeout is 60 seconds. Install and disable preserve MCP servers and unrelated hooks in the same file, and never delete user configuration.
+
+Hook installation is implemented and tested (config merge, idempotence, subprocess execution of the process hook). Whether a real ZCode session runs the hooks and wakes is unverified: ZCode is build-from-source with no public installer, and live acceptance needs a real ZCode session with a model backend.
+
 ## Verification
 
 - Five adapter capability reports and configuration contracts pass focused tests.
+- ZCode wake hooks install to user-scope config and pass merge, idempotence and subprocess tests; live ZCode session acceptance remains unverified.
 - Cursor, OpenCode, Pi and Kimi Code remote config shapes are generated with a placeholder environment reference and no credential value. ZCode's entry carries no header because ZCode config files do not expand templates; its auth step is documented in the plan output.
 - Existing authenticated MCP task/message behavior remains covered by the full Python suite; unavailable native CLIs are reported as unverified rather than simulated.

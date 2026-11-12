@@ -3,6 +3,10 @@
 Claude Code: an ``asyncRewake`` command hook on SessionStart and Stop watches in
 the background and exits 2 to wake an idle session.  Codex: a Stop hook checks
 once when a turn ends and, with standby enabled, keeps the session waiting.
+ZCode: the same end-of-turn model as Codex, through a process hook on Stop;
+its SessionStart hook only baselines, because ZCode hooks are synchronous and
+there is no async re-wake.  ZCode ignores project-level hooks, so ZCode hooks
+install to the user config only.
 
 The wake text is a fixed template with counts only.  Teammate content never
 enters it, and waking never reads, acknowledges or answers anything.
@@ -21,7 +25,7 @@ from uuid import uuid4
 
 from .spaces import checked_path, private_directory, protect, read_profile
 
-TOOLS = ('claude', 'codex')
+TOOLS = ('claude', 'codex', 'zcode')
 INPUT_BYTES = 65536
 CLAUDE_HOOK_TIMEOUT = 3600
 DEADLINE_MARGIN = 120
@@ -412,6 +416,12 @@ def watch(profile_path, tool, stdin, stdout, stderr, *, watcher_factory=_default
                 stderr.write(text + '\n')
                 return 2  # asyncRewake: wake Claude with this reminder
             return 0
+        if tool == 'zcode' and event == 'SessionStart':
+            # Baseline only: ZCode hooks are synchronous, so SessionStart
+            # cannot keep watching; the Stop hook performs the end-of-turn
+            # check, and ZCode caps consecutive Stop continuations at 3.
+            watcher.run(0, baseline=True)
+            return 0
         standby = watcher.state.standby()
         outcome, text = watcher.run(standby)
         if outcome == 'wake':
@@ -435,6 +445,12 @@ def hook_command(profile_path, tool):
     return f'{executable} -I -m {MARKER} watch --tool {tool} --profile {profile}'
 
 
+def hook_process(profile_path, tool):
+    """argv for a ZCode process hook: executed directly without a shell, so paths need no quoting."""
+    return str(Path(sys.executable)), ['-I', '-m', MARKER, 'watch', '--tool', tool,
+                                       '--profile', str(checked_path(profile_path))]
+
+
 def _portable(path, shorten=False, quote=True):
     """A shell-neutral path: forward slashes; optionally a Windows short name to avoid spaces."""
     text = str(path)
@@ -452,6 +468,17 @@ def _powershell_literal(value):
 
 
 def hook_config(profile_path, tool, standby=DEFAULT_STANDBY):
+    if tool == 'zcode':
+        command, args = hook_process(profile_path, tool)
+        # SessionStart matches `source`; only startup/clear baseline, so a
+        # compact never swallows items that arrived during the session.
+        start = {'type': 'process', 'command': command, 'args': list(args)}
+        # ZCode's default hook timeout is 60s; the Stop hook must cover the
+        # standby budget, so its timeout is set in milliseconds.
+        stop = {'type': 'process', 'command': command, 'args': list(args),
+                'timeoutMs': (standby + DEADLINE_MARGIN) * 1000}
+        return {'SessionStart': [{'matcher': 'startup|clear', 'hooks': [start]}],
+                'Stop': [{'hooks': [stop]}]}
     command = hook_command(profile_path, tool)
     if tool == 'claude':
         handler = {'type': 'command', 'command': command, 'asyncRewake': True, 'timeout': CLAUDE_HOOK_TIMEOUT}
@@ -460,6 +487,12 @@ def hook_config(profile_path, tool, standby=DEFAULT_STANDBY):
 
 
 def settings_path(tool, scope, project_dir=None):
+    if tool == 'zcode':
+        # ZCode ignores project-level hooks as a whole (logged as
+        # config_project_hooks_ignored); only the user config runs them.
+        if scope != 'user':
+            raise WakeSetupError('ZCode ignores project-level hooks; install wake-up with --scope user')
+        return Path.home() / '.zcode' / 'cli' / 'config.json'
     if scope == 'user':
         return Path.home() / ('.claude/settings.json' if tool == 'claude' else '.codex/hooks.json')
     # Agents run from the repository folder, so that is the default project.
@@ -472,7 +505,12 @@ def _ours(group):
         if not isinstance(hook, dict):
             continue
         command = str(hook.get('command', ''))
-        if any(marker in command for marker in (MARKER,) + LEGACY_MARKERS):
+        text = command
+        args = hook.get('args')
+        if isinstance(args, list):
+            # Process hooks carry the marker in argv, not in the command.
+            text = command + ' ' + ' '.join(str(item) for item in args)
+        if any(marker in text for marker in (MARKER,) + LEGACY_MARKERS):
             return True
         encoded = re.search(r'(?:^|\s)-EncodedCommand\s+([A-Za-z0-9+/=]+)(?:\s|$)', command, re.I)
         if encoded:
@@ -498,6 +536,58 @@ def merge_hooks(document, additions):
     for event, groups in additions.items():
         hooks[event] = list(hooks.get(event, [])) + groups
     if hooks:
+        document['hooks'] = hooks
+    else:
+        document.pop('hooks', None)
+    return document
+
+
+def merge_zcode_hooks(document, additions):
+    """Merge hook events into a ZCode config file, preserving MCP servers and other settings.
+
+    ZCode reads hooks from ``hooks.events`` and requires ``hooks.enabled``;
+    project-level hooks are ignored, so this merge is only used for the user
+    config file.  Installing sets ``enabled``; removing our hooks never flips
+    it back, because the previous value is not ours to restore.
+    """
+    document = dict(document)
+    had_hooks = 'hooks' in document
+    hooks = document.get('hooks')
+    if hooks is None:
+        hooks = {}
+    elif not isinstance(hooks, dict):
+        raise ValueError('ZCode hooks configuration must be an object')
+    hooks = dict(hooks)
+    events = hooks.get('events')
+    if events is None:
+        events = {}
+    elif not isinstance(events, dict):
+        raise ValueError('ZCode hook events must be an object')
+    events = dict(events)
+    for event in list(events):
+        groups = events[event]
+        if not isinstance(groups, list):
+            continue  # Leave a malformed section untouched.
+        kept = [g for g in groups if not (isinstance(g, dict) and _ours(g))]
+        if kept:
+            events[event] = kept
+        else:
+            events.pop(event)
+    for event, groups in additions.items():
+        current = events.get(event)
+        if current is None:
+            events[event] = list(groups)
+        elif isinstance(current, list):
+            events[event] = current + list(groups)
+        else:
+            raise ValueError('ZCode hook event %s must be a list' % event)
+    if events:
+        hooks['events'] = events
+    else:
+        hooks.pop('events', None)
+    if additions:
+        hooks['enabled'] = True
+    if hooks or had_hooks:
         document['hooks'] = hooks
     else:
         document.pop('hooks', None)
@@ -567,24 +657,34 @@ def check_project(project_dir):
 
 
 def install(profile_path, tool, scope='project', project_dir=None, standby=DEFAULT_STANDBY):
+    if tool == 'zcode':
+        if scope != 'user':
+            raise WakeSetupError('ZCode ignores project-level hooks; install wake-up with --scope user')
+        if not profile_path:
+            raise WakeSetupError('ZCode has no native Coopagents bridge registration to discover; '
+                                 'pass --profile with the space profile path')
     if scope == 'project':
         project_dir = check_project(project_dir)
     profile_path = profile_path or find_profile(tool, project_dir)
     read_profile(profile_path)
     path = settings_path(tool, scope, project_dir)
-    _write_settings(path, merge_hooks(_load(path), hook_config(profile_path, tool, standby)))
-    if tool == 'codex':
+    config = hook_config(profile_path, tool, standby)
+    merged = merge_zcode_hooks(_load(path), config) if tool == 'zcode' else merge_hooks(_load(path), config)
+    _write_settings(path, merged)
+    if tool in ('codex', 'zcode'):
         WakeState(profile_path).set_budget(standby)
     return {'installed': tool, 'settings': str(path), 'profile': str(profile_path),
-            'events': sorted(hook_config(profile_path, tool, standby))}
+            'events': sorted(config)}
 
 
 def disable(tool, scope='project', project_dir=None):
+    if tool == 'zcode' and scope != 'user':
+        raise WakeSetupError('ZCode ignores project-level hooks; disable wake-up with --scope user')
     path = settings_path(tool, scope, project_dir)
     if not path.exists():
         return {'disabled': tool, 'settings': str(path), 'changed': False}
     before = _load(path)
-    after = merge_hooks(before, {})
+    after = merge_zcode_hooks(before, {}) if tool == 'zcode' else merge_hooks(before, {})
     if after != before:
         _write_settings(path, after)
     return {'disabled': tool, 'settings': str(path), 'changed': after != before}
@@ -619,7 +719,7 @@ def main(argv=None):
     d.add_argument('--tool', choices=TOOLS, required=True)
     d.add_argument('--scope', choices=('project', 'user'), default='project')
     d.add_argument('--project-dir')
-    s = commands.add_parser('standby', help='Codex: keep a finished turn waiting for collaboration items')
+    s = commands.add_parser('standby', help='Codex/ZCode: keep a finished turn waiting for collaboration items')
     s.add_argument('mode', choices=('on', 'off'))
     s.add_argument('--profile', required=True)
     s.add_argument('--seconds', type=int, default=DEFAULT_STANDBY)
@@ -630,15 +730,23 @@ def main(argv=None):
         return watch(args.profile, args.tool, sys.stdin.buffer, sys.stdout, sys.stderr)
     try:
         if args.command in ('install', 'preview'):
-            from .space_connect import resolve_tool
-            args.tool = resolve_tool(args.tool)
+            if args.tool == 'zcode':
+                pass  # ZCode has no calling-agent marker; the explicit --tool is authoritative.
+            else:
+                from .space_connect import resolve_tool
+                args.tool = resolve_tool(args.tool)
+            if args.tool == 'zcode' and args.scope != 'user':
+                raise WakeSetupError('ZCode ignores project-level hooks; use --scope user')
         if args.command == 'install':
             if args.scope == 'project':
                 check_project(args.project_dir)
-            if args.profile:
+            if args.profile and args.tool != 'zcode':
                 check_own_profile(args.tool, args.profile, args.project_dir)
             result = install(args.profile, args.tool, args.scope, args.project_dir, args.standby_limit)
         elif args.command == 'preview':
+            if args.tool == 'zcode' and not args.profile:
+                raise WakeSetupError('ZCode has no native Coopagents bridge registration to discover; '
+                                     'pass --profile with the space profile path')
             profile = args.profile or find_profile(args.tool, args.project_dir)
             result = {'hooks': hook_config(profile, args.tool, args.standby_limit),
                       'settings': str(settings_path(args.tool, args.scope, args.project_dir))}

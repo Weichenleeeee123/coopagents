@@ -40,8 +40,8 @@ SPECS = {
                       notes='Pi project MCP configuration is supported (Pi 0.99+ built-in MCP); entries use exposure direct so the tools are declared to the model, and project config loads only after workspace trust; extension lifecycle is not installed by this adapter.'),
     'kimi-code': HarnessSpec('kimi-code', '.kimi-code/mcp.json', 'mcpServers', native_hook='unsupported',
                              notes='Kimi Code project MCP configuration is supported; bearerTokenEnvVar and project autodiscovery are verified against the official Kimi Code MCP docs; project servers need workspace trust; ACP is not required for MCP.'),
-    'zcode': HarnessSpec('zcode', '.zcode/config.json', 'zcode', native_hook='unsupported',
-                         notes='ZCode workspace config uses mcp.servers; config files do not expand ${env:}, so the bearer token belongs in user-scope config; project hooks are not claimed.'),
+    'zcode': HarnessSpec('zcode', '.zcode/config.json', 'zcode', native_hook='unknown',
+                         notes='ZCode workspace config uses mcp.servers; config files do not expand ${env:}, so the bearer token belongs in user-scope config; wake hooks install to user config only (ZCode ignores project hooks) and live hook acceptance is unverified.'),
 }
 
 
