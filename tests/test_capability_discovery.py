@@ -41,7 +41,11 @@ class CapabilityDiscoveryTests(unittest.TestCase):
         self.assertEqual(cursor['capabilities']['mcp'], 'unknown')
         self.assertEqual(cursor['configuration']['mcp'], 'supported')
         self.assertEqual(cursor['capabilities']['native_hook'], 'unknown')
-        self.assertEqual(pi['capabilities']['native_hook'], 'unsupported')
+        # Pi ships an in-process extension file, so its hook cell is unknown
+        # (implemented, live acceptance unverified), not unsupported; idle
+        # wake stays unsupported because end-of-turn hooks are not idle wake.
+        self.assertEqual(pi['capabilities']['native_hook'], 'unknown')
+        self.assertEqual(pi['capabilities']['idle_wake'], 'unsupported')
         self.assertIn(cursor['evidence']['source'], ('adapter_contract', 'unverified'))
 
     def test_capability_payload_is_bounded_and_old_session_shape_is_preserved(self):
