@@ -378,6 +378,9 @@ def member_link(profile, *, warm=False):
         try:
             member.ensure_connected()
         except Exception:
-            member.close()
+            try:
+                member.close()
+            except Exception:
+                pass  # the dial error below is the diagnostic that matters
             raise
     return member
