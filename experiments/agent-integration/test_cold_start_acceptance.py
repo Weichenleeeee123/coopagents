@@ -472,6 +472,135 @@ class ColdStartTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     self.runner.installed_wheel_identity(wheel)
 
+    def test_hold_prompt_waits_for_live_second_member_without_new_permissions(self):
+        prompt = self.runner.hold_prompt({'room_id': 'room', 'member_id': 'owner'})
+        self.assertIn('whoami', prompt)
+        self.assertIn('read_team', prompt)
+        self.assertIn('second member', prompt)
+        self.assertIn('room_id=room', prompt)
+        self.assertIn('member_id=owner', prompt)
+        self.assertIn('Do not send requests', prompt)
+        self.assertIn('do not change files', prompt)
+        self.assertIn('do not enable wake', prompt)
+        self.assertNotIn('Bash', prompt)
+
+    def test_hold_observation_requires_read_team_listing_the_guest(self):
+        def codex_events(members):
+            return [{'type': 'item.completed', 'item': {'type': 'mcp_tool_call', 'tool': 'read_team',
+                     'status': 'completed', 'error': None, 'result': {'content': [
+                         {'type': 'text', 'text': json.dumps({'members': members})}]}}}]
+        guest = [{'member_id': 'guest', 'display_name': 'guest'}]
+        host_only = [{'member_id': 'owner', 'display_name': 'owner'}]
+        self.assertTrue(self.runner.observed_guest('codex', codex_events(host_only + guest), 'guest'))
+        self.assertFalse(self.runner.observed_guest('codex', codex_events(host_only), 'guest'))
+        self.assertFalse(self.runner.observed_guest('codex', [], 'guest'))
+        whoami = [{'type': 'item.completed', 'item': {'type': 'mcp_tool_call', 'tool': 'whoami',
+                   'status': 'completed', 'error': None, 'result': {'content': [
+                       {'type': 'text', 'text': json.dumps({'me': {'member_id': 'guest'}})}]}}}]
+        self.assertFalse(self.runner.observed_guest('codex', whoami, 'guest'))
+        failed = [{'type': 'item.completed', 'item': {'type': 'mcp_tool_call', 'tool': 'read_team',
+                   'status': 'completed', 'error': None, 'result': {'content': [
+                       {'type': 'text', 'text': json.dumps({'isError': True, 'members': guest})}]}}}]
+        self.assertFalse(self.runner.observed_guest('codex', failed, 'guest'))
+        claude = [
+            {'type': 'assistant', 'message': {'content': [{'type': 'tool_use', 'id': 'a', 'name': 'mcp__coopagents_x__read_team'}]}},
+            {'type': 'user', 'message': {'content': [{'type': 'tool_result', 'tool_use_id': 'a', 'content': [
+                {'type': 'text', 'text': json.dumps({'members': guest})}]}]}}
+        ]
+        self.assertTrue(self.runner.observed_guest('claude', claude, 'guest'))
+
+    def test_launched_session_collects_exit_and_kills_on_timeout(self):
+        root = Path(__file__).resolve().parents[2] / '.local' / 'cold-start-tests' / uuid4().hex
+        from coopagents.spaces import private_directory
+        private_directory(root)
+        session = self.runner.launch_session(
+            [sys.executable, '-c', 'import sys;print("held-output")'],
+            'synthetic prompt', root / 'held.log', dict(os.environ), root)
+        self.assertEqual(self.runner.collect_session(session, 10), 0)
+        self.assertIn('held-output', (root / 'held.log').read_text())
+        started = time.monotonic()
+        session = self.runner.launch_session(
+            [sys.executable, '-c', 'import time;time.sleep(10)'],
+            'synthetic prompt', root / 'stuck.log', dict(os.environ), root)
+        self.assertEqual(self.runner.collect_session(session, 1), 'timeout')
+        self.assertLess(time.monotonic() - started, 8)
+        self.assertIsNotNone(session['process'].poll())
+
+    def test_terminate_session_stops_a_running_launch(self):
+        root = Path(__file__).resolve().parents[2] / '.local' / 'cold-start-tests' / uuid4().hex
+        from coopagents.spaces import private_directory
+        private_directory(root)
+        session = self.runner.launch_session(
+            [sys.executable, '-c', 'import time;time.sleep(30)'],
+            'synthetic prompt', root / 'running.log', dict(os.environ), root)
+        self.assertIsNone(session['process'].poll())
+        self.runner.terminate_session(session)
+        self.assertIsNotNone(session['process'].poll())
+        self.runner.terminate_session(session)
+
+    def test_concurrent_owner_holds_session_across_join_and_observes_guest(self):
+        # Exercise the concurrent-owner path through main with mocked model sessions.
+        with ExitStack() as patches:
+            roots = {}
+            def prepare(root, *args, tool=None, **kwargs):
+                root.mkdir(parents=True)
+                (root / 'profile.json').write_text('{}', encoding='utf-8')
+                roots[tool] = root
+                return {'SYNTHETIC_ROOT': str(root)}
+            def profile(path):
+                tool = 'claude' if Path(path).parent == roots['claude'] else 'codex'
+                return {'room_id': 'synthetic-room', 'member_id': tool, 'control_token': 'synthetic'}
+            def native_registration(env, *args):
+                return {'profile': str(Path(env['SYNTHETIC_ROOT']) / 'profile.json')}
+            def process(command, **kwargs):
+                return subprocess.CompletedProcess(command, 0,
+                                                   stdout='' if '--porcelain' in command else 'synthetic-commit')
+            def events_for(path):
+                if '02b-owner-hold' in str(path):
+                    return [
+                        {'type': 'assistant', 'message': {'content': [
+                            {'type': 'tool_use', 'id': 'a', 'name': 'mcp__coopagents_x__read_team'}]}},
+                        {'type': 'user', 'message': {'content': [
+                            {'type': 'tool_result', 'tool_use_id': 'a', 'content': [
+                                {'type': 'text', 'text': json.dumps({'members': [{'member_id': 'codex'}]})}]}]}}]
+                return []
+            launched = []
+            def fake_launch(command, prompt, path, env, cwd):
+                launched.append(path)
+                return {'launched': True}
+            terminated = []
+            overrides = {'codex_tool_approvals': lambda *a: [], 'claude_tool_approvals': lambda *a: [],
+                'native_invitation_result': lambda *a: {'message': 'synthetic invitation'},
+                'prepare_homes': prepare, 'bounded': lambda *a, **k: 0,
+                'registrations': native_registration, 'events_from': events_for,
+                'successful_tools': lambda *a: {'whoami', 'read_team', 'send_request', 'read_inbox', 'reply'},
+                'native_identity_proven': lambda *a: True, 'snapshot': lambda *a: {},
+                'setup_diagnostics': lambda *a: {},
+                'network_proven': lambda *a: True, 'diagnostics_proven': lambda *a: True,
+                'exchange_proven': lambda *a: True,
+                'launch_session': fake_launch, 'collect_session': lambda *a, **k: 0,
+                'terminate_session': lambda session: terminated.append(session),
+                'assistant_text': lambda *a: '\n'.join((root / 'repo/acceptance-answer.txt').read_text() for root in roots.values())}
+            for name, replacement in overrides.items():
+                patches.enter_context(patch.object(self.runner, name, replacement))
+            patches.enter_context(patch.object(self.runner.subprocess, 'run', process))
+            patches.enter_context(patch('coopagents.spaces.read_profile', profile))
+            patches.enter_context(patch('coopagents.spaces.read_json', return_value={'network': 'local'}))
+            output = patches.enter_context(redirect_stdout(io.StringIO()))
+            code = self.runner.main(['--host', 'claude', '--network', 'local', '--concurrent-owner',
+                                     '--codex', 'synthetic-codex', '--claude', 'synthetic-claude'])
+            report = json.loads((roots['claude'].parent / 'summary.json').read_text())
+            self.assertEqual(code, 0)
+            self.assertEqual(report['status'], 'passed')
+            self.assertTrue(report['concurrent_owner'])
+            self.assertEqual(len(launched), 1)
+            self.assertEqual(terminated, [])
+            hold_sessions = [s for s in report['sessions'] if s['stage'] == '02b-owner-hold']
+            self.assertEqual(len(hold_sessions), 1)
+            self.assertTrue(hold_sessions[0]['ok'])
+            self.assertIn({'check': 'owner hold session observed the guest join live', 'ok': True}, report['checks'])
+            self.assertIn('02b-owner-hold: PASS', output.getvalue())
+
 
 if __name__ == '__main__':
     unittest.main()

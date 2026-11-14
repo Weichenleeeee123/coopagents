@@ -4,6 +4,8 @@ Run with the checkout's isolated Python. No model overrides, permission bypass,
 real native settings changes or file removal. This is single-machine evidence;
 it cannot certify two people, different NATs, cross-device wake or other OSes.
 The retained host is stopped on exit. Wake is deliberately a separate test.
+With --concurrent-owner, the owner model session stays open across the guest
+join and must observe it live; the serial flow remains the default.
 """
 import argparse
 import json
@@ -183,6 +185,14 @@ def peer_question_prompt(member_id, nonce, *, synthetic_acceptance=False):
              if synthetic_acceptance else ''))
 
 
+def hold_prompt(host_profile):
+    return (f'Use only native Coopagents MCP tools. Call whoami and verify '
+            f'room_id={host_profile["room_id"]}, member_id={host_profile["member_id"]}; then call read_team '
+            'repeatedly until the team lists a second member, and report that member. '
+            'A guest is joining right now; keep checking until the second member appears. '
+            'Do not send requests, do not change files, do not enable wake.')
+
+
 def model_command(tool, executable, run, python, *, setup=False, require=()):
     if tool == 'codex':
         command = [executable, 'exec', '--sandbox', 'workspace-write' if setup else 'read-only',
@@ -315,6 +325,17 @@ def native_identity_proven(tool, events, expected):
                if name == 'whoami' for value in decoded_objects(result))
 
 
+def observed_guest(tool, events, guest_member_id):
+    """True when a successful read_team result lists the guest member."""
+    for name, result in native_results(tool, events):
+        if name != 'read_team':
+            continue
+        if any(isinstance(value, dict) and value.get('member_id') == guest_member_id
+               for value in decoded_objects(result)):
+            return True
+    return False
+
+
 def network_proven(requested, host_state, guest_profile=None):
     """Do not certify P2P from a requested flag or a model's network claim."""
     if host_state.get('network') != requested:
@@ -372,6 +393,67 @@ def bounded(command, prompt, path, env, cwd, timeout):
                 os.killpg(process.pid, signal.SIGKILL)
             process.wait(timeout=30)
             return 'timeout'
+
+
+def launch_session(command, prompt, path, env, cwd):
+    """Start a model session without waiting; the caller must collect or terminate it."""
+    prompt_path = path.with_suffix('.prompt.txt')
+    prompt_path.write_text(prompt, encoding='utf-8')
+    from coopagents.spaces import protect
+    protect(prompt_path)
+    stdin = prompt_path.open('rb')
+    out = path.open('xb')
+    protect(path)
+    try:
+        process = subprocess.Popen(command, stdin=stdin, stdout=out, stderr=subprocess.STDOUT,
+                                   env=env, cwd=cwd, start_new_session=os.name != 'nt')
+    except Exception:
+        stdin.close()
+        out.close()
+        raise
+    return {'process': process, 'stdin': stdin, 'out': out, 'path': path}
+
+
+def _kill_session(session):
+    process = session['process']
+    if process.poll() is not None:
+        return
+    if os.name == 'nt':
+        subprocess.run(['taskkill', '/T', '/F', '/PID', str(process.pid)], capture_output=True, timeout=30)
+    else:
+        import signal
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            pass
+
+
+def collect_session(session, timeout):
+    """Wait for a launched session; a timeout terminates its children like bounded()."""
+    try:
+        return session['process'].wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        _kill_session(session)
+        session['process'].wait(timeout=30)
+        return 'timeout'
+    finally:
+        session['stdin'].close()
+        session['out'].close()
+
+
+def terminate_session(session):
+    """Best-effort stop for a launched session the harness no longer needs."""
+    try:
+        _kill_session(session)
+        session['process'].wait(timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        pass
+    finally:
+        for stream in (session['stdin'], session['out']):
+            try:
+                stream.close()
+            except (OSError, ValueError):
+                pass
 
 
 def events_from(path):
@@ -467,6 +549,8 @@ def main(argv=None):
     parser.add_argument('--preflight-only', action='store_true', help='Two bounded default-model replies without tools; not acceptance')
     parser.add_argument('--stop-after-host-verification', action='store_true',
                         help='Only create/connect and verify the host in a new native model session; explicitly partial')
+    parser.add_argument('--concurrent-owner', action='store_true',
+                        help='Hold the owner model session open while the guest joins; the owner must observe the join live')
     parser.add_argument('--codex', default=shutil.which('codex'))
     parser.add_argument('--claude', default=shutil.which('claude'))
     parser.add_argument('--installed-wheel', type=Path, help='Verify an exact wheel already installed in this isolated Python')
@@ -517,7 +601,8 @@ def main(argv=None):
     (projects[host] / 'acceptance-answer.txt').write_text(answer, encoding='utf-8')
     (projects[guest] / 'acceptance-answer.txt').write_text(reverse_answer, encoding='utf-8')
     report = {'status': 'prepared', 'host': host, 'guest': guest, 'requested_network': args.network,
-              'scope': 'single machine, wake disabled', 'sessions': [], 'checks': []}
+              'scope': 'single machine, wake disabled', 'sessions': [], 'checks': [],
+              'concurrent_owner': args.concurrent_owner}
     report['distribution'] = distribution_identity
     report['source_commit'] = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=REPO,
                                              capture_output=True, text=True, timeout=30, check=True).stdout.strip()
@@ -541,6 +626,7 @@ def main(argv=None):
         private_write(run / 'summary.json', report, update=True)
         return 0 if report['status'] == 'preflight_passed' else 1
     owner = None
+    hold = None
 
     def turn(tool, stage, prompt, *, setup=False, require=(), expected_identity=None, verify_setup=False):
         env = environments[tool]
@@ -573,6 +659,32 @@ def main(argv=None):
         if not ok:
             raise RuntimeError('Native model session failed; inspect private evidence')
         return entry
+
+    def launch_hold():
+        path = run / '02b-owner-hold.jsonl'
+        session = launch_session(
+            model_command(host, getattr(args, host), run / host, interpreters[host],
+                          require=('whoami', 'read_team')),
+            hold_prompt(host_profile), path, environments[host], projects[host])
+        return {'tool': host, 'stage': '02b-owner-hold', 'path': path, 'session': session}
+
+    def finish_hold(held, guest_member_id):
+        code = collect_session(held['session'], args.timeout)
+        events = events_from(held['path'])
+        tools = successful_tools(held['tool'], events)
+        ok = code == 0 and {'whoami', 'read_team'}.issubset(tools)
+        identity_ok = native_identity_proven(held['tool'], events, host_profile)
+        report['checks'].append({'check': held['stage'] + ' native whoami matches saved room/member', 'ok': identity_ok})
+        ok = ok and identity_ok
+        seen = observed_guest(held['tool'], events, guest_member_id)
+        report['checks'].append({'check': 'owner hold session observed the guest join live', 'ok': seen})
+        ok = ok and seen
+        report['sessions'].append({'stage': held['stage'], 'tool': held['tool'], 'exit': code,
+                                   'native_tools': sorted(tools), 'ok': ok})
+        private_write(run / 'summary.json', report, update=True)
+        print(held['stage'] + ': ' + ('PASS' if ok else 'FAIL'), flush=True)
+        if not ok:
+            raise RuntimeError('Owner hold session did not observe the guest join')
 
     try:
         host_setup = setup_prompt(host, run / host, interpreters[host], run / host / 'checkout-skill/SKILL.md',
@@ -620,6 +732,8 @@ def main(argv=None):
             # Preserve the actual invitation message as supplied to the joiner; no README parsing/version invention.
             invitation_message = run / guest / 'invitation-message.txt'
             invitation_message.write_text(invitation['message'], encoding='utf-8')
+            if args.concurrent_owner:
+                hold = launch_hold()
             turn(guest, '03-join', guest_setup + f'Read my private invitation message at {invitation_message}. '
                  f'I authorize joining that space as {guest}; use join --invitation-file with that path and --connect {guest}. '
                  'For this private acceptance reuse the exact already-installed candidate Python named above, '
@@ -633,6 +747,9 @@ def main(argv=None):
             report['checks'].append({'check': 'joined network matches host and requested mode, including P2P endpoint', 'ok': peer_network_ok})
             if not peer_network_ok:
                 raise RuntimeError('Joining member did not use the expected host network endpoint')
+            if hold is not None:
+                finish_hold(hold, guest_profile['member_id'])
+                hold = None
             turn(guest, '04-guest-new-session', f'Use only native Coopagents MCP tools. Call whoami and verify '
                  f'room_id={guest_profile["room_id"]}, member_id={guest_profile["member_id"]}; then read_team. '
                  f'Send a request to member {host_profile["member_id"]} asking for the exact text in its '
@@ -672,6 +789,8 @@ def main(argv=None):
         # Never expose exception text: native errors can contain private response bodies.
         report['failure_type'] = type(error).__name__
     finally:
+        if hold is not None:
+            terminate_session(hold['session'])
         # A model may create the host but fail before native registration. Stop
         # only retained host profiles beneath this run, even in that failure case.
         owned = list((run / host).rglob('profile.json'))
