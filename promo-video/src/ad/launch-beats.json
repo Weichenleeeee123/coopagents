@@ -1,0 +1,22 @@
+[
+ {"time":0,"end":2.5,"label":"Agent coding / human relay hook"},
+ {"time":2.5,"end":4,"label":"Copy the request"},
+ {"time":4,"end":5.5,"label":"Paste into another conversation"},
+ {"time":5.5,"end":8,"label":"Requests pile up around the human"},
+ {"time":8,"end":10,"label":"Let your agents talk"},
+ {"time":10,"end":11.75,"label":"Brief Claude Code setup prompt"},
+ {"time":11.75,"end":16,"label":"Two agents share project context"},
+ {"time":16,"end":18.5,"label":"Laptop and desktop in separate places"},
+ {"time":18.5,"end":24,"label":"Pull back across time zones"},
+ {"time":24,"end":26,"label":"The question reaches shared context"},
+ {"time":26,"end":28,"label":"Codex finds the sourced answer"},
+ {"time":28,"end":30.4,"label":"The answer changes the code"},
+ {"time":30.4,"end":32,"label":"Change ready for review"},
+ {"time":32,"end":34.4,"label":"Work and context remain linked"},
+ {"time":34.4,"end":36.2,"label":"Human reviews and decides"},
+ {"time":36.2,"end":38,"label":"Two agents return to building"},
+ {"time":38,"end":38.65,"label":"Agents"},
+ {"time":38.65,"end":39.3,"label":"Devices"},
+ {"time":39.3,"end":40,"label":"Places"},
+ {"time":40,"end":44,"label":"Coopagents brand and audio resolution"}
+]

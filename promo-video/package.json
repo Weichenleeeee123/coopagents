@@ -1,7 +1,7 @@
 {
   "name": "promo-video",
   "version": "1.0.0",
-  "description": "Coopagents three-minute promotional film",
+  "description": "Coopagents English product film: less relaying, more building",
   "repository": {},
   "license": "UNLICENSED",
   "engines": {
@@ -10,6 +10,9 @@
   "private": true,
   "dependencies": {
     "@remotion/cli": "4.0.539",
+    "@remotion/media": "4.0.539",
+    "@remotion/media-utils": "4.0.539",
+    "@remotion/transitions": "4.0.539",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "remotion": "4.0.539"
@@ -25,11 +28,20 @@
   "scripts": {
     "dev": "remotion studio",
     "build": "remotion bundle",
+    "storyboard": "node scripts/build-storyboard.mjs",
+    "promo-cut": "node scripts/build-promo-cut.mjs",
+    "analyze:music": "python scripts/analyze-music.py",
     "generate:music": "node scripts/generate-score.mjs",
     "render": "remotion render CoopagentsPromo out/coopagents-promo.mp4",
-    "verify": "npm run lint && node scripts/verify-film.mjs",
+    "verify": "npm run lint && node scripts/verify-ad.mjs",
+    "verify:transitions": "node scripts/check-transitions.mjs",
+    "verify:audio": "node scripts/verify-launch-audio.mjs",
     "upgrade": "remotion upgrade",
-    "lint": "eslint src && tsc"
+    "lint": "eslint src && tsc",
+    "predev": "npm run analyze:music",
+    "prebuild": "npm run analyze:music",
+    "prerender": "npm run analyze:music",
+    "preverify": "npm run analyze:music"
   },
   "allowScripts": {
     "esbuild": false
