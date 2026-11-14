@@ -273,9 +273,13 @@ class InstallTests(unittest.TestCase):
             write_extension_file(target, opencode_plugin_text())
         self.assertEqual(target.read_text(), '// someone else\n')
         link = self.root / 'link.js'
-        link.symlink_to(target)
-        with self.assertRaises(ValueError):
-            write_extension_file(link, opencode_plugin_text())
+        try:
+            link.symlink_to(target)
+        except (OSError, NotImplementedError):
+            link = None  # Windows without developer mode cannot create symlinks
+        if link is not None:
+            with self.assertRaises(ValueError):
+                write_extension_file(link, opencode_plugin_text())
         managed = self.root / 'managed.js'
         first = write_extension_file(managed, opencode_plugin_text())
         self.assertEqual(first['status'], 'installed')
@@ -290,7 +294,7 @@ class InstallTests(unittest.TestCase):
         home.mkdir()
         project = (self.root / 'project').absolute()
         project.mkdir()
-        with patch.dict('os.environ', {'HOME': str(home)}):
+        with patch.dict('os.environ', {'HOME': str(home), 'USERPROFILE': str(home)}):
             self.assertEqual(install_path('opencode', 'user'), home / '.config/opencode/plugins/coopagents/index.ts')
             self.assertEqual(install_path('opencode', 'user', version='v1'), home / '.config/opencode/plugins/coopagents.js')
             self.assertEqual(install_path('pi', 'user'), home / '.pi/agent/extensions/coopagents.ts')
@@ -328,7 +332,7 @@ class InstallTests(unittest.TestCase):
                                 '--plugin-version', 'v1', '--export', str(self.root / 'pi.ts')],
                                capture_output=True, text=True, timeout=30)
         self.assertNotEqual(wrong.returncode, 0)
-        with patch.dict('os.environ', {'HOME': str(home)}):
+        with patch.dict('os.environ', {'HOME': str(home), 'USERPROFILE': str(home)}):
             installed = subprocess.run([sys.executable, '-m', 'coopagents.harness_extensions', '--harness', 'pi',
                                         '--install', '--scope', 'project', '--project-dir', str(project)],
                                        capture_output=True, text=True, timeout=30)
