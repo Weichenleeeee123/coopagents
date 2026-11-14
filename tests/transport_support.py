@@ -1,4 +1,5 @@
 """Real random-port loopback service with retained per-test databases."""
+import base64
 import json
 from pathlib import Path
 import socket
@@ -62,3 +63,10 @@ class LiveService:
         status, member, _ = self.request('POST', '/api/join', data={'invite_token': invite['invite_token'], 'display_name': 'Member'})
         assert status == 200
         return owner, member
+
+
+def hook_script(command):
+    """The script a hook command runs; Windows hooks carry it as a PowerShell -EncodedCommand."""
+    if ' -EncodedCommand ' not in command:
+        return command
+    return base64.b64decode(command.split(' -EncodedCommand ', 1)[1]).decode('utf-16-le')
