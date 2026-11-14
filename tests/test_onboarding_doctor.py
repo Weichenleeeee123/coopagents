@@ -177,6 +177,36 @@ class LocalChecksTests(DoctorTestCase):
         self.assertNotIn('challenge-value', encoded)
         self.assertNotIn('proof-value', encoded)
 
+    def test_profile_checks_warm_the_member_link_before_verifying(self):
+        with retained_directory() as directory:
+            profile_path = Path(directory) / 'profile.json'
+            profile = {
+                'schema_version': 1,
+                'origin': 'http://127.0.0.1:8765',
+                'room_id': 'room-1',
+                'member_id': 'member-1',
+                'agent_token': 'agent-secret-value',
+            }
+            from coopagents.spaces import private_write
+            private_write(profile_path, profile)
+            responses = {
+                '/api/me': {'me': {'room_id': 'room-1', 'member_id': 'member-1', 'kind': 'agent'}},
+                '/api/diagnostics/start': {'diagnostic_id': 'diagnostic-1', 'status': 'sent'},
+                '/api/diagnostics/read': {'diagnostic_id': 'diagnostic-1', 'challenge': 'challenge-value',
+                                           'proof': 'proof-value', 'status': 'read_back'},
+                '/api/diagnostics/complete': {'diagnostic_id': 'diagnostic-1', 'status': 'completed'},
+            }
+
+            def request(origin, path, **kwargs):
+                return responses[path]
+
+            with patch.object(onboarding_doctor, 'member_link', return_value=nullcontext()) as network, \
+                    patch('coopagents.onboarding_doctor.secrets.token_urlsafe', return_value='challenge-value'), \
+                    patch('coopagents.space_runtime.request', side_effect=request):
+                result = onboarding_doctor.profile_checks(profile_path)
+        network.assert_called_once_with(profile, warm=True)
+        self.assertEqual(next(item for item in result['checks'] if item['id'] == 'runtime_reachability')['status'], 'pass')
+
     def test_profile_checks_reports_challenge_failure_without_overwriting_reachability(self):
         with retained_directory() as directory:
             profile_path = Path(directory) / 'profile.json'

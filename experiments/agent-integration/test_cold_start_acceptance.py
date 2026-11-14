@@ -104,6 +104,21 @@ class ColdStartTests(unittest.TestCase):
                                           skill, installed_wheel=True)
         self.assertNotIn('read-only shell command', claude)
 
+    def test_snapshot_warms_the_member_link_before_reading(self):
+        root = Path(__file__).resolve().parents[2] / '.local/cold-start-tests' / uuid4().hex
+        root.mkdir(parents=True)
+        profile_path = root / 'profile.json'
+        profile = {'schema_version': 1, 'origin': 'http://127.0.0.1:8765', 'room_id': 'room-1',
+                   'member_id': 'member-1', 'agent_token': 'agent-secret-value', 'web_token': 'web-secret-value'}
+        profile_path.write_text(json.dumps(profile), encoding='utf-8')
+        from contextlib import nullcontext
+        with patch('coopagents.p2p.member_link', return_value=nullcontext()) as network, \
+                patch('coopagents.space_runtime.request', return_value={'snapshot': True}) as fetch:
+            result = self.runner.snapshot(profile_path)
+        network.assert_called_once_with(profile, warm=True)
+        fetch.assert_called_once_with('http://127.0.0.1:8765', '/api/snapshot', token='web-secret-value')
+        self.assertEqual(result, {'snapshot': True})
+
     def test_invitation_prompt_authorizes_exact_local_command(self):
         command = self.runner.invitation_command(Path('/venv/python'), Path('/private/profile.json'))
         text = ('I explicitly authorize one local read/write setup command through the pre-authorized native Bash tool: '

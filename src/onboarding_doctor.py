@@ -364,7 +364,7 @@ def profile_checks(profile_path, *, tool=None, project_dir=None, cli=None, skill
                          secrets=secrets_to_hide)]
     identity_verified = False
     try:
-        with member_link(profile) as link:
+        with member_link(profile, warm=True) as link:
             identity = _request_profile(profile, '/api/me')
             me = identity.get('me') if isinstance(identity, dict) else None
             if not isinstance(me, dict) or me.get('room_id') != profile['room_id'] \

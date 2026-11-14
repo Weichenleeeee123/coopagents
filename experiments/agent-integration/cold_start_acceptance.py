@@ -501,7 +501,7 @@ def snapshot(profile_path):
     from coopagents.spaces import read_profile
     profile = read_profile(profile_path)
     from coopagents.p2p import member_link
-    with member_link(profile):
+    with member_link(profile, warm=True):
         return request(profile['origin'], '/api/snapshot', token=profile['web_token'])
 
 
