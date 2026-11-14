@@ -6,7 +6,7 @@ It opens with the human relay problem, then shows agents connecting across real 
 
 ## Run
 
-The original recording stays at `public/funk-caravan.m4a` and is excluded from Git. The composition ends the music after 44 seconds with a three-second volume fade. Python 3 and FFmpeg must be on PATH for the music analyzer.
+The original recording stays at `public/funk-caravan.m4a` and is excluded from Git. There is no licence to redistribute it, so it must never be committed (audio files under `public/` are ignored by extension), and a fresh checkout cannot run `dev`, `verify` or `render` until a track you are licensed to use is placed there. Do not publish a render made with an unlicensed track. The composition ends the music after 44 seconds with a three-second volume fade. Python 3 and FFmpeg must be on PATH for the music analyzer.
 
 ```powershell
 npm run dev
