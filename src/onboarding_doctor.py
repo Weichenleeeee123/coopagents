@@ -10,6 +10,7 @@ import shutil
 import site
 import subprocess
 import sys
+import time
 from urllib.error import HTTPError, URLError
 
 from . import space_connect
@@ -341,6 +342,39 @@ def _request_profile(profile, path, *, token=None, data=None):
     return bounded_call(lambda: request(profile['origin'], path, token=token or profile['agent_token'], data=data), 10)
 
 
+def _verified_link(profile):
+    """Open a warm member link and verify the personal identity, retrying once.
+
+    A transient hiccup (slow dial, busy host) must not fail onboarding
+    verification when the next attempt succeeds. The retry covers link setup
+    and the identity request together; the last error is raised.
+    """
+    last_error = None
+    for attempt in range(2):
+        try:
+            link_cm = member_link(profile, warm=True)
+            link = link_cm.__enter__()
+        except Exception as error:
+            last_error = error
+        else:
+            try:
+                identity = _request_profile(profile, '/api/me')
+            except Exception as error:
+                link_cm.__exit__(None, None, None)
+                last_error = error
+            else:
+                me = identity.get('me') if isinstance(identity, dict) else None
+                if not isinstance(me, dict) or me.get('room_id') != profile['room_id'] \
+                        or me.get('member_id') != profile['member_id'] or me.get('kind') != 'agent':
+                    link_cm.__exit__(None, None, None)
+                    last_error = ValueError('The authenticated identity does not match the private profile')
+                else:
+                    return link_cm, link, me
+        if attempt == 0:
+            time.sleep(2)
+    raise last_error
+
+
 def profile_checks(profile_path, *, tool=None, project_dir=None, cli=None, skills=None):
     """Verify a private profile, its target identity and its diagnostic challenge."""
     try:
@@ -364,12 +398,8 @@ def profile_checks(profile_path, *, tool=None, project_dir=None, cli=None, skill
                          secrets=secrets_to_hide)]
     identity_verified = False
     try:
-        with member_link(profile, warm=True) as link:
-            identity = _request_profile(profile, '/api/me')
-            me = identity.get('me') if isinstance(identity, dict) else None
-            if not isinstance(me, dict) or me.get('room_id') != profile['room_id'] \
-                    or me.get('member_id') != profile['member_id'] or me.get('kind') != 'agent':
-                raise ValueError('The authenticated identity does not match the private profile')
+        link_cm, link, me = _verified_link(profile)
+        try:
             identity_verified = True
             checks.append(make_check('runtime_reachability', 'pass', 'The space accepted the personal agent identity.',
                                      evidence={'room_id': me['room_id'], 'member_id': me['member_id'], 'kind': me['kind']},
@@ -418,6 +448,8 @@ def profile_checks(profile_path, *, tool=None, project_dir=None, cli=None, skill
                 checks.append(make_check('challenge_round_trip', 'fail', 'The diagnostic challenge did not complete.',
                                          'Retry doctor after the agent identity is reachable; no credential was changed.',
                                          secrets=secrets_to_hide))
+        finally:
+            link_cm.__exit__(None, None, None)
     except Exception as error:
         reason = ('credential_rejected' if isinstance(error, HTTPError) and error.code in (401, 403)
                   else 'endpoint_error' if isinstance(error, HTTPError)

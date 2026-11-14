@@ -207,6 +207,53 @@ class LocalChecksTests(DoctorTestCase):
         network.assert_called_once_with(profile, warm=True)
         self.assertEqual(next(item for item in result['checks'] if item['id'] == 'runtime_reachability')['status'], 'pass')
 
+    def test_profile_checks_retry_transient_identity_failure_once(self):
+        with retained_directory() as directory:
+            profile_path = Path(directory) / 'profile.json'
+            profile = {
+                'schema_version': 1,
+                'origin': 'http://127.0.0.1:8765',
+                'room_id': 'room-1',
+                'member_id': 'member-1',
+                'agent_token': 'agent-secret-value',
+            }
+            from coopagents.spaces import private_write
+            private_write(profile_path, profile)
+            responses = [
+                OSError('transient'),
+                {'me': {'room_id': 'room-1', 'member_id': 'member-1', 'kind': 'agent'}},
+                {'diagnostic_id': 'diagnostic-1', 'status': 'sent'},
+                {'diagnostic_id': 'diagnostic-1', 'challenge': 'challenge-value',
+                 'proof': 'proof-value', 'status': 'read_back'},
+                {'diagnostic_id': 'diagnostic-1', 'status': 'completed'},
+            ]
+            with patch.object(onboarding_doctor, 'member_link', return_value=nullcontext()) as network, \
+                    patch('coopagents.onboarding_doctor.secrets.token_urlsafe', return_value='challenge-value'), \
+                    patch('coopagents.space_runtime.request', side_effect=responses) as fetch, \
+                    patch('time.sleep') as slept:
+                result = onboarding_doctor.profile_checks(profile_path)
+        self.assertEqual(network.call_count, 2)
+        self.assertEqual(fetch.call_count, 5)
+        slept.assert_called_once_with(2)
+        self.assertEqual(next(item for item in result['checks'] if item['id'] == 'runtime_reachability')['status'], 'pass')
+        self.assertEqual(next(item for item in result['checks'] if item['id'] == 'challenge_round_trip')['status'], 'pass')
+
+    def test_profile_checks_raise_last_error_after_retry_exhausted(self):
+        from coopagents.spaces import private_write
+        with retained_directory() as directory:
+            path = Path(directory) / 'profile.json'
+            private_write(path, dict(schema_version=1, origin='http://127.0.0.1:8765',
+                                     room_id='r', member_id='m', agent_token='secret-fixture'))
+            with patch.object(onboarding_doctor, 'member_link', return_value=nullcontext()) as network, \
+                    patch('coopagents.space_runtime.request', side_effect=TimeoutError('private')), \
+                    patch('time.sleep') as slept:
+                result = onboarding_doctor.profile_checks(path)
+        self.assertEqual(network.call_count, 2)
+        slept.assert_called_once_with(2)
+        check = next(c for c in result['checks'] if c['id'] == 'runtime_reachability')
+        self.assertEqual(check['status'], 'fail')
+        self.assertEqual(check['evidence']['reason'], 'unreachable')
+
     def test_profile_checks_reports_challenge_failure_without_overwriting_reachability(self):
         with retained_directory() as directory:
             profile_path = Path(directory) / 'profile.json'
