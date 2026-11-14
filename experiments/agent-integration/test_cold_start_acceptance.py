@@ -174,6 +174,24 @@ class ColdStartTests(unittest.TestCase):
                   'exit_code': 0, 'aggregated_output': json.dumps(invitation)}}]
         self.assertEqual(self.runner.native_invitation_result('codex', codex, command, profile), invitation)
 
+    def test_invitation_matches_command_despite_quote_spelling(self):
+        profile = Path('/synthetic/member/profile.json')
+        command = self.runner.invitation_command(Path('/venv/python'), profile)
+        invitation = {'message': 'synthetic invitation', 'invitation_file': str(profile.with_name('invitation-test.json'))}
+        unquoted = command.replace('"', '')
+        def events(observed):
+            return [
+                {'type': 'assistant', 'message': {'content': [{'type': 'tool_use', 'id': 'invite',
+                    'name': 'Bash', 'input': {'command': observed}}]}},
+                {'type': 'user', 'message': {'content': [{'type': 'tool_result', 'tool_use_id': 'invite',
+                    'is_error': False, 'content': json.dumps(invitation)}]}}]
+        self.assertEqual(self.runner.native_invitation_result('claude', events(unquoted), command, profile), invitation)
+        codex = [{'type': 'item.completed', 'item': {'type': 'command_execution', 'command': unquoted,
+                  'exit_code': 0, 'aggregated_output': json.dumps(invitation)}}]
+        self.assertEqual(self.runner.native_invitation_result('codex', codex, command, profile), invitation)
+        with self.assertRaises(ValueError):
+            self.runner.native_invitation_result('claude', events(unquoted + ' --extra'), command, profile)
+
     def test_claude_nonstructured_messages_and_blocks_do_not_crash_or_prove_tools(self):
         noise = [{'type': kind, 'message': message}
                  for kind in ('system', 'assistant', 'user')

@@ -300,21 +300,34 @@ def invitation_command(python, profile):
     return f'"{python}" -m coopagents.space_runtime invite --profile "{profile}" --message en'
 
 
+def _normalize_command(command):
+    """Compare native commands ignoring quote characters.
+
+    Models retype the authorized command with their own quoting (or none);
+    the tokens must match exactly, the quote characters need not.
+    """
+    return command.replace('"', '').replace("'", '')
+
+
 def native_invitation_result(tool, events, command, profile):
     """Retain model-invoked CLI output directly; shell redirection needs extra permission."""
+    expected = _normalize_command(command)
     pending, outputs = set(), []
     for event in events:
         if tool == 'claude':
             for block in claude_content(event):
+                observed = block.get('input', {}).get('command')
                 if (block.get('type') == 'tool_use' and block.get('name') == 'Bash'
-                        and block.get('input', {}).get('command') == command):
+                        and isinstance(observed, str) and _normalize_command(observed) == expected):
                     pending.add(block.get('id'))
                 if (block.get('type') == 'tool_result' and block.get('tool_use_id') in pending
                         and not block.get('is_error')):
                     outputs.append(block)
         elif event.get('type') == 'item.completed':
             item = event.get('item', {})
-            if item.get('type') == 'command_execution' and item.get('command') == command and item.get('exit_code') == 0:
+            observed = item.get('command')
+            if (item.get('type') == 'command_execution' and isinstance(observed, str)
+                    and _normalize_command(observed) == expected and item.get('exit_code') == 0):
                 outputs.append(item.get('aggregated_output'))
     for output in outputs:
         objects = list(decoded_objects(output))
