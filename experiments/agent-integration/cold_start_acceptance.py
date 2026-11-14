@@ -230,7 +230,14 @@ def setup_prompt(tool, run, python, skill_path, *, installed_wheel):
     else:
         installation = (f'The authorized development checkout is already installed editable in isolated Python {python}. '
                         'Reuse it; do not install packages. ')
-    return (f'Read the installed candidate Skill at {Path(skill_path).as_posix()}. ' + installation +
+    if tool == 'codex':
+        # Codex has no file-reading tool; without an explicit carve-out the
+        # runtime-only restriction below reads as forbidding the Skill read.
+        skill_read = (f'Read the installed candidate Skill at {Path(skill_path).as_posix()} with one read-only '
+                      'shell command; that single file read is authorized. ')
+    else:
+        skill_read = f'Read the installed candidate Skill at {Path(skill_path).as_posix()}. '
+    return (skill_read + installation +
             f'You are {tool}. All settings and state directories are isolated in {run}. '
             'The harness has already checked Python and package installation. Do not run pip, git, '
             'shell inspection commands, or any command except the Coopagents space_runtime commands '

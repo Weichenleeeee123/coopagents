@@ -83,8 +83,7 @@ class ColdStartTests(unittest.TestCase):
                          'Read,Bash("/venv/bin/python" -m coopagents.space_runtime:*),'
                          'Bash(/venv/bin/python -m coopagents.space_runtime:*)')
 
-    def test_setup_prompt_avoids_unapproved_environment_probes(self):
-        prompt = self.runner.setup_prompt('claude', Path('/private/run'),
+    def test_setup_prompt_avoids_unapproved_environment_probes(self):        prompt = self.runner.setup_prompt('claude', Path('/private/run'),
             PureWindowsPath('C:/private/python.exe'), Path('/private/skill/SKILL.md'), installed_wheel=True)
         self.assertIn('harness has already checked Python and package installation', prompt)
         self.assertIn('Do not run pip, git, shell inspection commands', prompt)
@@ -93,6 +92,16 @@ class ColdStartTests(unittest.TestCase):
         dev_prompt = self.runner.setup_prompt('codex', Path('/private/run'), Path('/private/python'),
                                                Path('/private/skill/SKILL.md'), installed_wheel=False)
         self.assertIn('authorized development checkout is already installed editable', dev_prompt)
+
+    def test_setup_prompt_authorizes_exact_skill_read_for_codex_only(self):
+        skill = Path('/private/skill/SKILL.md')
+        codex = self.runner.setup_prompt('codex', Path('/private/run'), Path('/private/python'),
+                                         skill, installed_wheel=False)
+        self.assertIn('read-only shell command', codex)
+        self.assertIn('that single file read is authorized', codex)
+        claude = self.runner.setup_prompt('claude', Path('/private/run'), Path('/private/python'),
+                                          skill, installed_wheel=True)
+        self.assertNotIn('read-only shell command', claude)
 
     def test_invitation_prompt_authorizes_exact_local_command(self):
         command = self.runner.invitation_command(Path('/venv/python'), Path('/private/profile.json'))
