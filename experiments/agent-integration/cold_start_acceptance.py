@@ -576,7 +576,8 @@ def main(argv=None):
                     setup_ok = True
             except (OSError, ValueError, KeyError, RuntimeError, subprocess.SubprocessError):
                 setup_ok = False
-            check = ' native registration, challenge deferred to the host-restoring session' if tool in deferred_challenges                 else ' native registration and completed doctor challenge'
+            check = (' native registration, challenge deferred to the host-restoring session'
+                     if tool in deferred_challenges else ' native registration and completed doctor challenge')
             report['checks'].append({'check': stage + check, 'ok': setup_ok})
             ok = ok and setup_ok
         if expected_identity is not None:

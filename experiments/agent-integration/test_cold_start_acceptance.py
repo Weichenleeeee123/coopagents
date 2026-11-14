@@ -179,6 +179,29 @@ class ColdStartTests(unittest.TestCase):
             self.assertIn('Call the native Coopagents MCP reply tool', reply_prompt)
             self.assertIn('A final assistant response alone does not deliver', reply_prompt)
 
+    def test_only_an_owner_whose_host_is_unreachable_defers_its_challenge(self):
+        # owner_host_exited relaxes the setup check, so each way it can be wrong must fail closed.
+        def decision(profile, state):
+            with patch('coopagents.spaces.read_profile', return_value=profile), \
+                    patch('coopagents.space_runtime.status', return_value={'status': state}):
+                return self.runner.owner_host_exited('synthetic-profile.json')
+        owner = {'room_id': 'room', 'member_id': 'owner', 'control_token': 'synthetic'}
+        guest = {'room_id': 'room', 'member_id': 'guest'}
+        self.assertTrue(decision(owner, 'unreachable'))
+        self.assertFalse(decision(owner, 'running'), 'a live host must prove the challenge itself')
+        self.assertFalse(decision(guest, 'unreachable'), 'a member profile has no host to restore')
+        self.assertFalse(decision(guest, 'running'))
+
+    def test_deferred_challenge_must_be_proven_on_the_restored_host(self):
+        # The deferral is only sound if a challenge that never completes still fails the run.
+        none_completed = {'collaboration': {'diagnostics': []}}
+        pending = {'collaboration': {'diagnostics': [{'member_id': 'owner', 'status': 'sent'}]}}
+        done = {'collaboration': {'diagnostics': [{'member_id': 'owner', 'status': 'completed'}]}}
+        self.assertFalse(self.runner.diagnostics_proven(none_completed, {'owner'}))
+        self.assertFalse(self.runner.diagnostics_proven(pending, {'owner'}))
+        self.assertFalse(self.runner.diagnostics_proven(done, {'someone-else'}))
+        self.assertTrue(self.runner.diagnostics_proven(done, {'owner'}))
+
     def test_failed_owned_host_stop_fails_full_and_partial_acceptance(self):
         # Exercise main's real finalization path without calling native models.
         for partial, collaboration_status in ((False, 'passed'), (True, 'host_verified_partial')):
@@ -224,6 +247,67 @@ class ColdStartTests(unittest.TestCase):
                 self.assertEqual(report['status'], 'shutdown_failed')
                 self.assertEqual(report['collaboration_status'], collaboration_status)
                 self.assertIn('Result: shutdown_failed', output.getvalue())
+
+    def test_unproven_challenge_after_host_restoration_fails_the_run(self):
+        # A sandbox stopped the owner's host, so the setup challenge is deferred to the next session.
+        # If the restored host still has no completed challenge, deferral must not turn into a pass.
+        for restored_challenge in (True, False):
+            with self.subTest(restored_challenge=restored_challenge), ExitStack() as patches:
+                roots, setup_reads = {}, []
+                def prepare(root, *args, tool=None, **kwargs):
+                    root.mkdir(parents=True)
+                    (root / 'profile.json').write_text('{}', encoding='utf-8')
+                    roots[tool] = root
+                    return {'SYNTHETIC_ROOT': str(root)}
+                def profile(path):
+                    tool = 'claude' if Path(path).parent == roots['claude'] else 'codex'
+                    return {'room_id': 'synthetic-room', 'member_id': tool, 'control_token': 'synthetic'}
+                def native_registration(env, *args):
+                    return {'profile': str(Path(env['SYNTHETIC_ROOT']) / 'profile.json')}
+                def process(command, **kwargs):
+                    return subprocess.CompletedProcess(command, 0,
+                                                       stdout='' if '--porcelain' in command else 'synthetic-commit')
+                def setup_state(profile_path):
+                    # The challenge never completed before the host exited; whether it completes on the
+                    # restored host is what the test varies. Later whole-run checks are always proven.
+                    setup_reads.append(profile_path)
+                    return {'phase': 'setup' if len(setup_reads) == 1 else 'restored'}
+                def diagnostics(snapshot, members):
+                    if snapshot.get('phase') == 'setup':
+                        return False
+                    if snapshot.get('phase') == 'restored':
+                        return restored_challenge
+                    return True
+                overrides = {'codex_tool_approvals': lambda *a: [], 'claude_tool_approvals': lambda *a: [],
+                    'native_invitation_result': lambda *a: {'message': 'synthetic invitation'},
+                    'prepare_homes': prepare, 'bounded': lambda *a, **k: 0,
+                    'registrations': native_registration, 'events_from': lambda *a: [],
+                    'successful_tools': lambda *a: {'whoami', 'read_team', 'send_request', 'read_inbox', 'reply'},
+                    'native_identity_proven': lambda *a: True, 'snapshot': lambda *a: {},
+                    'setup_diagnostics': setup_state, 'owner_host_exited': lambda *a: True,
+                    'network_proven': lambda *a: True, 'diagnostics_proven': diagnostics,
+                    'exchange_proven': lambda *a: True,
+                    'assistant_text': lambda *a: chr(10).join(
+                        (root / 'repo/acceptance-answer.txt').read_text() for root in roots.values())}
+                for name, replacement in overrides.items():
+                    patches.enter_context(patch.object(self.runner, name, replacement))
+                patches.enter_context(patch.object(self.runner.subprocess, 'run', process))
+                patches.enter_context(patch('coopagents.spaces.read_profile', profile))
+                patches.enter_context(patch('coopagents.spaces.read_json', return_value={'network': 'local'}))
+                output = patches.enter_context(redirect_stdout(io.StringIO()))
+                code = self.runner.main(['--host', 'claude', '--network', 'local', '--codex', 'synthetic-codex',
+                                         '--claude', 'synthetic-claude'])
+                report = json.loads((roots['claude'].parent / 'summary.json').read_text())
+                checks = {c['check']: c['ok'] for c in report['checks']}
+                deferred = [name for name in checks if 'challenge deferred' in name]
+                restored = [ok for name, ok in checks.items() if 'on the restored host' in name]
+                self.assertTrue(deferred, 'the host-exited path was not exercised')
+                self.assertEqual(restored, [restored_challenge])
+                if restored_challenge:
+                    self.assertEqual((code, report['status']), (0, 'passed'))
+                else:
+                    self.assertEqual((code, report['status']), (1, 'failed'))
+                    self.assertEqual(report['failure_type'], 'RuntimeError')
 
     def test_runner_rejects_nonisolated_python_before_model_execution(self):
         with patch.object(self.runner.sys, 'prefix', self.runner.sys.base_prefix), \
