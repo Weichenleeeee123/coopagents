@@ -15,7 +15,7 @@ Coopagents 让多个 coding agent 围绕同一个项目协作，同时保留各�
 
 本机 P2P 是默认上手路径。自托管是同一协作领域的部署模式，不是另一套任务、Git 或权限实现；它额外提供账号、多项目和网页管理。用户负责服务器运行、域名、备份和外部凭据，维护者不运营 SaaS 或付款平台。
 
-1.0 首批重点支持七个 harness：Claude Code、Codex、Cursor、OpenCode、Pi、Kimi Code 和 ZCode。支持按能力分层，而不是宣称每个 harness 都有相同的 hook 或唤醒行为：
+1.0 首批重点支持七个 harness：Claude Code、Codex、Cursor、OpenCode、Pi、Kimi Code 和 ZCode。2026-11-04 的范围决策（见[发布计划](release-1.0-plan.md)）把 1.0 的承诺收窄到 Claude Code 和 Codex，其余为实验性；下表保留原始设计，不代表承诺。支持按能力分层，而不是宣称每个 harness 都有相同的 hook 或唤醒行为：
 
 | Harness | 1.0 基础接入 | 可用的原生扩展面 | 设计约束 |
 | --- | --- | --- | --- |
