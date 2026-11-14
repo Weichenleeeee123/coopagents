@@ -50,12 +50,21 @@ def checked_path(value):
 def private_directory(value):
     path = checked_path(value)
     # A tracked checkout must use its explicitly ignored local state directory.
+    # Sandboxed execution can expose synthetic .git entries, so walk every
+    # enclosing repository: the path is allowed when any of them places it
+    # under its .local folder, and refused only when every one places it
+    # elsewhere.
+    allowed = False
+    inside_repository = False
     for parent in (path, *path.parents):
         if (parent / '.git').exists():
-            if '.local' not in path.relative_to(parent).parts:
-                raise ValueError('Private state must not be inside a Git repository (except its .local folder); '
-                                 'omit --state-dir to use the default under ~/.coopagents')
-            break
+            inside_repository = True
+            if '.local' in path.relative_to(parent).parts:
+                allowed = True
+                break
+    if inside_repository and not allowed:
+        raise ValueError('Private state must not be inside a Git repository (except its .local folder); '
+                         'omit --state-dir to use the default under ~/.coopagents')
     path.mkdir(parents=True, exist_ok=True)
     protect(path, directory=True)
     return path

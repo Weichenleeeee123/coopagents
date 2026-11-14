@@ -89,6 +89,25 @@ class Profiles(unittest.TestCase):
         with self.assertRaises(ValueError):
             private_directory(Path('.local/../tests/private-state'))
 
+    def test_state_allows_local_folder_beneath_repository(self):
+        from coopagents.spaces import private_directory
+        state = private_directory(self.directory / 'state')
+        self.assertTrue(state.is_dir())
+
+    def test_state_allows_inner_git_entry_when_outer_local_covers_it(self):
+        # Sandboxed execution can expose a synthetic .git entry above the real
+        # repository root; the outer repository's .local cover still applies.
+        from coopagents.spaces import private_directory
+        inner = self.directory / 'tool'
+        (inner / '.git').mkdir(parents=True)
+        state = private_directory(inner / 'coopagents-home' / 'spaces' / 'probe-1')
+        self.assertTrue(state.is_dir())
+
+    def test_state_refusal_names_the_repository_rule(self):
+        from coopagents.spaces import private_directory
+        with self.assertRaisesRegex(ValueError, 'Git repository'):
+            private_directory(Path('src/private-state'))
+
     def test_status_returns_current_origin_after_control_startup(self):
         profile = dict(schema_version=1, origin='http://127.0.0.1:8765', room_id='room',
                        member_id='member', web_token='web', agent_token='agent',
