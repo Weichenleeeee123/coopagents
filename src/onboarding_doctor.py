@@ -14,7 +14,7 @@ import time
 from urllib.error import HTTPError, URLError
 
 from . import space_connect
-from .p2p import member_link
+from .p2p import SpaceUnreachableError, member_link
 from .spaces import checked_path, read_profile
 
 
@@ -453,7 +453,7 @@ def profile_checks(profile_path, *, tool=None, project_dir=None, cli=None, skill
     except Exception as error:
         reason = ('credential_rejected' if isinstance(error, HTTPError) and error.code in (401, 403)
                   else 'endpoint_error' if isinstance(error, HTTPError)
-                  else 'unreachable' if isinstance(error, (OSError, URLError, TimeoutError))
+                  else 'unreachable' if isinstance(error, (OSError, URLError, TimeoutError, SpaceUnreachableError))
                   else 'identity_mismatch' if isinstance(error, ValueError) else 'connection_failed')
         if identity_verified:
             checks = [c for c in checks if c['id'] != 'transport_path']

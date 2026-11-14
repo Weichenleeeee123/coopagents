@@ -15,6 +15,7 @@ import json
 import logging
 import re
 import threading
+import time
 import urllib.request
 from urllib.parse import urlsplit
 
@@ -69,6 +70,16 @@ def _background_loop():
 
 def _run(coro, timeout):
     return asyncio.run_coroutine_threadsafe(coro, _background_loop()).result(timeout)
+
+
+class SpaceUnreachableError(ValueError):
+    """The space could not be reached over its transport.
+
+    Raised for a failed peer-to-peer dial and for a busy local port. The
+    identity was never checked, so this must not be reported as an identity
+    mismatch; it stays a ValueError so existing ValueError handling is
+    preserved.
+    """
 
 
 def validate_endpoint_id(value):
@@ -304,8 +315,8 @@ class MemberLink:
             return _run(self._connect(), self.connect_timeout + 10)
         except Exception as error:
             self.connection = None
-            raise ValueError('Could not reach the space over its peer-to-peer transport. '
-                             'The host may be offline, or unreachable from this network.') from error
+            raise SpaceUnreachableError('Could not reach the space over its peer-to-peer transport. '
+                                          'The host may be offline, or unreachable from this network.') from error
 
     async def _local(self, reader, writer):
         # One retry covers a connection the host closed since the last use.
@@ -352,11 +363,18 @@ class MemberLink:
 
 def _serves_space(origin, room_id):
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-    try:
-        with opener.open(urllib.request.Request(origin + '/health', headers={'Accept': 'application/json'}), timeout=5) as response:
-            return json.loads(response.read(4096)).get('room_id') == room_id
-    except (OSError, ValueError):
-        return False
+    for attempt in range(3):
+        try:
+            with opener.open(urllib.request.Request(origin + '/health', headers={'Accept': 'application/json'}), timeout=5) as response:
+                payload = json.loads(response.read(4096))
+        except (OSError, ValueError):
+            # The listener exists but is not answering yet (the host is still
+            # starting); retry briefly. A definitive answer never retries.
+            if attempt < 2:
+                time.sleep(1)
+            continue
+        return payload.get('room_id') == room_id
+    return False
 
 
 def member_link(profile, *, warm=False):
@@ -379,7 +397,7 @@ def member_link(profile, *, warm=False):
     except OSError:
         if _serves_space(profile['origin'], profile['room_id']):
             return nullcontext()
-        raise ValueError('The local port for this space is used by another program')
+        raise SpaceUnreachableError('The local port for this space is used by another program')
     if warm:
         try:
             member.ensure_connected()

@@ -361,6 +361,29 @@ class LocalChecksTests(DoctorTestCase):
                 self.assertEqual(check['evidence']['reason'], reason)
                 self.assertNotIn('secret-fixture', json.dumps(result))
 
+    def test_profile_checks_classify_transport_failures_as_unreachable(self):
+        from coopagents.p2p import SpaceUnreachableError
+        from coopagents.spaces import private_write
+        with retained_directory() as directory:
+            path = Path(directory)/'profile.json'
+            private_write(path, dict(schema_version=1, origin='http://127.0.0.1:8765',
+                                     room_id='r', member_id='m', agent_token='secret-fixture',
+                                     p2p={'endpoint_id': 'a'*64}))
+            for error in (SpaceUnreachableError('dial failed'),
+                          SpaceUnreachableError('port busy')):
+                with patch.object(onboarding_doctor, 'member_link', side_effect=error), \
+                        patch('time.sleep'):
+                    result = onboarding_doctor.profile_checks(path)
+                check = next(c for c in result['checks'] if c['id'] == 'runtime_reachability')
+                self.assertEqual(check['evidence']['reason'], 'unreachable')
+            with patch.object(onboarding_doctor, 'member_link', return_value=nullcontext()), \
+                    patch('coopagents.space_runtime.request',
+                          return_value={'me': {'room_id': 'r', 'member_id': 'other', 'kind': 'agent'}}), \
+                    patch('time.sleep'):
+                result = onboarding_doctor.profile_checks(path)
+            check = next(c for c in result['checks'] if c['id'] == 'runtime_reachability')
+            self.assertEqual(check['evidence']['reason'], 'identity_mismatch')
+
     def test_reused_p2p_link_path_is_unknown_not_loopback(self):
         from coopagents.spaces import private_write
         with retained_directory() as directory:
