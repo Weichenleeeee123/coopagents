@@ -213,8 +213,11 @@ def model_command(tool, executable, run, python, *, setup=False, require=()):
         if windows.is_absolute() and len(windows.drive) == 2 and windows.drive[1] == ':':
             slash = windows.as_posix()
             spellings.extend([slash, '/' + windows.drive[0].lower() + slash[2:]])
-        allowed.extend('Bash("' + executable_path + '" -m coopagents.space_runtime:*)'
-                       for executable_path in dict.fromkeys(spellings))
+        # Models naturally type the runtime path unquoted; allow both spellings
+        # of the exact executable so the pre-authorized command is not denied.
+        for executable_path in dict.fromkeys(spellings):
+            allowed.append('Bash("' + executable_path + '" -m coopagents.space_runtime:*)')
+            allowed.append('Bash(' + executable_path + ' -m coopagents.space_runtime:*)')
     return [executable, '--print', '--verbose', '--output-format', 'stream-json',
             '--permission-prompts', 'none', '--add-dir', str(run),
             '--allowedTools', ','.join(allowed)]

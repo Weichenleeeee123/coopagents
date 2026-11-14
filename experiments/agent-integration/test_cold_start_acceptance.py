@@ -69,15 +69,19 @@ class ColdStartTests(unittest.TestCase):
         allowed = command[command.index('--allowedTools') + 1].split(',')
         self.assertEqual(allowed, ['Read',
             'Bash("C:\\Users\\Synthetic User\\project\\.venv\\Scripts\\python.exe" -m coopagents.space_runtime:*)',
+            'Bash(C:\\Users\\Synthetic User\\project\\.venv\\Scripts\\python.exe -m coopagents.space_runtime:*)',
             'Bash("C:/Users/Synthetic User/project/.venv/Scripts/python.exe" -m coopagents.space_runtime:*)',
-            'Bash("/c/Users/Synthetic User/project/.venv/Scripts/python.exe" -m coopagents.space_runtime:*)'])
-        self.assertTrue(all(rule.endswith('" -m coopagents.space_runtime:*)')
+            'Bash(C:/Users/Synthetic User/project/.venv/Scripts/python.exe -m coopagents.space_runtime:*)',
+            'Bash("/c/Users/Synthetic User/project/.venv/Scripts/python.exe" -m coopagents.space_runtime:*)',
+            'Bash(/c/Users/Synthetic User/project/.venv/Scripts/python.exe -m coopagents.space_runtime:*)'])
+        self.assertTrue(all(rule.endswith(' -m coopagents.space_runtime:*)')
                             for rule in allowed if rule.startswith('Bash(')))
         command = self.runner.model_command('claude', 'claude', root, python)
         self.assertEqual(command[command.index('--allowedTools') + 1], 'Read')
         posix = self.runner.model_command('claude', 'claude', root, PurePosixPath('/venv/bin/python'), setup=True)
         self.assertEqual(posix[posix.index('--allowedTools') + 1],
-                         'Read,Bash("/venv/bin/python" -m coopagents.space_runtime:*)')
+                         'Read,Bash("/venv/bin/python" -m coopagents.space_runtime:*),'
+                         'Bash(/venv/bin/python -m coopagents.space_runtime:*)')
 
     def test_setup_prompt_avoids_unapproved_environment_probes(self):
         prompt = self.runner.setup_prompt('claude', Path('/private/run'),
