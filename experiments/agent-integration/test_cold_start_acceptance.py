@@ -83,7 +83,8 @@ class ColdStartTests(unittest.TestCase):
                          'Read,Bash("/venv/bin/python" -m coopagents.space_runtime:*),'
                          'Bash(/venv/bin/python -m coopagents.space_runtime:*)')
 
-    def test_setup_prompt_avoids_unapproved_environment_probes(self):        prompt = self.runner.setup_prompt('claude', Path('/private/run'),
+    def test_setup_prompt_avoids_unapproved_environment_probes(self):
+        prompt = self.runner.setup_prompt('claude', Path('/private/run'),
             PureWindowsPath('C:/private/python.exe'), Path('/private/skill/SKILL.md'), installed_wheel=True)
         self.assertIn('harness has already checked Python and package installation', prompt)
         self.assertIn('Do not run pip, git, shell inspection commands', prompt)
