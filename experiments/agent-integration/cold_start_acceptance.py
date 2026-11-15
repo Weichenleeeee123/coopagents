@@ -520,8 +520,8 @@ def snapshot(profile_path):
         return request(profile['origin'], '/api/snapshot', token=profile['web_token'])
 
 
-def hold_host(profile_path, attempts=25, delay=2):
-    """Start the retained host from this unsandboxed runner and leave it running.
+def hold_host(profile_path, attempts=25, delay=2, live_grace=5):
+    """Leave a retained host running under this unsandboxed runner.
 
     A host _serve spawned by a sandboxed model session dies with that
     session's sandbox: namespace teardown kills the whole process tree and
@@ -529,12 +529,23 @@ def hold_host(profile_path, attempts=25, delay=2):
     a sandboxed Codex session did not survive the session). The runner
     itself is unsandboxed, so a host it starts survives every session
     teardown until the run's finally stops it. Waits for a dying sandboxed
-    server to release the port first, and only returns once this runner's
-    own start has succeeded.
+    server to release the port first, then starts the host itself.
+
+    An unsandboxed host session (Claude) leaves its _serve alive after the
+    session exits, so status() keeps reporting the space live: after
+    live_grace consecutive live probes the host is a survivor, not a dying
+    server, and it is reused as-is. The run's finally stops it through the
+    control endpoint either way.
     """
     from coopagents import space_runtime
+    live_seen = 0
     for _ in range(attempts):
-        if space_runtime.status(profile_path)['status'] == 'unreachable':
+        if space_runtime.status(profile_path)['status'] != 'unreachable':
+            live_seen += 1
+            if live_seen >= live_grace:
+                return
+        else:
+            live_seen = 0
             try:
                 space_runtime.start(profile_path)
                 return

@@ -661,11 +661,18 @@ class ColdStartTests(unittest.TestCase):
         self.assertEqual(seen['status'], 3)
 
     def test_hold_host_raises_when_no_server_ever_comes_up(self):
-        with patch('coopagents.space_runtime.status', return_value={'status': 'running'}), \
-                patch('coopagents.space_runtime.start') as start:
+        with patch('coopagents.space_runtime.status', return_value={'status': 'unreachable'}), \
+                patch('coopagents.space_runtime.start', side_effect=ValueError('boom')) as start:
             with self.assertRaises(RuntimeError):
                 self.runner.hold_host('/synthetic/profile.json', attempts=3, delay=0)
+        self.assertEqual(start.call_count, 3)
+
+    def test_hold_host_reuses_a_host_that_survives_its_session(self):
+        with patch('coopagents.space_runtime.status', return_value={'status': 'running'}) as status, \
+                patch('coopagents.space_runtime.start') as start:
+            self.runner.hold_host('/synthetic/profile.json', attempts=5, delay=0, live_grace=3)
         start.assert_not_called()
+        self.assertEqual(status.call_count, 3)
 
     def test_hold_host_retries_a_lost_start_race(self):
         started = []
