@@ -62,11 +62,24 @@ on this VM.
 
 ## Needs a live dsh session
 
-- **Cordis checkpoint plugin.** Checkpoint-like observation would be a
-  TypeScript Cordis plugin on `tools/post-execute` / `tools/result` /
-  `agent/turn-stopping`. The extension points are documented, but no
-  plugin is written or tested here: it needs the Cordis SDK surface and a
-  live session to verify event shapes and injection behavior.
+- **Cordis checkpoint plugin — implemented and verified live
+  2026-11-15.** `python -m coopagents.deepseek_harness
+  --export-plugin <file>` writes an ESM Cordis plugin
+  (`coopagents-checkpoint`) that posts SessionStart on
+  `agent/created`, UserPromptSubmit on `agent/inbox/inserted`, and
+  PostToolUse on `tools/result` (throttled to one POST per 30s per
+  session), authenticates with GET /api/me on every event, and
+  injects the brief with `agent.inject(createUserMessage(...))`.
+  The connection comes from the dsh process environment; the plugin
+  carries no credential and fails open. Load it with a patch row
+  naming the plugin file beside the patch layer (relative paths are
+  anchored beside the patch file). Live verification (dsh 0.2.2-rc.1
+  headless, stub service, scratch home): all three events post with
+  the documented shapes and the injected brief reaches the model.
+  One trap found live: injected context also fires
+  `agent/inbox/inserted`, so the inbox handler only fires for
+  genuine user messages (`message.source.kind === 'user'`) —
+  without that guard the plugin re-injects forever.
 - **Wake-up.** No documented CLI command wakes a running idle Web/Desktop
   session from outside, and no Stop-hook/stdout wake contract exists.
   In-process `Agent.followup()` / `agent.inject()` are explicitly not

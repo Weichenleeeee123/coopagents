@@ -6,8 +6,11 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from coopagents.deepseek_harness import (MCP_CLIENT_PLUGIN, dsh_home, mcp_client_row,
-                                         patch_layers, plan, row_present)
+from coopagents.deepseek_harness import (CHECKPOINT_PLUGIN_FILE, CHECKPOINT_PLUGIN_NAME,
+                                         MCP_CLIENT_PLUGIN, checkpoint_plugin_present,
+                                         checkpoint_plugin_row, checkpoint_plugin_text, dsh_home,
+                                         export_checkpoint_plugin, mcp_client_row, patch_layers, plan,
+                                         row_present)
 
 
 class RowTests(unittest.TestCase):
@@ -88,6 +91,66 @@ class PlanTests(unittest.TestCase):
         # The row itself still carries no header key or credential value.
         self.assertNotIn('headers:', result['row'])
         self.assertNotIn('Bearer', result['row'])
+
+
+class CheckpointPluginTests(unittest.TestCase):
+    def test_plugin_text_wires_the_three_checkpoint_events(self):
+        text = checkpoint_plugin_text()
+        self.assertIn("export const name = '%s'" % CHECKPOINT_PLUGIN_NAME, text)
+        self.assertIn("ctx.on('agent/created'", text)
+        self.assertIn("ctx.on('agent/inbox/inserted'", text)
+        self.assertIn("ctx.on('tools/result'", text)
+        self.assertIn("'SessionStart'", text)
+        self.assertIn("'UserPromptSubmit'", text)
+        self.assertIn("'PostToolUse'", text)
+        self.assertIn('agent.inject(createUserMessage(', text)
+        self.assertIn("from '@deepseek-ai/dsh-llm'", text)
+        self.assertIn('BEGIN COOPAGENTS EXTERNAL DATA', text)
+        self.assertIn('COOPAGENTS_SERVICE_URL', text)
+        self.assertIn('COOPAGENTS_AGENT_TOKEN', text)
+        self.assertNotIn('http://', text)
+        self.assertNotIn('https://', text)
+
+    def test_plugin_text_is_fail_open_and_throttles_post_tool_use(self):
+        text = checkpoint_plugin_text()
+        self.assertIn('THROTTLE_MS = 30000', text)
+        self.assertIn("if (event === 'PostToolUse')", text)
+        self.assertIn('REQUEST_TIMEOUT_MS', text)
+        self.assertIn('room_id !== PROJECT_ID', text)
+        self.assertIn("me.kind !== 'agent'", text)
+
+    def test_plugin_text_ignores_injected_inbox_messages(self):
+        # Injected context also fires agent/inbox/inserted; without the
+        # source-kind guard the plugin would re-inject forever.
+        text = checkpoint_plugin_text()
+        self.assertIn("payload.message.source.kind === 'user'", text)
+
+    def test_plugin_row_names_a_relative_path_and_carries_no_config(self):
+        row = checkpoint_plugin_row()
+        lines = row.splitlines()
+        self.assertIn('- insert:', lines)
+        self.assertIn('  - id: "%s-plugin"' % CHECKPOINT_PLUGIN_NAME, lines)
+        self.assertIn('    name: "./%s"' % CHECKPOINT_PLUGIN_FILE, lines)
+        self.assertIn('./%s' % CHECKPOINT_PLUGIN_FILE, checkpoint_plugin_row('./' + CHECKPOINT_PLUGIN_FILE))
+        self.assertNotIn('config:', row)
+        self.assertNotIn('Bearer', row)
+        self.assertTrue(checkpoint_plugin_present(row))
+        self.assertFalse(checkpoint_plugin_present(mcp_client_row('https://team.example/mcp')))
+        with self.assertRaises(ValueError):
+            checkpoint_plugin_row('/abs/path/plugin.mjs')
+        with self.assertRaises(ValueError):
+            checkpoint_plugin_row('../escape.mjs')
+        with self.assertRaises(ValueError):
+            checkpoint_plugin_row('plugin.txt')
+
+    def test_export_writes_the_file_and_refuses_overwrite(self):
+        with tempfile.TemporaryDirectory() as folder:
+            target = Path(folder) / 'sub' / CHECKPOINT_PLUGIN_FILE
+            row = export_checkpoint_plugin(target)
+            self.assertEqual(target.read_text(encoding='utf-8'), checkpoint_plugin_text())
+            self.assertIn(CHECKPOINT_PLUGIN_FILE, row)
+            with self.assertRaises(ValueError):
+                export_checkpoint_plugin(target)
 
 
 class CliTests(unittest.TestCase):
