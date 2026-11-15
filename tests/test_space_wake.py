@@ -32,6 +32,19 @@ def hook_script(command):
     return base64.b64decode(encoded).decode('utf-16-le')
 
 
+def hook_commands_text(fragment):
+    """Decoded hook commands from a TOML fragment.
+
+    On Windows the commands are powershell -EncodedCommand payloads, so the
+    module name and profile path live inside base64, not in the fragment text.
+    """
+    scripts = []
+    for line in fragment.splitlines():
+        if line.startswith('command = '):
+            scripts.append(hook_script(json.loads(line.split(' = ', 1)[1])))
+    return '\n'.join(scripts)
+
+
 class FakeClock:
     def __init__(self):
         self.now = 1_000_000.0
@@ -524,8 +537,9 @@ class InstallTests(unittest.TestCase):
         self.assertEqual(fragment.count('[[hooks]]'), 2)
         self.assertIn('event = "SessionStart"', fragment)
         self.assertIn('event = "Stop"', fragment)
-        self.assertIn('coopagents.space_wake', fragment)
-        self.assertIn('--tool kimi-code', fragment)
+        scripts = hook_commands_text(fragment)
+        self.assertIn('coopagents.space_wake', scripts)
+        self.assertIn('--tool kimi-code', scripts)
         self.assertIn('timeout = 600', fragment, 'The 900s standby is capped by the 600s Kimi hook limit')
         self.assertIn('timeout = 60', fragment)
         self.assertEqual(kimi_wake_hooks_text(self.profile, standby=400).count('timeout = 520'), 1)
@@ -541,12 +555,13 @@ class InstallTests(unittest.TestCase):
         twice = merge_kimi_wake_hooks(once, kimi_wake_hooks_text(self.profile))
         self.assertEqual(once, twice, 'Re-applying is idempotent')
         self.assertIn('[providers.mota]', twice)
-        self.assertIn('coopagents.checkpoint_hook', twice, 'Checkpoint blocks survive a wake merge')
+        self.assertIn('coopagents.checkpoint_hook', hook_commands_text(twice),
+                      'Checkpoint blocks survive a wake merge')
         self.assertIn('notify-send done', twice)
         self.assertEqual(twice.count('coopagents wake hook'), 2)
         removed = merge_kimi_wake_hooks(twice, '')
         self.assertNotIn('coopagents wake hook', removed)
-        self.assertIn('coopagents.checkpoint_hook', removed)
+        self.assertIn('coopagents.checkpoint_hook', hook_commands_text(removed))
         self.assertIn('notify-send done', removed)
         self.assertIn('[providers.mota]', removed)
 
@@ -612,7 +627,8 @@ class InstallTests(unittest.TestCase):
             self.assertEqual(result['settings'], str(home / '.kimi-code' / 'config.toml'))
             self.assertIn('[[hooks]]', result['hooks_toml'])
             self.assertIn('event = "Stop"', result['hooks_toml'])
-            self.assertIn(str(self.profile).replace(os.sep, '/'), result['hooks_toml'])
+            self.assertIn(str(self.profile).replace(os.sep, '/'),
+                          hook_commands_text(result['hooks_toml']))
 
     def test_cursor_hook_config_uses_flat_definitions_with_stop_timeout(self):
         config = hook_config(self.profile, 'cursor', standby=400)
