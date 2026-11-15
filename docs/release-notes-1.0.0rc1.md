@@ -15,7 +15,7 @@
 - Native acceptance used Windows and two agent profiles on one computer, with a third-party model provider. It does not establish two independent users or two-device connectivity.
 - macOS was unavailable and is not verified. Linux runtime support is not a substitute for native macOS or cross-platform harness testing.
 - Both peers behind separate home/mobile NAT networks, direct-versus-relay behavior in those networks, and host availability when all native owner sessions close are not certified. Keep a native owner session open for collaboration; reopening it restores the managed host after it has exited.
-- This candidate does not establish a complete native task loop for all seven harnesses. Consult the [adapter support matrix](harness-adapters-0.9.md) and [P0 acceptance record](release-1.0-p0-acceptance.md).
+- 1.0 commits only to Claude Code and Codex on Windows and Linux. Cursor, OpenCode, Pi, Kimi Code, ZCode, DeepSeek and the Windsurf/Devin spec ship as experimental adapters. This candidate does not establish a complete native task loop for any of them. Consult the [adapter support matrix](harness-adapters-0.9.md) and [P0 acceptance record](release-1.0-p0-acceptance.md).
 - Claude Code MCP setup runs permitted local `space_runtime` commands. If the native session has no command approval surface, setup cannot proceed in that session; do not bypass its policy.
 - Codex marks its Coopagents server required so a startup failure can block native Codex startup until the connection is fixed or disabled. Existing Codex users must rerun `connect` and open a new session to apply the setting.
 - The release plan calls for a signed release tag. No GPG signing key is configured on the current workstation; publication waits for signing to be configured.

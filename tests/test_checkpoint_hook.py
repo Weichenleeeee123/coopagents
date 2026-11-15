@@ -11,7 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import unittest
 from uuid import uuid4
 
-from transport_support import LiveService
+from transport_support import LiveService, hook_script
 
 
 class HookTests(unittest.TestCase):
@@ -308,8 +308,9 @@ class HookTests(unittest.TestCase):
         for definitions in cursor['hooks'].values():
             self.assertEqual(len(definitions), 1)
             command = definitions[0]['command']
-            self.assertIn('coopagents.checkpoint_hook', command)
-            self.assertIn('--tool cursor', command)
+            self.assertIn('coopagents.checkpoint_hook', hook_script(command))
+            self.assertIn('--tool', hook_script(command))
+            self.assertIn('cursor', hook_script(command))
             self.assertEqual(definitions[0]['timeout'], 10)
             self.assertNotIn(self.owner['agent_token'], command)
         zcode = config_fragment('zcode')
@@ -355,8 +356,8 @@ class HookTests(unittest.TestCase):
         for rule in parsed['hooks']:
             self.assertEqual(set(rule), {'event', 'command', 'timeout'})
             self.assertEqual(rule['timeout'], 10)
-            self.assertIn('coopagents.checkpoint_hook', rule['command'])
-            self.assertIn('--tool kimi-code', rule['command'])
+            self.assertIn('coopagents.checkpoint_hook', hook_script(rule['command']))
+            self.assertIn('kimi-code', hook_script(rule['command']))
             self.assertNotIn(self.owner['agent_token'], rule['command'])
 
     def test_kimi_merge_preserves_foreign_config_and_is_idempotent(self):

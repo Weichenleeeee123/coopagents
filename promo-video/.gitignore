@@ -5,3 +5,17 @@ dist
 
 # Ignore the output video from Git but not videos you import into src/.
 out
+
+# User-supplied soundtrack stays local; retain the original recording.
+public/funk-caravan.m4a
+public/funk-caravan-ad54.m4a
+src/motion/audio-envelope.ts
+
+# No licence for third-party music: never commit supplied or downloaded tracks.
+# The tracked public/coopagents-original-score.wav is synthesised by scripts/generate-score.mjs.
+public/*.m4a
+public/*.mp3
+public/*.aac
+public/*.flac
+public/*.ogg
+public/*.opus

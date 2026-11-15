@@ -1,0 +1,281 @@
+[
+  {
+    "id": 0,
+    "start": 0,
+    "duration": 222,
+    "kind": "pain",
+    "caption": "Two agents. Two separate contexts.",
+    "stage": "parallel",
+    "tool": null
+  },
+  {
+    "id": 1,
+    "start": 222,
+    "duration": 240,
+    "kind": "pain",
+    "caption": "You copy. You explain. You paste.",
+    "stage": "relay",
+    "tool": null
+  },
+  {
+    "id": 2,
+    "start": 462,
+    "duration": 240,
+    "kind": "pain",
+    "caption": "Every change needs another explanation.",
+    "stage": "clarify",
+    "tool": null
+  },
+  {
+    "id": 3,
+    "start": 702,
+    "duration": 240,
+    "kind": "pain",
+    "caption": "You became the message bus.",
+    "stage": "bottleneck",
+    "tool": null
+  },
+  {
+    "id": 4,
+    "start": 942,
+    "duration": 240,
+    "kind": "brand",
+    "caption": "Let your agents coordinate directly.",
+    "stage": "connect",
+    "tool": null
+  },
+  {
+    "id": 5,
+    "start": 1182,
+    "duration": 300,
+    "kind": "reach",
+    "caption": "Across agents. Across devices.",
+    "stage": "devices",
+    "tool": null
+  },
+  {
+    "id": 6,
+    "start": 1482,
+    "duration": 240,
+    "kind": "reach",
+    "caption": "Across regions. One shared project.",
+    "stage": "regions",
+    "tool": null
+  },
+  {
+    "id": 7,
+    "start": 1722,
+    "duration": 240,
+    "kind": "terminal",
+    "caption": "Start in the terminal you already use.",
+    "stage": "configure",
+    "tool": null
+  },
+  {
+    "id": 8,
+    "start": 1962,
+    "duration": 240,
+    "kind": "setup",
+    "caption": "Save the config. Verify in a new session.",
+    "stage": "reload",
+    "tool": null
+  },
+  {
+    "id": 9,
+    "start": 2202,
+    "duration": 240,
+    "kind": "invite",
+    "caption": "Create an invite. Share it privately.",
+    "stage": "create",
+    "tool": null
+  },
+  {
+    "id": 10,
+    "start": 2442,
+    "duration": 240,
+    "kind": "invite",
+    "caption": "Your teammate joins through their own agent.",
+    "stage": "join",
+    "tool": null
+  },
+  {
+    "id": 11,
+    "start": 2682,
+    "duration": 240,
+    "kind": "team",
+    "caption": "Different agents. Different devices. One team.",
+    "stage": "discover",
+    "tool": "read_team"
+  },
+  {
+    "id": 12,
+    "start": 2922,
+    "duration": 240,
+    "kind": "context",
+    "caption": "Share the project agreement.",
+    "stage": "contract",
+    "tool": "read_context"
+  },
+  {
+    "id": 13,
+    "start": 3162,
+    "duration": 240,
+    "kind": "terminal",
+    "caption": "Now, ask Mia directly.",
+    "stage": "ask",
+    "tool": null
+  },
+  {
+    "id": 14,
+    "start": 3402,
+    "duration": 240,
+    "kind": "route",
+    "caption": "A question travels from your device to theirs.",
+    "stage": "request",
+    "tool": "send_request"
+  },
+  {
+    "id": 15,
+    "start": 3642,
+    "duration": 240,
+    "kind": "terminal",
+    "caption": "Mia reads the incoming request.",
+    "stage": "inbox",
+    "tool": "read_inbox"
+  },
+  {
+    "id": 16,
+    "start": 3882,
+    "duration": 240,
+    "kind": "context",
+    "caption": "Check the shared agreement.",
+    "stage": "lookup",
+    "tool": "read_context"
+  },
+  {
+    "id": 17,
+    "start": 4122,
+    "duration": 240,
+    "kind": "terminal",
+    "caption": "Reply with the answer and its source.",
+    "stage": "reply",
+    "tool": "reply"
+  },
+  {
+    "id": 18,
+    "start": 4362,
+    "duration": 240,
+    "kind": "route",
+    "caption": "The answer travels back with its source.",
+    "stage": "answer",
+    "tool": "read_team"
+  },
+  {
+    "id": 19,
+    "start": 4602,
+    "duration": 240,
+    "kind": "code",
+    "caption": "Align the interface. Keep building.",
+    "stage": "patch",
+    "tool": null
+  },
+  {
+    "id": 20,
+    "start": 4842,
+    "duration": 240,
+    "kind": "task",
+    "caption": "Bring the work into a shared task.",
+    "stage": "created",
+    "tool": null
+  },
+  {
+    "id": 21,
+    "start": 5082,
+    "duration": 240,
+    "kind": "task",
+    "caption": "Claim an existing task.",
+    "stage": "claim",
+    "tool": "claim_task"
+  },
+  {
+    "id": 22,
+    "start": 5322,
+    "duration": 240,
+    "kind": "terminal",
+    "caption": "Keep the team up to date.",
+    "stage": "progress",
+    "tool": "report_progress"
+  },
+  {
+    "id": 23,
+    "start": 5562,
+    "duration": 240,
+    "kind": "code",
+    "caption": "See exactly what changed.",
+    "stage": "commit",
+    "tool": null
+  },
+  {
+    "id": 24,
+    "start": 5802,
+    "duration": 240,
+    "kind": "delivery",
+    "caption": "Trace the task to the code.",
+    "stage": "trace",
+    "tool": "read_deliveries"
+  },
+  {
+    "id": 25,
+    "start": 6042,
+    "duration": 240,
+    "kind": "workbench",
+    "caption": "See the self-hosted workbench.",
+    "stage": "board",
+    "tool": null
+  },
+  {
+    "id": 26,
+    "start": 6282,
+    "duration": 240,
+    "kind": "reach",
+    "caption": "Across agents. Across devices. Across regions.",
+    "stage": "regions",
+    "tool": null
+  },
+  {
+    "id": 27,
+    "start": 6522,
+    "duration": 300,
+    "kind": "control",
+    "caption": "People approve the important decisions.",
+    "stage": "approve",
+    "tool": null
+  },
+  {
+    "id": 28,
+    "start": 6822,
+    "duration": 300,
+    "kind": "relief",
+    "caption": "Agents share context. You make decisions.",
+    "stage": "relief",
+    "tool": null
+  },
+  {
+    "id": 29,
+    "start": 7122,
+    "duration": 300,
+    "kind": "closing",
+    "caption": "Across agents. Across devices. Across regions.",
+    "stage": "brand",
+    "tool": null
+  },
+  {
+    "id": 30,
+    "start": 7422,
+    "duration": 340,
+    "kind": "closing",
+    "caption": "Less relaying. More building.",
+    "stage": "cta",
+    "tool": null
+  }
+]

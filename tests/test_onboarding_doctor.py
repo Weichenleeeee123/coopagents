@@ -23,6 +23,12 @@ except ImportError:
 class DoctorTestCase(unittest.TestCase):
     def setUp(self):
         self.assertIsNotNone(onboarding_doctor, 'onboarding doctor module is missing')
+        # Doctor identifies its caller from these variables, so a suite started inside an agent must not inherit them.
+        environment = patch.dict(os.environ)
+        environment.start()
+        self.addCleanup(environment.stop)
+        for name in ('CLAUDECODE', 'CODEX_THREAD_ID', 'CODEX_SESSION_ID'):
+            os.environ.pop(name, None)
 
 
 class ResultContractTests(DoctorTestCase):
@@ -454,7 +460,7 @@ class WakeCheckExtensionTests(DoctorTestCase):
             hooks.parent.mkdir(parents=True)
             profile = repo / 'profile.json'
             hooks.write_text(json.dumps({'version': 1, 'hooks': hook_config(profile, 'cursor')}), encoding='utf-8')
-            with patch.dict('os.environ', {'HOME': str(home)}):
+            with patch.dict('os.environ', {'HOME': str(home), 'USERPROFILE': str(home)}):
                 result = onboarding_doctor.wake_check('cursor', profile, repo)
         self.assertEqual(result['status'], 'needs_user')
         self.assertTrue(result['evidence']['configured'])
@@ -494,7 +500,7 @@ class WakeCheckExtensionTests(DoctorTestCase):
             profile = repo / 'profile.json'
             config.write_text(json.dumps(merge_zcode_hooks({}, hook_config(profile, 'zcode'))), encoding='utf-8')
             before = config.read_bytes()
-            with patch.dict('os.environ', {'HOME': str(home)}):
+            with patch.dict('os.environ', {'HOME': str(home), 'USERPROFILE': str(home)}):
                 result = onboarding_doctor.wake_check('zcode', profile, repo)
             self.assertEqual(config.read_bytes(), before)
         self.assertEqual(result['status'], 'needs_user')
@@ -512,7 +518,7 @@ class WakeCheckExtensionTests(DoctorTestCase):
             document = merge_zcode_hooks({}, hook_config(profile, 'zcode'))
             document['hooks']['enabled'] = False
             config.write_text(json.dumps(document), encoding='utf-8')
-            with patch.dict('os.environ', {'HOME': str(home)}):
+            with patch.dict('os.environ', {'HOME': str(home), 'USERPROFILE': str(home)}):
                 result = onboarding_doctor.wake_check('zcode', profile, repo)
         self.assertEqual(result['status'], 'unknown')
         self.assertFalse(result['evidence']['configured'])
@@ -528,7 +534,7 @@ class WakeCheckExtensionTests(DoctorTestCase):
             project_config.parent.mkdir()
             profile = repo / 'profile.json'
             project_config.write_text(json.dumps(merge_zcode_hooks({}, hook_config(profile, 'zcode'))), encoding='utf-8')
-            with patch.dict('os.environ', {'HOME': str(home)}):
+            with patch.dict('os.environ', {'HOME': str(home), 'USERPROFILE': str(home)}):
                 result = onboarding_doctor.wake_check('zcode', profile, repo)
         self.assertEqual(result['status'], 'skipped')
 

@@ -2,7 +2,7 @@
 
 ## 1.0.0rc1 — Release candidate (2026-11-01)
 
-The prepared 1.0 release candidate adds the agent-first P2P setup and doctor flow, owner host recovery, and the first-turn Codex MCP discovery fix. The pre-versioned wheel completed Windows isolated native Claude/Codex bidirectional acceptance. The versioned RC1 wheel passed clean install and 0.9 data upgrade; its native rerun stopped at the reverse reply when the configured model provider lacked the estimated remaining balance. GitHub/PyPI publication awaits that exact-wheel gate and signed-tag setup. This is not stable 1.0; see [release notes](release-notes-1.0.0rc1.md), [RC readiness](rc-readiness-2026-11-01.md) and the [remaining 1.0 gates](release-1.0-plan.md).
+The prepared 1.0 release candidate adds the agent-first P2P setup and doctor flow, owner host recovery, and the first-turn Codex MCP discovery fix. The pre-versioned wheel completed Windows isolated native Claude/Codex bidirectional acceptance. The versioned RC1 wheel passed clean install and 0.9 data upgrade, and on 2026-11-04 a full native exchange with Claude as host, using a substituted Codex model. Codex as host has not completed an exchange. RC1 will not be published: `main` has since changed, and the next candidate needs its own exact-wheel run and a signed tag. This is not stable 1.0; see [release notes](release-notes-1.0.0rc1.md), [RC readiness](rc-readiness-2026-11-01.md) and the [remaining 1.0 gates](release-1.0-plan.md).
 
 ## Unreleased — Shared context, project workspace and agent-first setup
 

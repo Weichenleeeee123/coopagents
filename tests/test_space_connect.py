@@ -55,8 +55,10 @@ class Connect(unittest.TestCase):
         self.assertEqual(space_connect.normalize_tool('codex-desktop'), 'codex')
         self.assertEqual(space_connect.normalize_tool('codex'), 'codex')
         self.assertIsNone(space_connect.normalize_tool(None))
-        self.assertEqual(space_connect.resolve_tool('codex-desktop'), 'codex')
-        with patch.dict(os.environ, {'CODEX_THREAD_ID': 'x'}):
+        # The suite may itself run inside an agent, whose variables would otherwise pick the caller.
+        with patch.dict(os.environ, {'CLAUDECODE': '', 'CODEX_THREAD_ID': '', 'CODEX_SESSION_ID': ''}):
+            self.assertEqual(space_connect.resolve_tool('codex-desktop'), 'codex')
+        with patch.dict(os.environ, {'CODEX_THREAD_ID': 'x', 'CLAUDECODE': ''}):
             self.assertEqual(space_connect.resolve_tool('codex-desktop'), 'codex')
         with patch.dict(os.environ, {'CLAUDECODE': '1'}):
             with self.assertRaises(ConnectError):

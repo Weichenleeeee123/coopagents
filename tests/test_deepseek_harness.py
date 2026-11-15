@@ -49,7 +49,7 @@ class LayerTests(unittest.TestCase):
 
     def test_home_defaults_to_dot_dsh(self):
         with tempfile.TemporaryDirectory() as folder:
-            with patch.dict('os.environ', {'HOME': folder}, clear=True):
+            with patch.dict('os.environ', {'HOME': folder, 'USERPROFILE': folder}, clear=True):
                 self.assertEqual(dsh_home(), Path(folder) / '.dsh')
 
     def test_profile_layer_precedes_the_home_layer(self):

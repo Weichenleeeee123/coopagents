@@ -430,7 +430,7 @@ class InstallTests(unittest.TestCase):
         config.parent.mkdir(parents=True)
         config.write_text(json.dumps({'mcp': {'servers': {'other': {'type': 'http', 'url': 'https://other.example/mcp'}}}}),
                           encoding='utf-8')
-        with patch.dict('os.environ', {'HOME': str(home)}):
+        with patch.dict('os.environ', {'HOME': str(home), 'USERPROFILE': str(home)}):
             self.assertEqual(settings_path('zcode', 'user'), config)
             result = install(self.profile, 'zcode', scope='user', standby=400)
             self.assertEqual(result['settings'], str(config))
@@ -461,7 +461,7 @@ class InstallTests(unittest.TestCase):
         from unittest.mock import patch
         home = self.root / 'home2'
         home.mkdir()
-        with patch.dict('os.environ', {'HOME': str(home), 'CLAUDECODE': '1'}):
+        with patch.dict('os.environ', {'HOME': str(home), 'USERPROFILE': str(home), 'CLAUDECODE': '1'}):
             out = io.StringIO()
             with redirect_stdout(out):
                 code = space_wake.main(['preview', '--tool', 'zcode', '--scope', 'user',
@@ -483,7 +483,7 @@ class InstallTests(unittest.TestCase):
         home = self.root / 'home3'
         home.mkdir()
         config = home / '.zcode' / 'cli' / 'config.json'
-        with patch.dict('os.environ', {'HOME': str(home), 'CLAUDECODE': '1'}):
+        with patch.dict('os.environ', {'HOME': str(home), 'USERPROFILE': str(home), 'CLAUDECODE': '1'}):
             out = io.StringIO()
             with redirect_stdout(out):
                 code = space_wake.main(['preview', '--tool', 'zcode', '--scope', 'user',
@@ -548,7 +548,7 @@ class InstallTests(unittest.TestCase):
         project_hooks.parent.mkdir(parents=True)
         project_hooks.write_text(json.dumps({'version': 1, 'hooks': {'afterFileEdit': [{'command': './hooks/format.sh'}]}}),
                                  encoding='utf-8')
-        with patch.dict('os.environ', {'HOME': str(home)}):
+        with patch.dict('os.environ', {'HOME': str(home), 'USERPROFILE': str(home)}):
             result = install(self.profile, 'cursor', project_dir=self.project, standby=400)
             self.assertEqual(result['settings'], str(project_hooks.absolute()))
             self.assertEqual(result['events'], ['sessionStart', 'stop'])
@@ -577,7 +577,7 @@ class InstallTests(unittest.TestCase):
         from unittest.mock import patch
         home = self.root / 'home-cursor2'
         home.mkdir()
-        with patch.dict('os.environ', {'HOME': str(home), 'CLAUDECODE': '1'}):
+        with patch.dict('os.environ', {'HOME': str(home), 'USERPROFILE': str(home), 'CLAUDECODE': '1'}):
             out = io.StringIO()
             with redirect_stdout(out):
                 code = space_wake.main(['preview', '--tool', 'cursor', '--scope', 'user',
@@ -625,7 +625,7 @@ class InstallTests(unittest.TestCase):
             self.assertEqual(code, 0)
             result = json.loads(out.getvalue())
             self.assertIn('Stop', result['hooks'])
-            self.assertTrue(result['settings'].endswith('.codex/hooks.json'))
+            self.assertTrue(Path(result['settings']).as_posix().endswith('.codex/hooks.json'))
 
     def test_install_and_disable_claude_and_codex(self):
         settings = self.project / '.claude' / 'settings.local.json'

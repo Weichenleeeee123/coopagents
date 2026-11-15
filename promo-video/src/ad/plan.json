@@ -1,0 +1,10 @@
+[
+ {"id":"Pain","start":0,"duration":420,"beats":[0,90,165,240,330],"purpose":"Copy, paste and explain: the human relay problem"},
+ {"id":"Connect","start":420,"duration":420,"beats":[0,90,180,300],"purpose":"Agent identities connect, then become different devices"},
+ {"id":"World","start":840,"duration":420,"beats":[0,120,240,348],"purpose":"A cross-region route and one brief setup prompt"},
+ {"id":"Question","start":1260,"duration":420,"beats":[0,120,240,336],"purpose":"A direct question travels to the agent with the shared answer"},
+ {"id":"Build","start":1680,"duration":420,"beats":[0,120,210,330],"purpose":"The answer becomes a visible code change"},
+ {"id":"Trace","start":2100,"duration":360,"beats":[0,120,240],"purpose":"Code remains linked to the work and its evidence"},
+ {"id":"Relief","start":2460,"duration":420,"beats":[0,120,240,330],"purpose":"Agents exchange context; people retain the decisions"},
+ {"id":"Brand","start":2880,"duration":360,"beats":[0,120,240],"purpose":"Coopagents: less relaying, more building"}
+]
