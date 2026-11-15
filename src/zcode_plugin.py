@@ -23,7 +23,9 @@ fire all three checkpoint hooks with the documented shapes. A bundle
 dropped in a project directory is never discovered: the CLI does not scan
 the working directory for plugin bundles, and project configuration
 cannot declare plugin directories (the project-config adapter strips
-``plugins.dirs``). Idle wake in a real ZCode session is still unverified.
+``plugins.dirs``). Idle wake in a live ZCode session was verified
+separately the same day (interactive TUI session, Stop-hook standby
+wait, targeted reply to the injected request only).
 """
 import argparse
 from importlib import metadata
