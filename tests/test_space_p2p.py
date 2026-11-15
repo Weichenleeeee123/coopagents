@@ -135,6 +135,17 @@ class Transport(unittest.TestCase):
         self.assertEqual(host.endpoint_id, p2p.endpoint_id(secret))
         self.assertNotEqual(p2p.endpoint_id(p2p.new_secret()), host.endpoint_id)
 
+    def test_host_status_reports_live_relay_state(self):
+        host = p2p.HostLink(p2p.new_secret(), start_echo(), local_only=True)
+        self.addCleanup(host.close)
+        self.assertIs(host.online, False)  # a local-only endpoint never has a relay
+        status = host.status()
+        self.assertEqual(status['endpoint_id'], host.endpoint_id)
+        self.assertIs(status['online'], False)
+        self.assertEqual(status['members'], 0)
+        self.assertIsNone(status['relay_url'])
+        self.assertIsInstance(status['direct_addresses'], list)
+
     def test_member_reconnects_after_host_restart(self):
         target, secret = start_echo(), p2p.new_secret()
         host = p2p.HostLink(secret, target, local_only=True)
@@ -167,6 +178,22 @@ class Transport(unittest.TestCase):
         self.assertEqual(received, b'')
         self.assertEqual(host.connections, set())
 
+    def test_ensure_connected_warms_the_link(self):
+        host, member = self.link_pair(start_echo())
+        member.ensure_connected()
+        self.assertEqual(member.path()['state'], 'direct')
+        self.assertEqual(round_trip(member.port, b'warmed'), b'warmed')
+
+    def test_ensure_connected_reports_unreachable_host(self):
+        host = p2p.HostLink(p2p.new_secret(), start_echo(), local_only=True)
+        self.addCleanup(host.close)
+        stranger = p2p.endpoint_id(p2p.new_secret())
+        member = p2p.MemberLink(stranger, available_port(), addresses=host.addresses(), local_only=True,
+                                connect_timeout=3)
+        self.addCleanup(member.close)
+        with self.assertRaisesRegex(ValueError, 'peer-to-peer transport'):
+            member.ensure_connected()
+
 
 class ProfileLinks(unittest.TestCase):
     def test_validation(self):
@@ -191,10 +218,70 @@ class ProfileLinks(unittest.TestCase):
         with self.assertRaises(ValueError):
             p2p.member_link(profile | {'room_id': 'another-room'})
 
+    def test_member_link_warm_dials_before_returning(self):
+        created = []
+
+        class FakeLink:
+            def __init__(self, endpoint_id, port):
+                self.endpoint_id, self.port = endpoint_id, port
+                self.warmed = 0
+                created.append(self)
+
+            def ensure_connected(self):
+                self.warmed += 1
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+        profile = {'origin': 'http://127.0.0.1:%d' % available_port(), 'room_id': 'room',
+                   'p2p': {'endpoint_id': 'a' * 64}}
+        with patch.object(p2p, 'MemberLink', FakeLink):
+            with p2p.member_link(profile, warm=True):
+                pass
+            self.assertEqual(created[0].warmed, 1)
+            with p2p.member_link(profile):
+                pass
+            self.assertEqual(created[1].warmed, 0)
+
     def test_missing_iroh_is_a_clear_error(self):
         with patch.dict('sys.modules', {'iroh': None}):
             with self.assertRaisesRegex(RuntimeError, 'space extra'):
                 p2p._iroh()
+
+    def test_member_close_shuts_down_server_and_endpoint(self):
+        link = p2p.MemberLink.__new__(p2p.MemberLink)
+        calls = []
+
+        class FakeServer:
+            def close(self):
+                calls.append('server')
+
+        class FakeEndpoint:
+            async def close(self):
+                calls.append('endpoint')
+
+        link.server = FakeServer()
+        link.endpoint = FakeEndpoint()
+
+        def run(coro, timeout):
+            asyncio.run(coro)
+
+        with patch.object(p2p, '_run', side_effect=run):
+            link.close()
+        self.assertEqual(calls, ['server', 'endpoint'])
+
+    def test_member_close_ignores_stuck_endpoint_shutdown(self):
+        link = p2p.MemberLink.__new__(p2p.MemberLink)
+
+        def stuck(coro, timeout):
+            coro.close()
+            raise TimeoutError('endpoint close stalled')
+
+        with patch.object(p2p, '_run', side_effect=stuck):
+            link.close()  # cleanup cannot fail the operation that used the link
 
 
 class RuntimeP2P(unittest.TestCase):
@@ -242,6 +329,32 @@ class RuntimeP2P(unittest.TestCase):
                                  '--profile', str(self.profile_path)], capture_output=True, text=True)
         self.assertEqual(result.returncode, 0)
         self.assertNotIn(host['p2p_secret'], result.stdout + result.stderr)
+
+    def test_join_warms_the_peer_link_before_requesting(self):
+        calls = []
+
+        class FakeLink:
+            def __init__(self, *args, **kwargs):
+                calls.append((args, kwargs))
+
+            def __enter__(self):
+                return None
+
+            def __exit__(self, *exc):
+                return False
+
+        invitation = self.directory / 'invitation.json'
+        private_write(invitation, dict(schema_version=1, origin='http://127.0.0.1:9001', room_id='room',
+                                       invite_token='token', expires_at='2999-01-01T00:00:00+00:00',
+                                       p2p={'endpoint_id': 'c' * 64}))
+        identity = {'room_id': 'room', 'member_id': 'member', 'web_token': 'web', 'agent_token': 'agent'}
+        with patch.object(runtime, 'member_link', FakeLink), \
+                patch.object(runtime, 'request', return_value=identity) as remote:
+            joined = runtime.join(invitation, 'Peer', self.directory / 'warmed')
+        self.assertEqual(calls[0][1], {'warm': True})
+        self.assertEqual(calls[0][0][0]['p2p'], {'endpoint_id': 'c' * 64})
+        remote.assert_called_once()
+        self.assertEqual(read_profile(joined['profile'])['p2p'], {'endpoint_id': 'c' * 64})
 
     def test_profile_and_invitation_links_are_validated(self):
         base = dict(schema_version=1, room_id='room', member_id='member', agent_token='agent')

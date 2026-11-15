@@ -174,6 +174,49 @@ class Profiles(unittest.TestCase):
         self.assertEqual(emitted['next'], 'Start a new session.')
         checked.assert_called_once_with('private-profile', 'codex', None, None)
 
+    def test_request_forwards_timeout_to_opener(self):
+        seen = {}
+
+        class FakeResponse:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+            def read(self, limit):
+                return b'{}'
+
+        class FakeOpener:
+            def open(self, req, timeout=None):
+                seen['timeout'] = timeout
+                return FakeResponse()
+
+        with patch('urllib.request.build_opener', return_value=FakeOpener()):
+            self.assertEqual(runtime.request('http://127.0.0.1:9', '/x'), {})
+            self.assertEqual(seen['timeout'], 5)
+            runtime.request('http://127.0.0.1:9', '/x', timeout=30)
+            self.assertEqual(seen['timeout'], 30)
+
+    def test_join_uses_long_timeout_for_p2p_reply(self):
+        from datetime import datetime, timedelta, timezone
+        descriptor = dict(schema_version=1, origin='http://127.0.0.1:9', room_id='room',
+                          invite_token='invite',
+                          expires_at=(datetime.now(timezone.utc) + timedelta(hours=1)).isoformat())
+        invitation_file = self.directory / 'invitation.json'
+        invitation_file.write_text(json.dumps(descriptor), encoding='utf-8')
+        calls = {}
+
+        def fake_request(origin, path, **kwargs):
+            calls.update(kwargs)
+            return {'room_id': 'room', 'member_id': 'member', 'web_token': 'web', 'agent_token': 'agent'}
+
+        with patch.object(runtime, 'request', side_effect=fake_request):
+            result = runtime.join(str(invitation_file), 'Peer', self.directory / 'peer')
+        self.assertEqual(calls['timeout'], runtime.JOIN_REQUEST_TIMEOUT)
+        self.assertEqual(calls['data']['invite_token'], 'invite')
+        self.assertEqual(result['room_id'], 'room')
+
 
 class Runtime(unittest.TestCase):
     def setUp(self):
