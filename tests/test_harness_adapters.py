@@ -140,7 +140,8 @@ class HarnessAdapterTests(unittest.TestCase):
                     self.assertNotIn('enabled', entry)
                     self.assertIs(entry['oauth'], False)
                 elif name == 'windsurf':
-                    # Header expansion is disputed across sources and the
+                    # The official Devin docs document variable expansion
+                    # only for OAuth fields, not for headers, and the
                     # project file is committed, so no header is written.
                     self.assertEqual(entry, {'url': 'https://team.example/mcp'})
                     self.assertNotIn('${', json.dumps(entry))
