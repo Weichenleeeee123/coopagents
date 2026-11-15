@@ -206,7 +206,7 @@ class HarnessAdapterTests(unittest.TestCase):
         self.assertEqual(report['idle_wake'], 'unsupported')
         self.assertIn('user config only', report['notes'])
         self.assertIn('live subprocess verification', report['notes'])
-        self.assertIn('still unverified', report['notes'])
+        self.assertIn('idle wake was verified live in an interactive ZCode session', report['notes'])
 
     def test_zcode_plan_names_the_proxy_workaround(self):
         plan = adapter_for('zcode').plan(Path('.'), service_url='https://team.example/mcp')
