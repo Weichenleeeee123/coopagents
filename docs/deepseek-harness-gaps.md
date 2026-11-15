@@ -4,18 +4,27 @@ Checked 2026-11-12 against official sources only (deepseek.com,
 api-docs.deepseek.com, deepseek-harness.github.io, github.com/deepseek-ai).
 DeepSeek Harness (`dsh`) is in developer preview with breaking changes
 expected, has had no security audit (per its SAFETY.md), and must not be
-treated as production-ready. Everything below needs a live `dsh`
-installation, a DeepSeek API key, or both; none of it is faked on this VM.
+treated as production-ready. The live items below were verified
+2026-11-15 against a real `dsh` process; everything still open needs a
+live `dsh` installation, a backend key, or both, and none of it is faked
+on this VM.
+
+## Verified live 2026-11-15 (dsh 0.2.2-rc.1)
+
+- **MCP row loading.** A real `dsh` process loaded the generated
+  `dsh-mcp-client` row from a local-only `--patch` overlay, discovered
+  the Coopagents tools as `mcp__coopagents__<tool>`, and called
+  `whoami` + `read_team` natively against a local space. The model
+  backend was an OpenAI-compatible gateway (route override in the same
+  overlay); the default DeepSeek route was not exercised.
+- **Header auth.** The client schema accepts a literal `headers`
+  mapping carrying the Authorization header in a local-only overlay;
+  no env expansion exists for MCP client headers. The generated row
+  still carries no header: auth is added by hand in a local overlay,
+  never in a shared layer.
 
 ## Needs a live dsh session
 
-- **MCP row loading.** Whether a real `dsh` process loads the generated
-  `dsh-mcp-client` row, discovers the Coopagents tools as
-  `mcp__coopagents__<tool>`, and calls them. Needs `dsh` + a backend key.
-- **Header auth.** No documented env expansion exists for MCP client
-  headers. Whether/how a bearer token reaches a Streamable HTTP MCP
-  server (literal header, credential reference, other mechanism) is
-  undocumented in the pages checked; the generated row carries no header.
 - **Cordis checkpoint plugin.** Checkpoint-like observation would be a
   TypeScript Cordis plugin on `tools/post-execute` / `tools/result` /
   `agent/turn-stopping`. The extension points are documented, but no
@@ -33,8 +42,9 @@ installation, a DeepSeek API key, or both; none of it is faked on this VM.
 
 ## Undocumented in the official sources checked
 
-- Current `dsh` version number / stable release (no version captured; do
-  not quote a version without re-checking the releases page).
+- Current `dsh` version number / stable release (version 0.2.2-rc.1 was
+  observed live 2026-11-15; do not quote a version without re-checking
+  the releases page).
 - Node.js version requirement for `npx @deepseek-ai/dsh` (docs say only
   "Install Node.js").
 - Desktop app OS/arch list and download URLs.

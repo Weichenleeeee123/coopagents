@@ -4,7 +4,8 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from coopagents.harness_adapters import ConfigConflict, SUPPORTED_HARNESSES, adapter_for
+from coopagents.harness_adapters import (ConfigConflict, SUPPORTED_HARNESSES, adapter_for,
+                                     pi_mcp_supported)
 
 
 class HarnessAdapterTests(unittest.TestCase):
@@ -198,12 +199,56 @@ class HarnessAdapterTests(unittest.TestCase):
         self.assertIn('.devin/mcp_config.local.json', plan['notes'])
         self.assertIn('devin mcp add -s local', plan['notes'])
 
-    def test_zcode_capabilities_report_hook_install_without_claiming_live_acceptance(self):
+    def test_zcode_capabilities_distinguish_hook_contract_from_session_acceptance(self):
         report = adapter_for('zcode').capabilities(project_root=Path('.'))
         self.assertEqual(report['native_hook'], 'unknown')
         self.assertEqual(report['idle_wake'], 'unsupported')
         self.assertIn('user config only', report['notes'])
-        self.assertIn('unverified', report['notes'])
+        self.assertIn('live subprocess verification', report['notes'])
+        self.assertIn('still unverified', report['notes'])
+
+    def test_zcode_plan_names_the_proxy_workaround(self):
+        plan = adapter_for('zcode').plan(Path('.'), service_url='https://team.example/mcp')
+        self.assertIn('no_proxy', plan['notes'])
+        self.assertIn('ALL_PROXY', plan['notes'])
+
+    def test_pi_mcp_supported_parses_versions(self):
+        self.assertIs(pi_mcp_supported('0.73.1'), False)
+        self.assertIs(pi_mcp_supported('0.98.9'), False)
+        self.assertIs(pi_mcp_supported('0.99'), True)
+        self.assertIs(pi_mcp_supported('0.99.0'), True)
+        self.assertIs(pi_mcp_supported('1.5.2'), True)
+        self.assertIs(pi_mcp_supported('v1.5.2'), True)
+        self.assertIs(pi_mcp_supported('2.2.7-rc.1'), True)
+        self.assertIsNone(pi_mcp_supported('unknown'))
+        self.assertIsNone(pi_mcp_supported(''))
+        self.assertIsNone(pi_mcp_supported(None))
+
+    def test_pi_capabilities_report_mcp_unsupported_below_the_floor(self):
+        report = adapter_for('pi').capabilities(project_root=Path('.'), detected_version='0.73.1')
+        self.assertEqual(report['version'], '0.73.1')
+        self.assertEqual(report['mcp'], 'unsupported')
+        self.assertIn('0.99.0', report['mcp_reason'])
+        self.assertIn('@earendil-works/pi-coding-agent', report['mcp_reason'])
+
+    def test_pi_capabilities_stay_supported_at_and_above_the_floor_and_when_unknown(self):
+        for version in ('0.99.0', '0.99', '1.5.2', None, 'unknown'):
+            report = adapter_for('pi').capabilities(project_root=Path('.'), detected_version=version)
+            with self.subTest(version=version):
+                self.assertEqual(report['mcp'], 'supported')
+                self.assertNotIn('mcp_reason', report)
+
+    def test_non_pi_harnesses_ignore_the_pi_version_floor(self):
+        for name in ('cursor', 'opencode', 'kimi-code', 'zcode', 'windsurf'):
+            report = adapter_for(name).capabilities(project_root=Path('.'), detected_version='0.73.1')
+            with self.subTest(name=name):
+                self.assertEqual(report['mcp'], 'supported')
+
+    def test_pi_notes_warn_about_the_deprecated_package(self):
+        notes = adapter_for('pi').capabilities(project_root=Path('.'))['notes']
+        self.assertIn('@mariozechner/pi-coding-agent', notes)
+        self.assertIn('@earendil-works/pi-coding-agent', notes)
+        self.assertIn('0.99', notes)
 
 
 if __name__ == '__main__':

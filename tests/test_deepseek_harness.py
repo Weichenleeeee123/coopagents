@@ -80,6 +80,15 @@ class PlanTests(unittest.TestCase):
         self.assertNotIn('Bearer', str(result))
         self.assertIn('developer preview', result['notes'])
 
+    def test_plan_notes_record_live_acceptance_and_the_proven_header_shape(self):
+        result = plan('https://team.example/mcp')
+        self.assertIn('verified 2026-11-15', result['notes'])
+        self.assertIn('literal Authorization header', result['notes'])
+        self.assertIn('local-only --patch', result['notes'])
+        # The row itself still carries no header key or credential value.
+        self.assertNotIn('headers:', result['row'])
+        self.assertNotIn('Bearer', result['row'])
+
 
 class CliTests(unittest.TestCase):
     def test_cli_prints_a_plan_and_rejects_a_bad_url(self):

@@ -20,8 +20,14 @@ reports a credential value: no documented env expansion exists for MCP
 client headers, so the row carries no Authorization header and the user
 adds auth per their DSH setup.
 
-Live acceptance against a real `dsh` process is unverified: no `dsh`
-binary runs on this VM, and driving a session needs a DeepSeek API key.
+Live acceptance was verified 2026-11-15: dsh 0.2.2-rc.1 loaded the
+generated row from a local-only ``--patch`` overlay and called the
+Coopagents tools natively (whoami + read_team) against a local space, with
+the model backend pointed at an OpenAI-compatible gateway. The proven auth
+shape is a literal ``headers`` mapping carrying the Authorization header
+in a local-only overlay (the client schema accepts ``headers``; no env
+expansion exists). The generated row still carries no header: auth is
+added by hand in a local overlay, never in a shared layer.
 """
 import argparse
 import json
@@ -65,7 +71,11 @@ def mcp_client_row(service_url, server_name='coopagents'):
     Fixed template with escaped values; merge it into a patch layer by hand
     (see patch_layers). No header is emitted: no documented env expansion
     exists for MCP client headers, and a literal placeholder would reach
-    the server as the token.
+    the server as the token. Proven shape, verified live 2026-11-15: the
+    client schema accepts a literal ``headers`` mapping carrying the
+    Authorization header in a local-only ``--patch`` overlay — add auth
+    that way, by hand, never in a shared layer, and never through this
+    generator, which must never see a credential value.
     """
     url = _service_url(service_url)
     name = _server_name(server_name)
@@ -133,7 +143,8 @@ def plan(service_url, server_name='coopagents', profile=None, home=None):
         'notes': ('DeepSeek Harness is in developer preview and iterates with breaking changes. '
                   'Merge the row into one patch layer and restart dsh. No project-level MCP config '
                   'exists; hooks are Cordis plugins, and there is no external wake API. '
-                  'Live dsh acceptance is unverified.'),
+                  'Live dsh acceptance was verified 2026-11-15 (dsh 0.2.2-rc.1, local-only --patch '
+                  'overlay, literal Authorization header, native whoami/read_team).'),
     }
 
 
