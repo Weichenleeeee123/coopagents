@@ -14,7 +14,8 @@ from coopagents.errors import AccessDenied
 from coopagents.spaces import checked_path, private_write
 from coopagents import space_wake
 from coopagents.space_wake import (AuthDenied, Policy, Watcher, WakeSetupError, WakeState, disable, hook_config,
-                                 install, merge_cursor_hooks, merge_hooks, merge_zcode_hooks, remote_digest, settings_path, wake_text, watch)
+                                 install, kimi_wake_hooks_text, merge_cursor_hooks, merge_hooks,
+                                 merge_kimi_wake_hooks, merge_zcode_hooks, remote_digest, settings_path, wake_text, watch)
 from transport_support import LiveService
 
 
@@ -321,6 +322,19 @@ class HookEntryTests(unittest.TestCase):
         with WakeState(self.profile).connect() as c:
             self.assertIsNotNone(c.execute("SELECT 1 FROM watchers WHERE session='cs2'").fetchone())
 
+    def test_kimi_stop_exits_two_with_notice_on_stderr_and_session_start_only_baselines(self):
+        items = [{'kind': 'request', 'id': 1}]
+        code, out, err = self.run_hook('kimi-code', items, payload={'session_id': 'ks', 'hook_event_name': 'SessionStart'})
+        self.assertEqual((code, out, err), (0, '', ''), 'SessionStart baselines without waking')
+        code, out, err = self.run_hook('kimi-code', items, payload={'session_id': 'ks', 'hook_event_name': 'Stop'})
+        self.assertEqual((code, out, err), (0, '', ''), 'Baselined items do not wake the first Stop')
+        code, out, err = self.run_hook('kimi-code', items + [{'kind': 'reply', 'id': 2}],
+                                       payload={'session_id': 'ks', 'hook_event_name': 'Stop'})
+        self.assertEqual(code, 2, 'Kimi blocks the turn end with exit 2')
+        self.assertEqual(out, '')
+        self.assertIn('1 new reply to your request', err)
+        self.assertIn('The new items are: reply #2.', err)
+
     def test_codex_desktop_watch_blocks_like_codex(self):
         code, out, _ = self.run_hook('codex-desktop', [{'kind': 'request', 'id': 1}])
         self.assertEqual(code, 0)
@@ -504,6 +518,101 @@ class InstallTests(unittest.TestCase):
             installed = json.loads(config.read_text(encoding='utf-8'))
             self.assertEqual(preview_hooks, installed['hooks'])
             self.assertEqual(installed, merge_zcode_hooks({}, hook_config(self.profile, 'zcode')))
+
+    def test_kimi_wake_fragment_uses_toml_hooks_with_capped_stop_timeout(self):
+        fragment = kimi_wake_hooks_text(self.profile, standby=900)
+        self.assertEqual(fragment.count('[[hooks]]'), 2)
+        self.assertIn('event = "SessionStart"', fragment)
+        self.assertIn('event = "Stop"', fragment)
+        self.assertIn('coopagents.space_wake', fragment)
+        self.assertIn('--tool kimi-code', fragment)
+        self.assertIn('timeout = 600', fragment, 'The 900s standby is capped by the 600s Kimi hook limit')
+        self.assertIn('timeout = 60', fragment)
+        self.assertEqual(kimi_wake_hooks_text(self.profile, standby=400).count('timeout = 520'), 1)
+        with self.assertRaises(ValueError):
+            hook_config(self.profile, 'kimi-code')
+
+    def test_kimi_wake_merge_preserves_providers_checkpoint_hooks_and_foreign_rules(self):
+        from coopagents.checkpoint_hook import kimi_hooks_text
+        existing = ('default_model = "x"\n\n[providers.mota]\ntype = "openai"\n\n'
+                    + kimi_hooks_text('kimi-code')
+                    + '\n[[hooks]]\nevent = "Notification"\ncommand = "notify-send done"\n')
+        once = merge_kimi_wake_hooks(existing, kimi_wake_hooks_text(self.profile))
+        twice = merge_kimi_wake_hooks(once, kimi_wake_hooks_text(self.profile))
+        self.assertEqual(once, twice, 'Re-applying is idempotent')
+        self.assertIn('[providers.mota]', twice)
+        self.assertIn('coopagents.checkpoint_hook', twice, 'Checkpoint blocks survive a wake merge')
+        self.assertIn('notify-send done', twice)
+        self.assertEqual(twice.count('coopagents wake hook'), 2)
+        removed = merge_kimi_wake_hooks(twice, '')
+        self.assertNotIn('coopagents wake hook', removed)
+        self.assertIn('coopagents.checkpoint_hook', removed)
+        self.assertIn('notify-send done', removed)
+        self.assertIn('[providers.mota]', removed)
+
+    def test_kimi_wake_command_runs_as_a_subprocess(self):
+        fragment = kimi_wake_hooks_text(self.profile)
+        command = next(json.loads(line.split(' = ', 1)[1]) for line in fragment.splitlines()
+                       if line.startswith('command = '))
+        payload = json.dumps({'session_id': 'kimi-proc', 'hook_event_name': 'Stop'}).encode()
+        proc = subprocess.run(command, shell=True, input=payload, capture_output=True, timeout=60)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        with WakeState(self.profile).connect() as c:
+            row = c.execute("SELECT status FROM watchers WHERE session='kimi-proc'").fetchone()
+        self.assertIsNotNone(row, 'The hook command did not reach the watcher')
+        self.assertEqual(row[0], 'deadline')
+
+    def test_kimi_wake_install_and_disable_use_user_config_only(self):
+        from unittest.mock import patch
+        home = self.root / 'kimi-home'
+        home.mkdir()
+        config = home / '.kimi-code' / 'config.toml'
+        config.parent.mkdir(parents=True)
+        config.write_text('default_model = "x"\n\n[providers.mota]\ntype = "openai"\n', encoding='utf-8')
+        with patch.dict('os.environ', {'HOME': str(home), 'USERPROFILE': str(home)}):
+            self.assertEqual(settings_path('kimi-code', 'user'), config)
+            result = install(self.profile, 'kimi-code', scope='user', standby=900)
+            self.assertEqual(result['settings'], str(config))
+            self.assertEqual(result['events'], ['SessionStart', 'Stop'])
+            text = config.read_text(encoding='utf-8')
+            self.assertIn('[providers.mota]', text)
+            self.assertEqual(text.count('[[hooks]]'), 2)
+            self.assertTrue(list(config.parent.glob('config.toml.coopagents-*.bak')), 'Previous settings are kept')
+            state = WakeState(self.profile)
+            state.set_standby(900)
+            self.assertEqual(state.standby(), 480, 'The installed budget is capped below the 600s hook limit')
+            self.assertTrue(disable('kimi-code', scope='user')['changed'])
+            after = config.read_text(encoding='utf-8')
+            self.assertNotIn('coopagents wake hook', after)
+            self.assertIn('[providers.mota]', after)
+            self.assertFalse(disable('kimi-code', scope='user')['changed'])
+
+    def test_kimi_wake_project_scope_and_missing_profile_are_refused(self):
+        with self.assertRaises(WakeSetupError):
+            install(self.profile, 'kimi-code', scope='project', project_dir=self.project)
+        with self.assertRaises(WakeSetupError):
+            install(None, 'kimi-code', scope='user')
+        with self.assertRaises(WakeSetupError):
+            disable('kimi-code', scope='project', project_dir=self.project)
+        with self.assertRaises(WakeSetupError):
+            settings_path('kimi-code', 'project', self.project)
+
+    def test_kimi_wake_preview_cli_accepts_explicit_tool_and_profile(self):
+        from contextlib import redirect_stdout
+        from unittest.mock import patch
+        home = self.root / 'kimi-home2'
+        home.mkdir()
+        with patch.dict('os.environ', {'HOME': str(home), 'USERPROFILE': str(home), 'CLAUDECODE': '1'}):
+            out = io.StringIO()
+            with redirect_stdout(out):
+                code = space_wake.main(['preview', '--tool', 'kimi-code', '--scope', 'user',
+                                        '--profile', str(self.profile)])
+            self.assertEqual(code, 0)
+            result = json.loads(out.getvalue())
+            self.assertEqual(result['settings'], str(home / '.kimi-code' / 'config.toml'))
+            self.assertIn('[[hooks]]', result['hooks_toml'])
+            self.assertIn('event = "Stop"', result['hooks_toml'])
+            self.assertIn(str(self.profile).replace(os.sep, '/'), result['hooks_toml'])
 
     def test_cursor_hook_config_uses_flat_definitions_with_stop_timeout(self):
         config = hook_config(self.profile, 'cursor', standby=400)
