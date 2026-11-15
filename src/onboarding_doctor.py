@@ -195,7 +195,11 @@ def harness_cli_check():
     check always passes so the inventory can never block setup. Kimi Code
     and the legacy kimi-cli share the `kimi` command name; the reported
     version tells them apart (2.x is the current CLI, 1.x the legacy one).
+    For Pi, a detected version below the MCP floor (0.99.0) is reported as
+    mcp unsupported with a reason; an undetected version reports nothing
+    about MCP either way.
     """
+    from .harness_adapters import pi_mcp_supported
     found = {}
     for harness, binary in HARNESS_CLIS:
         path = shutil.which(binary)
@@ -212,6 +216,14 @@ def harness_cli_check():
         except (OSError, subprocess.TimeoutExpired):
             pass
         found[harness] = {'present': True, 'path': path, 'version': version}
+        if harness == 'pi':
+            supported = pi_mcp_supported(version)
+            if supported is not None:
+                found[harness]['mcp'] = 'supported' if supported else 'unsupported'
+                if not supported:
+                    found[harness]['mcp_reason'] = ('Pi %s is below the minimum MCP version 0.99.0; '
+                                                    'upgrade to the maintained '
+                                                    '@earendil-works/pi-coding-agent package.' % version)
     present = [name for name, info in found.items() if info['present']]
     summary = ('Harness CLIs on PATH: %s.' % ', '.join(present)) if present \
         else 'No supported harness CLI was found on PATH.'

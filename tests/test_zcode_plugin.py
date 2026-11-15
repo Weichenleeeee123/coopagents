@@ -50,6 +50,12 @@ class PluginContentTests(unittest.TestCase):
         self.assertIn('space_wake', readme)
         self.assertIn('https://team.example/mcp', readme)
 
+    def test_readme_names_plugins_dirs_route_and_no_workspace_discovery(self):
+        readme = self.files['README.md']
+        self.assertIn('plugins.dirs', readme)
+        self.assertIn('does not load', readme)
+        self.assertNotIn('plugins install', readme)
+
     def test_bad_urls_and_names_are_rejected(self):
         with self.assertRaises(ValueError):
             plugin_files('https://user:pass@team.example/mcp')

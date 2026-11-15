@@ -12,6 +12,12 @@ going when items are pending; its sessionStart hook only baselines, because
 Cursor runs it fire-and-forget.  Cursor hooks install to the project
 (.cursor/hooks.json, shared through version control in trusted workspaces) or
 to the user file (~/.cursor/hooks.json).
+Kimi Code: [[hooks]] rules in the user config.toml (Kimi has no project
+hook file).  A Stop hook exits 2 with the notice on stderr to block the
+turn end and continue it with the notice appended; its SessionStart hook
+only baselines, because SessionStart is observation-only.  Kimi hook
+timeouts cap at 600 seconds, so the installed standby budget is capped
+below that.
 
 The wake text is a fixed template with counts plus the new items'
 identifiers (kind and id, so the woken session can tell the new items
@@ -32,7 +38,7 @@ from uuid import uuid4
 
 from .spaces import checked_path, private_directory, protect, read_profile
 
-TOOLS = ('claude', 'codex', 'zcode', 'cursor')
+TOOLS = ('claude', 'codex', 'zcode', 'cursor', 'kimi-code')
 # The Codex desktop app shares CODEX_HOME with the CLI (see
 # space_connect.TOOL_ALIASES); codex-desktop is an alias for codex here too.
 TOOL_ALIASES = {'codex-desktop': 'codex'}
@@ -48,6 +54,10 @@ CURSOR_SESSION_TIMEOUT = 60
 CURSOR_EVENTS = {'sessionStart': 'SessionStart', 'stop': 'Stop'}
 DEADLINE_MARGIN = 120
 DEFAULT_STANDBY = 900
+# Kimi hook timeouts are capped at 600 seconds (docs range 1-600); the
+# installed Stop-hook timeout and standby budget stay below that cap.
+KIMI_HOOK_TIMEOUT_MAX = 600
+KIMI_WAKE_MARKER = 'coopagents wake hook'
 MARKER = 'coopagents.space_wake'
 # Hooks installed before the rename to Coopagents; recognised so install replaces them and disable removes them.
 LEGACY_MARKERS = ('crewmesh.space_wake',)
@@ -468,11 +478,22 @@ def watch(profile_path, tool, stdin, stdout, stderr, *, watcher_factory=_default
             # check, capped by Cursor's loop_limit (default 5 follow-ups).
             watcher.run(0, baseline=True)
             return 0
+        if tool == 'kimi-code' and event == 'SessionStart':
+            # Baseline only: Kimi SessionStart is observation-only, so it
+            # cannot wake; the Stop hook performs the end-of-turn check.
+            watcher.run(0, baseline=True)
+            return 0
         standby = watcher.state.standby()
         outcome, text = watcher.run(standby)
         if outcome == 'wake':
             if tool == 'cursor':
                 stdout.write(json.dumps({'followup_message': text}) + '\n')
+            elif tool == 'kimi-code':
+                # Verified live 2026-11-15: exit 2 with the notice on
+                # stderr blocks the turn end and appends the notice to
+                # the context, so the session continues with it.
+                stderr.write(text + '\n')
+                return 2
             else:
                 stdout.write(json.dumps({'decision': 'block', 'reason': text}) + '\n')
         return 0
@@ -517,6 +538,10 @@ def _powershell_literal(value):
 
 
 def hook_config(profile_path, tool, standby=DEFAULT_STANDBY):
+    if tool == 'kimi-code':
+        # Kimi wake hooks are [[hooks]] TOML, not a JSON document; the
+        # fragment comes from kimi_wake_hooks_text.
+        raise ValueError('Kimi Code wake hooks are TOML; use kimi_wake_hooks_text')
     if tool == 'cursor':
         # Cursor hooks.json entries are flat per-event command definitions;
         # the same watch command baselines on sessionStart and checks on stop.
@@ -541,7 +566,60 @@ def hook_config(profile_path, tool, standby=DEFAULT_STANDBY):
     return {'Stop': [{'hooks': [{'type': 'command', 'command': command, 'timeout': standby + DEADLINE_MARGIN}]}]}
 
 
+def kimi_wake_hooks_text(profile_path, standby=DEFAULT_STANDBY):
+    """The [[hooks]] TOML fragment install appends to ~/.kimi-code/config.toml.
+
+    SessionStart only baselines (it is observation-only); Stop blocks with
+    the notice on stderr. The Stop timeout must cover the standby budget,
+    and Kimi caps hook timeouts at 600 seconds, so the budget is capped
+    below it. The command is a JSON string, which is also valid TOML.
+    """
+    command = hook_command(profile_path, 'kimi-code')
+    budget = min(standby, KIMI_HOOK_TIMEOUT_MAX - DEADLINE_MARGIN)
+    blocks = []
+    for event, timeout in (('SessionStart', CURSOR_SESSION_TIMEOUT),
+                           ('Stop', budget + DEADLINE_MARGIN)):
+        blocks.append('\n'.join((
+            '# %s (managed; do not edit)' % KIMI_WAKE_MARKER,
+            '[[hooks]]',
+            'event = %s' % json.dumps(event),
+            'command = %s' % json.dumps(command),
+            'timeout = %d' % timeout,
+        )))
+    return '\n\n'.join(blocks) + '\n'
+
+
+def merge_kimi_wake_hooks(existing_text, fragment_text):
+    """Merge wake [[hooks]] blocks into a Kimi config.toml, preserving the rest.
+
+    Checkpoint hook blocks and foreign rules are kept: the merge only drops
+    blocks carrying the wake marker or the space_wake command.
+    """
+    from .checkpoint_hook import merge_kimi_hooks
+    return merge_kimi_hooks(existing_text, fragment_text, marker=KIMI_WAKE_MARKER,
+                            needles=(MARKER,) + LEGACY_MARKERS)
+
+
+def _load_text(path):
+    return path.read_text(encoding='utf-8') if path.exists() else ''
+
+
+def _write_text_settings(path, text):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists():
+        # Keep the previous file next to it; never delete user configuration.
+        backup = path.with_name(f'{path.name}.coopagents-{time.strftime("%Y%m%d%H%M%S")}-{uuid4().hex[:6]}.bak')
+        backup.write_bytes(path.read_bytes())
+    staging = path.with_name(path.name + '.' + uuid4().hex + '.pending')
+    staging.write_text(text, encoding='utf-8')
+    os.replace(staging, path)
+
+
 def settings_path(tool, scope, project_dir=None):
+    if tool == 'kimi-code':
+        if scope != 'user':
+            raise WakeSetupError('Kimi Code has no project-level hook file; install wake-up with --scope user')
+        return Path.home() / '.kimi-code' / 'config.toml'
     if tool == 'cursor':
         if scope == 'user':
             return Path.home() / '.cursor' / 'hooks.json'
@@ -773,32 +851,53 @@ def install(profile_path, tool, scope='project', project_dir=None, standby=DEFAU
     if tool == 'cursor' and not profile_path:
         raise WakeSetupError('Cursor has no native Coopagents bridge registration to discover; '
                              'pass --profile with the space profile path')
+    if tool == 'kimi-code':
+        if scope != 'user':
+            raise WakeSetupError('Kimi Code has no project-level hook file; install wake-up with --scope user')
+        if not profile_path:
+            raise WakeSetupError('Kimi Code has no native Coopagents bridge registration to discover; '
+                                 'pass --profile with the space profile path')
     if scope == 'project':
         project_dir = check_project(project_dir)
     profile_path = profile_path or find_profile(tool, project_dir)
     read_profile(profile_path)
     path = settings_path(tool, scope, project_dir)
-    config = hook_config(profile_path, tool, standby)
-    if tool == 'cursor':
-        merged = merge_cursor_hooks(_load(path), config)
-    elif tool == 'zcode':
-        merged = merge_zcode_hooks(_load(path), config)
+    if tool == 'kimi-code':
+        _write_text_settings(path, merge_kimi_wake_hooks(_load_text(path),
+                                                         kimi_wake_hooks_text(profile_path, standby)))
+        events = ['SessionStart', 'Stop']
     else:
-        merged = merge_hooks(_load(path), config)
-    _write_settings(path, merged)
-    if tool in ('codex', 'zcode', 'cursor'):
-        WakeState(profile_path).set_budget(standby)
+        config = hook_config(profile_path, tool, standby)
+        if tool == 'cursor':
+            merged = merge_cursor_hooks(_load(path), config)
+        elif tool == 'zcode':
+            merged = merge_zcode_hooks(_load(path), config)
+        else:
+            merged = merge_hooks(_load(path), config)
+        _write_settings(path, merged)
+        events = sorted(config)
+    if tool in ('codex', 'zcode', 'cursor', 'kimi-code'):
+        budget = min(standby, KIMI_HOOK_TIMEOUT_MAX - DEADLINE_MARGIN) if tool == 'kimi-code' else standby
+        WakeState(profile_path).set_budget(budget)
     return {'installed': tool, 'settings': str(path), 'profile': str(profile_path),
-            'events': sorted(config)}
+            'events': events}
 
 
 def disable(tool, scope='project', project_dir=None):
     tool = normalize_tool(tool)
     if tool == 'zcode' and scope != 'user':
         raise WakeSetupError('ZCode ignores project-level hooks; disable wake-up with --scope user')
+    if tool == 'kimi-code' and scope != 'user':
+        raise WakeSetupError('Kimi Code has no project-level hook file; disable wake-up with --scope user')
     path = settings_path(tool, scope, project_dir)
     if not path.exists():
         return {'disabled': tool, 'settings': str(path), 'changed': False}
+    if tool == 'kimi-code':
+        before = _load_text(path)
+        after = merge_kimi_wake_hooks(before, '')
+        if after != before:
+            _write_text_settings(path, after)
+        return {'disabled': tool, 'settings': str(path), 'changed': after != before}
     before = _load(path)
     if tool == 'cursor':
         after = merge_cursor_hooks(before, {})
@@ -840,7 +939,7 @@ def main(argv=None):
     d.add_argument('--tool', choices=TOOLS + tuple(TOOL_ALIASES), required=True)
     d.add_argument('--scope', choices=('project', 'user'), default='project')
     d.add_argument('--project-dir')
-    s = commands.add_parser('standby', help='Codex/ZCode/Cursor: keep a finished turn waiting for collaboration items')
+    s = commands.add_parser('standby', help='Codex/ZCode/Cursor/Kimi Code: keep a finished turn waiting for collaboration items')
     s.add_argument('mode', choices=('on', 'off'))
     s.add_argument('--profile', required=True)
     s.add_argument('--seconds', type=int, default=DEFAULT_STANDBY)
@@ -852,25 +951,32 @@ def main(argv=None):
         return watch(args.profile, args.tool, sys.stdin.buffer, sys.stdout, sys.stderr)
     try:
         if args.command in ('install', 'preview'):
-            if args.tool in ('zcode', 'cursor'):
-                pass  # Neither has a calling-agent marker; the explicit --tool is authoritative.
+            if args.tool in ('zcode', 'cursor', 'kimi-code'):
+                pass  # None has a calling-agent marker; the explicit --tool is authoritative.
             else:
                 from .space_connect import resolve_tool
                 args.tool = resolve_tool(args.tool)
             if args.tool == 'zcode' and args.scope != 'user':
                 raise WakeSetupError('ZCode ignores project-level hooks; use --scope user')
+            if args.tool == 'kimi-code' and args.scope != 'user':
+                raise WakeSetupError('Kimi Code has no project-level hook file; use --scope user')
         if args.command == 'install':
             if args.scope == 'project':
                 check_project(args.project_dir)
-            if args.profile and args.tool not in ('zcode', 'cursor'):
+            if args.profile and args.tool not in ('zcode', 'cursor', 'kimi-code'):
                 check_own_profile(args.tool, args.profile, args.project_dir)
             result = install(args.profile, args.tool, args.scope, args.project_dir, args.standby_limit)
         elif args.command == 'preview':
-            if args.tool in ('zcode', 'cursor') and not args.profile:
-                label = 'ZCode' if args.tool == 'zcode' else 'Cursor'
+            if args.tool in ('zcode', 'cursor', 'kimi-code') and not args.profile:
+                label = {'zcode': 'ZCode', 'cursor': 'Cursor', 'kimi-code': 'Kimi Code'}[args.tool]
                 raise WakeSetupError('%s has no native Coopagents bridge registration to discover; '
                                      'pass --profile with the space profile path' % label)
             profile = args.profile or find_profile(args.tool, args.project_dir)
+            if args.tool == 'kimi-code':
+                result = {'hooks_toml': kimi_wake_hooks_text(profile, args.standby_limit),
+                          'settings': str(settings_path(args.tool, args.scope, args.project_dir))}
+                print(json.dumps(result, indent=2))
+                return 0
             config = hook_config(profile, args.tool, args.standby_limit)
             if args.tool == 'zcode':
                 # ZCode's config.json schema is strict: the hooks value must

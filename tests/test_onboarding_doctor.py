@@ -599,6 +599,43 @@ class HarnessCliCheckTests(DoctorTestCase):
         self.assertTrue(all(info['present'] for info in check['evidence']['harnesses'].values()))
         self.assertTrue(all(info['version'] == 'unknown' for info in check['evidence']['harnesses'].values()))
 
+    def test_pi_below_the_mcp_floor_is_reported_unsupported(self):
+        from subprocess import CompletedProcess
+
+        def fake_which(binary):
+            return {'pi': '/usr/bin/pi'}.get(binary)
+
+        def fake_run(argv, **kw):
+            return CompletedProcess(argv, 0, stdout='pi 0.73.1\n', stderr='')
+
+        with patch.object(onboarding_doctor.shutil, 'which', side_effect=fake_which), \
+                patch.object(onboarding_doctor.subprocess, 'run', side_effect=fake_run):
+            check = onboarding_doctor.harness_cli_check()
+        self.assertEqual(check['status'], 'pass')
+        pi = check['evidence']['harnesses']['pi']
+        self.assertEqual(pi['version'], '0.73.1')
+        self.assertEqual(pi['mcp'], 'unsupported')
+        self.assertIn('0.99.0', pi['mcp_reason'])
+
+    def test_pi_at_or_above_the_floor_is_reported_supported_and_unknown_stays_silent(self):
+        from subprocess import CompletedProcess
+
+        def run_with(stdout):
+            def fake_which(binary):
+                return {'pi': '/usr/bin/pi'}.get(binary)
+
+            def fake_run(argv, **kw):
+                return CompletedProcess(argv, 0, stdout=stdout, stderr='')
+
+            with patch.object(onboarding_doctor.shutil, 'which', side_effect=fake_which), \
+                    patch.object(onboarding_doctor.subprocess, 'run', side_effect=fake_run):
+                return onboarding_doctor.harness_cli_check()
+
+        check = run_with('pi 1.5.2\n')
+        self.assertEqual(check['evidence']['harnesses']['pi']['mcp'], 'supported')
+        check = run_with('pi version not parseable\n')
+        self.assertNotIn('mcp', check['evidence']['harnesses']['pi'])
+
     def test_run_includes_the_inventory_without_changing_overall(self):
         result = onboarding_doctor.run(project_dir='/nonexistent-dir-for-doctor-test')
         check = next(item for item in result['checks'] if item['id'] == 'harness_clis')

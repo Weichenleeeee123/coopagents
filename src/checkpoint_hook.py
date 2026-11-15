@@ -222,31 +222,34 @@ def kimi_hooks_text(tool):
     return '\n\n'.join(blocks) + '\n'
 
 
-def _kimi_block_is_ours(lines):
+def _kimi_block_is_ours(lines, marker=KIMI_HOOK_MARKER, needles=('coopagents.checkpoint_hook',)):
     text = '\n'.join(lines)
-    return KIMI_HOOK_MARKER in text or 'coopagents.checkpoint_hook' in text
+    return marker in text or any(needle in text for needle in needles)
 
 
-def merge_kimi_hooks(existing_text, fragment_text):
+def merge_kimi_hooks(existing_text, fragment_text, *, marker=KIMI_HOOK_MARKER,
+                     needles=('coopagents.checkpoint_hook',)):
     """Append managed [[hooks]] blocks to a Kimi config.toml, preserving everything else.
 
     Existing managed blocks are dropped first, so re-applying is idempotent.
     Only [[hooks]] blocks are inspected; every other line — comments, blank
-    lines, other tables, foreign hook rules — is kept verbatim.
+    lines, other tables, foreign hook rules — is kept verbatim. Callers that
+    manage a different block family (wake hooks) pass their own marker and
+    command needles; the two families never drop each other's blocks.
     """
-    marker = '# %s (managed; do not edit)' % KIMI_HOOK_MARKER
+    marker_line = '# %s (managed; do not edit)' % marker
     header = re.compile(r'\s*\[\[hooks\]\]\s*(#.*)?$')
 
     def boundary(line):
         # A new table header, or the marker comment that starts a managed
         # block, ends the block being scanned; anything else is body trivia.
-        return line.lstrip().startswith('[') or line.strip() == marker
+        return line.lstrip().startswith('[') or line.strip() == marker_line
 
     lines = existing_text.splitlines()
     kept, index = [], 0
     while index < len(lines):
         line = lines[index]
-        if line.strip() == marker and index + 1 < len(lines) and header.match(lines[index + 1]):
+        if line.strip() == marker_line and index + 1 < len(lines) and header.match(lines[index + 1]):
             end = index + 2
             while end < len(lines) and not boundary(lines[end]):
                 end += 1
@@ -256,7 +259,7 @@ def merge_kimi_hooks(existing_text, fragment_text):
             end = index + 1
             while end < len(lines) and not boundary(lines[end]):
                 end += 1
-            if not _kimi_block_is_ours(lines[index:end]):
+            if not _kimi_block_is_ours(lines[index:end], marker, needles):
                 kept.extend(lines[index:end])
             index = end
             continue
