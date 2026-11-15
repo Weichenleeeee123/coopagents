@@ -218,6 +218,51 @@ class ProfileLinks(unittest.TestCase):
         with self.assertRaises(ValueError):
             p2p.member_link(profile | {'room_id': 'another-room'})
 
+    def test_serves_space_retries_fetch_failures_but_not_a_definitive_answer(self):
+        from unittest.mock import patch
+
+        class FakeResponse:
+            def __init__(self, payload):
+                self.payload = payload
+            def read(self, _n):
+                return self.payload
+            def __enter__(self):
+                return self
+            def __exit__(self, *exc):
+                return False
+
+        class FlakyOpener:
+            def __init__(self, failures, payload):
+                self.failures = failures
+                self.payload = payload
+                self.calls = 0
+            def open(self, _request, timeout=None):
+                self.calls += 1
+                if self.calls <= self.failures:
+                    raise OSError('connection refused')
+                return FakeResponse(self.payload)
+
+        opener = FlakyOpener(2, b'{"room_id": "room-1"}')
+        with patch.object(p2p.urllib.request, 'build_opener', return_value=opener), \
+                patch('time.sleep') as slept:
+            self.assertTrue(p2p._serves_space('http://127.0.0.1:9', 'room-1'))
+        self.assertEqual(opener.calls, 3)
+        self.assertEqual(slept.call_count, 2)
+
+        opener = FlakyOpener(0, b'{"room_id": "another-room"}')
+        with patch.object(p2p.urllib.request, 'build_opener', return_value=opener), \
+                patch('time.sleep') as slept:
+            self.assertFalse(p2p._serves_space('http://127.0.0.1:9', 'room-1'))
+        self.assertEqual(opener.calls, 1)
+        slept.assert_not_called()
+
+        opener = FlakyOpener(5, b'{"room_id": "room-1"}')
+        with patch.object(p2p.urllib.request, 'build_opener', return_value=opener), \
+                patch('time.sleep') as slept:
+            self.assertFalse(p2p._serves_space('http://127.0.0.1:9', 'room-1'))
+        self.assertEqual(opener.calls, 3)
+        self.assertEqual(slept.call_count, 2)
+
     def test_member_link_warm_dials_before_returning(self):
         created = []
 
