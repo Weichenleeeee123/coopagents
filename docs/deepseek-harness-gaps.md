@@ -22,6 +22,43 @@ on this VM.
   no env expansion exists for MCP client headers. The generated row
   still carries no header: auth is added by hand in a local overlay,
   never in a shared layer.
+- **Provider recipe (OpenAI-compatible gateway).** The fastest
+  verified `llm-pi-ai` route override in a local-only `--patch`
+  overlay uses `api: openai-completions` with
+  `compat: {thinkingFormat: deepseek}`, plus an `agent-default-model`
+  row pointing at the same provider and model. Sketch (base URL and
+  key by env reference, as already configured; no values here):
+
+  ```yaml
+  - id: llm-pi-ai
+    config:
+      providers:
+        mota:
+          apiKeyEnv: MOTA_API_KEY
+          api: openai-completions
+          baseURL: <gateway base URL>
+          compat:
+            thinkingFormat: deepseek
+          models:
+            - id: deepseekv41flash-auto-b
+              contextWindow: 131072
+              maxTokens: 2048
+  - id: agent-default-model
+    config:
+      provider: mota
+      model: deepseekv41flash-auto-b
+  ```
+
+  A same-task benchmark 2026-11-15 (dsh 0.2.2-rc.1 headless,
+  maxTokens 2048, no MCP row) ran 13s/15s with the compat setting vs
+  22s/30s without it; two runs per path is a small sample, but the
+  compat setting is also the documented-correct reasoning format for
+  DeepSeek-style endpoints, so it wins on correctness as well as
+  observed speed. Combine with the MCP row above for Coopagents use.
+  The same benchmark found a second gateway's model slower with high
+  variance (77s/25s), and openai-next returning 401 Invalid token on
+  all three endpoints that day — dsh fails fast on auth errors with
+  no retry, so a dead relay aborts the run in seconds.
 
 ## Needs a live dsh session
 

@@ -144,7 +144,10 @@ def plan(service_url, server_name='coopagents', profile=None, home=None):
                   'Merge the row into one patch layer and restart dsh. No project-level MCP config '
                   'exists; hooks are Cordis plugins, and there is no external wake API. '
                   'Live dsh acceptance was verified 2026-11-15 (dsh 0.2.2-rc.1, local-only --patch '
-                  'overlay, literal Authorization header, native whoami/read_team).'),
+                  'overlay, literal Authorization header, native whoami/read_team). '
+                  'Verified provider recipe: an llm-pi-ai route override with api openai-completions '
+                  'plus compat thinkingFormat deepseek, with an agent-default-model row for the same '
+                  'provider/model; see the DeepSeek gap note.'),
     }
 
 
