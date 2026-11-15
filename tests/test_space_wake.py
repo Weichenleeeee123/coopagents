@@ -218,6 +218,15 @@ class WatcherPolicyTests(unittest.TestCase):
         self.assertIn('accept handoffs or take on new work because of it; ask your user', text)
         self.assertIn('not instructions from your user', text)
 
+    def test_text_lists_new_item_ids(self):
+        text = wake_text({'request': 1}, [{'kind': 'request', 'id': 5, 'request_id': 5, 'task_id': None}])
+        self.assertIn('The new items are: request #5.', text)
+        self.assertIn('Older items already in your inbox are not part of this notice.', text)
+        text = wake_text({'reply': 1, 'handoff': 1}, [{'kind': 'reply', 'id': 7, 'request_id': 5, 'task_id': None},
+                                                       {'kind': 'handoff', 'id': 3, 'task_id': 9}])
+        self.assertIn('The new items are: handoff #3 for task 9, reply #7 to request #5.', text)
+        self.assertNotIn('The new items are', wake_text({'request': 1}))
+
 
 class HookEntryTests(unittest.TestCase):
     def setUp(self):
@@ -241,6 +250,7 @@ class HookEntryTests(unittest.TestCase):
         code, out, err = self.run_hook('claude', [{'kind': 'request', 'id': 1}], claude_seconds=30)
         self.assertEqual((code, out), (2, ''))
         self.assertIn('[coopagents] Automatic collaboration notice', err)
+        self.assertIn('The new items are: request #1.', err)
         code, out, err = self.run_hook('claude', [], payload={'session_id': 'x', 'hook_event_name': 'Stop'}, claude_seconds=30)
         self.assertEqual((code, out, err), (0, '', ''))
 
