@@ -3,7 +3,9 @@
 Run with the checkout's isolated Python. No model overrides, permission bypass,
 real native settings changes or file removal. This is single-machine evidence;
 it cannot certify two people, different NATs, cross-device wake or other OSes.
-The retained host is stopped on exit. Wake is deliberately a separate test.
+The retained host is stopped on exit. The runner holds the host itself:
+a host started by a sandboxed session dies with that session's sandbox.
+Wake is deliberately a separate test.
 With --concurrent-owner, the owner model session stays open across the guest
 join and must observe it live; the serial flow remains the default.
 """
@@ -518,6 +520,30 @@ def snapshot(profile_path):
         return request(profile['origin'], '/api/snapshot', token=profile['web_token'])
 
 
+def hold_host(profile_path, attempts=25, delay=2):
+    """Start the retained host from this unsandboxed runner and leave it running.
+
+    A host _serve spawned by a sandboxed model session dies with that
+    session's sandbox: namespace teardown kills the whole process tree and
+    no detach/setsid escapes it (verified: a setsid sleeper spawned inside
+    a sandboxed Codex session did not survive the session). The runner
+    itself is unsandboxed, so a host it starts survives every session
+    teardown until the run's finally stops it. Waits for a dying sandboxed
+    server to release the port first, and only returns once this runner's
+    own start has succeeded.
+    """
+    from coopagents import space_runtime
+    for _ in range(attempts):
+        if space_runtime.status(profile_path)['status'] == 'unreachable':
+            try:
+                space_runtime.start(profile_path)
+                return
+            except (ValueError, RuntimeError):
+                pass
+        time.sleep(delay)
+    raise RuntimeError('Retained host did not come up under the runner')
+
+
 def installed_wheel_identity(wheel):
     """Bind the interpreter's imported distribution to the exact installed archive."""
     import hashlib
@@ -724,6 +750,7 @@ def main(argv=None):
         report['checks'].append({'check': 'persisted host network matches requested mode', 'ok': host_network_ok})
         if not host_network_ok:
             raise RuntimeError('Persisted host network did not match requested acceptance mode')
+        hold_host(owner['profile'])
         invite_result = run / host / 'invitation-result.json'
         verification_prompt = (f'Using native Coopagents MCP tools, call whoami and compare '
              f'room_id={host_profile["room_id"]} and member_id={host_profile["member_id"]}, then read_team. '

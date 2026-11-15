@@ -251,7 +251,7 @@ class ColdStartTests(unittest.TestCase):
                     'native_identity_proven': lambda *a: True, 'snapshot': lambda *a: {},
                     'setup_diagnostics': lambda *a: {},
                     'network_proven': lambda *a: True, 'diagnostics_proven': lambda *a: True,
-                    'exchange_proven': lambda *a: True,
+                    'exchange_proven': lambda *a: True, 'hold_host': lambda *a: None,
                     'assistant_text': lambda *a: '\n'.join((root / 'repo/acceptance-answer.txt').read_text() for root in roots.values())}
                 for name, replacement in overrides.items():
                     patches.enter_context(patch.object(self.runner, name, replacement))
@@ -624,7 +624,7 @@ class ColdStartTests(unittest.TestCase):
                 'native_identity_proven': lambda *a: True, 'snapshot': lambda *a: {},
                 'setup_diagnostics': lambda *a: {},
                 'network_proven': lambda *a: True, 'diagnostics_proven': lambda *a: True,
-                'exchange_proven': lambda *a: True,
+                'exchange_proven': lambda *a: True, 'hold_host': lambda *a: None,
                 'launch_session': fake_launch, 'collect_session': lambda *a, **k: 0,
                 'terminate_session': lambda session: terminated.append(session),
                 'assistant_text': lambda *a: '\n'.join((root / 'repo/acceptance-answer.txt').read_text() for root in roots.values())}
@@ -647,6 +647,36 @@ class ColdStartTests(unittest.TestCase):
             self.assertTrue(hold_sessions[0]['ok'])
             self.assertIn({'check': 'owner hold session observed the guest join live', 'ok': True}, report['checks'])
             self.assertIn('02b-owner-hold: PASS', output.getvalue())
+
+    def test_hold_host_starts_once_the_dying_server_releases_the_port(self):
+        seen = {'status': 0}
+        def fake_status(path):
+            seen['status'] += 1
+            return {'status': 'running' if seen['status'] <= 2 else 'unreachable'}
+        started = []
+        with patch('coopagents.space_runtime.status', fake_status), \
+                patch('coopagents.space_runtime.start', started.append):
+            self.runner.hold_host('/synthetic/profile.json', attempts=5, delay=0)
+        self.assertEqual(started, ['/synthetic/profile.json'])
+        self.assertEqual(seen['status'], 3)
+
+    def test_hold_host_raises_when_no_server_ever_comes_up(self):
+        with patch('coopagents.space_runtime.status', return_value={'status': 'running'}), \
+                patch('coopagents.space_runtime.start') as start:
+            with self.assertRaises(RuntimeError):
+                self.runner.hold_host('/synthetic/profile.json', attempts=3, delay=0)
+        start.assert_not_called()
+
+    def test_hold_host_retries_a_lost_start_race(self):
+        started = []
+        def flaky_start(path):
+            started.append(path)
+            if len(started) == 1:
+                raise ValueError('Space runtime is already running')
+        with patch('coopagents.space_runtime.status', return_value={'status': 'unreachable'}), \
+                patch('coopagents.space_runtime.start', flaky_start):
+            self.runner.hold_host('/synthetic/profile.json', attempts=3, delay=0)
+        self.assertEqual(len(started), 2)
 
 
 if __name__ == '__main__':
