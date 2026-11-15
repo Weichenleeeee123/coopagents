@@ -16,11 +16,14 @@ entry carries no Authorization header — ZCode config files do not expand
 templates, so the bearer token belongs in user-scope config, as the
 bundled README explains.
 
-Live plugin loading is unverified: no ZCode binary runs on this VM, and
-the desktop docs and the CLI repo guide disagree about project-level hooks
-(desktop: ignored; CLI guide: trust-gated). The plugin route is the one
-both sources agree on; runtime verification on a real ZCode build still
-needs a user machine.
+Plugin loading is verified live (2026-11-15, CLI 0.17.1 built from
+source): a bundle folder declared in user-scope ``plugins.dirs`` appears
+in ``zcode plugins list`` enabled with runnable hooks, and live sessions
+fire all three checkpoint hooks with the documented shapes. A bundle
+dropped in a project directory is never discovered: the CLI does not scan
+the working directory for plugin bundles, and project configuration
+cannot declare plugin directories (the project-config adapter strips
+``plugins.dirs``). Idle wake in a real ZCode session is still unverified.
 """
 import argparse
 from importlib import metadata
@@ -85,10 +88,12 @@ def _readme(service_url, server_name):
     return (
         '# Coopagents plugin for ZCode\n'
         '\n'
-        'Install with the ZCode CLI (`zcode plugins install`, or point the\n'
-        '`plugins.dirs` setting at this folder), then restart ZCode. The\n'
-        'plugin contributes checkpoint hooks and an MCP server entry named\n'
-        '`%s` pointing at `%s`.\n'
+        'Declare this folder in user-scope `~/.zcode/cli/config.json`\n'
+        'under `plugins.dirs`, then restart ZCode. The plugin contributes\n'
+        'checkpoint hooks and an MCP server entry named `%s` pointing at\n'
+        '`%s`. Dropping this folder in a project directory does not load\n'
+        'it: ZCode never discovers plugin bundles from the workspace, and\n'
+        'project config cannot declare plugin directories.\n'
         '\n'
         '## Authentication\n'
         '\n'
