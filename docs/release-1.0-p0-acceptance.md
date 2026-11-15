@@ -1,6 +1,6 @@
 # 1.0 P0 验收执行记录
 
-更新：2026-11-01。起点：`bbb0b60`，开发代码尚未发布。用户授权逐项执行 1.0 P0；本记录区分准备、自动化回归、原生模型和外部设备证据。
+更新：2026-11-15。起点：`bbb0b60`，开发代码尚未发布。用户授权逐项执行 1.0 P0；本记录区分准备、自动化回归、原生模型和外部设备证据。2026-11-12–15 真机补验见文末新增一节；两位用户及双方家用/移动 NAT 仍待验。
 
 ## 执行约束
 
@@ -13,10 +13,10 @@
 
 | P0 | 状态 | 后续条件 |
 | --- | --- | --- |
-| Claude/Codex 新流程真实冷启动 | Claude 创建、Codex 加入及新会话文件问答经恢复完成；Codex 创建、跨会话宿主恢复与原生身份读取通过 | Windows 私有文件发布与宿主生命周期已修复；干净开发提交完成 Codex P2P 创建、注册、已完成诊断挑战及新会话 whoami/read_team。仍需发行包首次安装与完整冷启动问答重验，不能将 host-only 验收算作全部冷启动通过 |
-| 双设备 P2P 与恢复 | Windows ↔ Linux 真实中继连接、持久身份和主机重启恢复通过；两个方向真实模型问答经恢复完成 | Windows 模型发问、Linux 模型读取本地文件回复、Windows 新模型会话消费准确回复；反向 Windows 原生回复已验证，Linux 升级官方 Codex 0.166.0 后新会话消费准确答案；两位用户及双方家用/移动 NAT 待验 |
-| 跨设备 Claude 唤醒与 Codex 待命 | 两者实际跨设备事件触发的模型回复通过；Codex Esc/后续输入通过 | Linux 合成 MCP 驱动发送，Windows 原生会话读取请求并 reply 准确文件内容，服务端独立核对。Codex 正常界面审查唯一 Stop hook、显式待命 120 秒；Esc 后输入标记获准确回应，恢复待命后处理远端请求。不算 Linux 模型发问通过 |
-| 七种 Harness / Windows、macOS、Linux | Pi 原生同机闭环通过；Kimi 经请求方恢复完成同机闭环；Codex 跨设备两个方向经恢复完成；OpenCode 原生 MCP 握手通过 | 其余实际闭环及 macOS 待验；OpenCode 旧配置所选模型返回 401，官方免费模型受额度限制，Claude 旧模型返回 503、有效模型已完成文件问答，但后续交互调用仍有 API 错误；Cursor/ZCode 仍需实际桌面会话；Kimi 原回复会话超时保留；恢复会话已消费并解决；OpenCode 官方最新免费模型被上游明确拒绝（额度耗尽） |
+| Claude/Codex 新流程真实冷启动 | Claude 创建、Codex 加入及新会话文件问答经恢复完成；Codex 创建、跨会话宿主恢复与原生身份读取通过 | Windows 私有文件发布与宿主生命周期已修复；干净开发提交完成 Codex P2P 创建、注册、已完成诊断挑战及新会话 whoami/read_team。仍需发行包首次安装与完整冷启动问答重验，不能将 host-only 验收算作全部冷启动通过。2026-11-15 补验：`--concurrent-owner` 模式在 VPS 单机上两个方向各 10 阶段 + 13 检查通过（head `a197b10`，PR #27，基于 PR #21），不计双机证据 |
+| 双设备 P2P 与恢复 | Windows ↔ Linux 真实中继连接、持久身份和主机重启恢复通过；两个方向真实模型问答经恢复完成。2026-11-12–15 补验：Codex 与 Claude 先后在 Windows 上完成加入、连接验证、新会话 whoami/read_team 及双向消息往返；反向拓扑（家用 NAT 后笔记本作主机、VPS 加入）3.657 秒加入、双向 ping 通过，均为中继路径 | Windows 模型发问、Linux 模型读取本地文件回复、Windows 新模型会话消费准确回复；反向 Windows 原生回复已验证，Linux 升级官方 Codex 0.166.0 后新会话消费准确答案；两位用户及双方家用/移动 NAT 待验 |
+| 跨设备 Claude 唤醒与 Codex 待命 | 两者实际跨设备事件触发的模型回复通过；Codex Esc/后续输入通过。2026-11-15 补验：Claude、Codex、ZCode、Cursor 四工具 hook 契约 live 通过，本地闲置会话唤醒及 P2P 闲置唤醒（酒店 NAT 后 Windows 会话经中继被唤醒并回复）通过 | Linux 合成 MCP 驱动发送，Windows 原生会话读取请求并 reply 准确文件内容，服务端独立核对。Codex 正常界面审查唯一 Stop hook、显式待命 120 秒；Esc 后输入标记获准确回应，恢复待命后处理远端请求。不算 Linux 模型发问通过 |
+| 七种 Harness / Windows、macOS、Linux | Pi 原生同机闭环通过；Kimi 经请求方恢复完成同机闭环；Codex 跨设备两个方向经恢复完成；OpenCode 原生 MCP 握手通过。2026-11-15 VM 本地空间 live 测试：Kimi、Pi 1.5.2、OpenCode V1、OpenCode V2（仅 ACP）、dsh、ZCode 六个 CLI 均以真实 MCP 调用完成 whoami/read_team | 其余实际闭环及 macOS 待验；OpenCode 旧配置所选模型返回 401，官方免费模型受额度限制，Claude 旧模型返回 503、有效模型已完成文件问答，但后续交互调用仍有 API 错误；Cursor 仍需实际桌面会话，ZCode 桌面会话仍待验（CLI 已 live 通过）；Kimi 原回复会话超时保留；恢复会话已消费并解决；OpenCode 官方最新免费模型被上游明确拒绝（额度耗尽） |
 | 真实 GitHub App | 安装/实际用户授权/四类关联/实际检查/签名 webhook/去重/卸载撤权/重装重新授权与刷新恢复通过 | 普通 push/PR/check/Release 事件的签名投递与自动同步也通过；组织审批、PR 合并、线上限流等扩展场景不外推 |
 
 ## 1.0.0rc1 候选版补验（2026-11-01）
@@ -118,3 +118,21 @@ ebec0b6 完整 Windows Python 回归 663 项通过、1 项跳过（452.226 秒�
 失败过程保留：首次验收器在整个 Codex 会话结束后要求宿主在线，导致诊断失败；调整为会话存活期间验证在线挑战，会话结束后只核对历史证据。另外两次原生会话没有提供 Coopagents 工具，其中一次在显式恢复阶段；局部 MCP 连接诊断下重跑全部通过。尚未证明这些原生工具发现差异的原因，不能把一次完整通过外推为所有客户端会话均稳定。
 
 本机完整核心回归 670 项通过、1 项跳过（500.220 秒）；实验回归 53 项通过；sdist/wheel 构建成功，wheel 包含新的宿主恢复模块和 Skill。`3d1edc3` 对应 [CI](https://github.com/Weichenleeeee123/coopagents/actions/runs/41270097304) 的 Python 3.11/3.13、实验、Node、构建及容器/TLS 均通过。独立代码审查未发现确定的产品正确性或安全缺陷，提出的跨进程竞争、quick/external 排除及数据保留覆盖随后补验；本轮仍不发布 1.0。
+
+## 2026-11-12–15 真机补验
+
+范围：两台设备由同一维护者操作（Windows 笔记本 + 阿里云 VPS，Linux / Python 3.11.6），只计跨设备证据，不计两位用户独立使用；VPS 有公网 IP，不计家用/移动 NAT 端点。VM 沙箱在系统调用层阻断 QUIC，VM 从未承载 P2P 空间，只做本地空间测试。原始记录、认证和邀请只保留在忽略的 `.local/`，不提交 Git；本节只保留脱敏结论。
+
+2026-11-12，Codex 在 Windows 上完成正向 live 验收：加入、连接验证、新会话消息往返通过。定位两层原因：环境层，VM 沙箱导致 VM 承载的端点永远无法上线；代码层三处缺陷（HostLink 在线状态 stale、加入 HTTP 超时 5 秒短于 30 秒懒拨号、MemberLink.close 丢弃已成功的加入），修复在分支 `fix/p2p-join-reachability`（5 提交，head `36bfded`，PR #21）。Windows 侧 Python 3.13.3（仓库 venv；系统 Python 未安装包）、Codex 0.167.2。
+
+2026-11-14，反向拓扑通过：家用 NAT 后的笔记本作主机，VPS 3.657 秒加入，双向 ping 通过，传输为中继，未证明直连。Claude 作加入方（VPS 单机）：真实加入 0.95 秒；死主机 33.9 秒静默被完整等待；150 秒人工静默经完成通知恢复；代码核定的真实加入静默上界约 70 秒（拨号 40 秒 + HTTP 30 秒），不会触及 120 秒后台化路径。加入非幂等得证（本地复现 + 真实 P2P 路径佐证）：丢失回复后 guest 无 profile、邀请作废、错误文本误报主机未在线、主机留孤儿成员。
+
+2026-11-15，并发宿主冷启动在 VPS 单机完成：`--concurrent-owner` 模式（分支 `test/concurrent-owner-cold-start`，head `a197b10`，PR #27，基于 PR #21），Claude 作宿主与 Codex 作宿主两个方向各 10 阶段 + 13 检查通过，hold 会话观察到 guest 实时加入、文件衍生交换双向完成。方向 03 根因得证：沙箱 Codex 会话退出时 PID 命名空间析构杀死其 `_serve`（setsid 分离实验亦未存活），修复为 runner 持有的宿主（`hold_host`）+ 传输失败报不可达分类；冷启动套件 42 项通过。单机运行、唤醒关闭，不计双机证据。
+
+2026-11-15，Claude 在 Windows 上完成 live 加入：Claude Code 2.1.325，加入与连接验证通过，中继 RTT 657ms，诊断挑战通过；新会话 whoami/read_team 与 VPS 侧成员列表一致；双向消息往返经服务端核对（PONG/OK）。系统 Python 无包、须用仓库 venv 一事已记录。
+
+2026-11-15，六个 CLI harness 在 VM 本地空间完成 live 测试，均以真实 MCP 调用完成 whoami/read_team：Kimi Code 2.5.3、Pi 1.5.2（旧 0.73.1 无 MCP，升级后通过；headless 需 `--approve`）、OpenCode V1 1.19.5、OpenCode V2 2.2.7（仅 ACP，`--prompt` 打开 TUI 挂起）、dsh 0.2.2-rc.1（经 `--patch` 叠加）、ZCode 0.17.1。ZCode 根因为 VM 出口代理环境变量：其 MCP 请求经代理层且 env no_proxy 与 ZCODE_NO_PROXY 均无效，卸变量后 338ms 连通，属 ZCode 侧问题；服务器对全部 probe 形状 5ms 内响应，bare SDK 75ms 连通。Cursor/Windsurf 仍仅 schema 验证。模型经第三方中继的 DeepSeek 模型、本地 LiteLLM/cc-switch 翻译层调用；另一中继额度不足期间的失败不计入产品结论。
+
+2026-11-15，唤醒验证完成：Claude（exit 2）、Codex（block）、Cursor（followup）、ZCode（baseline + block）四工具 hook 契约 live 通过，通知不含队友内容，60 秒节流、baseline 去重与 quiet 路径均验证，单元套件 48 + 8 通过。本地闲置会话唤醒 + 定向回复通过；P2P 闲置唤醒通过（酒店 NAT 后 Windows 会话经中继被唤醒，答 46，经服务端核对）。实测暴露一处通知缺陷并修复：只报计数的通知使被唤醒会话回复了全部未读旧请求，修复后通知列出新事项编号（提交 `4caab18`，分支 `fix/wake-text-item-ids`）。P2P 实测中答案以新请求发出、未挂在原请求 replies 下，系模型漏看 reply 工具（同一 1.0.0rc1 界面含该工具），非产品缺陷。Windows 安装写入项目 `.claude/settings.local.json`，已被 `/.claude/` 忽略规则覆盖。
+
+仍未验证：双方家用/移动 NAT（两位独立用户、两台设备、两个网络，见[双机清单](two-machine-acceptance.md)）；macOS；Cursor/ZCode 桌面会话；真实跨设备演示未拍摄；签名 tag 的 GPG key 未就绪。
