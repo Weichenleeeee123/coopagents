@@ -47,6 +47,11 @@ class CollaborationPolicyTests(unittest.TestCase):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, text)
 
+    def test_policy_guides_the_task_focused_question_reply_and_agreement_paths(self):
+        text = self.policy().DAILY_COLLABORATION_POLICY
+        for operation in ('work_brief', 'ask_owner', 'read_replies', 'record_agreement_use', 'has_more'):
+            self.assertIn(operation, text)
+
     def test_transport_identity_wake_and_authority_notes_are_retained(self):
         self.policy()
         http, git, bridge = self.instructions()
