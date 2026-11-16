@@ -140,4 +140,3 @@ No goal includes the words `ask_owner`, `read_replies`, `work_brief`, `checkpoin
 ## Final exit criteria
 
 This plan is implemented when all local/provider-independent tests pass, the three actual DSH sessions load their isolated Coopagents identities, the provider proxy safely handles the chosen unified endpoint, at least two distinct cloud NAT exits are proven, actual direct/relay outcomes are captured, and the blind role workflow has complete evidence including human gates and all failed runs. Exact run artifacts and hashes go into `.local`; only redacted aggregate results enter maintained docs. Home/mobile NAT and two-independent-user acceptance remains a later explicit test stage.
-

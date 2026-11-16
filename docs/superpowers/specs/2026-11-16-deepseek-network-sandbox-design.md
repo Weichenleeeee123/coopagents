@@ -118,4 +118,3 @@ Coopagents user interface/API state and experiment control plane have separate c
 - `tests/dsh_sandbox/`: provider API contract fixtures, policy validation, state-machine/cost-stop/provenance regression tests.
 - `docs/dsh-sandbox-runbook.md`: operator setup, key injection, single-VM gate, cloud topology, replay/reset, failure diagnosis and G0–G5 result language.
 - `.local/dsh-sandbox-runs/run-UUID/`: private run manifest, receipts, stdout redaction report, metrics and test outputs; ignored and never packaged. Each run uses a newly generated UUID directory and never overwrites a prior run.
-
