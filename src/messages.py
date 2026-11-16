@@ -60,35 +60,41 @@ class MessageStore:
             raise Conflict("Context version does not match request")
 
     def send_request(self, agent_token, request_key, receiver_member_id, task_id, context_version, body):
+        with self.db.connect(write=True) as connection:
+            principal = self.resolve(connection, agent_token, required_kind="agent")
+            return self.send_in_connection(connection, principal, request_key, receiver_member_id,
+                                           task_id, context_version, body)
+
+    def send_in_connection(self, connection, principal, request_key, receiver_member_id,
+                           task_id, context_version, body):
+        """Shared domain mutation for callers already holding the write transaction."""
         request_key = _text(request_key, "Request key", 200)
         body = _text(body, "Body", 4000)
         context_version = _positive(context_version, "Context version")
         if task_id is not None:
             task_id = _positive(task_id, "Task id")
-        with self.db.connect(write=True) as connection:
-            principal = self.resolve(connection, agent_token, required_kind="agent")
+        if receiver_member_id is not None:
+            self._member(connection, principal, receiver_member_id)
+        if task_id is not None and not connection.execute(
+                "SELECT id FROM tasks WHERE id = ? AND room_id = ?", (task_id, principal.room_id)).fetchone():
+            raise NotFound("Task not found")
+        row = connection.execute("""SELECT * FROM message_requests
+            WHERE room_id = ? AND sender_member_id = ? AND request_key = ?""",
+            (principal.room_id, principal.member_id, request_key)).fetchone()
+        if row is not None:
+            if (row["initial_receiver_member_id"], row["task_id"], row["context_version"], row["body"]) != (receiver_member_id, task_id, context_version, body):
+                raise Conflict("Request key already has a different payload")
+        else:
+            cursor = connection.execute("""INSERT INTO message_requests
+                (room_id, sender_member_id, receiver_member_id, initial_receiver_member_id,
+                 task_id, context_version, body, request_key, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (principal.room_id, principal.member_id, receiver_member_id, receiver_member_id,
+                 task_id, context_version, body, request_key, _utc_now()))
+            row = self._request(connection, principal, cursor.lastrowid)
             if receiver_member_id is not None:
-                self._member(connection, principal, receiver_member_id)
-            if task_id is not None and not connection.execute(
-                    "SELECT id FROM tasks WHERE id = ? AND room_id = ?", (task_id, principal.room_id)).fetchone():
-                raise NotFound("Task not found")
-            row = connection.execute("""SELECT * FROM message_requests
-                WHERE room_id = ? AND sender_member_id = ? AND request_key = ?""",
-                (principal.room_id, principal.member_id, request_key)).fetchone()
-            if row is not None:
-                if (row["initial_receiver_member_id"], row["task_id"], row["context_version"], row["body"]) != (receiver_member_id, task_id, context_version, body):
-                    raise Conflict("Request key already has a different payload")
-            else:
-                cursor = connection.execute("""INSERT INTO message_requests
-                    (room_id, sender_member_id, receiver_member_id, initial_receiver_member_id,
-                     task_id, context_version, body, request_key, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (principal.room_id, principal.member_id, receiver_member_id, receiver_member_id,
-                     task_id, context_version, body, request_key, _utc_now()))
-                row = self._request(connection, principal, cursor.lastrowid)
-                if receiver_member_id is not None:
-                    self._deliver(connection, row["id"], principal.room_id, receiver_member_id)
-            return self._enrich(connection, row)
+                self._deliver(connection, row["id"], principal.room_id, receiver_member_id)
+        return self._enrich(connection, row)
 
     def _deliver(self, connection, request_id, room_id, receiver_member_id):
         connection.execute("""INSERT INTO message_deliveries

@@ -39,6 +39,10 @@ class CoordinationService:
         self.github = GitHubSync(self.identity, self.repositories, github_app or GitHubApp())
         from .delivery import DeliveryStore
         self.delivery = DeliveryStore(self)
+        from .workflow import WorkflowStore, schemas as workflow_schemas
+        self.workflow = WorkflowStore(self)
+        from .agreement_usage import AgreementUsageStore, SCHEMA as AGREEMENT_USE_SCHEMA
+        self.agreement_usage = AgreementUsageStore(self.identity)
         from .events import EventStore
         self.change_events = EventStore(self.identity)
         from .wake_digest import WakeDigest
@@ -87,6 +91,9 @@ class CoordinationService:
         }
         for name, schema in dependency_schemas(fields).items():
             self.operations[name] = ('any', getattr(self.dependencies, name), schema)
+        for name, schema in workflow_schemas().items():
+            self.operations[name] = ('agent', getattr(self.workflow, name), schema)
+        self.operations['record_agreement_use'] = ('agent', self.agreement_usage.record, AGREEMENT_USE_SCHEMA)
         for action in ACTIONS:
             optional = {'session_key': None, 'ownership_epoch': None} if action in ('release_task', 'propose_handoff') else {}
             required = 'task_id expected_revision request_key summary'

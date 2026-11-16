@@ -37,6 +37,21 @@ TOOL_DESCRIPTIONS = {
     'read_inbox': ('Read requests delivered to you (teammates asking you). It does not list replies to requests you '
                    'sent: those appear under your request in read_team (requests[].replies). Reading records that '
                    'you read them.'),
+    'ask_owner': ('Ask the responsible teammate using exactly one target_task_id or declared scope. '
+                  'Question body is at most 500 characters; context at most 3000. Ambiguity returns candidates. '
+                  'With source_task_id, pass its expected_revision/session/ownership_epoch: this creates an explicit '
+                  'dependency that follows ownership changes and can wait for an unassigned target. Without a source '
+                  'task it sends a fixed-recipient question; an unassigned target sends nothing. Reuse request_key only '
+                  'for the identical question. This does not authorize new work or human decisions.'),
+    'read_replies': ('Read paginated replies to questions you sent, including answers from another of your sessions. '
+                     'Use next_cursor as after_id; has_more requires another page. Records only the exact reply ids '
+                     'returned as explicitly read, never resolves a request, approves an agreement or confirms a '
+                     'dependency. Historical-route replies cannot satisfy a current dependency; use read_dependency '
+                     'before resolve_dependency. A read receipt is not proof of model comprehension.'),
+    'record_agreement_use': ('Explicitly record which approved agreement version your current task execution relies on. '
+                             'Pass the current session_key and ownership_epoch. Does not approve a draft or silently '
+                             'accept an update. New approved versions remain review-required until explicitly used; '
+                             'retrying an older version never downgrades the current execution baseline.'),
     'read_deliveries': 'Read task-to-delivery associations and reverse task links with source, freshness and unavailable states.',
     'suggest_delivery': 'Propose a delivery relationship with evidence. Project manager confirmation is required before linking; it never closes tasks.',
     'read_capabilities': 'Discover project members, their agent sessions and Harness capability evidence. Registration and event delivery do not imply model responsiveness.',
@@ -66,6 +81,7 @@ def create_mcp_app(service, *, origin=None):
              'acknowledge', 'reply', 'resolve_request', 'propose_contract', 'repo_checkpoint', 'link_delivery',
              'checkpoint', 'diagnostic_start', 'diagnostic_read', 'diagnostic_complete')
     names += ('lookup_owner', 'create_dependency', 'read_dependency', 'reply_dependency', 'resolve_dependency', 'cancel_dependency')
+    names += ('ask_owner', 'read_replies', 'record_agreement_use')
     schemas = {name: service.operations[name][2] for name in names}
     schemas.update({'whoami': {}, 'read_team': {}, 'list_assets': {},
                     'read_asset': {'asset_id': (str, True, None)}})
