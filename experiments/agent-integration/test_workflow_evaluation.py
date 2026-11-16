@@ -87,6 +87,23 @@ class WorkflowEvaluationTests(unittest.TestCase):
                     participant['network_id'] = value
             self.assertFalse(self.module.score_evidence(evidence)['independent_user_acceptance'])
 
+    def test_protocol_owner_change_invalidates_an_older_native_exchange(self):
+        evidence = exchange()
+        evidence['records'].append(dict(kind='route_change', source='protocol', evidence_ref='private:owner-change',
+            route_revision=3, responder_member_id='new-owner'))
+        result = self.module.score_evidence(evidence)
+        self.assertEqual(result['checks']['current_route'], 'failed')
+        self.assertFalse(result['native_success'])
+
+    def test_boolean_observation_revisions_cannot_equal_integer_route_one(self):
+        evidence = exchange()
+        evidence['expected']['route_revision'] = 1
+        for record in evidence['records']:
+            record['route_revision'] = True
+        result = self.module.score_evidence(evidence)
+        self.assertEqual(result['checks']['current_route'], 'failed')
+        self.assertFalse(result['native_success'])
+
     def test_actual_file_derived_model_reply_and_requester_effect_are_separate(self):
         evidence = exchange()
         result = self.module.score_evidence(evidence)

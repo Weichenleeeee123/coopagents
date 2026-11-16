@@ -113,8 +113,10 @@ def score_evidence(evidence):
     request, reply, consumed = (latest(k) for k in ('request', 'model_reply', 'requester_consumption'))
     requester, responder = (expected.get(k) for k in ('requester_member_id', 'responder_member_id'))
     revision = expected.get('route_revision')
-    routes = [r for r in records if r.get('kind') == 'route_change' and observed(r, kind)
-              and type(r.get('route_revision')) is int]
+    route_sources = ('native', 'protocol') if kind == 'native' else (kind,)
+    routes = [r for r in records if r.get('kind') == 'route_change' and observed(r)
+              and r.get('source') in route_sources and type(r.get('route_revision')) is int
+              and r['route_revision'] > 0]
     if routes:
         route = max(routes, key=lambda r: r['route_revision'])
         if type(revision) is not int or route['route_revision'] >= revision:
@@ -125,7 +127,8 @@ def score_evidence(evidence):
         r is None or r.get('actor') == actor and (recipient is None or r.get('recipient') == recipient)
         for r, actor, recipient in identity_records)
     route_known = type(revision) is int and revision > 0
-    route_valid = route_known and all(r is None or r.get('route_revision') == revision
+    route_valid = route_known and all(r is None or (type(r.get('route_revision')) is int
+                                     and r['route_revision'] > 0 and r['route_revision'] == revision)
                                      for r in (request, reply, consumed))
     request_valid = bool(native(request) and _present(request.get('request_id')))
     reply_valid = bool(native(reply) and request_valid and _present(reply.get('reply_id'))
