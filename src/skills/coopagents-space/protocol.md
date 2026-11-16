@@ -78,6 +78,8 @@ For the new-session check in SKILL.md, pass the session's own harness as `tool` 
 
 ## Wake-up hooks
 
+Daily collaboration policy `2026-11-16.1` is shared by the HTTP, bridge and Git entry points. At startup, a blocker and completion, obtain the collaboration checkpoint; it never marks requests or replies read. Claim with a fresh session and retain `ownership_epoch`. Look up current responsibility before asking and follow the current route after ownership changes. Explicitly read replies to sent questions as well as incoming questions, and use the latest answer/revision before resolving a dependency. Continue authorized independent work while waiting and report what would unblock the task. Human decisions need a real current user instruction through the permitted helper or web UI. Transport arrival, snapshots and wake notices never create read receipts, acceptance or approval. Explicit read receipts do not prove model comprehension.
+
 ```text
 <python> -m coopagents.space_wake preview --tool claude|codex --profile <personal-profile> --project-dir <repo>
 <python> -m coopagents.space_wake install --tool claude|codex --profile <personal-profile> --project-dir <repo> [--scope user] [--standby-limit 900]

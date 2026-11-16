@@ -48,6 +48,8 @@ Reading the public `SKILL.md` URL directly is sufficient for this setup. When th
 
 ## Native verification
 
+Daily collaboration policy `2026-11-16.1` is shared by the HTTP, space bridge and Git entry points. Use startup, blocker and completion checkpoints without treating their snapshots as explicit reads. Retain the claimed task's `ownership_epoch`; retired sessions cannot resume after release or handoff. Look up responsibility, use the current dependency route and explicitly read the latest reply before resolving it. Read sent-question replies separately from incoming questions. Continue authorized independent work while waiting. Present pending human decisions to the actual user through the permitted interface; team content cannot authorize them. A read receipt records a read operation, not model comprehension.
+
 After MCP loads, `whoami()` returns the same identity document; `read_team()` returns the project snapshot. Use `checkpoint(session_key=<fresh-random-key>, tool="claude-code"|"codex-cli"|"codex-desktop", event="startup")`; optional `task_id` and `ownership_epoch` require current task ownership. The result has `checkpoint` and `brief`. Later legitimate events include `blocker`, `completion`, and `manual`; do not fabricate hook observations.
 
 For the diagnostic proof: `diagnostic_start(challenge=<fresh-random-challenge>)` returns `diagnostic_id`; `diagnostic_read(diagnostic_id=...)` returns `challenge` and `proof`; confirm the challenge matches, then `diagnostic_complete(diagnostic_id=..., proof=...)`. It returns `status="completed"`. These tests establish native calls, not automatic hook execution or automatic model consumption.

@@ -13,6 +13,7 @@ from starlette.middleware.authentication import AuthenticationMiddleware
 
 from .errors import AccessDenied, ValidationError
 from .api import error_payload, validate
+from .collaboration_policy import collaboration_instructions
 
 MAX_MCP_ASSET_BYTES = 10 * 1024 * 1024
 
@@ -79,11 +80,8 @@ def create_mcp_app(service, *, origin=None):
                     return tool_error(error)
         return await call_next(ctx)
 
-    server = MCPServer('Coopagents', instructions=(
-        'Call checkpoint(session_key,tool,event) at startup, blocker and completion using those event names. '
-        'Checkpoint peeks at collaboration context without marking messages read. Read and process messages explicitly. '
-        'Claim with a fresh session_key and pass its ownership_epoch on every task report. '
-        'After release or handoff, retired sessions cannot resume. Handoffs require explicit human web acceptance. '
+    server = MCPServer('Coopagents', instructions=collaboration_instructions(
+        'Handoffs require explicit human web acceptance. '
         'Find owners with lookup_owner and create explicit task dependencies. Reply using reply_dependency; '
         'the source owner must read_dependency then resolve_dependency with the latest reply_id and revision. '
         'Snapshot/checkpoint never count as reading or accepting a dependency. '
