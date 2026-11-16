@@ -1,14 +1,16 @@
 # Foundation 1 native evaluation acceptance
 
-Date: 2026-11-16. Development branch: `codex/team-workflow-implementation`.
+Date: 2026-11-16. Current code-completion branch: `codex/foundation-sequential-completion`; framework commit `b8fea59` was first recorded on `codex/team-workflow-implementation`.
 
-**Status: in progress. Foundations 2–5 have not started in this completion pass.** A first-pass implementation checklist does not establish completion of the original requirements. The current [strict ledger](superpowers/plans/2026-11-16-foundation-completion.md) requires actual evidence before advancing.
+**Status: framework code complete; actual native acceptance deferred at the user's request.** The final native-free experiment suite ran **149 tests, all passed**, in 47.228 seconds before commit `b8fea59`. The current [strict ledger](superpowers/plans/2026-11-16-foundation-completion.md) now gates advancement on implementation, focused tests and staged commits. Real native experiments have stopped. Their unfinished acceptance is not being reported as passed.
 
 ## Implementation scope
 
 The new execution path comprises `workflow_native_cases.py`, `workflow_native_process.py`, `workflow_native_trace.py` and `workflow_native_runner.py` under `experiments/agent-integration/`, with corresponding native-free regression tests. It complements the existing normalized-evidence scorer, which remains explicitly reviewer-attested rather than authenticated native proof. The [evaluation guide](workflow-evaluation.md) describes execution, measurement, pairing, and evidence boundaries.
 
 ## Retained unsuccessful controls
+
+These records remain in the retained `team-workflow-implementation` worktree; they were not copied into or committed with the new code-only worktree.
 
 These observations are not successful collaboration acceptance and are not included in a valid paired baseline:
 
@@ -19,7 +21,7 @@ These observations are not successful collaboration acceptance and are not inclu
 
 The missing private Windows backend was diagnosed against retained native records and the installed-version native implementation. The adapter now selects `windows.sandbox="unelevated"` only in its new private Windows profile, retains workspace-write and normal approvals, and no longer requests the unavailable experimental MXC backend. No live personal configuration, global trust or permission mode was changed. A fresh smoke records effective workspace-write; its end-to-end result remains to be checked before baseline execution.
 
-## Remaining foundation gate
+## Deferred actual acceptance
 
 - Finish a complete real request → backend source read → model answer → requester implementation run and inspect the artifact oracle.
 - Run and retain all five original scenarios in both paired arms on fixed actual native models/configuration/source.

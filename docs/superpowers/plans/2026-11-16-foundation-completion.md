@@ -2,9 +2,13 @@
 
 > Execution: use the existing isolated feature worktree, implementation subagents within the active foundation only, test first, and verify evidence before completion. The user's explicit sequence supersedes repeated per-task spec/quality review gates.
 
-**Goal:** Finish the five original foundations without advancing past an incomplete predecessor.
+**Goal:** Finish the five original foundations at code level, in order, with staged commits.
 
-**Architecture:** Keep the existing common coordination service authoritative. First build a real native-agent evaluation harness around that unchanged service; use its retained observations to drive subsequent product work. Fixture, protocol, native behavior, and independent-user acceptance remain separate.
+**Scope correction from the user (2026-11-16):** Implement the first five foundations and their necessary automated checks only. Stop real native-agent, cross-device and independent-user validation for now. Do not expand into the five multiplayer product outcomes. A later single PR will contain the staged implementation commits. This instruction supersedes the earlier requirement to run real acceptance before advancing.
+
+**Architecture:** Keep the common coordination service authoritative and add the missing reusable capabilities there. Complete each foundation's code and focused automated regressions before starting its successor. Retain the native evaluator for later opt-in acceptance, without running it in this pass.
+
+**Working branch:** `codex/foundation-sequential-completion`, retained isolated worktree `foundation-sequential-completion`. The earlier `team-workflow-implementation` worktree and all private experiment records remain intact.
 
 **Tech stack:** Python unittest, the installed authenticated Codex and Claude CLIs, native HTTP MCP, isolated private profiles and SQLite; existing JavaScript where later product work requires it.
 
@@ -12,13 +16,13 @@
 
 | Order | Foundation | Current status | Exit evidence |
 | --- | --- | --- | --- |
-| 1 | Real goals without tool-name prompting | IN PROGRESS | Native runner; five original scenarios; independent answer source; verified implementation effect; exact native versions/models/source; all attempts retained; measured reminders, routing, reply latency, answer use, tools, tokens and honestly reported cost; paired primitive/composite comparison |
-| 2 | Shared daily collaboration behavior on all supported paths | NOT STARTED | Actual startup/blocker/reply/completion behavior across supported transports and hooks, with native trust and authority preserved |
-| 3 | Short request/reply paths | NOT STARTED | Complete responsibility-following question semantics and reply consumption, measured against primitive tools |
+| 1 | Real goals without tool-name prompting | CODE COMPLETE — `b8fea59` | Native execution framework, five original cases, isolated answers/artifact oracle, native event/usage parsers, paired comparison and retained failures; 149 native-free tests passed. Actual acceptance deferred. |
+| 2 | Shared daily collaboration behavior on all supported paths | IN PROGRESS | Shared lifecycle policy data, server/bridge/Git guidance, supported hook/plugin wiring and focused regressions, without changing native trust |
+| 3 | Short request/reply paths | NOT STARTED | Complete responsibility-following question semantics and reply consumption; focused domain/transport regressions |
 | 4 | Task-focused incremental context and session delivery | NOT STARTED | Real additions/updates/removals, cursor recovery, current execution binding, targeted native delivery and member fallback |
 | 5 | Observable waiting and concrete recovery | NOT STARTED | Evidence-based service/network/session/hook/watcher states, durable local outbox and authorized recovery |
 
-No row can become complete merely because its unit tests pass. If native authentication, quota, or another required input prevents its exit evidence, retain the failure and stop advancement at that row. Do not implement later foundations to conceal a failed evaluation. A failing measured product workflow can be a valid baseline result, but an unexecuted required scenario is not a baseline.
+Code completion requires the original capability to be implemented and its focused regressions to pass, followed by a coherent commit. Actual model behavior and independent-user acceptance remain unverified and must not be inferred from those tests. They no longer block this user-authorized code-only pass. Do not start the next foundation until the current code-level gate is met.
 
 ## Foundation 1 implementation
 
@@ -65,4 +69,4 @@ Instrumentation findings retained before a valid baseline: (1) a missing private
 
 ## Subsequent foundations
 
-Only after Foundation 1's gate passes, write the concrete next-item tests and implementation steps based on its observed results, then implement Foundation 2. Repeat the same transition rule for Foundations 3, 4, and 5. The original ten-point first-pass checklist does not certify these original requirements; this ledger supersedes its completion interpretation.
+Only after the current foundation's code-level gate passes and its changes are committed, implement the next foundation. Do not implement the five later multiplayer outcomes in this pass. The unchecked real-run tasks above are deliberately deferred acceptance work, not permission to resume lengthy native experiments.
