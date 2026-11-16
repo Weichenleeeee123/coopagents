@@ -52,6 +52,16 @@ TOOL_DESCRIPTIONS = {
                              'Pass the current session_key and ownership_epoch. Does not approve a draft or silently '
                              'accept an update. New approved versions remain review-required until explicitly used; '
                              'retrying an older version never downgrades the current execution baseline.'),
+    'work_brief': ('Read a bounded task-focused recovery brief at startup, blockers, reply arrival and completion. '
+                   'With task_id pass its current session_key and ownership_epoch. Includes relevant dependencies, '
+                   'pending replies, approved agreement updates and next-step hints without creating read receipts. '
+                   'Follow next_cursor while has_more. Reuse cursor as after_cursor only with identical focus and limit; '
+                   'changed content resets to a full page (delta=false). Never interpret truncation as no pending work.'),
+    'read_workflow': ('Read project collaboration facts: request wait reasons, observed session/checkpoint times, '
+                      'one two-member exchange onboarding chain, agreement impacts and explicit human decision '
+                      'summaries. This is read-only; no inbox or reply receipts, approvals or handoff decisions occur. '
+                      'Unknown model responsiveness stays unknown. Cards describe authorized actions, not permission '
+                      'to execute them; human changes still need the actual user instruction and separate credential.'),
     'read_deliveries': 'Read task-to-delivery associations and reverse task links with source, freshness and unavailable states.',
     'suggest_delivery': 'Propose a delivery relationship with evidence. Project manager confirmation is required before linking; it never closes tasks.',
     'read_capabilities': 'Discover project members, their agent sessions and Harness capability evidence. Registration and event delivery do not imply model responsiveness.',
@@ -81,7 +91,7 @@ def create_mcp_app(service, *, origin=None):
              'acknowledge', 'reply', 'resolve_request', 'propose_contract', 'repo_checkpoint', 'link_delivery',
              'checkpoint', 'diagnostic_start', 'diagnostic_read', 'diagnostic_complete')
     names += ('lookup_owner', 'create_dependency', 'read_dependency', 'reply_dependency', 'resolve_dependency', 'cancel_dependency')
-    names += ('ask_owner', 'read_replies', 'record_agreement_use')
+    names += ('ask_owner', 'read_replies', 'record_agreement_use', 'work_brief', 'read_workflow')
     schemas = {name: service.operations[name][2] for name in names}
     schemas.update({'whoami': {}, 'read_team': {}, 'list_assets': {},
                     'read_asset': {'asset_id': (str, True, None)}})

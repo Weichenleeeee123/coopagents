@@ -148,7 +148,7 @@ class LocalAdapter:
         if name=='suggest_delivery': return self.request('/api/operations/suggest_delivery',arguments)
         if name=='read_capabilities': return self.request('/api/capabilities')
         if name=='read_context': return self.request('/api/operations/read_context',arguments)
-        if name in ('ask_owner', 'read_replies', 'record_agreement_use'):
+        if name in ('ask_owner', 'read_replies', 'record_agreement_use', 'work_brief', 'read_workflow'):
             return self.request('/api/operations/'+name, arguments)
         if name not in paths: raise ValidationError('Unsupported coordination tool')
         body = dict(arguments); path = paths[name]
@@ -189,6 +189,8 @@ def create_local_mcp(adapter):
     from .agreement_usage import SCHEMA as AGREEMENT_USE_SCHEMA
     schemas.update(workflow_schemas())
     schemas['record_agreement_use'] = AGREEMENT_USE_SCHEMA
+    from .team_workflow import schemas as team_workflow_schemas
+    schemas.update(team_workflow_schemas())
     async def validate_arguments(ctx,call_next):
         if ctx.method=='tools/call':
             params=ctx.params
