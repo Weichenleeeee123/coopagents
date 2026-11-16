@@ -163,6 +163,7 @@ class LocalAdapter:
 def create_local_mcp(adapter):
     from mcp.server import MCPServer
     from mcp.types import CallToolResult, TextContent
+    from .mcp_service import TOOL_DESCRIPTIONS
     # Use the shared operation schemas without creating a local server/database.
     from .api import fields, validate
     from .context import QUERY_SCHEMA
@@ -222,7 +223,7 @@ def create_local_mcp(adapter):
         execute.__name__=name;execute.__annotations__=annotations
         execute.__signature__=inspect.Signature(params,return_annotation=CallToolResult)
         description=('Associate a task with exactly one branch, PR number, full commit SHA, or discovered GitHub release ID. '
-                     'Release linking records a relationship only; it does not create or publish releases.') if name=='link_delivery' else None
+                     'Release linking records a relationship only; it does not create or publish releases.') if name=='link_delivery' else TOOL_DESCRIPTIONS.get(name)
         server.add_tool(execute,name=name,description=description,structured_output=False)
     for name,schema in schemas.items(): register(name,schema)
     def repo_checkpoint(task_id:int,session_key:str|None=None,ownership_epoch:int|None=None)->CallToolResult:
