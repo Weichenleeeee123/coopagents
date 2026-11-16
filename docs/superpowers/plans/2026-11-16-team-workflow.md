@@ -76,11 +76,11 @@
 
 ## Task 6: Integration, independent review and acceptance
 
-- [ ] Review requirements R1-R10 against implementation, tests and guides, then request independent code-quality review. Correct important issues and repeat affected verification.
-- [ ] Run full Python tests, agent-integration experiment tests, all JavaScript regression commands from CI, syntax checks and build artifacts where feasible.
-- [ ] Inspect distributions for the new source/Skill modules and absence of private state. Run `git diff --check` and check no tracked file deletion.
-- [ ] Record exact tested commands/counts, source commit, known environment limits and unperformed native/two-independent-user gates in `docs/team-workflow-acceptance.md`.
-- [ ] Commit the final acceptance record and report branch/worktree, delivered scope, verification and genuine external limits. Do not claim two-user model acceptance from fixtures or local service tests.
+- [x] Review requirements R1-R10 against implementation, tests and guides, then request independent code-quality review. Correct important issues and repeat affected verification.
+- [x] Run full Python tests, agent-integration experiment tests, all JavaScript regression commands from CI, syntax checks and build artifacts where feasible.
+- [x] Inspect distributions for the new source/Skill modules and absence of private state. Run `git diff --check` and check no tracked file deletion.
+- [x] Record exact tested commands/counts, source commit, known environment limits and unperformed native/two-independent-user gates in `docs/team-workflow-acceptance.md`.
+- [x] Commit the final acceptance record and report branch/worktree, delivered scope, verification and genuine external limits. Do not claim two-user model acceptance from fixtures or local service tests.
 
 ## Coverage self-review
 

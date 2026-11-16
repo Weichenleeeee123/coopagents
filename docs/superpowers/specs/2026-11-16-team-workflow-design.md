@@ -1,6 +1,6 @@
 # Reliable collaboration between teammates' own agents
 
-Date: 2026-11-16. Status: approved scope, implementation in progress.
+Date: 2026-11-16. Status: first implementation and automated verification complete; external native/two-user acceptance remains unperformed.
 
 ## Approved outcome and requirements
 

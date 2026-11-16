@@ -1,60 +1,85 @@
-# Team workflow acceptance — in progress
+# Team workflow implementation and acceptance
 
 Date: 2026-11-16. Branch: `codex/team-workflow-implementation`.
 
-This is an initial evidence record while the approved ten-point implementation is still being integrated. It is not a release or native/two-person acceptance claim. The final source commit and integrated verification results are pending. Scope is defined by the [approved design](superpowers/specs/2026-11-16-team-workflow-design.md) and explained in the [practical workflow guide](team-workflow.md).
+All ten approved points have a first implementation, maintained guides and automated coverage. The remaining implementation was delegated in parallel following the user's request to finish the whole first round before a unified review. That review found two projection defects; both were reproduced, corrected and covered by regressions. This is an unreleased development implementation, not native-model, independent-user or production acceptance.
 
-## Checks performed for this draft
+Final verified source commit: `490ed15ece923bc5b185e04b53d3785efd88dc6a`. Later changes to this record and the plan are documentation only. Scope: [approved design](superpowers/specs/2026-11-16-team-workflow-design.md). Usage: [team workflow guide](team-workflow.md). Evaluation: [tool-free workflow evaluation](workflow-evaluation.md).
 
-Commands ran from the dedicated team-workflow worktree with its ignored `.local/pythonpath` junction prepended to `PYTHONPATH`, using the original verified environment's interpreter. Import verification resolved `coopagents.__file__` through this worktree's `.local/pythonpath/coopagents/__init__.py` rather than another checkout.
+## Ten-point delivery and evidence
+
+| ID | Delivered behavior | Automated evidence and remaining boundary |
+| --- | --- | --- |
+| R1 | Five tool-free development scenarios with separate participant goals and private evidence filenames; conservative normalized scoring of identity, current route, model reply, requester effect and independent human/device/session/network provenance | 20 evaluator tests within the 80-test experiment suite. References are reviewer-supplied attestations, not independently authenticated proof. No real model or two-user run performed here. |
+| R2 | One versioned daily policy across HTTP MCP, P2P bridge and local Git, with checkpoint, focused context, responsibility questions, sent-reply reads, agreement review and human authority guidance | Policy tests, existing MCP/bridge/Git regressions, explicit equality of new-tool descriptions across HTTP/Git. Native loading and voluntary model use remain separate gates. |
+| R3 | `ask_owner` and paginated `read_replies`, preserving exact sender/route facts and separate explicit reply reads | Domain, authenticated HTTP/MCP and actual bound-project Git forwarding. Same-member sessions also supported. A read does not prove comprehension or resolve dependencies. |
+| R4 | `work_brief` with current execution validation, task/direct-dependency context, approved agreement changes and 16,000-byte bounded paging | Cursor identity/focus/session/epoch/limit binding, semantic change reset, no skipped records, stale authority before cursor fast path, HTTP wire-size and no-receipt tests. Changed content resets; this is not a delta stream. |
+| R5 | Separate delivered/read/processing/replied/requester-read/resolved facts, observed session times, wait reasons and recovery hints | Lifecycle, durable reopen and UI behavior tests. Unknown model responsiveness remains unknown. Recorded confirmation reads survive closure without authorizing new transitions. |
+| R6 | Same-exchange two-distinct-member onboarding milestones and navigation to existing request details | Synthetic sender/recipient exchange, first-use projection, browser rendering and navigation. Project read identity and explicit reply reading are not native loading or useful model-work evidence. |
+| R7 | Declared task/scope responsibility routing with explicit ambiguity/not-found/unassigned results | Atomic lookup/delivery, payload-bound retry, target handoff history and task dependency rerouting. Member-level questions intentionally retain their original fixed recipient. |
+| R8 | Durable questions, reply reads and outstanding work across service reopen; queued task dependencies route after target claim | Retained SQLite/domain and actual HTTP reopen tests. Simulated offline means no responder action before reopen; no new network-outage or cross-device wake claim. Existing optional wake behavior is unchanged. |
+| R9 | Epoch/session-scoped `record_agreement_use`, approved-version reliance, newer-approved-version impact and monotonic baseline | Draft/approved version, older retry, room isolation, legacy-to-bound session, retired execution and signed-64 identifier boundary tests. No automatic approval or adoption. |
+| R10 | Bounded human decision summaries with exact operation payloads, eligibility and links to existing authorized surfaces | Pending contracts, recipient handoffs, unassigned claims, current-epoch delivery suggestions and agreement review tests. MCP has no human mutation tools; cards authorize nothing by themselves. |
+
+## Verification results
+
+| Check | Observed result |
+| --- | --- |
+| Full Python suite after initial integration | **850 tests run, no failures, 3 platform skips**, 806.416 seconds. Log: `.local/test-evidence/final-python.log`. This run preceded the last two projection fixes and the two additional Git forwarding tests. |
+| Final affected integration suite against source `490ed15` | **124 tests passed**, 76.467 seconds. Includes all workflow tests, agreement usage, policy, dependencies, messages, HTTP/MCP/Git, events, checkpoints, context and capabilities. Log: `.local/test-evidence/final-postfix-integration.log`. |
+| Agent-integration experiment regressions | **80 tests passed**, 15.843 seconds. Includes 20 tool-free evaluator tests. Log: `.local/test-evidence/final-experiments.log`. These native-free fixtures do not execute real model collaboration. |
+| JavaScript CI and syntax | **37 commands passed**, 0 failures: all 32 Node commands in CI plus 5 extra checks covering every static JavaScript file. Node `v22.23.2`; log `.local/test-evidence/final-node-20261116-210415-b0170597.log`. No JavaScript changed after this run. |
+| Live synthetic browser | Workbench rendered at **1440 x 1000** and **390 x 844**. Mobile document width was exactly 390; no horizontal overflow. A new workflow request link opened the existing request dialog. Retained screenshots: `.local/test-evidence/team-workflow-desktop.png` and `team-workflow-mobile.png`. |
+| Final distributions | Wheel and sdist built from clean `490ed15`; required source, JavaScript, Skills and protocols matched exact source bytes; no private paths. Fresh isolated wheel imports/resources and five-operation service composition smoke passed. |
+| Repository checks | Whitespace check clean; no tracked file deletions from base `53b0b68`. Worktree, databases, environments, screenshots, failure records and old package artifacts retained. No release or remote push performed. |
+
+The full-suite skips were Windows POSIX-mode inspection and two unavailable symlink-creation checks. An earlier uncontrolled broad run had two environment-dependent failures: inherited native-agent marker variables affected a caller-detection test, and PATH selected the Windows Bash launcher rather than Git Bash for a native-shell test. The successful full run cleared those markers only inside the test process and explicitly selected Git Bash. No product permission, native configuration or model settings were changed to obtain a pass. Earlier failed logs remain retained.
+
+The browser console contained one `/account/session` 401 during synthetic self-hosted account probing; no additional script exception was observed in the inspected console. Project-switch/stale-click isolation and safe text rendering are covered by behavioral JavaScript tests; the browser check did not certify two real users or every project-switch route.
+
+## Commands and import isolation
+
+Commands ran from the retained feature worktree. Its ignored `.local/pythonpath/coopagents` junction resolves to that worktree's `src`. The new environment executable stalled in this host, so tests used the existing interpreter with this explicit import path; `coopagents.__file__` was verified before testing. A separate isolated wheel smoke did not use this editable import.
 
 ```powershell
 $env:PYTHONPATH=(Join-Path (Get-Location) '.local/pythonpath')
-& 'C:/Users/Weichen Li/Documents/Codex/2026-10-10/wo-zhe/.venv/Scripts/python.exe' -c "import coopagents; print(coopagents.__file__)"
-& 'C:/Users/Weichen Li/Documents/Codex/2026-10-10/wo-zhe/.venv/Scripts/python.exe' -m unittest discover -s tests -p 'test_team_workflow_scenarios.py' -v
+$python='C:/Users/Weichen Li/Documents/Codex/2026-10-10/wo-zhe/.venv/Scripts/python.exe'
+$env:CODEX_THREAD_ID=''
+$env:CODEX_SESSION_ID=''
+$env:CLAUDECODE=''
+$env:PATH='C:\Program Files\Git\bin;'+$env:PATH
+& $python -c "import coopagents; print(coopagents.__file__)"
+& $python -m unittest discover -s tests -v
+& $python -m unittest discover -s experiments/agent-integration -p 'test_*.py' -v
 ```
 
-The scenario command passed **3 tests**. These use the actual `CoordinationService` and SQLite domain stores with fresh UUID-named retained databases under ignored `.local/test-evidence/`. They do not mock business behavior, contact a live project, start native agents or delete evidence.
+The final 124-test command used one `unittest.TestSuite` over these discover patterns: `test_*workflow*.py`, `test_agreement_usage.py`, `test_collaboration_policy.py`, `test_dependencies.py`, `test_messages.py`, `test_mcp.py`, `test_git_adapter.py`, `test_events.py`, `test_checkpoints.py`, `test_shared_context.py`, `test_capability_discovery.py`. JavaScript commands are retained in the Node log and CI; the new workflow UI regression is explicitly included in CI.
 
-The same scenario command was rerun after writing the guides and again passed all 3 tests. A read-only local Markdown-link check found every relative link in the two new guides present. `git diff --check -- docs/README.md docs/team-workflow.md docs/team-workflow-acceptance.md tests/test_team_workflow_scenarios.py` reported no whitespace errors.
+## Final package evidence
 
-| Automated scenario | Observed result |
-| --- | --- |
-| Frontend/backend question and recovery | Source-task owner question is durable; an unanswered request remains pending; a newly constructed service on the same database recovers it and the backend answers through the current dependency route. |
-| Explicit reads, confirmation and progress | Sent-reply reading records the exact reply without satisfying the dependency; resolution fails before the separate dependency read; reading and resolving the latest revision/reply succeeds, followed by an authorized progress report. |
-| Agreement version change | Approved v1 reliance is explicit; draft v2 leaves v1 effective; approved v2 projects review required; explicit current-execution v2 reliance clears that impact. |
-| Human handoff boundary | A pending handoff card is eligible for the proposed recipient's web identity; the recipient's agent cannot accept it and the pending decision remains. |
-| Discovery and route semantics | Overlapping scopes return ambiguity without a message; an unassigned target queues a source dependency and routes after claim; a member-level question retains its original recipient across a target handoff. |
-| Project isolation and read evidence | Other-room task/request/reply markers do not appear in the local workflow; foreign IDs fail; workflow/brief/snapshot peeks create no local inbox, reply-read or dependency-confirmation receipts. |
+Internal development artifacts retain existing `1.0.0rc1` package metadata. They have not been published and do not establish public RC readiness.
 
-“Offline” here means the test deliberately performs no backend action before reopening the service. It is not a network outage, process wake or native-session recovery test. Test credentials represent distinct synthetic members; they do not represent two independent people. The supplied answer/evidence strings are fixtures, not observed native file-derived answers.
+Artifacts: `.local/dist-team-workflow-0488e19aed0e432e989b0808e4053b2e/`. Audit: `.local/test-evidence/team-workflow-0488e19aed0e432e989b0808e4053b2e/`.
 
-## Ten-point implementation/evidence matrix
+| Artifact | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `coopagents-1.0.0rc1-py3-none-any.whl` | 436566 | `92152dd74091d054be21d8321539699182d5c29d3efb678135692503d37f0d15` |
+| `coopagents-1.0.0rc1.tar.gz` | 569073 | `b35f2c3e7c369e6e7e57fad8cd49a0f738c1aac517e709a7028721d882aa82f1` |
 
-The entries below identify evidence locations rather than declare final completion. Other workers are integrating source, API exposure and UI in the shared worktree; their final results must be added after the unified verification run.
+The audit checked 102 wheel and 191 sdist members. Required modules include `collaboration_policy.py`, `workflow.py`, `agreement_usage.py`, `team_workflow.py`, service/MCP/Git integration, updated collaboration JavaScript and bundled Skills/protocols. A retained extraction was imported in a fresh `python -I` process; it verified resources, instantiated the shared service on a private smoke database and exercised the five new registrations plus workflow snapshot/brief. Existing setuptools license-metadata and namespace/package-data warnings remain; checked resources are present. Old artifacts were not removed.
 
-| Requirement | Retained implementation/evidence location | Final verification status |
-| --- | --- | --- |
-| R1 Tool-free evaluation | `experiments/agent-integration/workflow_evaluation.py`; [evaluation guide](workflow-evaluation.md) | Final evaluator run pending in this record; native observations absent. |
-| R2 Shared daily instructions | `src/collaboration_policy.py`, HTTP/bridge/Git entry points, bundled Skills | Integrated policy/transport regression results pending. |
-| R3 Short owner/reply paths | `src/workflow.py`, `tests/test_workflow.py`, full-flow scenarios | Three full-flow scenarios passed; complete API/MCP/Git results pending. |
-| R4 Focused context/routing | `src/team_workflow.py`, `tests/test_team_workflow.py` | Full-flow content-reset behavior passed; full cursor/authority suite pending in this record. |
-| R5 Wait explanations/recovery | Workflow lifecycle projections and full-flow service reopen | Pending question, recovery and read distinctions passed; UI verification pending. |
-| R6 First useful collaboration | Workflow onboarding projection, separate participant evaluation goals | Synthetic two-member exchange observed; actual model consumption/two-user acceptance pending. |
-| R7 Responsibility discovery | Existing owner lookup plus `ask_owner` | Ambiguous, queued and fixed-recipient route scenarios passed; integrated transport coverage pending. |
-| R8 Durable asynchronous work | Existing SQLite stores plus additive workflow receipts | Same-database service reopen passed; independent network and harness wake behavior untested here. |
-| R9 Agreement reliance/impact | `src/agreement_usage.py` and agreement projections | v1/draft-v2/approved-v2/explicit-use-v2 full flow passed; broader suite pending in this record. |
-| R10 Human decision work | Workflow decision projections and existing domain authorization | Pending handoff/agent rejection passed; full decision/UI authority coverage pending. |
+## Unified review corrections
 
-## Remaining validation gates
+- A large task list could consume the entire workflow projection and hide all pending questions/decisions. A 57-task regression reproduced the failure. The bounded response now samples each nonempty category, prioritizing pending requests and agreement changes, while retaining totals/truncation and the byte budget. Focused brief pagination order is unchanged.
+- A dependency read fact disappeared when successful resolution incremented the dependency revision. Read evidence now retains its recorded revision, epoch, session and time separately from `currently_valid`; closure or historical routing makes it invalid for a new transition without erasing the observation. Read-resolve-reopen tests cover this distinction.
 
-- Complete all ten implementation points, then run the requested unified review; no separate new per-stage approval gate is implied.
-- Run and record the final full Python suite, integration experiments and required JavaScript regressions against the final source state.
-- Verify real authenticated HTTP/MCP and Git forwarding for all new operations in the final integration.
-- Inspect the real synthetic-data workbench at desktop and mobile widths, including project switching, focused input preservation, safe text rendering and existing detail actions.
-- Build and inspect distributions for new modules/Skills and absence of private state; perform final whitespace and no-tracked-file-deletion checks.
-- Record final source commit, exact commands/counts, packaging results and any environment limits. This draft's 3-test result does not stand in for those checks.
-- Run separately authorized native experiments with actual native tool discovery/calls, file-derived answers and observable requester implementation effects. No such run was performed for this draft.
-- Obtain evidence and explicit acceptance from two independent people/devices/sessions/networks. Fixture/protocol scores and one-maintainer tests cannot satisfy this external gate.
+Both fixes were red before implementation and passed their 56-test affected suite, followed by the final 124-test integration run. No repeated per-task approval/review gate was added after the user's sequencing correction.
 
-No credentials, raw native transcripts, private profiles or test databases belong in this report or Git. Retain private evidence under ignored local paths. No files were deleted for these scenarios.
+## External gates not exercised
+
+- Actual native agents completing ordinary development goals without tool-name prompting, with file-derived answers and observable requester implementation effects.
+- Two independent people on their own devices, sessions and networks accepting the experience; same-maintainer, fixture and loopback evidence do not satisfy this gate.
+- New cross-device outage/wake/recovery combinations, every harness/platform and production latency/cost measurements.
+- Publishing, deployment, production data migration, or organization-wide approval of new native hooks.
+
+No credentials, raw native transcripts, private profiles or test databases are committed. The feature branch and its ignored worktree are retained for subsequent real-user acceptance and release work.
