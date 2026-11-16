@@ -1,19 +1,17 @@
-"""Read-only collaboration recovery from one consistent SQLite snapshot.
-
-Brief cursors bind the viewer and execution focus to a semantic content hash.
-They are stateless positions, not durable deltas: changed content resets the
-page to its beginning. Offsets advance only past records actually returned.
-"""
-import base64
+"""Business-read-only collaboration recovery with private frozen delta caches."""
 from dataclasses import asdict
 import hashlib
 import json
 
 from .errors import ValidationError
 from .task_lifecycle import execution_task, manager, project_task, task_row
+from .workflow import queued_owner_questions, request_route_info
+from .brief_deltas import BriefDeltaStore, item_key
+from .workflow_diagnostics import server_diagnostics
 
 MAX_BYTES = 16000
 KINDS = {'task': 'tasks', 'dependency': 'dependencies', 'request': 'requests',
+         'owner_question': 'owner_questions',
          'agreement': 'agreements', 'agreement_change': 'agreement_changes',
          'decision': 'decisions', 'member_activity': 'member_activity'}
 
@@ -44,7 +42,8 @@ def _clip(value, maximum=160):
     if isinstance(value, dict):
         exact = {'session_key', 'execution_session_key', 'member_id', 'room_id',
                  'owner_member_id', 'sender_member_id', 'receiver_member_id',
-                 'target_member_id', 'source_owner_member_id', 'target_owner_member_id'}
+                  'target_member_id', 'source_owner_member_id', 'target_owner_member_id',
+                  'question_key', 'requester_member_id'}
         result = {k: v if k in exact else _clip(v, maximum) for k, v in value.items()}
         if any(isinstance(v, str) and len(v) > maximum for v in value.values()):
             result['excerpted'] = True
@@ -52,14 +51,10 @@ def _clip(value, maximum=160):
     return value
 
 
-def _cursor(binding, digest, offset):
-    value = {'v': 1, 'binding': binding, 'digest': digest, 'offset': offset}
-    return base64.urlsafe_b64encode(json.dumps(value, sort_keys=True).encode()).decode().rstrip('=')
-
-
 class TeamWorkflowStore:
     def __init__(self, service):
         self.service, self.identity, self.db = service, service.identity, service.identity.db
+        self.delta_cache = BriefDeltaStore(self.db)
 
     def read_workflow(self, token, task_id=None):
         with self.db.connect() as db:
@@ -73,7 +68,7 @@ class TeamWorkflowStore:
                       'detail_actions': ['read_team', 'read_dependency', 'read_replies']}
             # This overview has no page cursor: sample every nonempty category
             # before filling remaining space so a large task list cannot hide work.
-            priority = ('request', 'agreement_change', 'decision', 'dependency',
+            priority = ('request', 'owner_question', 'agreement_change', 'decision', 'dependency',
                         'agreement', 'task', 'member_activity')
             groups = {category: [r for kind, r in records if kind == category] for category in priority}
             groups['request'].sort(key=lambda r: bool(r['resolved'] or r['route_state'] == 'historical'))
@@ -108,59 +103,64 @@ class TeamWorkflowStore:
             raise ValidationError('Limit must be an integer from 1 to 50')
         if task_id is None and (session_key is not None or ownership_epoch is not None):
             raise ValidationError('Execution fields require task_id')
-        with self.db.connect() as db:
-            db.execute('BEGIN')
+        with self.db.connect(write=True) as db:
             p = self.identity.resolve(db, token, required_kind='agent')
             # Validate before inspecting a cursor, including the unchanged path.
             task = execution_task(db, p, task_id, session_key, ownership_epoch) if task_id is not None else None
             target = ({'task_id': task_id, 'session_key': task['execution_session_key'],
                        'ownership_epoch': task['ownership_epoch']} if task else None)
-            records, meta, semantic = self._collect(db, p, task_id, personal=True)
             binding = _hash([p.room_id, p.member_id, task_id, session_key, ownership_epoch, limit])
-            digest = _hash(semantic)
-            start, reset = 0, None
-            if after_cursor is not None:
-                try:
-                    if not isinstance(after_cursor, str) or len(after_cursor) > 1024:
-                        raise ValueError()
-                    saved = json.loads(base64.b64decode(after_cursor + '=' * (-len(after_cursor) % 4),
-                                                       altchars=b'-_', validate=True))
-                    if (not isinstance(saved, dict) or saved.get('v') != 1
-                            or type(saved.get('offset')) is not int or saved['offset'] < 0):
-                        raise ValueError()
-                    if saved.get('binding') != binding:
-                        reset = 'scope_changed'
-                    elif saved.get('digest') != digest:
-                        reset = 'content_changed'
-                    elif saved['offset'] > len(records):
-                        reset = 'invalid_cursor'
-                    else:
-                        start = saved['offset']
-                except (ValueError, TypeError, UnicodeError):
-                    reset = 'invalid_cursor'
-            result = {**meta, 'execution_target': target, 'items': [], 'limit': limit, 'delta': False,
-                      'reset': reset is not None, 'reset_reason': reset,
-                      'unchanged': after_cursor is not None and reset is None and start == len(records)}
+            return self.delta_cache.read(db, binding, after_cursor, limit,
+                lambda: self._delta_state(db, p, task_id, target))
 
-            def update_page():
-                offset = start + len(result['items'])
-                result['has_more'] = offset < len(records)
-                result['cursor'] = _cursor(binding, digest, offset)
-                result['next_cursor'] = result['cursor'] if result['has_more'] else None
-                result['truncated'] = result['has_more']
-
-            update_page()
-            for category, record in records[start:start+limit]:
-                clipped = _clip(record)
-                item = ({'kind': category, 'decision': clipped} if category == 'decision'
-                        else {**clipped, 'kind': category})
-                result['items'].append(item)
-                update_page()
-                if len(_json(result).encode()) > MAX_BYTES:
-                    result['items'].pop()
-                    update_page()
+    def _delta_state(self, db, p, task_id, target):
+        records, meta, semantic = self._collect(db, p, task_id, personal=True)
+        item_budget = MAX_BYTES - len(_json({**meta, 'execution_target': target}).encode()) - 1200
+        state = {}
+        for kind, record in records:
+            key = item_key(kind, record)
+            raw = {'record': record}
+            if kind == 'request':
+                replies = [r for r in semantic['replies'] if r['request_id'] == record['id']]
+                reply_ids = {r['id'] for r in replies}
+                raw.update(source=next(r for r in semantic['requests'] if r['id'] == record['id']), replies=replies,
+                    reads=[r for r in semantic['reads'] if r['reply_id'] in reply_ids],
+                    dependency_reads=[r for r in semantic['dependency_reads'] if r['dependency_id'] == record['dependency_id']])
+            elif kind == 'agreement_change':
+                version = db.execute('''SELECT * FROM contract_versions WHERE room_id=? AND contract_id=? AND version=?''',
+                    (p.room_id, record['contract_id'], record['effective_version'])).fetchone()
+                raw['source_version'] = dict(version) if version else None
+            for maximum in (160, 80, 40, 32):
+                clipped = _clip(record, maximum)
+                item = ({'kind': kind, 'decision': clipped} if kind == 'decision' else {**clipped, 'kind': kind})
+                item['item_key'] = key
+                if clipped != record or record.get('excerpted') or record.get('replies_truncated'):
+                    item.update(excerpted=True, source_read={'operation': 'read_team', 'item_key': key,
+                        'note': 'Excerpt only; inspect the original source record before acting.'})
+                if len(_json(item).encode()) <= item_budget:
                     break
-            return result
+            state[key] = {'hash': _hash(raw), 'item': item}
+        return state, {**meta, 'execution_target': target}
+
+    @staticmethod
+    def _member_fallback(db, p, request, tasks, related_ids, route_map):
+        if request['resolved_at'] or request['id'] in route_map:
+            return False
+        owner = request_route_info(db, request['id'])
+        if owner and not owner['current']:
+            return False
+        if owner and request['sender_member_id'] == p.member_id:
+            return True  # An owner-only question has no source execution task.
+        known = tasks.get(request['task_id'])
+        if known and known['owner_member_id'] == p.member_id and known['id'] not in related_ids:
+            return False
+        if request['receiver_member_id'] == p.member_id:
+            return not db.execute('SELECT 1 FROM message_receipts WHERE request_id=?', (request['id'],)).fetchone()
+        if request['sender_member_id'] == p.member_id:
+            return bool(db.execute('''SELECT 1 FROM message_replies y WHERE y.request_id=?
+                AND NOT EXISTS(SELECT 1 FROM workflow_reply_reads rr WHERE rr.reply_id=y.id AND rr.member_id=?)''',
+                (request['id'], p.member_id)).fetchone())
+        return False
 
     def _collect(self, db, p, task_id, *, personal):
         """All identities, authority and source facts are read through this db."""
@@ -180,9 +180,17 @@ class TeamWorkflowStore:
         route_map = {r['request_id']: r for r in routes}
         dep_map = {d['id']: d for d in deps}
         requests = rows('SELECT * FROM message_requests WHERE room_id=? ORDER BY id DESC', (p.room_id,))
+        owner_questions = queued_owner_questions(db, p)
+        if task_id is not None and not personal:
+            owner_questions = [q for q in owner_questions if q['target_task_id'] == task_id]
+        owner_questions = [{**q, 'status': 'queued' if q['wait_reason'] == 'awaiting_owner' else 'blocked'}
+                           for q in owner_questions]
+        fallback_ids = {r['id'] for r in requests if personal and task_id is not None
+                        and self._member_fallback(db, p, r, task_map, related_ids, route_map)}
         if focus_ids is not None:
             requests = [r for r in requests if r['task_id'] in focus_ids
                         or route_map.get(r['id'], {}).get('dependency_id') in dep_map
+                        or r['id'] in fallback_ids
                         or task_id is None and p.member_id in (r['sender_member_id'], r['receiver_member_id'])]
         request_ids = {r['id'] for r in requests}
         replies = rows('SELECT * FROM message_replies WHERE room_id=? ORDER BY id', (p.room_id,))
@@ -200,7 +208,13 @@ class TeamWorkflowStore:
             by_request.setdefault(reply['request_id'], []).append(reply)
         request_items = [self._request(r, by_request.get(r['id'], []), receipt_map.get(r['id']),
                          r['id'] in delivered, route_map.get(r['id']), dep_map, reply_reads,
-                         dependency_reads, p, task_map) for r in requests]
+                         dependency_reads, p, task_map, request_route_info(db, r['id'])) for r in requests]
+        for item in request_items:
+            if item['id'] in fallback_ids and item['task_id'] not in focus_ids:
+                item['brief_scope'] = 'member_pending'
+        for question in owner_questions:
+            if personal and task_id is not None and question['target_task_id'] not in related_ids:
+                question['brief_scope'] = 'member_pending'
         dependency_items = []
         request_states = {r['id']: r['route_state'] for r in request_items}
         for dep in deps:
@@ -235,6 +249,7 @@ class TeamWorkflowStore:
                    for t in sorted(tasks, key=lambda t: (t['id'] != task_id, t['id']))]
         records += [('dependency', d) for d in dependency_items]
         records += [('request', r) for r in request_items]
+        records += [('owner_question', q) for q in owner_questions]
         records += [('agreement_change', u) for u in uses]
         records += [('agreement', a) for a in agreements]
         records += [('decision', d) for d in decisions]
@@ -246,15 +261,25 @@ class TeamWorkflowStore:
                 'recovery': [{'action': 'continue_authorized_independent_work'},
                              {'action': 'refresh_current_responsibility_before_rerouting'},
                              {'action': 'surface_pending_human_decisions_without_approving'}]}
+        diagnostics = server_diagnostics(db, p, requests=request_items, owner_questions=owner_questions,
+                                         tasks=tasks, task_id=task_id)
+        meta.update(diagnostics)
+        recovery = []
+        for card in diagnostics['diagnostics']:
+            action = card['next_action']
+            if action not in recovery:
+                recovery.append(action)
+        meta['recovery'] = recovery[:6]
         # Full reply/receipt facts affect the digest, including excerpted bodies.
-        semantic = {'principal': asdict(p), 'records': records, 'replies': replies,
+        semantic = {'principal': asdict(p), 'records': records, 'replies': replies, 'requests': requests,
+                    'dependency_reads': dependency_reads,
                     'receipts': [r for r in receipts if r['request_id'] in request_ids],
                     'reads': [r for r in reads if any(y['id'] == r['reply_id'] for y in replies)],
                     'meta': meta}
         return records, meta, semantic
 
     @staticmethod
-    def _request(row, replies, receipt, delivered, route, dep_map, reply_reads, dep_reads, p, tasks):
+    def _request(row, replies, receipt, delivered, route, dep_map, reply_reads, dep_reads, p, tasks, owner_route=None):
         dep = dep_map.get(route['dependency_id']) if route else None
         retired = False
         if dep and route:
@@ -265,6 +290,8 @@ class TeamWorkflowStore:
                        or route['created_at'] < max(source['epoch_started_at'] or '', target['epoch_started_at'] or ''))
         state = ('historical' if not dep or retired or dep['current_request_id'] != row['id']
                  else 'closed' if dep['status'] != 'active' else 'current') if route else 'ordinary'
+        if owner_route:
+            state = owner_route['state']
         result = {k: row[k] for k in ('id', 'task_id', 'sender_member_id', 'receiver_member_id',
                   'context_version', 'body', 'created_at', 'resolved_at')}
         enriched = []
@@ -297,7 +324,7 @@ class TeamWorkflowStore:
         actions = []
         if state == 'historical' and dep:
             actions.append({'operation': 'read_dependency', 'arguments': {'dependency_id': dep['id']}})
-        elif p.kind == 'agent' and not row['resolved_at']:
+        elif state not in ('historical', 'closed') and p.kind == 'agent' and not row['resolved_at']:
             if row['sender_member_id'] == p.member_id and latest and not sender_read:
                 actions.append({'operation': 'read_replies', 'arguments': {'after_id': 0, 'task_id': row['task_id']}})
             elif row['receiver_member_id'] == p.member_id and not latest:
@@ -313,6 +340,10 @@ class TeamWorkflowStore:
                       route_version=route['route_version'] if route else None, wait_reason=wait,
                       replies=enriched, reply_total=len(replies), replies_truncated=len(replies) > 2,
                       next_actions=actions, model_comprehension_proven=False)
+        if owner_route:
+            result.update(owner_route_state=state, owner_target_task_id=owner_route['target_task_id'],
+                          current_request_id=owner_route['current_request_id'],
+                          route_version=owner_route['route_version'])
         return result
 
     @staticmethod

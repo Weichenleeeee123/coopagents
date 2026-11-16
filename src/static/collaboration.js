@@ -44,6 +44,12 @@
   const identifier=value=>Number.isSafeInteger(value)&&value>0;
   const excerpt=value=>{const text=String(value??'');return text.length>180?text.slice(0,180)+'…':text;};
   const list=value=>Array.isArray(value)?value:[];
+  const diagnosticNames={network:'网络连接',native_mcp:'原生 MCP 加载',hook_trust:'原生 hook 审阅',watcher:'唤醒观察器',credentials:'个人凭据',credential:'个人凭据',routing:'会话路由',execution:'任务执行绑定',request:'请求处理',delivery:'服务投递',model:'模型响应',model_processing:'模型响应'};
+  const diagnosticStates={unknown:'未知',unobserved:'暂无记录',stale:'已过期',expired:'已过期',stopped:'已停止',blocked:'受阻',reported_active:'报告仍有效',watching:'报告仍有效',observed:'已观测',valid:'已验证',invalid:'无效',auth_denied:'身份验证失败',queued:'本地待发',delivered:'服务已投递',read:'有读取记录',replied:'有答复记录',resolved:'已解决',awaiting_owner:'等待负责人'};
+  const recoveryLabels={check_service_connection:'检查服务地址、网络与连接状态。',open_native_session:'打开对应原生会话并读取当前待办。',register_current_execution:'核对当前任务、会话和归属版本后重新登记。',reconnect_agent:'重新连接当前项目的个人 agent 凭据。',review_native_hook_trust:'在原生工具中审阅 hook 配置和信任状态。',resume_owner_host:'按已有授权手动恢复宿主；提示不会自动启动它。',refresh_current_task:'重新读取当前任务及其负责人。',read_inbox:'显式读取当前收件箱。',read_replies:'显式读取最新答复并核对当前路线。',wait_for_responsible_member:'等待负责人处理，并继续已授权的独立工作。'};
+  Object.assign(diagnosticNames,{identity:'个人身份',owner_question:'负责人问题',message:'消息处理'});
+  Object.assign(diagnosticStates,{execution_retired:'执行绑定已失效',task_cancelled:'任务已取消',owner_unassigned:'等待负责人',execution_unbound:'尚未绑定执行会话',native_alias_missing:'未登记原生会话别名',credential_unavailable:'凭据不可用',watcher_unobserved:'暂无观察器记录',watcher_stopped:'观察器已停止',watcher_stale:'观察器租约已过期',watcher_mismatch:'观察器与执行绑定不匹配',watcher_lease_active:'报告的观察器租约有效',target_cancelled:'目标任务已取消',historical_route:'历史路由',queued:'已保存，等待路由',reply_unread:'答复已到，等待读回',reply_read_waiting_confirmation:'已读回答复，等待确认',processing_reported:'有处理确认记录',recipient_read_no_reply:'有读取记录，尚无答复',delivered_unread:'有服务投递记录，等待读取',authenticated:'当前身份已验证'});
+  Object.assign(recoveryLabels,{refresh_current_responsibility:'重新查询当前任务责任人和有效路线。',wait_for_owner_assignment:'等待目标任务分配负责人，并继续已授权的独立工作。',review_cancelled_target:'查看目标任务的取消记录，按现有权限决定后续处理。',reconnect_personal_credential:'重新连接当前项目的个人 agent 凭据。',open_correct_native_session:'打开对应原生会话，核对执行绑定后读取待办。',resume_authorized_watcher:'在原生工具中检查已授权的观察器与 hook 状态。',check_local_host_and_connection:'检查本地宿主、服务地址及网络；明确停止的宿主保持停止。',ask_owner_to_check_execution:'请当前负责人检查其执行会话和待办。',read_reply_explicitly:'显式读取最新答复并核对当前路线。',confirm_outcome_when_authorized:'核对实际结果，仅在当前权限内明确确认。',check_current_reply:'查看当前请求的最新答复与处理记录。',retain_history:'保留历史记录，继续使用当前有效路线。',verify_native_tools:'在实际原生会话中核对工具加载状态。',verify_current_identity:'核对当前项目与个人身份。'});
   function workflowSection(root,id,title){const section=add(element('section'),element('h3',title));section.id=id;root.append(section);return section;}
   function navigation(root,label,target,context,renderEpoch){
     if(typeof context.openWorkflowItem!=='function')return;
@@ -67,9 +73,15 @@
     first.append(element('p','显式读回只记录读操作，不证明模型理解，也不代表任务进展。','muted'));
 
     const allRequests=list(workflow.requests),requests=allRequests.filter(item=>!item.resolved&&!item.resolved_at&&['ordinary','current'].includes(item.route_state));
+    const ownerQuestions=list(workflow.owner_questions).filter(item=>['queued','blocked'].includes(item.status));
     const waiting=workflowSection(root,'workflow-requests','当前协作等待');
     const waits={awaiting_assignment:'等待明确收件人',awaiting_recipient_read:'等待收件人读取记录',read:'已记录收件人读取，等待答复',processing:'已记录处理确认，等待答复',reply_waiting_for_sender_read:'答复已到达，等待发起者显式读回',awaiting_requester_resolution:'等待发起者确认处理结果'};
-    if(!requests.length)waiting.append(element('p','本页暂无待处理请求。','muted'));
+    if(!requests.length&&!ownerQuestions.length)waiting.append(element('p','本页暂无待处理请求。','muted'));
+    for(const question of ownerQuestions.slice(0,visibleLimit)){
+      const row=add(element('article','','record workflow-owner-question'),element('h4','负责人问题 · '+excerpt(question.body)),
+        element('p',question.wait_reason==='target_cancelled'?'目标任务已取消，问题保留等待恢复。':'等待目标任务分配负责人；问题已保存，尚未投递。','meta'));
+      taskNavigation(row,question.target_task_id,context,renderEpoch);waiting.append(row);
+    }
     for(const request of requests.slice(0,visibleLimit)){
       const row=add(element('article','','record workflow-request'),element('h4','请求 #'+request.id+' · '+excerpt(request.body)),
         element('p',context.memberName(request.sender_member_id)+' → '+context.memberName(request.receiver_member_id)+' · '+(request.route_state==='current'?'当前任务依赖路由':'普通请求'),'meta'),
@@ -112,12 +124,21 @@
       pending.append(row);
     }
 
-    const activity=list(workflow.member_activity);
-    if(activity.length){
+    const activity=list(workflow.member_activity),diagnosticChecks=list(workflow.diagnostics);
+    if(activity.length||diagnosticChecks.length){
       const observations=workflowSection(root,'workflow-observations','最近协作观测');
       for(const member of activity.slice(0,visibleLimit))observations.append(element('p',context.memberName(member.member_id)+' · 检查点 '+when(member.last_checkpoint_at)+' · 会话 '+when(member.last_session_at)+' · 响应状态：未知','meta'));
+      for(const check of diagnosticChecks.slice(0,visibleLimit)){
+        const component=String(check.component||''),model=/model/.test(component),status=model?'unknown':check.status;
+        const action=check.next_action&&typeof check.next_action==='object'?check.next_action:{};
+        const row=add(element('article','','record workflow-diagnostic'),element('p',(Object.hasOwn(diagnosticNames,component)?diagnosticNames[component]:'协作状态')+'：'+(Object.hasOwn(diagnosticStates,status)?diagnosticStates[status]:'未知'),'meta'),
+          element('p',Object.hasOwn(recoveryLabels,action.action)?recoveryLabels[action.action]:'查看既有诊断说明并核对当前任务权限。','muted'));
+        const at=check.evidence?.updated_at||check.evidence?.last_checkpoint_at||check.observed_at;
+        if(at)row.append(element('p','记录时间：'+when(at),'meta'));
+        taskNavigation(row,action.task_id,context,renderEpoch);observations.append(row);
+      }
     }
-    if(workflow.truncated||workflow.has_more||[requests,changes,decisions,activity].some(items=>items.length>visibleLimit)){
+    if(workflow.truncated||workflow.has_more||workflow.diagnostics_truncated||[requests,changes,decisions,activity,diagnosticChecks].some(items=>items.length>visibleLimit)){
       root.append(element('p','这里只显示部分工作流记录；请打开协作、约定或任务详情查看完整信息。','muted'));
       navigation(root,'查看协作详情',{kind:'requests'},context,renderEpoch);
     }

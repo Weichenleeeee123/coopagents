@@ -50,9 +50,10 @@ class WorkflowTests(unittest.TestCase):
             self.ask(body='Different question')
         self.transfer(self.target, self.c)
         retry = self.ask(context='Need this for the frontend')
-        self.assertEqual(retry['request']['id'], result['request']['id'])
+        self.assertNotEqual(retry['request']['id'], result['request']['id'])
+        self.assertEqual(retry['request']['receiver_member_id'], self.c['member_id'])
         self.assertTrue(retry['target_changed'])
-        self.assertEqual(len(self.s.messages.list_requests(self.a['agent_token'])), 1)
+        self.assertEqual(len(self.s.messages.list_requests(self.a['agent_token'])), 2)
 
     def test_ambiguous_not_found_and_unassigned_do_not_send_unaddressed_messages(self):
         self.assertEqual(self.ask(scope='missing')['status'], 'not_found')

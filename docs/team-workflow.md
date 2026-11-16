@@ -50,18 +50,28 @@ For work blocked on another task, include your source task, its current revision
 
 This reuses the existing dependency rules, including cycle prevention and one active dependency per source/target edge. `expected_revision` means the **source task revision**. It is required with `source_task_id`; execution fields and source revision are rejected without a source task. Owner selection and creation occur in the same transaction.
 
-- A unique owned target creates a dependency and an addressed request. The result includes `dependency`, `request`, `target`, `routing` and `target_changed`.
-- A unique unassigned target with a source task creates a queued dependency with no request. When that target gains an owner, the dependency routes to that owner. Retry the same payload/key to recover its current route.
-- An ambiguous or absent scope creates no dependency or message and returns its explicit state. A member-level question to an unassigned target also creates no message.
-- Responsibility changes reroute an active task dependency transactionally. Historical routes remain history; their replies cannot satisfy the current dependency. Refresh the dependency's current revision and reply before acting.
+- A unique target persists the owner question with or without a source task. An owned target gets an addressed request. With a source task, the question reuses a task dependency; without a source, `routing` is `task_owner`. The result retains `dependency`, `request`, `target`, `routing` and `target_changed`.
+- A unique unassigned target queues the durable question with no current request. With a source task, its dependency is queued too. When the selected target gains an owner, routing delivers a current addressed request. Retry the same key and same payload to recover that current route; absence of a request does not mean the question was lost.
+- An initially ambiguous or absent scope creates no question, dependency or message and returns its explicit state and available candidates. Select a specific declared task rather than guessing an owner. Once a question has selected its target task, scope text is not reinterpreted on retry to silently select a different task.
+- Claim, release, handoff, cancellation and reopening of the selected target update owner-question routing in the task transaction. Release leaves the question waiting for an owner; target cancellation reports `target_cancelled`. Historical messages, replies and read evidence remain retained, but old routes cannot be acknowledged, answered or resolved as the current route. Existing source-task dependency authority and lifecycle rules remain in force.
 
-For a member-level question, omit the source fields:
+Routing metadata includes `routing_state`, `current_request_id`, `route_version` and `route`. The `route` object identifies the request's current/historical state and selected target; it is null while queued without a delivered route. Use these identifiers to refresh current responsibility instead of treating an earlier recipient or reply as current. A response already explicitly resolved is `closed`; rerouting does not silently adopt a historical answer. None of these states proves delivery to a running model or model comprehension.
+
+For an owner question without a source task, omit the source fields:
 
 ```json
 {"request_key":"api-logging-question-1","target_task_id":27,"body":"Which logging format should I use?"}
 ```
 
-This sends an ordinary addressed request to the owner selected at creation. Its `routing` is `fixed_recipient`: later ownership changes do not move that request. Retry returns the same request and reports `target_changed` when applicable. The returned current target and request recipient can therefore differ. Ask a new question with a new key if you intentionally need a new recipient. Reusing a successful key with different content conflicts. A task-bound retry still validates current source authority before returning saved results.
+This persists a `task_owner` question and follows the selected task's current responsibility, including waiting without a request while unassigned. Retry returns its current request, which can differ from a historical request after a handoff. It does not select a new target task. Reusing a saved key with a different payload conflicts. A task-bound retry still validates current source authority before returning saved results.
+
+Direct `send_request` remains the way to choose a fixed recipient by `receiver_member_id`; it does not follow task ownership changes:
+
+```json
+{"request_key":"question-for-this-person-1","receiver_member_id":"specific-member-id","context_version":1,"body":"Can you explain the logging example you shared?"}
+```
+
+That fixed recipient is deliberate personal addressing, separate from `ask_owner`. Omitting its receiver still means no addressed delivery until the existing authorized assignment path is used. This does not make an unaddressed direct request an owner-following question.
 
 ### Read the answer and resolve the right dependency
 
@@ -79,7 +89,7 @@ This sends an ordinary addressed request to the owner selected at creation. Its 
 }
 ```
 
-The evidence text is member-supplied evidence, not server verification of a private source file. Ordinary requests use `reply(request_id, request_key, context_version, body, evidence)` with the request's unchanged `context_version`. Linked dependency requests reject the ordinary reply/resolve paths.
+The evidence text is member-supplied evidence, not server verification of a private source file. Direct requests and owner questions without a source task use `reply(request_id, request_key, context_version, body, evidence)` with the current request's `context_version`. For owner questions, refresh the current request ID and route first; historical routes reject reply, acknowledgement and resolution. Linked dependency requests reject the ordinary reply/resolve paths.
 
 `read_replies` explicitly reads replies to requests sent by the authenticated member. It uses an exclusive numeric **reply-ID** cursor, not the inbox delivery cursor:
 
@@ -87,7 +97,7 @@ The evidence text is member-supplied evidence, not server verification of a priv
 {"after_id":0,"limit":20,"task_id":12}
 ```
 
-The response contains `replies`, `next_cursor`, `has_more` and `model_consumption_proven: false`. Continue after `next_cursor` while `has_more` is true. Optional `task_id` filters the request's task association: a dependency request is associated with its source task; a member-level owner question is associated with its target task. Reset `after_id` when starting a different task query. Replies identify ordinary, current, closed or historical routes. Each returned reply gets its own durable requester read record; a receipt for an earlier answer does not mark a newer answer read. Replies from another session of the same member are included.
+The response contains `replies`, `next_cursor`, `has_more` and `model_consumption_proven: false`. Continue after `next_cursor` while `has_more` is true. Optional `task_id` filters the request's task association: a dependency request is associated with its source task; an owner question without a source task is associated with its target task. Reset `after_id` when starting a different task query. Replies identify ordinary direct requests or current, closed and historical owner-question/dependency routes. A historical answer is retained evidence, not an answer on the current route. Each returned reply gets its own durable requester read record; reading an old route or an earlier answer does not mark a newer answer read, select a recipient or confirm the current route. Replies from another session of the same member are included.
 
 `read_replies` neither resolves a request nor creates the source execution's dependency-confirmation receipt. When you have reviewed a current dependency answer and it meets the need, explicitly call:
 
@@ -121,14 +131,26 @@ If a new answer or route appears, refresh and read again. Resolving a dependency
 
 The result includes typed `items`, `execution_target`, category `totals`, `cursor`, `next_cursor`, `has_more`, `truncated`, `reset`, `reset_reason` and `unchanged`. Bodies may be excerpted. Responses have a fixed 16000-byte budget, so a short page or bounded projection does not imply all project records have been returned. Use complete returned identifiers and detail operations to inspect original content.
 
-To continue, send `after_cursor` with the same task, binding and limit. Store the final `cursor` too: checking it again with unchanged semantic content returns an empty page with `unchanged: true`. Cursors bind the project, member, task focus, execution fields, limit and content version. They are opaque pagination positions, not acknowledgements or durable change deltas.
+To continue, send `after_cursor` with the same task, binding and limit. A batch is frozen while `has_more` is true: finish it before checking for later changes. Store the final `cursor` too. Checking it again compares the completed baseline with current relevant source records. An unchanged baseline returns an empty page with `unchanged: true`; changed records arrive as a real delta.
 
-- Changed content resets to the beginning with `reset_reason: "content_changed"`.
-- Changed focus/member/project or pagination scope resets with `scope_changed`.
-- Malformed or impossible cursor positions reset with `invalid_cursor`.
-- `delta` is false. On reset, replace or rebuild your local brief rather than append the new first page as a delta.
+- Each item has a stable `item_key`. Delta items use `change: "added"`, `"updated"` or `"removed"`; removed items are tombstones, not instructions to delete source data or assume a dependency was satisfied. Decision payloads retain their nested shape, and queued `owner_question` records use their genuine question identity rather than fabricated message IDs.
+- New changes during pagination do not erase the frozen batch. They are compared after its final cursor, so records are not skipped when the source changes between pages.
+- Opaque cursor state is retained in a bounded private cache and binds project, member, task focus, logical execution, ownership epoch and page limit. Invalid, missing, expired or differently scoped state requests an explicit full resync, with `reset`, `resync` and `reset_reason`; rebuild the local baseline instead of appending that new full snapshot as a delta.
+- Complete record hashes drive changes even when displayed bodies are excerpted. Continue through all pages, and use the existing detail tools for original content. Relevant unread member-level questions/answers remain recoverable when their source execution cannot be determined; known unrelated task rows are excluded.
 
 Authority is checked before cursor reuse. Retired execution input fails even with an old valid cursor. A client restart can read outstanding work from the same retained service database; simply reopening or reading does not resolve it. All workflow/brief/snapshot reads leave inbox, reply-read and dependency-confirmation evidence untouched. The separate Git `repo_checkpoint` operation includes an explicit inbox read; do not confuse it with the read-only `checkpoint` brief.
+
+### Route pending work to a current native conversation
+
+`register_session` can link a current task execution to an actual native conversation with optional `native_session_id`. The existing `session_key` remains the logical execution key used by task authority; `ownership_epoch` is still required where the task binding requires it. This alias is routing metadata, not a new grant of task ownership. A registration with no task does not infer ownership or select a task merely because one exists for the member.
+
+The P2P bridge only supplements the native alias when the native process actually supplies it and the remote schema advertises the field. On a successful claim it can report the same authorized execution through the existing registration operation. An absent native identifier or an older server keeps the existing member-level fallback; no conversation is guessed from a display name, a tool name or teammate text.
+
+An opted-in watcher reports its native session through internal authenticated `session_presence`, using a short lease (90 seconds by default) and explicit watcher observations. This operation is not an extra model-facing MCP tool. `wake_digest(session_key=<native conversation>)` returns only that session's directed work and member-level fallback work. An omitted key does not consume work reserved for another currently eligible conversation. Items include `delivery_scope`, `target_session_key`, `execution_target` and a generation-bound `delivery_key`, without message bodies or read receipts.
+
+Incoming dependencies and responsibility questions use the actual target execution; outgoing dependency answers use the source execution. When there is no reliable task association, or the alias/credential/lease/ownership epoch is no longer current, pending work falls back to the member. A stopped or expired route receives a different delivery key so a prior notification cannot permanently swallow a needed recovery notification. Another watcher cannot baseline or claim a different session's targeted item. Same-member cross-session answers are supported, and already explicitly read answers are not fresh wake items.
+
+Watcher presence, a successful alias report and an invalidation never prove model consumption. A normal wake return does not mean the native conversation exited; its short lease is allowed to expire naturally. Only a real observed owner-process exit or explicit stop is reported as stopped. No personal hook installation, native trust, task approval or sandbox settings are changed by this routing code. Actual native/cross-device validation remains deferred in this code-only pass.
 
 ### Record reliance on an approved agreement
 
@@ -161,9 +183,25 @@ Decision cards describe concrete IDs, versions/revisions, permitted choices and 
 
 Ordinary agent MCP discovery does not expose human mutation operations. A displayed card, incoming message or forwarded “approval” text is not a real user instruction. Use the existing permitted human interface for the specific current instruction. The P2P host board remains read-only. Do not paste card metadata into arbitrary commands.
 
+## Diagnose waiting and retain unsent technical work
+
+Shared `read_workflow` diagnostics separate observable business facts from transport and native unknowns. Each bounded entry has `component`, `status`, allowlisted `evidence` and a concrete `next_action`. Actual delivery, recipient read, processing, answer, exact requester read and resolution remain separate facts. Current task ownership, native aliases, credential validity and watcher lease expiry explain whether an item can target a conversation or must fall back to the member. An unobservable network link, native MCP load or hook-trust decision stays unknown and points to the specific check rather than being labeled online.
+
+The existing collaboration panel shows these facts and recovery guidance as text or links to existing task details. It never runs a suggested command, changes task ownership, starts a host, grants hook trust or approves a contract. Diagnostics do not write message receipts. Only stored observation timestamps are used; merely asking for diagnostics does not make an unchanged brief become fresh business activity.
+
+The local P2P bridge exposes its own connection, cached-event, watcher and outbox observations through `read_changes`, including while its service is unavailable. Reading local status does not call host recovery or treat cached invalidations as current remote evidence. Shared server views cannot observe an unsent queue on a person's computer; local diagnostic content is not silently uploaded into the project. Personal credentials, raw profiles, request bodies and raw remote error text are excluded from status summaries. Inspecting existing hook/watch files does not install or trust them or initialize a new watcher database.
+
+Supported local adapters retain idempotent technical question/answer intents in a private SQLite outbox when a transport failure prevents sending. A result with `status: "queued_locally"`, `service_applied: false` and `delivered: false` means **saved on this computer only**. It does not mean the peer was asked or a reply was delivered. Continue already-authorized independent work and keep the blocked portion explicit. Direct HTTP clients that have no local adapter do not acquire an offline queue automatically.
+
+On recovery, the adapter verifies the current personal agent identity against the queue's original project/member and reuses the original operation, idempotency key, revision, task session and ownership epoch. The service still performs its current authorization and route checks atomically. An adapter does not replace an old epoch, select another actor, readdress a stale answer or inherit a new owner's permissions. Repeated delivery after a lost response uses the same idempotency key, and a successful live retry also reconciles its matching local intent. A service-applied queue entry still does not prove that a model read or used it.
+
+The queue is limited to explicitly invoked, idempotent technical question/answer operations. It does not buffer reads, acknowledgements, resolutions, approvals, ownership changes or host-management commands. Authentication, validation, conflict and quota failures remain explicit blocked states; retryable transport/server failures use bounded backoff and an attempt limit. Explicitly stopped or recovery-blocked hosts remain stopped: diagnostic reads and queue replay cannot revive them. Existing records are retained for inspection and original intent is never silently discarded. First-time unknown identities are not invented merely to make an offline send appear successful.
+
+Code-level tests cover these contracts; actual native, network-outage and independent-user acceptance remain deferred as requested.
+
 ## Evaluate the ten requirements honestly
 
-Use [tool-free workflow evaluation](workflow-evaluation.md) to prepare separate participant goals and normalize privately retained observations. The evaluator never launches agents, sends messages or spends native quota. Its reference strings are reviewer-supplied attestations, not authenticated proof.
+Use [tool-free workflow evaluation](workflow-evaluation.md) for its separate paths: the normalized scorer prepares goals and evaluates reviewer-supplied references without starting processes; the opt-in native runner executes actual coding-agent processes. The latter is deliberately not running in this code-only pass. Neither path manufactures independent-user acceptance.
 
 | Requirement | Capability and evidence to inspect |
 | --- | --- |

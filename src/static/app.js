@@ -20,6 +20,9 @@ const add = (parent, ...children) => { children.forEach(c => parent.append(c)); 
 const button = (label, action, cls) => { const b = text('button', label, cls); b.type = 'button'; b.addEventListener('click', action); return b; };
 const date = value => { if(!value) return '—'; const d = new Date(value); return Number.isNaN(d.getTime()) ? String(value) : d.toLocaleString('zh-CN', {month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit'}); };
 const memberName = id => snapshot?.members.find(m => m.member_id === id)?.display_name || (id ? '成员 ' + id : '待分派');
+function requestRouteState(request){return request.owner_route_state||(request.dependency_id?request.dependency_route_state:'ordinary');}
+function requestIsActive(request){return !request.resolved_at&&['ordinary','current'].includes(requestRouteState(request));}
+function requestRouteLabel(request){const route=requestRouteState(request);return route==='historical'?'历史路由':route==='closed'?'已关闭路由':'';}
 const taskName = id => snapshot?.tasks.find(t => t.id === id)?.title || '任务 #' + id;
 const empty = (target, message) => target.append(text('p',message,'empty'));
 const badge = value => text('span',states[value] || value,'badge'+(Object.hasOwn(states,value)?' badge-'+value:''));
@@ -151,7 +154,7 @@ function renderOverview(){
     else{setView(item.kind==='contract'?'contracts':'requests');$(item.kind+'-'+item.id)?.scrollIntoView({block:'center'});}
   }});
   if(!$('summary'))return;
-  $('summary').replaceChildren(); for(const [n,label] of [[snapshot.members.length,'项目成员'],[snapshot.tasks.length,'声明任务'],[snapshot.requests.filter(r=>!r.resolved_at&&(!r.dependency_id||r.dependency_route_state==='current')).length,'待解决请求'],[snapshot.git?.delivery_graph?.items?.length||0,'交付对象']]) add($('summary'),add(text('div','','metric'),text('strong',n),text('span',label)));
+  $('summary').replaceChildren(); for(const [n,label] of [[snapshot.members.length,'项目成员'],[snapshot.tasks.length,'声明任务'],[snapshot.requests.filter(requestIsActive).length,'待解决请求'],[snapshot.git?.delivery_graph?.items?.length||0,'交付对象']]) add($('summary'),add(text('div','','metric'),text('strong',n),text('span',label)));
   if($('overlaps')){$('overlaps').replaceChildren();if(!snapshot.overlaps.length)empty($('overlaps'),'当前没有声明范围交叠。');const reasons={'Declared scopes are equal':'两项任务声明了相同的工作范围。','One declared scope is a slash-segment prefix of the other':'一项任务的声明范围包含另一项的子路径。'};snapshot.overlaps.forEach(o=>add($('overlaps'),add(text('article','','record'),text('h3',o.task_ids.map(taskName).join(' × ')),text('p',o.scopes.join(' / '),'meta'),text('p',reasons[o.reason]||o.reason))));}
   if($('git-overlaps')){$('git-overlaps').replaceChildren();gitUI()?.renderOverlaps($('git-overlaps'),snapshot.git,taskName);if(!snapshot.git?.overlaps?.length)empty($('git-overlaps'),'当前没有新鲜观测中的实际路径重叠。');}
 }
@@ -245,7 +248,7 @@ function matchingTasks(tasks, progress, query, owner){
 }
 function boardMetrics(){
   return [[snapshot.tasks.length,'协作任务'],[snapshot.members.length,'团队成员'],
-    [snapshot.requests.filter(r=>!r.resolved_at&&(!r.dependency_id||r.dependency_route_state==='current')).length,'待解决请求'],
+    [snapshot.requests.filter(requestIsActive).length,'待解决请求'],
     [snapshot.tasks.filter(t=>taskColumn(t,snapshot.progress.find(p=>p.task_id===t.id))==='merged').length,'已合并任务']];
 }
 function renderTasks(){
@@ -345,12 +348,13 @@ function renderObjectDetail(){
   if(focus)restoreRecordFocus(focus);
 }
 function requestRecord(r){
-  const row=text('article','','record'); add(row,add(text('div','','record-header'),add(text('div'),badge(r.resolved_at?'已解决':'待解决'),text('span','#'+r.id+' · 上下文 v'+r.context_version,'meta')),text('span',memberName(r.sender_member_id)+' → '+memberName(r.receiver_member_id),'meta')),text('h3',r.body)); if(r.task_id) row.append(taskLink(r.task_id));
+  const row=text('article','','record'); add(row,add(text('div','','record-header'),add(text('div'),badge(requestRouteLabel(r)||(r.resolved_at?'已解决':'待解决')),text('span','#'+r.id+' · 上下文 v'+r.context_version,'meta')),text('span',memberName(r.sender_member_id)+' → '+memberName(r.receiver_member_id),'meta')),text('h3',r.body)); if(r.task_id) row.append(taskLink(r.task_id));
     add(row,text('p','发起 '+date(r.created_at)+' · 分派 '+date(r.assigned_at),'meta'),text('p','读取 '+date(r.read_at)+' · 处理 '+date(r.processed_at)+' · 解决 '+date(r.resolved_at),'timeline'));
-    if(!r.dependency_id && !r.receiver_member_id && !r.resolved_at){ const form=text('form','','assignment'),label=text('label','分派收件人'),select=document.createElement('select'); select.name='receiver_member_id'; select.required=true; add(select,text('option','选择成员')); select.firstChild.value=''; snapshot.members.forEach(m=>{const o=text('option',m.display_name);o.value=m.member_id;select.append(o);}); label.append(select); const submit=text('button','分派');submit.type='submit'; add(form,label,submit); form.addEventListener('submit',e=>{e.preventDefault(); perform(submit,()=>api('/api/requests/'+r.id+'/assign',{receiver_member_id:select.value}));}); row.append(form); }
+    if(!r.dependency_id && !r.owner_target_task_id && !r.receiver_member_id && requestIsActive(r)){ const form=text('form','','assignment'),label=text('label','分派收件人'),select=document.createElement('select'); select.name='receiver_member_id'; select.required=true; add(select,text('option','选择成员')); select.firstChild.value=''; snapshot.members.forEach(m=>{const o=text('option',m.display_name);o.value=m.member_id;select.append(o);}); label.append(select); const submit=text('button','分派');submit.type='submit'; add(form,label,submit); form.addEventListener('submit',e=>{e.preventDefault(); perform(submit,()=>api('/api/requests/'+r.id+'/assign',{receiver_member_id:select.value}));}); row.append(form); }
     if(r.dependency_id)row.append(text('p',r.dependency_route_state==='current'?'当前任务依赖：请在任务详情答复或确认满足。':r.dependency_route_state==='historical'?'历史路由：责任人已变化，原消息和回执保留。':'已关闭的任务依赖，保留处理记录。','notice'));
+    if(r.owner_target_task_id)row.append(text('p',r.owner_route_state==='historical'?'历史路由：目标责任人已变化，请查看当前负责人对应的新请求。':r.owner_route_state==='closed'?'已关闭路由：当前不再等待此路线答复，历史记录保留。':'此问题跟随目标任务的当前负责人。','notice'));
     r.replies.forEach(reply=>add(row,add(text('div','','reply'),text('p',memberName(reply.author_member_id)+' · 回复 · '+date(reply.created_at),'meta'),text('p',reply.body),text('p','证据：'+(reply.evidence||'未提供'),'meta'))));
-    if(!r.dependency_id && !r.resolved_at && r.replies.length && r.sender_member_id===snapshot.me.member_id) row.append(button('确认请求已解决',e=>perform(e.currentTarget,()=>api('/api/requests/'+r.id+'/resolve',{context_version:r.context_version}))));
+    if(!r.dependency_id && requestIsActive(r) && r.replies.length && r.sender_member_id===snapshot.me.member_id) row.append(button('确认请求已解决',e=>perform(e.currentTarget,()=>api('/api/requests/'+r.id+'/resolve',{context_version:r.context_version}))));
 return row;
 }
 function contractRecord(c){
@@ -364,10 +368,10 @@ function contractRecord(c){
 function renderRequests(){
   const root=$('requests');root.replaceChildren();
   const query=($('request-search')?.value||'').trim().toLocaleLowerCase(),state=$('request-filter')?.value||'all';
-  const rows=snapshot.requests.filter(r=>(!query||[r.body,memberName(r.sender_member_id),memberName(r.receiver_member_id),...r.replies.map(reply=>reply.body)].join(' ').toLocaleLowerCase().includes(query))&&(state==='all'||state==='resolved'?state==='all'||!!r.resolved_at:!r.resolved_at));
+  const rows=snapshot.requests.filter(r=>(!query||[r.body,memberName(r.sender_member_id),memberName(r.receiver_member_id),...r.replies.map(reply=>reply.body)].join(' ').toLocaleLowerCase().includes(query))&&(state==='all'||(state==='resolved'?!!r.resolved_at:requestIsActive(r))));
   if(!rows.length)empty(root,snapshot.requests.length?'没有匹配的协作请求，请调整筛选。':'暂时没有协作请求。');
   rows.forEach(r=>{
-    const row=text('article','','request-row'),content=text('div','','request-main'),people=text('div','','request-people'),state=text('span',r.resolved_at?'已解决':r.replies.length?'已有回复 · 待确认':'等待回复','object-status '+(r.resolved_at?'good':r.replies.length?'pending':'waiting'));
+    const retired=!!requestRouteLabel(r),row=text('article','','request-row'),content=text('div','','request-main'),people=text('div','','request-people'),state=text('span',requestRouteLabel(r)||(r.resolved_at?'已解决':r.replies.length?'已有回复 · 待确认':'等待回复'),'object-status '+(retired?'muted':r.resolved_at?'good':r.replies.length?'pending':'waiting'));
     row.id='request-'+r.id;
     add(content,text('span','请求 #'+r.id,'object-reference'),objectTitle(r.body,'request',r.id));
     if(r.task_id)content.append(taskLink(r.task_id));

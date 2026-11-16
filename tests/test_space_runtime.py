@@ -89,6 +89,25 @@ class Profiles(unittest.TestCase):
         with self.assertRaises(ValueError):
             private_directory(Path('.local/../tests/private-state'))
 
+    def test_state_allows_local_folder_beneath_repository(self):
+        from coopagents.spaces import private_directory
+        state = private_directory(self.directory / 'state')
+        self.assertTrue(state.is_dir())
+
+    def test_state_allows_inner_git_entry_when_outer_local_covers_it(self):
+        # Sandboxed execution can expose a synthetic .git entry above the real
+        # repository root; the outer repository's .local cover still applies.
+        from coopagents.spaces import private_directory
+        inner = self.directory / 'tool'
+        (inner / '.git').mkdir(parents=True)
+        state = private_directory(inner / 'coopagents-home' / 'spaces' / 'probe-1')
+        self.assertTrue(state.is_dir())
+
+    def test_state_refusal_names_the_repository_rule(self):
+        from coopagents.spaces import private_directory
+        with self.assertRaisesRegex(ValueError, 'Git repository'):
+            private_directory(Path('src/private-state'))
+
     def test_status_returns_current_origin_after_control_startup(self):
         profile = dict(schema_version=1, origin='http://127.0.0.1:8765', room_id='room',
                        member_id='member', web_token='web', agent_token='agent',
@@ -173,6 +192,49 @@ class Profiles(unittest.TestCase):
         self.assertEqual(emitted['verification'], verification)
         self.assertEqual(emitted['next'], 'Start a new session.')
         checked.assert_called_once_with('private-profile', 'codex', None, None)
+
+    def test_request_forwards_timeout_to_opener(self):
+        seen = {}
+
+        class FakeResponse:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+            def read(self, limit):
+                return b'{}'
+
+        class FakeOpener:
+            def open(self, req, timeout=None):
+                seen['timeout'] = timeout
+                return FakeResponse()
+
+        with patch('urllib.request.build_opener', return_value=FakeOpener()):
+            self.assertEqual(runtime.request('http://127.0.0.1:9', '/x'), {})
+            self.assertEqual(seen['timeout'], 5)
+            runtime.request('http://127.0.0.1:9', '/x', timeout=30)
+            self.assertEqual(seen['timeout'], 30)
+
+    def test_join_uses_long_timeout_for_p2p_reply(self):
+        from datetime import datetime, timedelta, timezone
+        descriptor = dict(schema_version=1, origin='http://127.0.0.1:9', room_id='room',
+                          invite_token='invite',
+                          expires_at=(datetime.now(timezone.utc) + timedelta(hours=1)).isoformat())
+        invitation_file = self.directory / 'invitation.json'
+        invitation_file.write_text(json.dumps(descriptor), encoding='utf-8')
+        calls = {}
+
+        def fake_request(origin, path, **kwargs):
+            calls.update(kwargs)
+            return {'room_id': 'room', 'member_id': 'member', 'web_token': 'web', 'agent_token': 'agent'}
+
+        with patch.object(runtime, 'request', side_effect=fake_request):
+            result = runtime.join(str(invitation_file), 'Peer', self.directory / 'peer')
+        self.assertEqual(calls['timeout'], runtime.JOIN_REQUEST_TIMEOUT)
+        self.assertEqual(calls['data']['invite_token'], 'invite')
+        self.assertEqual(result['room_id'], 'room')
 
 
 class Runtime(unittest.TestCase):

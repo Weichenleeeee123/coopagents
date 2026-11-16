@@ -10,10 +10,11 @@ import shutil
 import site
 import subprocess
 import sys
+import time
 from urllib.error import HTTPError, URLError
 
 from . import space_connect
-from .p2p import member_link
+from .p2p import SpaceUnreachableError, member_link
 from .spaces import checked_path, read_profile
 
 
@@ -194,7 +195,11 @@ def harness_cli_check():
     check always passes so the inventory can never block setup. Kimi Code
     and the legacy kimi-cli share the `kimi` command name; the reported
     version tells them apart (2.x is the current CLI, 1.x the legacy one).
+    For Pi, a detected version below the MCP floor (0.99.0) is reported as
+    mcp unsupported with a reason; an undetected version reports nothing
+    about MCP either way.
     """
+    from .harness_adapters import pi_mcp_supported
     found = {}
     for harness, binary in HARNESS_CLIS:
         path = shutil.which(binary)
@@ -211,6 +216,14 @@ def harness_cli_check():
         except (OSError, subprocess.TimeoutExpired):
             pass
         found[harness] = {'present': True, 'path': path, 'version': version}
+        if harness == 'pi':
+            supported = pi_mcp_supported(version)
+            if supported is not None:
+                found[harness]['mcp'] = 'supported' if supported else 'unsupported'
+                if not supported:
+                    found[harness]['mcp_reason'] = ('Pi %s is below the minimum MCP version 0.99.0; '
+                                                    'upgrade to the maintained '
+                                                    '@earendil-works/pi-coding-agent package.' % version)
     present = [name for name, info in found.items() if info['present']]
     summary = ('Harness CLIs on PATH: %s.' % ', '.join(present)) if present \
         else 'No supported harness CLI was found on PATH.'
@@ -313,6 +326,7 @@ def local_checks(*, tool=None, profile_path=None, project_dir=None, cli=None, sk
     connections = []
     if profile_path:
         checks.append(mcp_check(selected, profile_path, cli=cli, name=name))
+        checks.append(workflow_diagnostics_check(profile_path, tool=selected or tool, project_dir=project_dir))
     elif selected:
         try:
             entries = space_connect.registered_spaces(selected, project_dir or os.getcwd())
@@ -334,11 +348,53 @@ def local_checks(*, tool=None, profile_path=None, project_dir=None, cli=None, sk
     return result
 
 
+def workflow_diagnostics_check(profile_path, **options):
+    """Inspect existing workflow state without host start, network or native CLI calls."""
+    from .workflow_diagnostics import local_diagnostics
+    result = local_diagnostics(profile_path, **options)
+    return make_check('workflow_diagnostics', 'unknown',
+        'Existing local workflow facts were inspected; native consumption and trust remain unverified.',
+        'Inspect the component-specific recovery actions; no host, watcher or trust was changed.', result)
+
+
 def _request_profile(profile, path, *, token=None, data=None):
     # Import lazily to keep the diagnostic core usable without starting a runtime.
     from .space_runtime import request
     from .checkpoint_hook import bounded_call
     return bounded_call(lambda: request(profile['origin'], path, token=token or profile['agent_token'], data=data), 10)
+
+
+def _verified_link(profile):
+    """Open a warm member link and verify the personal identity, retrying once.
+
+    A transient hiccup (slow dial, busy host) must not fail onboarding
+    verification when the next attempt succeeds. The retry covers link setup
+    and the identity request together; the last error is raised.
+    """
+    last_error = None
+    for attempt in range(2):
+        try:
+            link_cm = member_link(profile, warm=True)
+            link = link_cm.__enter__()
+        except Exception as error:
+            last_error = error
+        else:
+            try:
+                identity = _request_profile(profile, '/api/me')
+            except Exception as error:
+                link_cm.__exit__(None, None, None)
+                last_error = error
+            else:
+                me = identity.get('me') if isinstance(identity, dict) else None
+                if not isinstance(me, dict) or me.get('room_id') != profile['room_id'] \
+                        or me.get('member_id') != profile['member_id'] or me.get('kind') != 'agent':
+                    link_cm.__exit__(None, None, None)
+                    last_error = ValueError('The authenticated identity does not match the private profile')
+                else:
+                    return link_cm, link, me
+        if attempt == 0:
+            time.sleep(2)
+    raise last_error
 
 
 def profile_checks(profile_path, *, tool=None, project_dir=None, cli=None, skills=None):
@@ -364,12 +420,8 @@ def profile_checks(profile_path, *, tool=None, project_dir=None, cli=None, skill
                          secrets=secrets_to_hide)]
     identity_verified = False
     try:
-        with member_link(profile) as link:
-            identity = _request_profile(profile, '/api/me')
-            me = identity.get('me') if isinstance(identity, dict) else None
-            if not isinstance(me, dict) or me.get('room_id') != profile['room_id'] \
-                    or me.get('member_id') != profile['member_id'] or me.get('kind') != 'agent':
-                raise ValueError('The authenticated identity does not match the private profile')
+        link_cm, link, me = _verified_link(profile)
+        try:
             identity_verified = True
             checks.append(make_check('runtime_reachability', 'pass', 'The space accepted the personal agent identity.',
                                      evidence={'room_id': me['room_id'], 'member_id': me['member_id'], 'kind': me['kind']},
@@ -418,10 +470,12 @@ def profile_checks(profile_path, *, tool=None, project_dir=None, cli=None, skill
                 checks.append(make_check('challenge_round_trip', 'fail', 'The diagnostic challenge did not complete.',
                                          'Retry doctor after the agent identity is reachable; no credential was changed.',
                                          secrets=secrets_to_hide))
+        finally:
+            link_cm.__exit__(None, None, None)
     except Exception as error:
         reason = ('credential_rejected' if isinstance(error, HTTPError) and error.code in (401, 403)
                   else 'endpoint_error' if isinstance(error, HTTPError)
-                  else 'unreachable' if isinstance(error, (OSError, URLError, TimeoutError))
+                  else 'unreachable' if isinstance(error, (OSError, URLError, TimeoutError, SpaceUnreachableError))
                   else 'identity_mismatch' if isinstance(error, ValueError) else 'connection_failed')
         if identity_verified:
             checks = [c for c in checks if c['id'] != 'transport_path']

@@ -175,6 +175,44 @@ class CheckpointTests(unittest.TestCase):
         self.assertTrue(brief['truncated'])
         self.assertTrue(brief['requests'][0]['excerpted'])
 
+    def test_checkpoint_returns_the_shared_policy_for_each_lifecycle_source(self):
+        from coopagents import checkpoints, collaboration_policy
+        self.assertIn('Stop', checkpoints.HOOK_EVENTS)
+        self.assertIn('PostToolUseFailure', checkpoints.HOOK_EVENTS)
+        cases = {'SessionStart': ('startup', 'hook'), 'startup': ('startup', 'tool'),
+            'UserPromptSubmit': ('prompt', 'hook'), 'prompt': ('prompt', 'tool'),
+            'PostToolUse': ('tool', 'hook'), 'tool': ('tool', 'tool'),
+            'Stop': ('completion', 'hook'), 'completion': ('completion', 'tool'),
+            'PostToolUseFailure': ('blocker', 'hook'), 'blocker': ('blocker', 'tool'),
+            'reply': ('reply', 'tool'), 'manual': ('manual', 'manual')}
+        for event, (phase, source) in cases.items():
+            with self.subTest(event=event):
+                result = self.service.call('checkpoint', self.owner['agent_token'],
+                    dict(session_key='lifecycle-' + event,
+                         tool='claude-code' if event == 'PostToolUseFailure' else 'codex-cli', event=event))
+                self.assertEqual(set(result), {'checkpoint', 'brief', 'policy'})
+                self.assertEqual(result['checkpoint']['event'], event)
+                self.assertEqual(result['checkpoint']['source'], source)
+                self.assertEqual(result['policy'], collaboration_policy.policy_for_event(event))
+                self.assertEqual(result['policy']['phase'], phase)
+                self.assertEqual(result['checkpoint']['last_hook_at'] is not None, source == 'hook')
+
+    def test_lifecycle_policy_never_copies_message_content_or_changes_read_state(self):
+        canary = 'SYNTHETIC-MESSAGE-INSTRUCTION-CANARY'
+        request = self.service.messages.send_request(self.peer['agent_token'], 'question',
+            self.owner['member_id'], None, 1, canary)
+        self.service.messages.reply(self.owner['agent_token'], request['id'], 'answer', 1, canary)
+        for event in ('startup', 'blocker', 'reply', 'completion', 'manual'):
+            result = self.service.call('checkpoint', self.owner['agent_token'],
+                dict(session_key='lifecycle', tool='codex-cli', event=event))
+            self.assertIn('policy', result)
+            self.assertNotIn(canary, json.dumps(result['policy']))
+        with self.service.identity.db.connect() as db:
+            for table in ('message_receipts', 'workflow_reply_reads', 'dependency_reads'):
+                self.assertEqual(db.execute('SELECT COUNT(*) FROM ' + table).fetchone()[0], 0)
+            self.assertIsNone(db.execute('SELECT resolved_at FROM message_requests').fetchone()[0])
+            self.assertEqual(db.execute('SELECT COUNT(*) FROM message_replies').fetchone()[0], 1)
+
 
 if __name__ == '__main__':
     unittest.main()

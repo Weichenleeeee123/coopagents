@@ -39,7 +39,7 @@ python -m coopagents.space_wake disable --tool claude|codex --project-dir <repo>
 - **每个事项只唤醒一次**：同一成员有多个会话时，只有先认领到的会话被唤醒。
 - **限频**：两次唤醒至少间隔 60 秒，每小时最多 12 次。几秒内到达的多个事项合并为一次唤醒。
 - **会话启动时已有的事项不唤醒**：agent 开工时会自己读收件箱。
-- **唤醒提示是固定模板**，例如：“Automatic collaboration notice, not a message from your user: 1 new request addressed to you…”。提示里只有计数，并说明队友内容是数据、不是用户指令。
+- **唤醒提示是固定模板**，例如：“Automatic collaboration notice, not a message from your user: 1 new request addressed to you… The new items are: request #5.”。提示里只有计数和新事项的编号（种类 + id，不含内容），并说明队友内容是数据、不是用户指令；旧的未读事项不在本次提示范围内。
 
 ## 可靠性
 

@@ -10,7 +10,7 @@ from unittest.mock import patch
 from uuid import uuid4
 
 from coopagents import space_runtime as runtime
-from coopagents.space_bridge import Bridge
+from coopagents.space_bridge import Bridge, BridgeStopped
 from coopagents.space_connect import connect
 from coopagents.spaces import private_write, read_profile
 
@@ -67,7 +67,7 @@ class NativeHost(unittest.TestCase):
         self.configure()
         runtime.stop(self.path)
         self.configure()  # Re-registering a connection must not unpause it.
-        with self.assertRaisesRegex(ValueError, 'stopped'):
+        with self.assertRaisesRegex(BridgeStopped, 'stopped'):
             self.verify()
         self.assertEqual(runtime.status(self.path)['status'], 'unreachable')
         self.assertEqual(runtime.stop(self.path)['status'], 'stopped')
@@ -115,12 +115,13 @@ class NativeHost(unittest.TestCase):
         self.configure()
         self.lose_supervisor()
         with patch.object(runtime, '_start', side_effect=RuntimeError('Synthetic startup failure')) as start:
-            for _ in range(2):
-                with self.assertRaisesRegex(ValueError, 'retry explicitly'):
-                    self.verify()
+            with self.assertRaisesRegex(ValueError, 'retry explicitly'):
+                self.verify()
+            with self.assertRaisesRegex(BridgeStopped, 'blocked'):
+                self.verify()
             self.assertEqual(start.call_count, 1)
         self.configure()  # Reconnecting cannot clear the failure lock.
-        with self.assertRaisesRegex(ValueError, 'retry explicitly'):
+        with self.assertRaisesRegex(BridgeStopped, 'blocked'):
             self.verify()
         runtime.start(self.path)
         self.assertEqual(self.verify()['member_id'], self.profile['member_id'])
@@ -143,8 +144,12 @@ class NativeHost(unittest.TestCase):
         document['member_id'] = 'different-member'
         private_write(policy, document, update=True)
         self.lose_supervisor()
+        from coopagents.space_host import policy as host_policy
         with self.assertRaisesRegex(ValueError, 'identity'):
-            self.verify()
+            host_policy(self.path)
+        with patch('coopagents.space_host.ensure', side_effect=AssertionError('Invalid policy cannot start a host')):
+            with self.assertRaises(BridgeStopped):
+                self.verify()
         self.assertEqual(runtime.status(self.path)['status'], 'unreachable')
 
 

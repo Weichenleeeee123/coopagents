@@ -15,6 +15,7 @@ import json
 import logging
 import re
 import threading
+import time
 import urllib.request
 from urllib.parse import urlsplit
 
@@ -69,6 +70,16 @@ def _background_loop():
 
 def _run(coro, timeout):
     return asyncio.run_coroutine_threadsafe(coro, _background_loop()).result(timeout)
+
+
+class SpaceUnreachableError(ValueError):
+    """The space could not be reached over its transport.
+
+    Raised for a failed peer-to-peer dial and for a busy local port. The
+    identity was never checked, so this must not be reported as an identity
+    mismatch; it stays a ValueError so existing ValueError handling is
+    preserved.
+    """
 
 
 def validate_endpoint_id(value):
@@ -145,21 +156,57 @@ class HostLink:
     def __init__(self, secret, target_port, *, local_only=False, online_timeout=10):
         self.target_port = target_port
         self.connections = set()
-        self.online = False
+        self._online = False
+        self._closed = False
+        self.endpoint = None
         self.endpoint = _run(self._bind(secret, local_only, online_timeout), online_timeout + 20)
         self.endpoint_id = str(self.endpoint.id())
         self.accepting = asyncio.run_coroutine_threadsafe(self._accept(), _background_loop())
+
+    @property
+    def online(self):
+        """Whether the endpoint currently has a usable home relay.
+
+        The home relay can arrive after the bind-time wait (slow networks,
+        relay rotation), so this re-reads the endpoint's current address
+        instead of trusting the one-shot bind result. A local-only endpoint
+        never has a relay and stays offline.
+        """
+        if self._closed or self.endpoint is None:
+            return self._online
+        try:
+            return self.endpoint.addr().relay_url() is not None
+        except Exception:
+            return self._online
+
+    def status(self):
+        """Secret-free diagnostics for the owner control endpoint."""
+        result = {'endpoint_id': self.endpoint_id, 'online': self.online, 'members': len(self.connections)}
+        try:
+            addresses = self.addresses()
+        except Exception:
+            return result
+        result['relay_url'] = addresses['relay_url']
+        result['direct_addresses'] = addresses['addresses']
+        return result
 
     async def _bind(self, secret, local_only, online_timeout):
         endpoint = await _iroh().Endpoint.bind(_options(secret=secret, alpns=[ALPN], local_only=local_only))
         if not local_only:
             # Remote members need the relay and discovery record. Without them
             # the space still serves direct dialers, so report rather than fail.
+            # The live `online` property re-reads the home relay afterwards;
+            # this wait only seeds the initial value and surfaces slow relays.
             try:
                 await asyncio.wait_for(endpoint.online(), online_timeout)
-                self.online = True
+                self._online = True
             except asyncio.TimeoutError:
-                self.online = False
+                self._online = False
+                log.warning('p2p endpoint has no home relay after %ss; remote members cannot discover this host yet',
+                            online_timeout)
+            except Exception as error:
+                self._online = False
+                log.warning('p2p endpoint online check failed: %r', error)
         return endpoint
 
     def addresses(self):
@@ -215,8 +262,11 @@ class HostLink:
             self.connections.discard(connection)
 
     def close(self):
+        self._online = False
+        self._closed = True
         try:
-            _run(self.endpoint.close(), 10)
+            if self.endpoint is not None:
+                _run(self.endpoint.close(), 10)
         finally:
             self.accepting.cancel()
 
@@ -252,6 +302,22 @@ class MemberLink:
             self.connection = await asyncio.wait_for(self.endpoint.connect(addr, ALPN), self.connect_timeout)
             return self.connection
 
+    def ensure_connected(self):
+        """Dial the host now, within the connection budget.
+
+        The first HTTP request over a fresh link otherwise pays the whole
+        relay/discovery dial out of its own much shorter timeout and fails
+        with a generic unreachable message even though the dial would have
+        succeeded. Warming here surfaces a peer-to-peer-specific failure
+        instead, and consumes no invitation: only a QUIC connection is made.
+        """
+        try:
+            return _run(self._connect(), self.connect_timeout + 10)
+        except Exception as error:
+            self.connection = None
+            raise SpaceUnreachableError('Could not reach the space over its peer-to-peer transport. '
+                                          'The host may be offline, or unreachable from this network.') from error
+
     async def _local(self, reader, writer):
         # One retry covers a connection the host closed since the last use.
         for attempt in range(2):
@@ -280,7 +346,13 @@ class MemberLink:
         async def shutdown():
             self.server.close()
             await self.endpoint.close()
-        _run(shutdown(), 10)
+        try:
+            _run(shutdown(), 10)
+        except Exception as error:
+            # Cleanup must not fail the operation that used the link: on a
+            # slow path the endpoint close can stall past its budget after a
+            # request already succeeded, and join would then lose its profile.
+            log.debug('member link shutdown did not finish cleanly: %r', error)
 
     def __enter__(self):
         return self
@@ -291,27 +363,48 @@ class MemberLink:
 
 def _serves_space(origin, room_id):
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-    try:
-        with opener.open(urllib.request.Request(origin + '/health', headers={'Accept': 'application/json'}), timeout=5) as response:
-            return json.loads(response.read(4096)).get('room_id') == room_id
-    except (OSError, ValueError):
-        return False
+    for attempt in range(3):
+        try:
+            with opener.open(urllib.request.Request(origin + '/health', headers={'Accept': 'application/json'}), timeout=5) as response:
+                payload = json.loads(response.read(4096))
+        except (OSError, ValueError):
+            # The listener exists but is not answering yet (the host is still
+            # starting); retry briefly. A definitive answer never retries.
+            if attempt < 2:
+                time.sleep(1)
+            continue
+        return payload.get('room_id') == room_id
+    return False
 
 
-def member_link(profile):
+def member_link(profile, *, warm=False):
     """Context manager making a member profile's origin reachable on this computer.
 
     The space's loopback port may already serve this space: the bridge holds
     the link, or the host runs on this same computer. Reuse it after verifying
     the space identity; any other program on the port is an error.
+
+    With warm=True, the QUIC connection is established before returning, so a
+    caller about to make a short-timeout HTTP request (join) does not pay the
+    relay/discovery dial out of that request's budget.
     """
     link = profile.get('p2p')
     if not link:
         return nullcontext()
     port = urlsplit(profile['origin']).port
     try:
-        return MemberLink(validate_link(link)['endpoint_id'], port)
+        member = MemberLink(validate_link(link)['endpoint_id'], port)
     except OSError:
         if _serves_space(profile['origin'], profile['room_id']):
             return nullcontext()
-        raise ValueError('The local port for this space is used by another program')
+        raise SpaceUnreachableError('The local port for this space is used by another program')
+    if warm:
+        try:
+            member.ensure_connected()
+        except Exception:
+            try:
+                member.close()
+            except Exception:
+                pass  # the dial error below is the diagnostic that matters
+            raise
+    return member

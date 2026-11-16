@@ -70,15 +70,19 @@ class ColdStartTests(unittest.TestCase):
         allowed = command[command.index('--allowedTools') + 1].split(',')
         self.assertEqual(allowed, ['Read',
             'Bash("C:\\Users\\Synthetic User\\project\\.venv\\Scripts\\python.exe" -m coopagents.space_runtime:*)',
+            'Bash(C:\\Users\\Synthetic User\\project\\.venv\\Scripts\\python.exe -m coopagents.space_runtime:*)',
             'Bash("C:/Users/Synthetic User/project/.venv/Scripts/python.exe" -m coopagents.space_runtime:*)',
-            'Bash("/c/Users/Synthetic User/project/.venv/Scripts/python.exe" -m coopagents.space_runtime:*)'])
-        self.assertTrue(all(rule.endswith('" -m coopagents.space_runtime:*)')
+            'Bash(C:/Users/Synthetic User/project/.venv/Scripts/python.exe -m coopagents.space_runtime:*)',
+            'Bash("/c/Users/Synthetic User/project/.venv/Scripts/python.exe" -m coopagents.space_runtime:*)',
+            'Bash(/c/Users/Synthetic User/project/.venv/Scripts/python.exe -m coopagents.space_runtime:*)'])
+        self.assertTrue(all(rule.endswith(' -m coopagents.space_runtime:*)')
                             for rule in allowed if rule.startswith('Bash(')))
         command = self.runner.model_command('claude', 'claude', root, python)
         self.assertEqual(command[command.index('--allowedTools') + 1], 'Read')
         posix = self.runner.model_command('claude', 'claude', root, PurePosixPath('/venv/bin/python'), setup=True)
         self.assertEqual(posix[posix.index('--allowedTools') + 1],
-                         'Read,Bash("/venv/bin/python" -m coopagents.space_runtime:*)')
+                         'Read,Bash("/venv/bin/python" -m coopagents.space_runtime:*),'
+                         'Bash(/venv/bin/python -m coopagents.space_runtime:*)')
 
     def test_setup_prompt_avoids_unapproved_environment_probes(self):
         prompt = self.runner.setup_prompt('claude', Path('/private/run'),
@@ -91,6 +95,31 @@ class ColdStartTests(unittest.TestCase):
         dev_prompt = self.runner.setup_prompt('codex', Path('/private/run'), Path('/private/python'),
                                                Path('/private/skill/SKILL.md'), installed_wheel=False)
         self.assertIn('authorized development checkout is already installed editable', dev_prompt)
+
+    def test_setup_prompt_authorizes_exact_skill_read_for_codex_only(self):
+        skill = Path('/private/skill/SKILL.md')
+        codex = self.runner.setup_prompt('codex', Path('/private/run'), Path('/private/python'),
+                                         skill, installed_wheel=False)
+        self.assertIn('read-only shell command', codex)
+        self.assertIn('that single file read is authorized', codex)
+        claude = self.runner.setup_prompt('claude', Path('/private/run'), Path('/private/python'),
+                                          skill, installed_wheel=True)
+        self.assertNotIn('read-only shell command', claude)
+
+    def test_snapshot_warms_the_member_link_before_reading(self):
+        root = Path(__file__).resolve().parents[2] / '.local/cold-start-tests' / uuid4().hex
+        root.mkdir(parents=True)
+        profile_path = root / 'profile.json'
+        profile = {'schema_version': 1, 'origin': 'http://127.0.0.1:8765', 'room_id': 'room-1',
+                   'member_id': 'member-1', 'agent_token': 'agent-secret-value', 'web_token': 'web-secret-value'}
+        profile_path.write_text(json.dumps(profile), encoding='utf-8')
+        from contextlib import nullcontext
+        with patch('coopagents.p2p.member_link', return_value=nullcontext()) as network, \
+                patch('coopagents.space_runtime.request', return_value={'snapshot': True}) as fetch:
+            result = self.runner.snapshot(profile_path)
+        network.assert_called_once_with(profile, warm=True)
+        fetch.assert_called_once_with('http://127.0.0.1:8765', '/api/snapshot', token='web-secret-value')
+        self.assertEqual(result, {'snapshot': True})
 
     def test_invitation_prompt_authorizes_exact_local_command(self):
         command = self.runner.invitation_command(Path('/venv/python'), Path('/private/profile.json'))
@@ -146,6 +175,24 @@ class ColdStartTests(unittest.TestCase):
         codex = [{'type': 'item.completed', 'item': {'type': 'command_execution', 'command': command,
                   'exit_code': 0, 'aggregated_output': json.dumps(invitation)}}]
         self.assertEqual(self.runner.native_invitation_result('codex', codex, command, profile), invitation)
+
+    def test_invitation_matches_command_despite_quote_spelling(self):
+        profile = Path('/synthetic/member/profile.json')
+        command = self.runner.invitation_command(Path('/venv/python'), profile)
+        invitation = {'message': 'synthetic invitation', 'invitation_file': str(profile.with_name('invitation-test.json'))}
+        unquoted = command.replace('"', '')
+        def events(observed):
+            return [
+                {'type': 'assistant', 'message': {'content': [{'type': 'tool_use', 'id': 'invite',
+                    'name': 'Bash', 'input': {'command': observed}}]}},
+                {'type': 'user', 'message': {'content': [{'type': 'tool_result', 'tool_use_id': 'invite',
+                    'is_error': False, 'content': json.dumps(invitation)}]}}]
+        self.assertEqual(self.runner.native_invitation_result('claude', events(unquoted), command, profile), invitation)
+        codex = [{'type': 'item.completed', 'item': {'type': 'command_execution', 'command': unquoted,
+                  'exit_code': 0, 'aggregated_output': json.dumps(invitation)}}]
+        self.assertEqual(self.runner.native_invitation_result('codex', codex, command, profile), invitation)
+        with self.assertRaises(ValueError):
+            self.runner.native_invitation_result('claude', events(unquoted + ' --extra'), command, profile)
 
     def test_claude_nonstructured_messages_and_blocks_do_not_crash_or_prove_tools(self):
         noise = [{'type': kind, 'message': message}
@@ -229,7 +276,7 @@ class ColdStartTests(unittest.TestCase):
                     'native_identity_proven': lambda *a: True, 'snapshot': lambda *a: {},
                     'setup_diagnostics': lambda *a: {},
                     'network_proven': lambda *a: True, 'diagnostics_proven': lambda *a: True,
-                    'exchange_proven': lambda *a: True,
+                    'exchange_proven': lambda *a: True, 'hold_host': lambda *a: None,
                     'assistant_text': lambda *a: '\n'.join((root / 'repo/acceptance-answer.txt').read_text() for root in roots.values())}
                 for name, replacement in overrides.items():
                     patches.enter_context(patch.object(self.runner, name, replacement))
@@ -285,6 +332,7 @@ class ColdStartTests(unittest.TestCase):
                     'successful_tools': lambda *a: {'whoami', 'read_team', 'send_request', 'read_inbox', 'reply'},
                     'native_identity_proven': lambda *a: True, 'snapshot': lambda *a: {},
                     'setup_diagnostics': setup_state, 'owner_host_exited': lambda *a: True,
+                    'hold_host': lambda *a: None,
                     'network_proven': lambda *a: True, 'diagnostics_proven': diagnostics,
                     'exchange_proven': lambda *a: True,
                     'assistant_text': lambda *a: chr(10).join(
@@ -557,6 +605,172 @@ class ColdStartTests(unittest.TestCase):
             with patch.object(coopagents, '__file__', str(root / 'checkout/src/__init__.py')):
                 with self.assertRaises(ValueError):
                     self.runner.installed_wheel_identity(wheel)
+
+    def test_hold_prompt_waits_for_live_second_member_without_new_permissions(self):
+        prompt = self.runner.hold_prompt({'room_id': 'room', 'member_id': 'owner'})
+        self.assertIn('whoami', prompt)
+        self.assertIn('read_team', prompt)
+        self.assertIn('second member', prompt)
+        self.assertIn('room_id=room', prompt)
+        self.assertIn('member_id=owner', prompt)
+        self.assertIn('Do not send requests', prompt)
+        self.assertIn('do not change files', prompt)
+        self.assertIn('do not enable wake', prompt)
+        self.assertNotIn('Bash', prompt)
+
+    def test_hold_observation_requires_read_team_listing_the_guest(self):
+        def codex_events(members):
+            return [{'type': 'item.completed', 'item': {'type': 'mcp_tool_call', 'tool': 'read_team',
+                     'status': 'completed', 'error': None, 'result': {'content': [
+                         {'type': 'text', 'text': json.dumps({'members': members})}]}}}]
+        guest = [{'member_id': 'guest', 'display_name': 'guest'}]
+        host_only = [{'member_id': 'owner', 'display_name': 'owner'}]
+        self.assertTrue(self.runner.observed_guest('codex', codex_events(host_only + guest), 'guest'))
+        self.assertFalse(self.runner.observed_guest('codex', codex_events(host_only), 'guest'))
+        self.assertFalse(self.runner.observed_guest('codex', [], 'guest'))
+        whoami = [{'type': 'item.completed', 'item': {'type': 'mcp_tool_call', 'tool': 'whoami',
+                   'status': 'completed', 'error': None, 'result': {'content': [
+                       {'type': 'text', 'text': json.dumps({'me': {'member_id': 'guest'}})}]}}}]
+        self.assertFalse(self.runner.observed_guest('codex', whoami, 'guest'))
+        failed = [{'type': 'item.completed', 'item': {'type': 'mcp_tool_call', 'tool': 'read_team',
+                   'status': 'completed', 'error': None, 'result': {'content': [
+                       {'type': 'text', 'text': json.dumps({'isError': True, 'members': guest})}]}}}]
+        self.assertFalse(self.runner.observed_guest('codex', failed, 'guest'))
+        claude = [
+            {'type': 'assistant', 'message': {'content': [{'type': 'tool_use', 'id': 'a', 'name': 'mcp__coopagents_x__read_team'}]}},
+            {'type': 'user', 'message': {'content': [{'type': 'tool_result', 'tool_use_id': 'a', 'content': [
+                {'type': 'text', 'text': json.dumps({'members': guest})}]}]}}
+        ]
+        self.assertTrue(self.runner.observed_guest('claude', claude, 'guest'))
+
+    def test_launched_session_collects_exit_and_kills_on_timeout(self):
+        root = Path(__file__).resolve().parents[2] / '.local' / 'cold-start-tests' / uuid4().hex
+        from coopagents.spaces import private_directory
+        private_directory(root)
+        session = self.runner.launch_session(
+            [sys.executable, '-c', 'import sys;print("held-output")'],
+            'synthetic prompt', root / 'held.log', dict(os.environ), root)
+        self.assertEqual(self.runner.collect_session(session, 10), 0)
+        self.assertIn('held-output', (root / 'held.log').read_text())
+        started = time.monotonic()
+        session = self.runner.launch_session(
+            [sys.executable, '-c', 'import time;time.sleep(10)'],
+            'synthetic prompt', root / 'stuck.log', dict(os.environ), root)
+        self.assertEqual(self.runner.collect_session(session, 1), 'timeout')
+        self.assertLess(time.monotonic() - started, 8)
+        self.assertIsNotNone(session['process'].poll())
+
+    def test_terminate_session_stops_a_running_launch(self):
+        root = Path(__file__).resolve().parents[2] / '.local' / 'cold-start-tests' / uuid4().hex
+        from coopagents.spaces import private_directory
+        private_directory(root)
+        session = self.runner.launch_session(
+            [sys.executable, '-c', 'import time;time.sleep(30)'],
+            'synthetic prompt', root / 'running.log', dict(os.environ), root)
+        self.assertIsNone(session['process'].poll())
+        self.runner.terminate_session(session)
+        self.assertIsNotNone(session['process'].poll())
+        self.runner.terminate_session(session)
+
+    def test_concurrent_owner_holds_session_across_join_and_observes_guest(self):
+        # Exercise the concurrent-owner path through main with mocked model sessions.
+        with ExitStack() as patches:
+            roots = {}
+            def prepare(root, *args, tool=None, **kwargs):
+                root.mkdir(parents=True)
+                (root / 'profile.json').write_text('{}', encoding='utf-8')
+                roots[tool] = root
+                return {'SYNTHETIC_ROOT': str(root)}
+            def profile(path):
+                tool = 'claude' if Path(path).parent == roots['claude'] else 'codex'
+                return {'room_id': 'synthetic-room', 'member_id': tool, 'control_token': 'synthetic'}
+            def native_registration(env, *args):
+                return {'profile': str(Path(env['SYNTHETIC_ROOT']) / 'profile.json')}
+            def process(command, **kwargs):
+                return subprocess.CompletedProcess(command, 0,
+                                                   stdout='' if '--porcelain' in command else 'synthetic-commit')
+            def events_for(path):
+                if '02b-owner-hold' in str(path):
+                    return [
+                        {'type': 'assistant', 'message': {'content': [
+                            {'type': 'tool_use', 'id': 'a', 'name': 'mcp__coopagents_x__read_team'}]}},
+                        {'type': 'user', 'message': {'content': [
+                            {'type': 'tool_result', 'tool_use_id': 'a', 'content': [
+                                {'type': 'text', 'text': json.dumps({'members': [{'member_id': 'codex'}]})}]}]}}]
+                return []
+            launched = []
+            def fake_launch(command, prompt, path, env, cwd):
+                launched.append(path)
+                return {'launched': True}
+            terminated = []
+            overrides = {'codex_tool_approvals': lambda *a: [], 'claude_tool_approvals': lambda *a: [],
+                'native_invitation_result': lambda *a: {'message': 'synthetic invitation'},
+                'prepare_homes': prepare, 'bounded': lambda *a, **k: 0,
+                'registrations': native_registration, 'events_from': events_for,
+                'successful_tools': lambda *a: {'whoami', 'read_team', 'send_request', 'read_inbox', 'reply'},
+                'native_identity_proven': lambda *a: True, 'snapshot': lambda *a: {},
+                'setup_diagnostics': lambda *a: {},
+                'network_proven': lambda *a: True, 'diagnostics_proven': lambda *a: True,
+                'exchange_proven': lambda *a: True, 'hold_host': lambda *a: None,
+                'launch_session': fake_launch, 'collect_session': lambda *a, **k: 0,
+                'terminate_session': lambda session: terminated.append(session),
+                'assistant_text': lambda *a: '\n'.join((root / 'repo/acceptance-answer.txt').read_text() for root in roots.values())}
+            for name, replacement in overrides.items():
+                patches.enter_context(patch.object(self.runner, name, replacement))
+            patches.enter_context(patch.object(self.runner.subprocess, 'run', process))
+            patches.enter_context(patch('coopagents.spaces.read_profile', profile))
+            patches.enter_context(patch('coopagents.spaces.read_json', return_value={'network': 'local'}))
+            output = patches.enter_context(redirect_stdout(io.StringIO()))
+            code = self.runner.main(['--host', 'claude', '--network', 'local', '--concurrent-owner',
+                                     '--codex', 'synthetic-codex', '--claude', 'synthetic-claude'])
+            report = json.loads((roots['claude'].parent / 'summary.json').read_text())
+            self.assertEqual(code, 0)
+            self.assertEqual(report['status'], 'passed')
+            self.assertTrue(report['concurrent_owner'])
+            self.assertEqual(len(launched), 1)
+            self.assertEqual(terminated, [])
+            hold_sessions = [s for s in report['sessions'] if s['stage'] == '02b-owner-hold']
+            self.assertEqual(len(hold_sessions), 1)
+            self.assertTrue(hold_sessions[0]['ok'])
+            self.assertIn({'check': 'owner hold session observed the guest join live', 'ok': True}, report['checks'])
+            self.assertIn('02b-owner-hold: PASS', output.getvalue())
+
+    def test_hold_host_starts_once_the_dying_server_releases_the_port(self):
+        seen = {'status': 0}
+        def fake_status(path):
+            seen['status'] += 1
+            return {'status': 'running' if seen['status'] <= 2 else 'unreachable'}
+        started = []
+        with patch('coopagents.space_runtime.status', fake_status), \
+                patch('coopagents.space_runtime.start', started.append):
+            self.runner.hold_host('/synthetic/profile.json', attempts=5, delay=0)
+        self.assertEqual(started, ['/synthetic/profile.json'])
+        self.assertEqual(seen['status'], 3)
+
+    def test_hold_host_raises_when_no_server_ever_comes_up(self):
+        with patch('coopagents.space_runtime.status', return_value={'status': 'unreachable'}), \
+                patch('coopagents.space_runtime.start', side_effect=ValueError('boom')) as start:
+            with self.assertRaises(RuntimeError):
+                self.runner.hold_host('/synthetic/profile.json', attempts=3, delay=0)
+        self.assertEqual(start.call_count, 3)
+
+    def test_hold_host_reuses_a_host_that_survives_its_session(self):
+        with patch('coopagents.space_runtime.status', return_value={'status': 'running'}) as status, \
+                patch('coopagents.space_runtime.start') as start:
+            self.runner.hold_host('/synthetic/profile.json', attempts=5, delay=0, live_grace=3)
+        start.assert_not_called()
+        self.assertEqual(status.call_count, 3)
+
+    def test_hold_host_retries_a_lost_start_race(self):
+        started = []
+        def flaky_start(path):
+            started.append(path)
+            if len(started) == 1:
+                raise ValueError('Space runtime is already running')
+        with patch('coopagents.space_runtime.status', return_value={'status': 'unreachable'}), \
+                patch('coopagents.space_runtime.start', flaky_start):
+            self.runner.hold_host('/synthetic/profile.json', attempts=3, delay=0)
+        self.assertEqual(len(started), 2)
 
 
 if __name__ == '__main__':
