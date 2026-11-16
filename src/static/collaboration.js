@@ -40,6 +40,88 @@
       element('p','SessionStart、UserPromptSubmit 和 PostToolUse 会返回协作摘要；工具结束事件每个会话最多每 30 秒一次。失败只显示警告，不阻塞工作。','muted'),
       element('p','配置预览不代表 agent 已接入。可以用 --export NEW_FILE 创建新片段，现有文件会被保留。不要把个人令牌或本机配置提交到 Git。','muted'));
   }
+  const visibleLimit=6;
+  const identifier=value=>Number.isSafeInteger(value)&&value>0;
+  const excerpt=value=>{const text=String(value??'');return text.length>180?text.slice(0,180)+'…':text;};
+  const list=value=>Array.isArray(value)?value:[];
+  function workflowSection(root,id,title){const section=add(element('section'),element('h3',title));section.id=id;root.append(section);return section;}
+  function navigation(root,label,target,context,renderEpoch){
+    if(typeof context.openWorkflowItem!=='function')return;
+    const link=element('button',label,'link-button');link.type='button';
+    link.addEventListener('click',()=>{if(renderEpoch===epoch&&(!context.isCurrent||context.isCurrent()))context.openWorkflowItem(target);});root.append(link);
+  }
+  function taskNavigation(root,id,context,renderEpoch){if(identifier(id))navigation(root,'查看任务 #'+id,{kind:'task',id},context,renderEpoch);}
+  function renderWorkflow(root,snapshot,context,renderEpoch){
+    const workflow=snapshot.workflow;
+    if(!workflow){root.append(element('p','当前服务尚未提供工作流摘要，可在协作与共享上下文查看原始记录。','muted'));return;}
+    const onboarding=workflow.onboarding||{},first=workflowSection(root,'workflow-onboarding','第一次有效协作');
+    add(first,element('p','当前项目身份：'+(onboarding.identity_verified===true?'已验证（网页读取）':'暂无验证记录'),'meta'),
+      element('p','网页身份读取不证明原生 agent 已加载。','muted'));
+    const exchange=onboarding.addressed_exchange;
+    if(exchange&&identifier(exchange.request_id)&&exchange.sender_member_id&&exchange.receiver_member_id&&exchange.sender_member_id!==exchange.receiver_member_id&&[exchange.sender_member_id,exchange.receiver_member_id].includes(snapshot.me.member_id)){
+      add(first,element('p','交流 #'+exchange.request_id+' · '+context.memberName(exchange.sender_member_id)+' → '+context.memberName(exchange.receiver_member_id),'meta'),
+        element('p','定向问题投递：'+(exchange.delivered===true?'已记录':'暂无记录')+' · 责任人答复：'+(exchange.replied===true?'已记录':'暂无记录')+' · 发起者显式读回：'+(exchange.requester_reply_read===true?'已记录':'暂无记录'),'meta'));
+      if(exchange.delivered===true&&exchange.replied===true&&exchange.requester_reply_read===true)first.append(element('p','双人交流记录已齐备；可在原请求中查看具体答复。'));
+      navigation(first,'查看交流 #'+exchange.request_id,{kind:'request',id:exchange.request_id},context,renderEpoch);
+    }else first.append(element('p','尚无定向双人交流记录。向明确负责人提出具体问题后，可在此查看投递、答复和读回。','muted'));
+    first.append(element('p','显式读回只记录读操作，不证明模型理解，也不代表任务进展。','muted'));
+
+    const allRequests=list(workflow.requests),requests=allRequests.filter(item=>!item.resolved&&!item.resolved_at&&['ordinary','current'].includes(item.route_state));
+    const waiting=workflowSection(root,'workflow-requests','当前协作等待');
+    const waits={awaiting_assignment:'等待明确收件人',awaiting_recipient_read:'等待收件人读取记录',read:'已记录收件人读取，等待答复',processing:'已记录处理确认，等待答复',reply_waiting_for_sender_read:'答复已到达，等待发起者显式读回',awaiting_requester_resolution:'等待发起者确认处理结果'};
+    if(!requests.length)waiting.append(element('p','本页暂无待处理请求。','muted'));
+    for(const request of requests.slice(0,visibleLimit)){
+      const row=add(element('article','','record workflow-request'),element('h4','请求 #'+request.id+' · '+excerpt(request.body)),
+        element('p',context.memberName(request.sender_member_id)+' → '+context.memberName(request.receiver_member_id)+' · '+(request.route_state==='current'?'当前任务依赖路由':'普通请求'),'meta'),
+        element('p',waits[request.wait_reason]||'等待更多协作记录'),
+        element('p','投递：'+(request.delivered===true?'已记录':'暂无记录')+' · 收件人读取：'+(request.recipient_read===true?'已记录':'暂无记录')+' · 答复：'+(request.replied===true?'已记录':'暂无记录')+' · 发起者读回：'+(request.sender_reply_read===true?'已记录':'暂无记录'),'meta'));
+      if(identifier(request.id)){row.id='workflow-request-'+request.id;navigation(row,'查看请求 #'+request.id,{kind:'request',id:request.id},context,renderEpoch);}
+      taskNavigation(row,request.task_id,context,renderEpoch);waiting.append(row);
+    }
+    if(allRequests.some(item=>item.resolved||item.resolved_at||['historical','closed'].includes(item.route_state)))waiting.append(element('p','历史路由与已解决请求不计入当前等待，原始记录保留在协作详情。','muted'));
+
+    const changes=list(workflow.agreement_changes).filter(item=>item.review_required===true),agreements=workflowSection(root,'workflow-agreements','已用约定的变化');
+    if(!changes.length)agreements.append(element('p','本页没有待复核的已用约定。','muted'));
+    for(const change of changes.slice(0,visibleLimit)){
+      const row=add(element('article','','record workflow-agreement'),element('h4',excerpt(change.title)||'约定 #'+change.contract_id),
+        element('p','任务 #'+change.task_id+' · 基线 v'+change.baseline_version+' → 当前批准 v'+change.effective_version+' · 待复核','meta'));
+      if(identifier(change.contract_id)){row.id='workflow-agreement-'+change.task_id+'-'+change.contract_id;navigation(row,'查看约定 #'+change.contract_id,{kind:'contract',id:change.contract_id},context,renderEpoch);}
+      taskNavigation(row,change.task_id,context,renderEpoch);agreements.append(row);
+    }
+    if(changes.length)agreements.append(element('p','阅读新版本不会自动批准或采用；当前任务执行者需要明确记录所用版本。','muted'));
+
+    const decisionLabels={contract:'约定审核',handoff:'责任交接',delivery:'交付关联建议',unassigned_task:'待认领任务',agreement_review:'约定版本复核'};
+    const decisions=list(workflow.decisions).filter(item=>Object.hasOwn(decisionLabels,item.kind)),pending=workflowSection(root,'workflow-decisions','需要确认的事项');
+    const authority={contract:'需要人工网页身份处理；当前身份不能执行此决定。',handoff:'仅拟接收成员可在网页确认；当前身份不符合。',delivery:'仅项目管理员可在网页确认；当前身份不符合。',unassigned_task:'由自己的 agent 认领；网页只显示任务入口。',agreement_review:'由当前任务执行者在 agent 中明确记录；网页只显示约定与任务入口。'};
+    if(!decisions.length)pending.append(element('p','本页暂无待确认事项。','muted'));
+    for(const card of decisions.slice(0,visibleLimit)){
+      const payload=card.payload||{},human=['contract','handoff','delivery'].includes(card.kind);
+      const row=add(element('article','','record workflow-decision'),element('h4',decisionLabels[card.kind]+' · '+excerpt(card.title||card.summary||'#'+card.id)),
+        element('p',human?'需要人工决定':'需要个人 agent 操作','meta'));
+      if(identifier(card.id))row.id='workflow-decision-'+card.kind+'-'+card.id+(identifier(card.task_id)?'-'+card.task_id:'');
+      if(card.title&&card.summary)row.append(element('p',excerpt(card.summary)));
+      if(card.kind==='contract')row.append(element('p','约定 #'+card.id+' · 待审 v'+payload.version,'meta'));
+      if(card.kind==='handoff')row.append(element('p','任务 #'+payload.task_id+' · 当前修订 r'+payload.expected_revision,'meta'));
+      if(card.kind==='delivery')row.append(element('p','建议 #'+card.id+' · '+excerpt(card.object_key),'meta'));
+      row.append(element('p',human&&card.eligible===true?'当前网页身份可前往已有详情处理。':authority[card.kind],'muted'));
+      if(['contract','agreement_review'].includes(card.kind)&&identifier(card.id))navigation(row,'查看约定 #'+card.id,{kind:'contract',id:card.id},context,renderEpoch);
+      if(card.kind==='handoff')taskNavigation(row,payload.task_id,context,renderEpoch);
+      if(card.kind==='unassigned_task')taskNavigation(row,card.id,context,renderEpoch);
+      if(card.kind==='agreement_review')taskNavigation(row,card.task_id,context,renderEpoch);
+      if(card.kind==='delivery')navigation(row,'查看交付建议 #'+card.id,{kind:'delivery'},context,renderEpoch);
+      pending.append(row);
+    }
+
+    const activity=list(workflow.member_activity);
+    if(activity.length){
+      const observations=workflowSection(root,'workflow-observations','最近协作观测');
+      for(const member of activity.slice(0,visibleLimit))observations.append(element('p',context.memberName(member.member_id)+' · 检查点 '+when(member.last_checkpoint_at)+' · 会话 '+when(member.last_session_at)+' · 响应状态：未知','meta'));
+    }
+    if(workflow.truncated||workflow.has_more||[requests,changes,decisions,activity].some(items=>items.length>visibleLimit)){
+      root.append(element('p','这里只显示部分工作流记录；请打开协作、约定或任务详情查看完整信息。','muted'));
+      navigation(root,'查看协作详情',{kind:'requests'},context,renderEpoch);
+    }
+  }
   function renderPanel(root,snapshot,context){
     if(!prepare(root,snapshot))return;
     const collaboration=snapshot.collaboration||{},records=collaboration.checkpoints||[],diagnostics=collaboration.diagnostics||[];
@@ -54,6 +136,7 @@
     const renderEpoch=epoch;
     refresh.addEventListener('click',async()=>{refresh.disabled=true;try{await context.sync();}catch(error){if(renderEpoch===epoch&&context.isCurrent())feedback.textContent=error.message;}finally{if(renderEpoch===epoch&&context.isCurrent())refresh.disabled=false;}});
     add(root,refresh,feedback);
+    renderWorkflow(root,snapshot,context,renderEpoch);
     const setup=add(element('details'),element('summary','查看接入步骤')),body=element('div');setup.append(body);root.append(setup);renderSetup(body,snapshot,context);roots.delete(body);
     setup.open=setupExpanded;setup.addEventListener('toggle',()=>{if(renderEpoch===epoch)setupExpanded=setup.open;});
     if(records.length){

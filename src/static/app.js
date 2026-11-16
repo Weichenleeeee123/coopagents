@@ -11,7 +11,7 @@ const gitUI = () => typeof window!=='undefined' ? window.CoopagentsGit : null;
 const dependencyUI = () => typeof window!=='undefined' ? window.CoopagentsDependencies : null;
 const lifecycleUI = () => typeof window!=='undefined' ? window.CoopagentsTaskLifecycle : null;
 const collaborationUI = () => typeof window!=='undefined' ? window.CoopagentsCollaboration : null;
-function gitContext(){const epoch=generation;return {api,sync,me:snapshot.me,memberName,openTask:openTaskDetail,origin:location.origin,isCurrent:()=>epoch===generation};}
+function gitContext(){const epoch=generation;return {api,sync,me:snapshot.me,memberName,openTask:openTaskDetail,openWorkflowItem:item=>{if(epoch===generation)openWorkflowItem(item);},origin:location.origin,isCurrent:()=>epoch===generation};}
 function assetContext(){const epoch=generation;return {api,roomId:snapshot.me.room_id,memberName,openDetail:openContentDetail,isCurrent:()=>epoch===generation};}
 const states = {cancelled:'已取消',open:'待认领', claimed:'已认领', working:'推进中', blocked:'受阻', local_done:'本地完成', pushed:'已推送', pr_open:'PR 已打开', merged:'已合并', approved:'已批准', rejected:'已拒绝'};
 const views = {overview:['01 / OVERVIEW','概览','项目状况与需要留意的事项。'],tasks:['02 / TASKS','任务','谁在做什么，当前进展如何。'],requests:['03 / COLLABORATION','协作','问题、答复与处理状态各自独立。'],contracts:['04 / SHARED CONTEXT','共享上下文','约定、共享文件与可引用记录。'],delivery:['05 / DELIVERY','交付','从 Git 交付对象查找关联任务。'],members:['06 / MEMBERS','成员与 agent','队友、工具与能力状态。'],repository:['07 / PROJECT SETTINGS','项目设置','连接与项目级配置。'],activity:['项目活动','项目活动','查看有来源的结构化项目事件。']};
@@ -323,6 +323,15 @@ $('new-task').addEventListener('click',()=>{$('task-create').open=true;$('task-f
 function openContentDetail(label,body){clearDrawerError();activeTaskId=null;activeObject=null;taskOpener=document.activeElement;setDrawerKind('共享文件');const title=text('h2',label);title.id='task-detail-title';$('task-detail').replaceChildren(title,body);if(!$('task-dialog').open)$('task-dialog').showModal();}
 function objectTitle(label,kind,id){return button(label,()=>openObjectDetail(kind,id),'object-title-button');}
 function openObjectDetail(kind,id){clearDrawerError();setDrawerKind(kind==='request'?'协作请求':'约定');activeTaskId=null;activeObject={kind,id};taskOpener=document.activeElement;renderObjectDetail();if(!$('task-dialog').open)$('task-dialog').showModal();}
+function openWorkflowItem(item){
+  if(!snapshot||!item||typeof item!=='object')return;
+  const id=item.id,validId=Number.isSafeInteger(id)&&id>0;
+  if(item.kind==='request'&&validId&&snapshot.requests.some(record=>record.id===id)){setView('requests');openObjectDetail('request',id);}
+  else if(item.kind==='contract'&&validId&&snapshot.contracts.some(record=>record.id===id)){contextTab='agreements';renderContractsTabs();setView('contracts');openObjectDetail('contract',id);}
+  else if(item.kind==='task'&&validId&&snapshot.tasks.some(record=>record.id===id)){setView('tasks');openTaskDetail(id);}
+  else if(item.kind==='delivery')setView('delivery');
+  else if(item.kind==='requests')setView('requests');
+}
 function renderObjectDetail(){
   if(!activeObject||!snapshot)return;const {kind,id}=activeObject,item=(kind==='request'?snapshot.requests:snapshot.contracts).find(item=>item.id===id);
   if(!item){closeTaskDetail();return;}
