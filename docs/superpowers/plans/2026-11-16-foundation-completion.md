@@ -17,7 +17,7 @@
 | Order | Foundation | Current status | Exit evidence |
 | --- | --- | --- | --- |
 | 1 | Real goals without tool-name prompting | CODE COMPLETE — `b8fea59` | Native execution framework, five original cases, isolated answers/artifact oracle, native event/usage parsers, paired comparison and retained failures; 149 native-free tests passed. Actual acceptance deferred. |
-| 2 | Shared daily collaboration behavior on all supported paths | IN PROGRESS | Shared lifecycle policy data, server/bridge/Git guidance, supported hook/plugin wiring and focused regressions, without changing native trust |
+| 2 | Shared daily collaboration behavior on all supported paths | CODE COMPLETE | Shared lifecycle policy data, consistent MCP/Git/P2P notices, supported hook/plugin wiring and Skills; 50 focused automated checks passed. Native behavior deferred. |
 | 3 | Short request/reply paths | NOT STARTED | Complete responsibility-following question semantics and reply consumption; focused domain/transport regressions |
 | 4 | Task-focused incremental context and session delivery | NOT STARTED | Real additions/updates/removals, cursor recovery, current execution binding, targeted native delivery and member fallback |
 | 5 | Observable waiting and concrete recovery | NOT STARTED | Evidence-based service/network/session/hook/watcher states, durable local outbox and authorized recovery |

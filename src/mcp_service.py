@@ -24,6 +24,11 @@ def tool_error(error):
 
 
 TOOL_DESCRIPTIONS = {
+    'checkpoint': ('Recover the shared collaboration policy and bounded context using event startup, blocker, '
+                   'reply (answer arrival) or completion. Keep a stable session_key; with task_id '
+                   'pass its current ownership_epoch. The result reports the lifecycle phase and next actions, '
+                   'but never marks a message read, confirms a dependency or authorizes a human decision. '
+                   'A recorded checkpoint does not prove model comprehension or an installed native hook.'),
     'whoami': 'Your own identity in this space: your member id, display name and room.',
     'read_team': ('Everyone in this space and the shared state: members (member_id and display_name), tasks with '
                   'owners, sessions with the tool each member uses, requests, contracts and progress. Use it to find '

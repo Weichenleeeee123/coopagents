@@ -110,7 +110,7 @@ class HookTests(unittest.TestCase):
         result = self.run_hook(args=('--config-preview',))
         self.assertEqual(result.returncode, 0, result.stderr)
         fragment = json.loads(result.stdout)
-        self.assertEqual(set(fragment['hooks']), {'SessionStart','UserPromptSubmit','PostToolUse'})
+        self.assertEqual(set(fragment['hooks']), {'SessionStart','UserPromptSubmit','PostToolUse','Stop'})
         command = fragment['hooks']['SessionStart'][0]['hooks'][0]['command']
         self.assertNotIn(self.owner['agent_token'], command)
         result = self.run_hook(args=('--export',str(existing)))
@@ -316,7 +316,7 @@ class HookTests(unittest.TestCase):
         zcode = config_fragment('zcode')
         self.assertTrue(zcode['hooks']['enabled'])
         events = zcode['hooks']['events']
-        self.assertEqual(set(events), {'SessionStart','PostToolUse','UserPromptSubmit'})
+        self.assertEqual(set(events), {'SessionStart','PostToolUse','UserPromptSubmit','Stop','PostToolUseFailure'})
         self.assertEqual(events['SessionStart'][0]['matcher'], 'startup')
         for groups in events.values():
             process = groups[0]['hooks'][0]

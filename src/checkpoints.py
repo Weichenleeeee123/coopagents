@@ -7,9 +7,10 @@ import secrets
 from .activity import ActivityStore, TOOLS, _task_id
 from .errors import NotFound, ValidationError
 from .tasks import _text, _utc_now
+from .collaboration_policy import HOOK_EVENT_PHASES, TOOL_EVENT_PHASES, policy_for_event
 
-HOOK_EVENTS = ('SessionStart', 'UserPromptSubmit', 'PostToolUse')
-TOOL_EVENTS = ('startup', 'blocker', 'completion')
+HOOK_EVENTS = tuple(HOOK_EVENT_PHASES)
+TOOL_EVENTS = tuple(event for event in TOOL_EVENT_PHASES if event != 'manual')
 STALE_SECONDS = 300
 BRIEF_BYTES = 16000
 
@@ -50,6 +51,7 @@ class CheckpointStore:
             raise ValidationError(
                 f'Unsupported checkpoint event {event!r}; supported events: '
                 f'{", ".join((*HOOK_EVENTS, *TOOL_EVENTS, "manual"))}')
+        policy = policy_for_event(event)
         if task_id is not None:
             task_id = _task_id(task_id)
         source = 'hook' if event in HOOK_EVENTS else 'manual' if event == 'manual' else 'tool'
@@ -71,7 +73,7 @@ class CheckpointStore:
             record = dict(db.execute('''SELECT * FROM collaboration_checkpoints
                 WHERE room_id=? AND member_id=? AND session_key=? AND tool=?''',
                 (principal.room_id, principal.member_id, session_key, tool)).fetchone())
-            return {'checkpoint': record, 'brief': self._brief(db, principal)}
+            return {'checkpoint': record, 'brief': self._brief(db, principal), 'policy': policy}
 
     def _own_tasks(self, db, principal):
         return [dict(row) for row in db.execute('''SELECT t.id,t.title,t.scope,t.state,t.revision,t.ownership_epoch,t.execution_session_key,p.state AS progress_state

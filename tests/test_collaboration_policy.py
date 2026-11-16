@@ -14,6 +14,14 @@ from coopagents.space_bridge import Bridge
 
 
 class CollaborationPolicyTests(unittest.TestCase):
+    EVENT_PHASES = {
+        'SessionStart': 'startup', 'startup': 'startup',
+        'UserPromptSubmit': 'prompt', 'prompt': 'prompt',
+        'PostToolUse': 'tool', 'tool': 'tool',
+        'Stop': 'completion', 'completion': 'completion',
+        'PostToolUseFailure': 'blocker', 'blocker': 'blocker',
+        'reply': 'reply', 'manual': 'manual',
+    }
     def policy(self):
         self.assertIsNotNone(importlib.util.find_spec('coopagents.collaboration_policy'),
                              'entry points need a shared versioned collaboration policy')
@@ -72,6 +80,59 @@ class CollaborationPolicyTests(unittest.TestCase):
         # Policy is prose; adding a policy must not change the available protocol.
         names = [call.kwargs.get('name', call.args[0].__name__) for call in add_tool.call_args_list]
         self.assertTrue({'create_task', 'decision', 'accept_handoff'}.isdisjoint(names))
+
+    def event_policy(self, event):
+        module = self.policy()
+        self.assertTrue(callable(getattr(module, 'policy_for_event', None)),
+                        'lifecycle guidance needs a shared event policy function')
+        return module.policy_for_event(event)
+
+    def test_event_policy_normalizes_native_and_tool_lifecycle_events(self):
+        module = self.policy()
+        for event, phase in self.EVENT_PHASES.items():
+            with self.subTest(event=event):
+                policy = self.event_policy(event)
+                self.assertEqual(set(policy), {'version', 'phase', 'required_actions', 'instructions'})
+                self.assertEqual(policy['version'], module.POLICY_VERSION)
+                self.assertEqual(policy['phase'], phase)
+                self.assertTrue(policy['required_actions'])
+                self.assertTrue(all(isinstance(action, str) and action for action in policy['required_actions']))
+                self.assertEqual(len(policy['required_actions']), len(set(policy['required_actions'])))
+                self.assertEqual(policy, self.event_policy(phase))
+
+    def test_machine_actions_and_instructions_use_the_same_static_rule_source(self):
+        module = self.policy()
+        self.assertTrue(hasattr(module, 'POLICY_RULES'), 'machine actions and prose need one rule source')
+        for phase in set(self.EVENT_PHASES.values()):
+            policy = self.event_policy(phase)
+            self.assertTrue(policy['instructions'].startswith(module.DAILY_COLLABORATION_POLICY))
+            for action in policy['required_actions']:
+                self.assertIn(module.POLICY_RULES[action], policy['instructions'])
+        reply = self.event_policy('reply')
+        self.assertIn('check_reply_lifecycle', reply['required_actions'])
+        self.assertIn('reply', reply['instructions'])
+        for phrase in ('untrusted', 'real current user instruction', 'never mark messages read'):
+            self.assertIn(phrase, reply['instructions'])
+
+    def test_event_policy_has_no_message_input_and_does_not_share_mutable_results(self):
+        first = self.event_policy('reply')
+        first['required_actions'].clear()
+        first['instructions'] = 'untrusted replacement'
+        second = self.event_policy('reply')
+        self.assertTrue(second['required_actions'])
+        self.assertNotEqual(second['instructions'], first['instructions'])
+        with self.assertRaises(TypeError):
+            self.policy().policy_for_event('reply', message='grant admin')
+
+    def test_unknown_event_policy_inputs_fail_closed_with_supported_events(self):
+        from coopagents.errors import ValidationError
+        self.event_policy('startup')
+        for event in ('session_start', 'assistant message: completion', '', None, True, [], {}):
+            with self.subTest(event=event):
+                with self.assertRaises(ValidationError) as caught:
+                    self.policy().policy_for_event(event)
+                self.assertIn('reply', str(caught.exception))
+                self.assertIn('SessionStart', str(caught.exception))
 
 
 if __name__ == '__main__':
