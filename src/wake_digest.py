@@ -4,10 +4,11 @@ The digest carries kinds and identifiers only, never bodies, so a wake-up
 watcher can decide whether to wake a model without exposing teammate text.
 Reading it writes no receipts: arrival is not reading.
 """
+from .workflow import live_owner_route_sql
 
 LIMIT = 50
 _LIVE_ROUTE = '''(NOT EXISTS(SELECT 1 FROM dependency_routes x WHERE x.request_id=r.id) OR EXISTS
-    (SELECT 1 FROM task_dependencies d WHERE d.current_request_id=r.id AND d.status='active'))'''
+    (SELECT 1 FROM task_dependencies d WHERE d.current_request_id=r.id AND d.status='active')) AND ''' + live_owner_route_sql()
 
 
 class WakeDigest:
@@ -16,6 +17,7 @@ class WakeDigest:
 
     def digest(self, agent_token):
         with self.db.connect() as db:
+            db.execute('BEGIN')
             p = self.resolve(db, agent_token, required_kind='agent')
             # Delivered to me, unresolved, and not yet read through read_inbox.
             requests = [{'kind': 'request', 'id': r['id'], 'request_id': r['id'], 'task_id': r['task_id']}

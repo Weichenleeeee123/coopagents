@@ -67,9 +67,15 @@
     first.append(element('p','显式读回只记录读操作，不证明模型理解，也不代表任务进展。','muted'));
 
     const allRequests=list(workflow.requests),requests=allRequests.filter(item=>!item.resolved&&!item.resolved_at&&['ordinary','current'].includes(item.route_state));
+    const ownerQuestions=list(workflow.owner_questions).filter(item=>['queued','blocked'].includes(item.status));
     const waiting=workflowSection(root,'workflow-requests','当前协作等待');
     const waits={awaiting_assignment:'等待明确收件人',awaiting_recipient_read:'等待收件人读取记录',read:'已记录收件人读取，等待答复',processing:'已记录处理确认，等待答复',reply_waiting_for_sender_read:'答复已到达，等待发起者显式读回',awaiting_requester_resolution:'等待发起者确认处理结果'};
-    if(!requests.length)waiting.append(element('p','本页暂无待处理请求。','muted'));
+    if(!requests.length&&!ownerQuestions.length)waiting.append(element('p','本页暂无待处理请求。','muted'));
+    for(const question of ownerQuestions.slice(0,visibleLimit)){
+      const row=add(element('article','','record workflow-owner-question'),element('h4','负责人问题 · '+excerpt(question.body)),
+        element('p',question.wait_reason==='target_cancelled'?'目标任务已取消，问题保留等待恢复。':'等待目标任务分配负责人；问题已保存，尚未投递。','meta'));
+      taskNavigation(row,question.target_task_id,context,renderEpoch);waiting.append(row);
+    }
     for(const request of requests.slice(0,visibleLimit)){
       const row=add(element('article','','record workflow-request'),element('h4','请求 #'+request.id+' · '+excerpt(request.body)),
         element('p',context.memberName(request.sender_member_id)+' → '+context.memberName(request.receiver_member_id)+' · '+(request.route_state==='current'?'当前任务依赖路由':'普通请求'),'meta'),

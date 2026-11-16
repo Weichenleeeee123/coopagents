@@ -226,6 +226,8 @@ class Database:
             initialize(connection)
             from .dependencies import initialize as initialize_dependencies
             initialize_dependencies(connection)
+            from .workflow import initialize as initialize_workflow
+            initialize_workflow(connection)
 
     @contextmanager
     def connect(self, write=False):

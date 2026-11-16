@@ -50,18 +50,28 @@ For work blocked on another task, include your source task, its current revision
 
 This reuses the existing dependency rules, including cycle prevention and one active dependency per source/target edge. `expected_revision` means the **source task revision**. It is required with `source_task_id`; execution fields and source revision are rejected without a source task. Owner selection and creation occur in the same transaction.
 
-- A unique owned target creates a dependency and an addressed request. The result includes `dependency`, `request`, `target`, `routing` and `target_changed`.
-- A unique unassigned target with a source task creates a queued dependency with no request. When that target gains an owner, the dependency routes to that owner. Retry the same payload/key to recover its current route.
-- An ambiguous or absent scope creates no dependency or message and returns its explicit state. A member-level question to an unassigned target also creates no message.
-- Responsibility changes reroute an active task dependency transactionally. Historical routes remain history; their replies cannot satisfy the current dependency. Refresh the dependency's current revision and reply before acting.
+- A unique target persists the owner question with or without a source task. An owned target gets an addressed request. With a source task, the question reuses a task dependency; without a source, `routing` is `task_owner`. The result retains `dependency`, `request`, `target`, `routing` and `target_changed`.
+- A unique unassigned target queues the durable question with no current request. With a source task, its dependency is queued too. When the selected target gains an owner, routing delivers a current addressed request. Retry the same key and same payload to recover that current route; absence of a request does not mean the question was lost.
+- An initially ambiguous or absent scope creates no question, dependency or message and returns its explicit state and available candidates. Select a specific declared task rather than guessing an owner. Once a question has selected its target task, scope text is not reinterpreted on retry to silently select a different task.
+- Claim, release, handoff, cancellation and reopening of the selected target update owner-question routing in the task transaction. Release leaves the question waiting for an owner; target cancellation reports `target_cancelled`. Historical messages, replies and read evidence remain retained, but old routes cannot be acknowledged, answered or resolved as the current route. Existing source-task dependency authority and lifecycle rules remain in force.
 
-For a member-level question, omit the source fields:
+Routing metadata includes `routing_state`, `current_request_id`, `route_version` and `route`. The `route` object identifies the request's current/historical state and selected target; it is null while queued without a delivered route. Use these identifiers to refresh current responsibility instead of treating an earlier recipient or reply as current. A response already explicitly resolved is `closed`; rerouting does not silently adopt a historical answer. None of these states proves delivery to a running model or model comprehension.
+
+For an owner question without a source task, omit the source fields:
 
 ```json
 {"request_key":"api-logging-question-1","target_task_id":27,"body":"Which logging format should I use?"}
 ```
 
-This sends an ordinary addressed request to the owner selected at creation. Its `routing` is `fixed_recipient`: later ownership changes do not move that request. Retry returns the same request and reports `target_changed` when applicable. The returned current target and request recipient can therefore differ. Ask a new question with a new key if you intentionally need a new recipient. Reusing a successful key with different content conflicts. A task-bound retry still validates current source authority before returning saved results.
+This persists a `task_owner` question and follows the selected task's current responsibility, including waiting without a request while unassigned. Retry returns its current request, which can differ from a historical request after a handoff. It does not select a new target task. Reusing a saved key with a different payload conflicts. A task-bound retry still validates current source authority before returning saved results.
+
+Direct `send_request` remains the way to choose a fixed recipient by `receiver_member_id`; it does not follow task ownership changes:
+
+```json
+{"request_key":"question-for-this-person-1","receiver_member_id":"specific-member-id","context_version":1,"body":"Can you explain the logging example you shared?"}
+```
+
+That fixed recipient is deliberate personal addressing, separate from `ask_owner`. Omitting its receiver still means no addressed delivery until the existing authorized assignment path is used. This does not make an unaddressed direct request an owner-following question.
 
 ### Read the answer and resolve the right dependency
 
@@ -79,7 +89,7 @@ This sends an ordinary addressed request to the owner selected at creation. Its 
 }
 ```
 
-The evidence text is member-supplied evidence, not server verification of a private source file. Ordinary requests use `reply(request_id, request_key, context_version, body, evidence)` with the request's unchanged `context_version`. Linked dependency requests reject the ordinary reply/resolve paths.
+The evidence text is member-supplied evidence, not server verification of a private source file. Direct requests and owner questions without a source task use `reply(request_id, request_key, context_version, body, evidence)` with the current request's `context_version`. For owner questions, refresh the current request ID and route first; historical routes reject reply, acknowledgement and resolution. Linked dependency requests reject the ordinary reply/resolve paths.
 
 `read_replies` explicitly reads replies to requests sent by the authenticated member. It uses an exclusive numeric **reply-ID** cursor, not the inbox delivery cursor:
 
@@ -87,7 +97,7 @@ The evidence text is member-supplied evidence, not server verification of a priv
 {"after_id":0,"limit":20,"task_id":12}
 ```
 
-The response contains `replies`, `next_cursor`, `has_more` and `model_consumption_proven: false`. Continue after `next_cursor` while `has_more` is true. Optional `task_id` filters the request's task association: a dependency request is associated with its source task; a member-level owner question is associated with its target task. Reset `after_id` when starting a different task query. Replies identify ordinary, current, closed or historical routes. Each returned reply gets its own durable requester read record; a receipt for an earlier answer does not mark a newer answer read. Replies from another session of the same member are included.
+The response contains `replies`, `next_cursor`, `has_more` and `model_consumption_proven: false`. Continue after `next_cursor` while `has_more` is true. Optional `task_id` filters the request's task association: a dependency request is associated with its source task; an owner question without a source task is associated with its target task. Reset `after_id` when starting a different task query. Replies identify ordinary direct requests or current, closed and historical owner-question/dependency routes. A historical answer is retained evidence, not an answer on the current route. Each returned reply gets its own durable requester read record; reading an old route or an earlier answer does not mark a newer answer read, select a recipient or confirm the current route. Replies from another session of the same member are included.
 
 `read_replies` neither resolves a request nor creates the source execution's dependency-confirmation receipt. When you have reviewed a current dependency answer and it meets the need, explicitly call:
 

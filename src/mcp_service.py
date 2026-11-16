@@ -43,15 +43,20 @@ TOOL_DESCRIPTIONS = {
                    'sent: those appear under your request in read_team (requests[].replies). Reading records that '
                    'you read them.'),
     'ask_owner': ('Ask the responsible teammate using exactly one target_task_id or declared scope. '
-                  'Question body is at most 500 characters; context at most 3000. Ambiguity returns candidates. '
+                  'Questions persist with or without source_task_id and wait while a unique target is unassigned. '
+                  'Follow the current route after responsibility changes; old routes remain history. '
+                  'Question body is at most 500 characters; context at most 3000. Ambiguity returns candidates '
+                  'without guessing or delivering. An initially missing scope creates no question. '
                   'With source_task_id, pass its expected_revision/session/ownership_epoch: this creates an explicit '
-                  'dependency that follows ownership changes and can wait for an unassigned target. Without a source '
-                  'task it sends a fixed-recipient question; an unassigned target sends nothing. Reuse request_key only '
-                  'for the identical question. This does not authorize new work or human decisions.'),
+                  'task dependency. Without a source, the persisted owner question follows its selected target task. '
+                  'Reuse request_key with the same payload to recover the current route, not select another task; '
+                  'changed payloads conflict. Use send_request for a fixed recipient chosen by member id. '
+                  'This does not authorize new work or human decisions.'),
     'read_replies': ('Read paginated replies to questions you sent, including answers from another of your sessions. '
                      'Use next_cursor as after_id; has_more requires another page. Records only the exact reply ids '
                      'returned as explicitly read, never resolves a request, approves an agreement or confirms a '
-                     'dependency. Historical-route replies cannot satisfy a current dependency; use read_dependency '
+                     'dependency. Reports the current route and historical owner-question/dependency routes. '
+                     'Historical replies cannot answer the current route or satisfy a current dependency; use read_dependency '
                      'before resolve_dependency. A read receipt is not proof of model comprehension.'),
     'record_agreement_use': ('Explicitly record which approved agreement version your current task execution relies on. '
                              'Pass the current session_key and ownership_epoch. Does not approve a draft or silently '

@@ -11,9 +11,11 @@ import json
 
 from .errors import ValidationError
 from .task_lifecycle import execution_task, manager, project_task, task_row
+from .workflow import queued_owner_questions, request_route_info
 
 MAX_BYTES = 16000
 KINDS = {'task': 'tasks', 'dependency': 'dependencies', 'request': 'requests',
+         'owner_question': 'owner_questions',
          'agreement': 'agreements', 'agreement_change': 'agreement_changes',
          'decision': 'decisions', 'member_activity': 'member_activity'}
 
@@ -44,7 +46,8 @@ def _clip(value, maximum=160):
     if isinstance(value, dict):
         exact = {'session_key', 'execution_session_key', 'member_id', 'room_id',
                  'owner_member_id', 'sender_member_id', 'receiver_member_id',
-                 'target_member_id', 'source_owner_member_id', 'target_owner_member_id'}
+                  'target_member_id', 'source_owner_member_id', 'target_owner_member_id',
+                  'question_key', 'requester_member_id'}
         result = {k: v if k in exact else _clip(v, maximum) for k, v in value.items()}
         if any(isinstance(v, str) and len(v) > maximum for v in value.values()):
             result['excerpted'] = True
@@ -73,7 +76,7 @@ class TeamWorkflowStore:
                       'detail_actions': ['read_team', 'read_dependency', 'read_replies']}
             # This overview has no page cursor: sample every nonempty category
             # before filling remaining space so a large task list cannot hide work.
-            priority = ('request', 'agreement_change', 'decision', 'dependency',
+            priority = ('request', 'owner_question', 'agreement_change', 'decision', 'dependency',
                         'agreement', 'task', 'member_activity')
             groups = {category: [r for kind, r in records if kind == category] for category in priority}
             groups['request'].sort(key=lambda r: bool(r['resolved'] or r['route_state'] == 'historical'))
@@ -180,6 +183,11 @@ class TeamWorkflowStore:
         route_map = {r['request_id']: r for r in routes}
         dep_map = {d['id']: d for d in deps}
         requests = rows('SELECT * FROM message_requests WHERE room_id=? ORDER BY id DESC', (p.room_id,))
+        owner_questions = queued_owner_questions(db, p)
+        if task_id is not None:
+            owner_questions = [q for q in owner_questions if q['target_task_id'] == task_id]
+        owner_questions = [{**q, 'status': 'queued' if q['wait_reason'] == 'awaiting_owner' else 'blocked'}
+                           for q in owner_questions]
         if focus_ids is not None:
             requests = [r for r in requests if r['task_id'] in focus_ids
                         or route_map.get(r['id'], {}).get('dependency_id') in dep_map
@@ -200,7 +208,7 @@ class TeamWorkflowStore:
             by_request.setdefault(reply['request_id'], []).append(reply)
         request_items = [self._request(r, by_request.get(r['id'], []), receipt_map.get(r['id']),
                          r['id'] in delivered, route_map.get(r['id']), dep_map, reply_reads,
-                         dependency_reads, p, task_map) for r in requests]
+                         dependency_reads, p, task_map, request_route_info(db, r['id'])) for r in requests]
         dependency_items = []
         request_states = {r['id']: r['route_state'] for r in request_items}
         for dep in deps:
@@ -235,6 +243,7 @@ class TeamWorkflowStore:
                    for t in sorted(tasks, key=lambda t: (t['id'] != task_id, t['id']))]
         records += [('dependency', d) for d in dependency_items]
         records += [('request', r) for r in request_items]
+        records += [('owner_question', q) for q in owner_questions]
         records += [('agreement_change', u) for u in uses]
         records += [('agreement', a) for a in agreements]
         records += [('decision', d) for d in decisions]
@@ -254,7 +263,7 @@ class TeamWorkflowStore:
         return records, meta, semantic
 
     @staticmethod
-    def _request(row, replies, receipt, delivered, route, dep_map, reply_reads, dep_reads, p, tasks):
+    def _request(row, replies, receipt, delivered, route, dep_map, reply_reads, dep_reads, p, tasks, owner_route=None):
         dep = dep_map.get(route['dependency_id']) if route else None
         retired = False
         if dep and route:
@@ -265,6 +274,8 @@ class TeamWorkflowStore:
                        or route['created_at'] < max(source['epoch_started_at'] or '', target['epoch_started_at'] or ''))
         state = ('historical' if not dep or retired or dep['current_request_id'] != row['id']
                  else 'closed' if dep['status'] != 'active' else 'current') if route else 'ordinary'
+        if owner_route:
+            state = owner_route['state']
         result = {k: row[k] for k in ('id', 'task_id', 'sender_member_id', 'receiver_member_id',
                   'context_version', 'body', 'created_at', 'resolved_at')}
         enriched = []
@@ -297,7 +308,7 @@ class TeamWorkflowStore:
         actions = []
         if state == 'historical' and dep:
             actions.append({'operation': 'read_dependency', 'arguments': {'dependency_id': dep['id']}})
-        elif p.kind == 'agent' and not row['resolved_at']:
+        elif state not in ('historical', 'closed') and p.kind == 'agent' and not row['resolved_at']:
             if row['sender_member_id'] == p.member_id and latest and not sender_read:
                 actions.append({'operation': 'read_replies', 'arguments': {'after_id': 0, 'task_id': row['task_id']}})
             elif row['receiver_member_id'] == p.member_id and not latest:
@@ -313,6 +324,10 @@ class TeamWorkflowStore:
                       route_version=route['route_version'] if route else None, wait_reason=wait,
                       replies=enriched, reply_total=len(replies), replies_truncated=len(replies) > 2,
                       next_actions=actions, model_comprehension_proven=False)
+        if owner_route:
+            result.update(owner_route_state=state, owner_target_task_id=owner_route['target_task_id'],
+                          current_request_id=owner_route['current_request_id'],
+                          route_version=owner_route['route_version'])
         return result
 
     @staticmethod
