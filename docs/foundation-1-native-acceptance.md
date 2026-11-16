@@ -1,6 +1,6 @@
 # Foundation 1 native evaluation acceptance
 
-Date: 2026-11-16. Current code-completion branch: `codex/foundation-sequential-completion`; framework commit `b8fea59` was first recorded on `codex/team-workflow-implementation`.
+Started: 2026-11-16. PR consolidation: 2026-11-17 on `codex/foundation-sequential-pr`. Framework commit `4961b38` preserves the implementation first recorded as `b8fea59` on `codex/team-workflow-implementation`; private verification records remain in their original retained worktrees.
 
 **Status: framework code complete; actual native acceptance deferred at the user's request.** The final native-free experiment suite ran **149 tests, all passed**, in 47.228 seconds before commit `b8fea59`. The current [strict ledger](superpowers/plans/2026-11-16-foundation-completion.md) now gates advancement on implementation, focused tests and staged commits. Real native experiments have stopped. Their unfinished acceptance is not being reported as passed.
 

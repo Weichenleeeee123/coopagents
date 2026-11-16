@@ -8,7 +8,7 @@
 
 **Architecture:** Keep the common coordination service authoritative and add the missing reusable capabilities there. Complete each foundation's code and focused automated regressions before starting its successor. Retain the native evaluator for later opt-in acceptance, without running it in this pass.
 
-**Working branch:** `codex/foundation-sequential-completion`, retained isolated worktree `foundation-sequential-completion`. The earlier `team-workflow-implementation` worktree and all private experiment records remain intact.
+**PR branch (consolidated 2026-11-17):** `codex/foundation-sequential-pr`, worktree `foundation-sequential-pr`. Implementation and private verification logs remain in `foundation-sequential-completion`; the earlier `team-workflow-implementation` worktree and all experiment records also remain intact. The PR branch starts at `65a4177` and contains only this task's staged implementation/scope commits, without unrelated parallel documentation commits. No existing files or worktrees were removed.
 
 **Tech stack:** Python unittest, the installed authenticated Codex and Claude CLIs, native HTTP MCP, isolated private profiles and SQLite; existing JavaScript where later product work requires it.
 
@@ -16,11 +16,11 @@
 
 | Order | Foundation | Current status | Exit evidence |
 | --- | --- | --- | --- |
-| 1 | Real goals without tool-name prompting | CODE COMPLETE — `b8fea59` | Native execution framework, five original cases, isolated answers/artifact oracle, native event/usage parsers, paired comparison and retained failures; 149 native-free tests passed. Actual acceptance deferred. |
-| 2 | Shared daily collaboration behavior on all supported paths | CODE COMPLETE — `02984df` | Shared lifecycle policy data, consistent MCP/Git/P2P notices, supported hook/plugin wiring and Skills; 50 focused automated checks passed. Native behavior deferred. |
-| 3 | Short request/reply paths | CODE COMPLETE — `d3568e2` | Owner questions persist without a source task, queue and follow current responsibility; stale routes cannot answer/confirm, latest reply reads are explicit, history remains visible; 108 focused Python checks and 7 Node/syntax commands passed. |
-| 4 | Task-focused incremental context and session delivery | CODE COMPLETE — `179a7b1` | Persistent frozen snapshot/delta batches, added/updated/removed records and resync; current execution/native aliases, short watcher leases, directed delivery and member fallback; 119 focused automated checks passed. Native behavior deferred. |
-| 5 | Observable waiting and concrete recovery | CODE COMPLETE | Bounded factual service/local diagnostics and recovery guidance; protected identity-bound bridge/Git outbox, original-payload replay, bounded retries and explicit stop/auth/quota handling; final affected suite 152 checks plus 7 Node/syntax commands passed. |
+| 1 | Real goals without tool-name prompting | CODE COMPLETE — `4961b38` | Native execution framework, five original cases, isolated answers/artifact oracle, native event/usage parsers, paired comparison and retained failures; 149 native-free tests passed. Actual acceptance deferred. |
+| 2 | Shared daily collaboration behavior on all supported paths | CODE COMPLETE — `2d8b544` | Shared lifecycle policy data, consistent MCP/Git/P2P notices, supported hook/plugin wiring and Skills; 50 focused automated checks passed. Native behavior deferred. |
+| 3 | Short request/reply paths | CODE COMPLETE — `dddf017` | Owner questions persist without a source task, queue and follow current responsibility; stale routes cannot answer/confirm, latest reply reads are explicit, history remains visible; 108 focused Python checks and 7 Node/syntax commands passed. |
+| 4 | Task-focused incremental context and session delivery | CODE COMPLETE — `35fc2c0` | Persistent frozen snapshot/delta batches, added/updated/removed records and resync; current execution/native aliases, short watcher leases, directed delivery and member fallback; 119 focused automated checks passed. Native behavior deferred. |
+| 5 | Observable waiting and concrete recovery | CODE COMPLETE — `0f39cb2` | Bounded factual service/local diagnostics and recovery guidance; protected identity-bound bridge/Git outbox, original-payload replay, bounded retries and explicit stop/auth/quota handling; final affected suite 152 checks plus 7 Node/syntax commands passed. |
 
 Code completion requires the original capability to be implemented and its focused regressions to pass, followed by a coherent commit. Actual model behavior and independent-user acceptance remain unverified and must not be inferred from those tests. They no longer block this user-authorized code-only pass. Do not start the next foundation until the current code-level gate is met.
 
@@ -84,3 +84,5 @@ All logs below are private retained files in the `foundation-sequential-completi
 | 5 final affected set | 152 focused tests passed in 85.880 seconds; 7 Node/syntax commands passed | `foundations-final-code-tests.log` |
 
 Counts overlap across stages and must not be added as a unique-test total. The final affected set covers outbox/Git/bridge recovery, diagnostics, deltas, workflow scenarios, policy/Skills contracts and session routing. It is not a claim that the entire repository CI suite, real native-agent sessions or independent-device acceptance was run. The existing protocol integration fixtures were updated for the new contracts but their actual stdio/native runs remain outside this pass.
+
+The consolidated PR worktree's production, tests, experiments and CI Git trees were compared with the verified implementation branch and were identical. Its checkout-specific import path was then checked and 5 focused schema/recovery tests plus the 2 affected Node UI regressions passed. Only this documentation record differs afterward. No branch was pushed, no PR was opened, and no real native/cross-device validation was resumed.
