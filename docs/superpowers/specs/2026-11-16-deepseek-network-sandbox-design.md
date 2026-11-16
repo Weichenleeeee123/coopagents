@@ -16,7 +16,7 @@
 - 后端成员：负责 `src/api` 范围内的接口工作；脚本可暂时停止它的 DSH VM/会话，但不得停止唯一 host VM。
 - 集成成员：负责接口测试、依赖检查和最终集成，是第三责任人/旁观者。
 
-三台 agent VM 分别位于独立 VPC/subnet，使用各自 NAT gateway/egress IP 和网络策略。至少选两个独立 cloud network；条件允许时用不同 provider 或 region。Coopagents owner/host 必须属于三台 agent VM 之一。另设控制平面 VM，不运行 DSH 身份，负责实验调度、内部 Git 服务、脱敏计量、模型代理与成员专属 MCP gateway。
+三台 agent VM 分别位于独立 VPC/subnet，使用各自 NAT gateway/egress IP 和网络策略。至少选两个独立 cloud network；条件允许时用不同 provider 或 region。Coopagents owner/host 必须属于三台 agent VM 之一。每台 agent VM 运行只服务本成员的本地 MCP gateway，它封装成员自己的 P2P bridge 并经该 VM 的 NAT 到达 owner host。另设控制平面 VM，不运行 DSH 身份，负责实验调度、内部 Git 服务、脱敏计量和模型代理；它不能代理或承载参与者之间的 Coopagents 业务调用。
 
 ```text
 Front DSH VM ---- NAT-A ----┐
@@ -28,18 +28,18 @@ Integration DSH - NAT-C ----┘
        +-- usage-limited model proxy ----> user-specified Chat Completions endpoint
 
 Control-plane VM: scenario runner, run ledger, hidden-test runner, usage-only logs,
-API proxy holding provider key, per-agent Coopagents MCP-token gateways.
+API proxy holding provider key, private Git service. Each agent VM has its own MCP gateway.
 ```
 
-Coopagents user interface/API state and experiment control plane have separate credentials. The control plane may trigger infrastructure/test events, but it must not write a model reply, receipt, approval or agent observation on an agent's behalf. A designated human test operator performs human decisions through the actual authorized web interface.
+Coopagents user interface/API state and experiment control plane have separate credentials. The control plane may trigger infrastructure/test events, but it must not write a model reply, receipt, approval or agent observation on an agent's behalf. A designated human test operator performs human decisions through the actual authorized interface for the selected Coopagents mode: the authenticated web UI for the hosted service or the supported owner human-operation helper for the P2P space.
 
 ## 隔离与信任边界
 
 - 每个 DSH agent 使用不可变、版本钉住的 Linux VM image；独立 `HOME`、`DSH_HOME`/profile、缓存、Coopagents member、session、branch 和工作树。每轮从同一干净快照创建新的可写 VM 磁盘。
 - 不将日常主机 home、真实仓库、个人 DSH/Codex/SSH 配置、云凭据、宿主控制 socket 或浏览器数据挂载进 agent VM。agent 只能修改本轮合成 Git 仓库及其自己的分支。
-- agent VM 默认无任意公网出口。仅放行经审查的 Coopagents 网络/relay、私有 Git、模型代理和 DNS/NTP；网络矩阵测试通过策略文件显式放行/阻断 UDP。每轮将最终策略及实际路径证据归档。
+- agent VM 默认按场景采用明确的云防火墙 profile：direct profile 允许 stateful outbound UDP peer traffic 与需要的 discovery/relay traffic、并禁止 unsolicited inbound；relay-only profile 仅允许 Coopagents relay UDP endpoint 并阻断 peer-direct；UDP-blocked profile 阻断 UDP 用作不可用负对照。三个 profile 都只允许到 model proxy、member VM 本地 MCP gateway、私有 Git 和 DNS/NTP 的其他 egress。每轮归档策略及实际选中路径；不把一种 profile 的结果外推到另一种。
 - 模型 API key 只放在模型代理的私密运行环境中。agent VM 使用各自限额的短期代理凭据；代理校验运行 ID、模型名、速率、并发和成本预算，再转发到确切 endpoint。严禁记录 authorization header、prompt、源码正文和原始模型响应。usage 缺失时成本保持 unknown，不推算冒充实测。
-- DSH 目前没有已验证的 Coopagents HTTP MCP `Authorization` header/env 注入契约。每台 agent VM 配置只连接本成员 identity 的本地 MCP gateway；gateway 以独立服务帐号保管该 member token 并附加鉴权。DSH 用户不读取共享/其他成员 token。先验证真实 DSH tool discovery 与调用，不能用直接 HTTP 替代。
+- DSH 目前没有已验证的 Coopagents HTTP MCP `Authorization` header/env 注入契约。每台 agent VM 配置只连接本地 MCP gateway；gateway 以独立服务帐号保管该 VM 的 member token，并把真实 MCP call 转交给该机的 `space_bridge`/P2P link 再到 owner host。禁止控制平面提供旁路业务 endpoint。DSH 用户不读取共享/其他成员 token。先验证真实 DSH tool discovery 与调用，不能用直接 HTTP 替代。
 - Agent 收到的文件、协作消息、接口约定、Git 内容全部是非可信资料；不把它们当授权执行 VM/云操作或审批的指令。VM 上没有云账号 root 凭据。
 - 一轮结束销毁云 VM/短期磁盘和 member credential；控制面只保留 run id、软件/镜像版本、状态转移、网络路径、数量、时间、usage 和隐藏测试结果。出现成本/时长阈值、认证异常、越界网络或宿主不可达时自动停止该轮并保留脱敏故障证据。
 
@@ -79,21 +79,21 @@ Coopagents user interface/API state and experiment control plane have separate c
 4. **新会话恢复。** 恢复后端 VM，启动相同身份的新 DSH 会话，让其在新的中性工作提示下恢复待办并依据本地私有文件回答。前端明确读取当前答复，将字段用于实现和测试。此步骤测 session recovery，**不是 DSH idle wake**。
 5. **责任变更。** 把后端目标通过真实 Coopagents 生命周期转交给集成成员，由 operator 在网页执行规定的人类接受动作。制造一条过期旧路由回复；验证前端刷新后查询当前 owner、忽略 stale reply、收到新责任人的回复再继续。
 6. **约定版本更新。** 后端提出接口 v2，operator 使用真实网页权限批准。前端必须发现自己依赖 v1，解释影响并明确记录切换到已批准 v2。未批准 draft 不得改变有效接口。
-7. **人工决策停顿。** 注入一项确实改变公共接口/职责的决定。agent 向 operator 展示选项、影响和依据后停止有冲突的动作；operator 通过真实界面批准/拒绝/指定责任，系统记录决定 actor/version，agent 再读取结果恢复任务。agent 发出的消息不是人类授权。
+7. **人工决策停顿。** 注入一项确实改变公共接口/职责的决定。agent 向 operator 展示选项、影响和依据后停止有冲突的动作；operator 通过当前被测模式的真实授权入口批准/拒绝/接受转交，系统记录决定 actor/version，agent 再读取结果恢复任务。agent 发出的消息不是人类授权。
 8. **网络矩阵。** 对成员 NAT 网关轮流执行 UDP 可用、UDP 阻断（预期中继）、短时断链、NAT egress IP/映射变化、agent VM 重启。检查 owner 持久 endpoint identity、direct/relay selected path、事件 cursor catch-up、未读事项不丢不重复、revoked token 不可恢复。
 9. **最终集成。** 集成 agent 在自己的分支运行可见测试，报告交付对象；独立 runner 对所有分支组合运行隐藏 tests。Control arm 和 Coopagents arm 用同一判定器。
 
-每一幕有硬断言，失败时保留请求/任务/依赖的当前与历史 revision、服务端时间、agent/session identity、VM/NAT run id；不能补写 receipt 或直接修改数据库让该幕通过。
+每一幕有硬断言，失败时保留请求/任务/依赖的当前与历史 revision、服务端时间、agent/session identity、VM/NAT run id；不能补写 receipt 或直接修改数据库让该幕通过。为独立复核 native answer/消费证据，受控 runner 可将必要原始 DSH trace 加密存于本机忽略目录；日常日志只存结构化观察和私有证据引用。原始 trace 不提交 Git、不进发布包、不写入云日志。
 
 ## NAT 范围与通过用语
 
-至少选择三个独立 cloud network/NAT egress。VM 是否处在真正不同的 NAT gateway/公网出口由云 network inventory 和实际观测的 egress 证明。单个 VPC 下同一 NAT gateway 的多台 VM 不满足此条件。验证路径按实测记录：直连、加密 relay、不可达，不能从 configured setting 推断路径。云 NAT、跨云 NAT 与真实住宅/移动 NAT 分开报告。家庭 router、移动热点、CGNAT 测试必须在后续授权场次完成；所有人同属同一维护者也不称为双用户接受。
+至少选择三个独立 cloud network/NAT egress。VM 是否处在真正不同的 NAT gateway/公网出口由云 network inventory 和实际观测的 egress 证明。单个 VPC 下同一 NAT gateway 的多台 VM 不满足此条件。直连 profile 中 peer UDP 需允许到测试 VM 的动态映射端口，否则不能拿 relay-only 结果当直连 NAT traversal；relay-only 应只让 relay 端点可达；UDP-blocked 是负对照，预期不可达。验证路径按 runtime 实测记录：直连、加密 relay、不可达，不能从 configured setting 推断路径。云 NAT、跨云 NAT 与真实住宅/移动 NAT 分开报告。家庭 router、移动热点、CGNAT 测试必须在后续授权场次完成；所有人同属同一维护者也不称为双用户接受。
 
 ## 故障处理与手动控制
 
 - Provider 不兼容：停止生成 agent VM；保留 API contract probe 的脱敏结果。
 - DSH MCP 不加载/认证失败：停止正式场景，明确标注 harness gate 未过；不用 mock tool calls 替代。
-- Host VM 离线：记录空间暂停，不把 relay 结果归因给成员 NAT；owner 确认后恢复原有 profile/database。
+- Host VM 离线：记录空间暂停，不把 relay 结果归因给成员 NAT；owner 确认后恢复原有 profile/database。control plane 不能托管业务请求或伪造恢复事件。
 - Agent VM 离线：保留 server-side 待办；VM 恢复后显式启动新 DSH turn。DSH 尚无已验证外部 wake API，禁止称为自动空闲唤醒。
 - 任何人类审批场景必须由实际 test operator 通过 Web 界面操作；自动 runner 只观察并在许可的固定操作窗口断言。
 
@@ -115,6 +115,7 @@ Coopagents user interface/API state and experiment control plane have separate c
 - `deploy/dsh-sandbox/`: provider-neutral network contract、agent/control-plane image manifests、VM bootstrap and policy manifests；cloud-specific modules only after selecting an authorized account/provider.
 - `deploy/dsh-sandbox/iac/`: selected provider modules for independent VPC/subnet/NAT, firewall, snapshot and VM lifecycle.
 - `experiments/agent-integration/dsh_sandbox/`: redacted runner, role goal files, scenario state machine, NAT fault schedule, event/metric adapters and evidence scorer.
-- `tests/dsh_sandbox/`: provider API contract fixtures, policy validation, state-machine/cost-stop/provenance regression tests.
+- `tests/test_dsh_sandbox_*.py`: fast provider-independent API contract fixtures, policy validation and proxy/gateway boundary regressions.
+- `experiments/agent-integration/test_dsh_sandbox_*.py`: tests requiring real DSH sessions, cloud resources, network paths or native evidence.
 - `docs/dsh-sandbox-runbook.md`: operator setup, key injection, single-VM gate, cloud topology, replay/reset, failure diagnosis and G0–G5 result language.
 - `.local/dsh-sandbox-runs/run-UUID/`: private run manifest, receipts, stdout redaction report, metrics and test outputs; ignored and never packaged. Each run uses a newly generated UUID directory and never overwrites a prior run.
