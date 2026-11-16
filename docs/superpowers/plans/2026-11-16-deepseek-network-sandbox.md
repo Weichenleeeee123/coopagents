@@ -25,7 +25,7 @@ The cloud provider is selected during Task 1 from an account the operator alread
 - Create fast provider-independent tests as `tests/test_dsh_sandbox_*.py`; put tests requiring actual DSH/cloud/network activity under `experiments/agent-integration/test_dsh_sandbox_*.py`.
 - Modify `experiments/agent-integration/workflow_evaluation.py` only to accept actual native runner exports while preserving current fixture/protocol/native classifications and no-auto-upgrade rules.
 - Update `docs/dsh-sandbox-runbook.md`, `docs/team-workflow-acceptance.md`, `docs/deepseek-harness-gaps.md` and `docs/README.md` after measured results.
-- Write every environment, snapshot, log and evidence file under ignored `.local/dsh-sandbox-runs/<run-id>/`; never place secrets under `experiments/`, tracked `deploy/` or source trees.
+- Write every environment, snapshot, log and evidence file under ignored `.local/dsh-sandbox-runs/run-UUID/`; each attempt uses a new UUID directory and never overwrites a prior run. Never place secrets under `experiments/`, tracked `deploy/` or source trees.
 
 ## Stage A: Technical compatibility and control plane
 
@@ -42,10 +42,10 @@ The cloud provider is selected during Task 1 from an account the operator alread
 
 **Files:** create `experiments/agent-integration/dsh_sandbox/provider_probe.py`, `tests/test_dsh_sandbox_provider_probe.py`, `experiments/agent-integration/test_dsh_sandbox_provider_probe_live.py`, and redacted `docs/dsh-sandbox-runbook.md` compatibility checklist.
 
-- [ ] Define `LLM_BASE_URL`, `LLM_API_KEY`, and `LLM_MODEL` as runtime-only inputs; parser diagnostics and structured logs must expose only variable names and safe response classification, never values/headers/body.
+- [ ] Define `LLM_BASE_URL`, `LLM_API_KEY`, and `LLM_MODEL` as runtime-only inputs; parser diagnostics and structured logs must expose only variable names and safe response classification, never values/headers/body. Clear key references from the probe process environment at exit; do not write a key file.
 - [ ] Add tests for endpoint joining preserving a complete `/chat/completions` URL (never appending the suffix twice), TLS enforcement, redirect refusal, proxy auth/rate-limit handling and request body limits.
 - [ ] Add a probe mode that sends one low-token synthetic tool-call request through the exact endpoint and verifies: response model identifier, content, tool call schema, stream termination, and usage fields when supplied. Never send source code, hidden oracle or credentials in prompt text.
-- [ ] Before calling the provider, the operator rotates the chat-exposed key and puts its replacement into the private secret manager; inject it only into the probe proxy process, then clear the named runtime reference when the probe exits.
+- [ ] Before calling the provider, the operator rotates the chat-exposed key and puts its replacement into the private secret manager; inject it into the probe proxy process memory and clear that process reference at exit without writing a key file.
 - [ ] In a disposable Linux VM install the pinned DSH CLI, configure the custom endpoint/model, verify one real native DSH turn and one actual tool call through a local fixture MCP server; record version/response classification/usage only.
 - [ ] Stop here with an explicit compatibility blocker if DSH cannot load the custom endpoint or native tool calling. Do not switch to SDK/direct HTTP and report it as DSH acceptance.
 - [ ] Run `python -m unittest discover -s tests -p 'test_dsh_sandbox_provider_probe.py' -v`, then invoke the separate live probe only in its disposable VM and retain sanitized evidence. No additional agent VMs yet.
@@ -71,7 +71,7 @@ The cloud provider is selected during Task 1 from an account the operator alread
 - [ ] Add provider-module tests that require three unique NAT gateway/subnet IDs and egress identities for the three agents; permit only outbound DNS/NTP, provider proxy, Coopagents peer/relay ports and private Git; deny unsolicited inbound sessions and cross-agent east-west traffic.
 - [ ] Build identical pinned Linux agent images with non-root DSH account, separate protected MCP gateway service account, fresh per-VM DSH_HOME, monotonic clock, no public SSH/RDP, no cloud credentials and no mounted host directories.
 - [ ] Build a separate control-plane image for coordinator, model proxy, internal Git and evidence collector. Provider API credentials are injected only into the external provisioning controller, not that VM after creation.
-- [ ] Create per-VM cloud-init that obtains per-member Coopagents credentials from a short-lived provisioning channel, writes them only to the member gateway's private path, then removes bootstrap material. Do not print cloud-init secret output.
+- [ ] Create per-VM initialization that obtains per-member Coopagents credentials from a short-lived provisioning channel directly into the gateway process memory. Do not write bootstrap credentials to a file or print initialization output; the credentials' server-side expiry/revocation ends the bootstrap grant.
 - [ ] Require a designated owner agent VM to host the Coopagents P2P service/database/identity; keep this owner VM online during peer-outage scenes. The control plane must not fabricate membership, request or model-consumption events.
 - [ ] Snapshot the clean image and produce three cloned agent VMs behind distinct NAT egress. Record provider-reported subnet/NAT IDs and verify egress identity from each VM.
 - [ ] Do not provision until the operator runs the reviewed provider command. Tag resources with run id/expiry and create a retained inventory before starting DSH.
