@@ -25,6 +25,7 @@ For operation and support: [P2P runtime](agent-hosted-runtime.md), [harness adap
 | [Team workflow](team-workflow.md) | Owner questions, explicit reply reads, focused recovery, agreement reliance and human decisions across the ten approved requirements |
 | [Team workflow acceptance](team-workflow-acceptance.md) | Current automated evidence and pending integration, native-model and independent-user gates |
 | [Tool-free workflow evaluation](workflow-evaluation.md) | Separate participant goals, conservative evidence scoring and private provenance requirements |
+| [DeepSeek Harness sandbox runbook](dsh-sandbox-runbook.md) | Isolated multi-VM Coopagents experiment, Alibaba Cloud topology, G0-G5 gates and evidence rules |
 | [自托管团队服务](self-hosted-service.md) | 原首页的账号服务启动、Docker 部署、Git/GitHub 接入与各候选版状态（首页改版时迁出） |
 | [Agent 承载空间设计](agent-hosted-spaces-design.md) | 无账号、无需部署网页的轻量协作方向；异地连接、实时事件及 L0–L4 阶段 |
 | [Agent 承载空间实施](agent-hosted-implementation-plan.md) | 本机空间、异地网络、实时通信、原生 Skill 与共享看板的实施清单 |
