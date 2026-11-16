@@ -46,9 +46,10 @@ class FakeDsh:
 
     async def run_turn(self, *, arm, role, prompt, session_id, fresh_session,
                        workspace, timeout_seconds, budget_remaining_usd):
-        self.calls.append((arm, role, session_id, fresh_session, workspace, timeout_seconds))
-        return {'status': 'completed', 'source': 'fixture', 'evidence_ref': 'fake:turn',
-                'session_id': session_id, 'cost_usd': self.cost}
+        native_id = f'native-{arm}-{role}-{len([c for c in self.calls if c[0] == arm and c[1] == role]) + 1}'
+        self.calls.append((arm, role, session_id, fresh_session, workspace, timeout_seconds, native_id))
+        return {'status': 'completed', 'source': 'native', 'evidence_ref': 'fake:turn',
+                'session_id': native_id, 'cost_usd': self.cost}
 
 
 class FakeOperator:
@@ -75,9 +76,19 @@ class RunnerTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(Path(result['artifact_dir']).is_dir())
         self.assertTrue((Path(result['artifact_dir']) / 'run.json').is_file())
         self.assertTrue(all(call[4] for call in dsh.calls))
-        sessions = [call[2] for call in dsh.calls]
-        self.assertEqual(len(sessions), len(set(sessions)))
+        frontend = [call for call in dsh.calls if call[1] == 'frontend']
+        self.assertIsNone(frontend[0][2])
+        self.assertEqual(frontend[1][2], frontend[0][6])
+        self.assertFalse(frontend[1][3])
+        backend = [call for call in dsh.calls if call[1] == 'backend']
+        reopen = next(call for call in backend if call[3])
+        self.assertIsNone(reopen[2])
+        self.assertEqual(reopen[6], 'native-' + reopen[0] + '-backend-2')
         self.assertTrue(all(call[5] <= 30 for call in dsh.calls))
+        record = json.loads((Path(result['artifact_dir']) / 'run.json').read_text())
+        self.assertEqual(record['evidence_classification'], 'harness_only')
+        resumed = record['outcomes']['new_session_recovery']
+        self.assertNotEqual(resumed['prior_session_id'], resumed['resumed_session_id'])
 
     async def test_stops_on_failed_trigger_and_retains_partial_evidence(self):
         root = self.output_root()

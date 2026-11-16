@@ -9,7 +9,6 @@ import json
 import math
 from pathlib import Path
 import random
-import secrets
 from uuid import uuid4
 
 try:
@@ -88,6 +87,7 @@ async def run_scenarios(manifest, *, cloud, dsh, operator, output_root):
     deadline = asyncio.get_running_loop().time() + run['timeout_seconds']
     spent = 0.0
     observed_sources = []
+    sessions = {}
 
     def persist():
         _write_artifact(artifact, record)
@@ -143,7 +143,8 @@ async def run_scenarios(manifest, *, cloud, dsh, operator, output_root):
 
     async def turn(arm, role, prompt, workspace, fresh=False):
         nonlocal spent
-        session_id = 'session-' + secrets.token_hex(12)
+        prior_session_id = sessions.get((arm, role))
+        session_id = None if fresh else prior_session_id
         try:
             value = await _invoke(dsh, 'run_turn', call_timeout_seconds=timeout_left(),
                                   arm=arm, role=role, prompt=prompt, session_id=session_id,
@@ -159,6 +160,7 @@ async def run_scenarios(manifest, *, cloud, dsh, operator, output_root):
         record['attempts'].append({'arm': arm, 'scenario_id': 'agent_turn', 'role': role,
                                    'transition': 'fresh_session' if fresh else 'turn',
                                    'observation': safe})
+        returned_session_id = safe.get('session_id')
         cost = safe.get('cost_usd')
         if isinstance(cost, (int, float)) and not isinstance(cost, bool) and cost >= 0:
             spent += float(cost)
@@ -166,6 +168,20 @@ async def run_scenarios(manifest, *, cloud, dsh, operator, output_root):
         persist()
         if safe.get('status') != 'completed' or not safe.get('evidence_ref'):
             return safe, 'provider_failed' if safe.get('status') == 'provider_failed' else 'dsh_failed'
+        if (safe.get('source') == 'native' and isinstance(returned_session_id, str)
+                and returned_session_id.strip()):
+            sessions[(arm, role)] = returned_session_id
+        if fresh:
+            record['attempts'][-1]['prior_session_id'] = prior_session_id
+            record['attempts'][-1]['resumed_session_id'] = returned_session_id
+            if prior_session_id and returned_session_id:
+                record['outcomes']['new_session_recovery'] = {
+                    'status': 'session_ids_observed', 'source': safe.get('source'),
+                    'evidence_ref': safe.get('evidence_ref'),
+                    'prior_session_id': prior_session_id,
+                    'resumed_session_id': returned_session_id,
+                }
+            persist()
         if spent >= run['cost_limit_usd']:
             return safe, 'budget_exhausted'
         return safe, None
@@ -251,12 +267,16 @@ async def run_scenarios(manifest, *, cloud, dsh, operator, output_root):
                 if failure:
                     return stop(failure)
                 recent = record['attempts'][-1]['observation'] if record['attempts'] else {}
-                record['outcomes'][outcome] = {
+                outcome_record = {
                     'status': 'native_observation_unverified' if recent.get('source') == 'native'
                     else 'harness_observation',
                     'source': recent.get('source'),
                     'evidence_ref': recent.get('evidence_ref'),
                 }
+                if outcome == 'new_session_recovery':
+                    outcome_record.update({key: value for key, value in record['outcomes'].get(outcome, {}).items()
+                                           if key in ('prior_session_id', 'resumed_session_id')})
+                record['outcomes'][outcome] = outcome_record
                 persist()
     except asyncio.TimeoutError:
         return stop('run_timeout')
@@ -266,9 +286,7 @@ async def run_scenarios(manifest, *, cloud, dsh, operator, output_root):
     record['status'] = 'completed'
     record['partial'] = False
     record['stop_reason'] = None
-    record['evidence_classification'] = ('native_observations_unverified'
-                                         if observed_sources and all(s == 'native' for s in observed_sources)
-                                         else 'harness_only')
+    record['evidence_classification'] = 'harness_only'
     persist()
     return {key: value for key, value in record.items() if key != 'manifest'} | {
         'artifact_dir': str(attempt_dir)}
