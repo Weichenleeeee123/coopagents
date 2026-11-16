@@ -19,8 +19,8 @@
 | 1 | Real goals without tool-name prompting | CODE COMPLETE — `b8fea59` | Native execution framework, five original cases, isolated answers/artifact oracle, native event/usage parsers, paired comparison and retained failures; 149 native-free tests passed. Actual acceptance deferred. |
 | 2 | Shared daily collaboration behavior on all supported paths | CODE COMPLETE — `02984df` | Shared lifecycle policy data, consistent MCP/Git/P2P notices, supported hook/plugin wiring and Skills; 50 focused automated checks passed. Native behavior deferred. |
 | 3 | Short request/reply paths | CODE COMPLETE — `d3568e2` | Owner questions persist without a source task, queue and follow current responsibility; stale routes cannot answer/confirm, latest reply reads are explicit, history remains visible; 108 focused Python checks and 7 Node/syntax commands passed. |
-| 4 | Task-focused incremental context and session delivery | CODE COMPLETE | Persistent frozen snapshot/delta batches, added/updated/removed records and resync; current execution/native aliases, short watcher leases, directed delivery and member fallback; 119 focused automated checks passed. Native behavior deferred. |
-| 5 | Observable waiting and concrete recovery | NOT STARTED | Evidence-based service/network/session/hook/watcher states, durable local outbox and authorized recovery |
+| 4 | Task-focused incremental context and session delivery | CODE COMPLETE — `179a7b1` | Persistent frozen snapshot/delta batches, added/updated/removed records and resync; current execution/native aliases, short watcher leases, directed delivery and member fallback; 119 focused automated checks passed. Native behavior deferred. |
+| 5 | Observable waiting and concrete recovery | CODE COMPLETE | Bounded factual service/local diagnostics and recovery guidance; protected identity-bound bridge/Git outbox, original-payload replay, bounded retries and explicit stop/auth/quota handling; final affected suite 152 checks plus 7 Node/syntax commands passed. |
 
 Code completion requires the original capability to be implemented and its focused regressions to pass, followed by a coherent commit. Actual model behavior and independent-user acceptance remain unverified and must not be inferred from those tests. They no longer block this user-authorized code-only pass. Do not start the next foundation until the current code-level gate is met.
 
@@ -47,26 +47,40 @@ Files: `experiments/agent-integration/workflow_native_cases.py`, `test_workflow_
 
 Files: `experiments/agent-integration/workflow_native_runner.py`, `test_workflow_native_runner.py`.
 
-- [ ] Test first: opt-in native runs, exact approvals, private profiles, credential-safe output, bounded processes and fresh directories.
-- [ ] Reuse existing private-home preparation without modifying the user's live settings or changing their model.
-- [ ] Seed only ordinary project/member/task setup. Start actual native processes with native MCP. The harness must not send the evaluated questions or replies itself.
-- [ ] Capture timestamped events, model usage, source/config fingerprints, exact prompts, immutable artifacts, and service snapshots privately.
-- [ ] Schedule initial work, responder work, neutral continuation and truly fresh native-session recovery. Count every harness continuation and any human reminder separately.
-- [ ] Offer paired arms with identical goals/data/model configuration: improved primitive descriptions versus composite request/reply entries. Report the exposure difference explicitly.
-- [ ] Verify actual native successful calls and linked service changes plus requester oracle; never infer comprehension from receipts or prose alone.
+- [x] Implement and test opt-in execution, exact approvals, private profiles, credential-safe output, bounded processes and fresh directories.
+- [x] Reuse existing private-home preparation without modifying the user's live settings or changing their model.
+- [x] Implement ordinary project/member/task seeding and native MCP process execution; the harness does not send the evaluated questions or replies itself.
+- [x] Implement private timestamped event, usage, source/config fingerprint, prompt, artifact and snapshot collection.
+- [x] Implement concurrent workers, ordinary continuations and fresh-session recovery, with separate continuation/reminder counts.
+- [x] Implement paired arms with identical goals/data/model configuration and explicit exposure differences.
+- [x] Implement structured native-call/source/artifact verification; receipts alone cannot pass it. Actual acceptance remains deferred.
 
 ### D. Run, measure and document
 
 Files: `docs/workflow-evaluation.md`, `docs/foundation-1-native-acceptance.md`, this ledger.
 
-- [ ] Run the native-free regression suite and inspect all results.
+- [x] Run the native-free regression suite and inspect all results (149 passed before framework commit).
 - [ ] Run real native preflight without substituting models or retrying quota failures.
 - [ ] Execute and retain the five scenarios in both paired arms; record failures as failures.
 - [ ] Publish a sanitized measured summary with denominators and unknown metrics. No fabricated monetary estimate or independent-user claim.
-- [ ] Commit source/tests and maintained documentation in coherent stages. Preserve every file and leave the existing branch/worktree available.
+- [x] Commit source/tests and maintained documentation in coherent stages. Preserve every file and leave existing branches/worktrees available.
 
 Instrumentation findings retained before a valid baseline: (1) a missing private Windows sandbox backend silently changed effective permissions; (2) sequential requester/responder process scheduling could deadlock on an otherwise valid native wait. The private adapter now selects the normal restricted-token backend, and normal cases run actual workers concurrently after a durable question appears. The reopen case has an explicit owned-process cancellation event. Neither discovery advanced work to Foundation 2.
 
 ## Subsequent foundations
 
 Only after the current foundation's code-level gate passes and its changes are committed, implement the next foundation. Do not implement the five later multiplayer outcomes in this pass. The unchecked real-run tasks above are deliberately deferred acceptance work, not permission to resume lengthy native experiments.
+
+## Code-only verification record
+
+All logs below are private retained files in the `foundation-sequential-completion` worktree's ignored `.local/test-evidence/`, except the original framework log in the retained `team-workflow-implementation` worktree.
+
+| Stage | Actual automated result | Retained log |
+| --- | --- | --- |
+| 1 framework | 149 native-free experiment tests passed | `foundation-1-experiments-precommit.log` |
+| 2 policy/hooks | 50 focused tests passed | `foundation-2-code-tests.log` |
+| 3 owner questions | 108 focused Python tests; 7 Node/syntax commands passed | `foundation-3-code-tests.log` |
+| 4 deltas/session dispatch | 119 focused tests passed | `foundation-4-code-tests-final.log` |
+| 5 final affected set | 152 focused tests passed in 85.880 seconds; 7 Node/syntax commands passed | `foundations-final-code-tests.log` |
+
+Counts overlap across stages and must not be added as a unique-test total. The final affected set covers outbox/Git/bridge recovery, diagnostics, deltas, workflow scenarios, policy/Skills contracts and session routing. It is not a claim that the entire repository CI suite, real native-agent sessions or independent-device acceptance was run. The existing protocol integration fixtures were updated for the new contracts but their actual stdio/native runs remain outside this pass.

@@ -113,6 +113,19 @@ assert.ok(descendants(root).some(node=>node.textContent.includes('<script>Approv
 assert.equal(descendants(root).filter(node=>['SCRIPT','IMG','SVG'].includes(node.tagName)).length,0);
 assert.equal(descendants(section('workflow-decisions')).filter(node=>node.tagName==='BUTTON'&&/^(批准|拒绝|确认关联|接受交接|认领)/.test(node.textContent)).length,0,'Decision cards expose navigation, not new mutation controls');
 
+render(snapshot({diagnostics:[
+  {component:'network',status:'unknown',evidence:{raw_error:'PRIVATE_DIAGNOSTIC_SECRET'},next_action:{action:'check_service_connection'}},
+  {component:'watcher',status:'stopped',evidence:{updated_at:now},next_action:{action:'open_native_session',task_id:31}},
+  {component:'model',status:'online',evidence:{claimed:true},next_action:{action:'delete_everything'}}]}));
+assert.match(content(section('workflow-observations')),/网络连接：未知/);
+assert.match(content(section('workflow-observations')),/检查服务地址.*网络/);
+assert.match(content(section('workflow-observations')),/唤醒观察器：已停止/);
+assert.match(content(section('workflow-observations')),/打开对应原生会话/);
+assert.match(content(section('workflow-observations')),/模型响应：未知/);
+assert.doesNotMatch(content(root),/PRIVATE_DIAGNOSTIC_SECRET|delete_everything|模型响应：online/);
+assert.equal(apiCalls,0,'Recovery hints never execute an action');
+button('查看任务 #31',section('workflow-observations')).listeners.click();assert.deepEqual(navigation.pop(),{kind:'task',id:31});
+
 const manyRequests=Array.from({length:9},(_,index)=>({...requests[0],id:100+index,body:'Very long '.repeat(400)+'HIDDEN_REQUEST_TAIL'}));
 const manyDecisions=Array.from({length:9},(_,index)=>({...decisions[0],id:200+index}));
 const manyAgreements=Array.from({length:9},(_,index)=>({task_id:31,contract_id:300+index,title:'Interface',baseline_version:1,effective_version:2,review_required:true}));

@@ -7,6 +7,7 @@ from .errors import ValidationError
 from .task_lifecycle import execution_task, manager, project_task, task_row
 from .workflow import queued_owner_questions, request_route_info
 from .brief_deltas import BriefDeltaStore, item_key
+from .workflow_diagnostics import server_diagnostics
 
 MAX_BYTES = 16000
 KINDS = {'task': 'tasks', 'dependency': 'dependencies', 'request': 'requests',
@@ -260,6 +261,15 @@ class TeamWorkflowStore:
                 'recovery': [{'action': 'continue_authorized_independent_work'},
                              {'action': 'refresh_current_responsibility_before_rerouting'},
                              {'action': 'surface_pending_human_decisions_without_approving'}]}
+        diagnostics = server_diagnostics(db, p, requests=request_items, owner_questions=owner_questions,
+                                         tasks=tasks, task_id=task_id)
+        meta.update(diagnostics)
+        recovery = []
+        for card in diagnostics['diagnostics']:
+            action = card['next_action']
+            if action not in recovery:
+                recovery.append(action)
+        meta['recovery'] = recovery[:6]
         # Full reply/receipt facts affect the digest, including excerpted bodies.
         semantic = {'principal': asdict(p), 'records': records, 'replies': replies, 'requests': requests,
                     'dependency_reads': dependency_reads,

@@ -71,7 +71,9 @@ TOOL_DESCRIPTIONS = {
                    'is rechecked before every cached page. Never interpret truncation as no pending work.'),
     'read_workflow': ('Read project collaboration facts: request wait reasons, observed session/checkpoint times, '
                       'one two-member exchange onboarding chain, agreement impacts and explicit human decision '
-                      'summaries. This is read-only; no inbox or reply receipts, approvals or handoff decisions occur. '
+                      'summaries. Bounded diagnostics distinguish recorded delivery/read/reply facts, execution or '
+                      'watcher-lease problems and unobservable network/native trust states, with concrete recovery '
+                      'actions. This is read-only; no inbox or reply receipts, approvals or handoff decisions occur. '
                       'Unknown model responsiveness stays unknown. Cards describe authorized actions, not permission '
                       'to execute them; human changes still need the actual user instruction and separate credential.'),
     'read_deliveries': 'Read task-to-delivery associations and reverse task links with source, freshness and unavailable states.',

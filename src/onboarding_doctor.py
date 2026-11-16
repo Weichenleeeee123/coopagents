@@ -313,6 +313,7 @@ def local_checks(*, tool=None, profile_path=None, project_dir=None, cli=None, sk
     connections = []
     if profile_path:
         checks.append(mcp_check(selected, profile_path, cli=cli, name=name))
+        checks.append(workflow_diagnostics_check(profile_path, tool=selected or tool, project_dir=project_dir))
     elif selected:
         try:
             entries = space_connect.registered_spaces(selected, project_dir or os.getcwd())
@@ -332,6 +333,15 @@ def local_checks(*, tool=None, profile_path=None, project_dir=None, cli=None, sk
     result = aggregate(checks)
     result['connections'] = connections
     return result
+
+
+def workflow_diagnostics_check(profile_path, **options):
+    """Inspect existing workflow state without host start, network or native CLI calls."""
+    from .workflow_diagnostics import local_diagnostics
+    result = local_diagnostics(profile_path, **options)
+    return make_check('workflow_diagnostics', 'unknown',
+        'Existing local workflow facts were inspected; native consumption and trust remain unverified.',
+        'Inspect the component-specific recovery actions; no host, watcher or trust was changed.', result)
 
 
 def _request_profile(profile, path, *, token=None, data=None):

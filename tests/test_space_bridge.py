@@ -20,6 +20,7 @@ import httpx2
 from mcp.client.streamable_http import streamable_http_client
 
 from coopagents.spaces import private_write
+from coopagents.errors import AccessDenied
 from coopagents.space_bridge import EventCache, Bridge, agent_tool, human_operation, install_wake
 from coopagents.space_wake import WakeSetupError
 from mcp.types import Implementation
@@ -171,7 +172,7 @@ class SpaceBridgeTests(unittest.TestCase):
         profile = json.loads(self.path.read_text())
         profile['room_id'] = 'wrong'
         private_write(self.path, profile, update=True)
-        with self.assertRaises(ValueError):
+        with self.assertRaises((ValueError, AccessDenied)):
             asyncio.run(Bridge(self.path).verified_profile())
         profile['room_id'] = self.owner['room_id']
         profile.pop('web_token')
@@ -232,9 +233,13 @@ class SpaceBridgeTests(unittest.TestCase):
                 self.assertTrue((await bridge.list_tools()).tools)
                 status, _, _ = self.live.request('POST','/api/operations/revoke_member',self.owner['web_token'],{'member_id':self.member['member_id']},headers={'Origin':self.live.url})
                 self.assertEqual(status,200)
-                self.assertEqual((await bridge.list_tools()).tools,[])
+                self.assertEqual({tool.name for tool in (await bridge.list_tools()).tools}, {'read_changes'})
                 self.assertTrue((await bridge.call_tool('whoami',{})).is_error)
-                self.assertTrue((await bridge.call_tool('read_changes',{})).is_error)
+                local = await bridge.call_tool('read_changes',{})
+                self.assertFalse(local.is_error)
+                self.assertEqual(local.structured_content['events'], [])
+                self.assertFalse(local.structured_content['fresh'])
+                self.assertFalse(local.structured_content['authorization_revalidated'])
         asyncio.run(run())
 
     def test_cli_failure_does_not_emit_secrets(self):
