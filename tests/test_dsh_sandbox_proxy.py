@@ -125,7 +125,7 @@ class ProxyHTTPTests(unittest.TestCase):
         upstream = connection.return_value
         response = upstream.getresponse.return_value
         response.status = 302
-        response.getheader.return_value = "https://evil.example/" 
+        response.getheader.return_value = "https://evil.example/"
         response.read.return_value = b"provider-secret prompt-private"
         with self.assertRaises(HTTPError) as error:
             self.post({"model": self.config.model, "messages": [], "max_tokens": 1})

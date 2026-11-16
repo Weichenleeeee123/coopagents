@@ -16,7 +16,7 @@
 
 拓扑由三台 agent VM 和一台独立 control-plane VM 组成。每个 agent 使用单独 VPC、子网、NAT 出口、成员身份、DSH profile、HOME、工作副本和 Git 分支。owner/host 位于前端成员 VM，Control plane 不运行 DSH 成员身份，也不承载 Coopagents 业务调用。任何 agent VM 都不挂载维护者主机目录、个人 DSH 配置、SSH 私钥或云凭据。
 
-阿里云模板位于 `deploy/dsh-sandbox/iac/alicloud/`。区域、实例规格、基础镜像及镜像版本需使用已验证输入；禁止直接填入秘密值。云资源只可在操作者审阅计划、预算和资源清单后由其显式运行。执行前必须确认 VM 到期标签、费用上限、无公网管理入口、三组独立 VPC/NAT 与私有管理通道。当前会话没有创建云资源。
+阿里云模板位于 `deploy/dsh-sandbox/iac/alicloud/`。它定义四组独立 VPC/子网/NAT/EIP/ECS、安全组和保留快照，但没有建立各 VPC 到共享代理/Git 的私有路由，也没有验证 agent 到 owner 的 P2P 可达性；这些必须在 apply 前纳入经审阅的网络方案。区域、实例规格、基础镜像及镜像版本需使用已验证输入；禁止直接填入秘密值。云资源只可在操作者审阅计划、预算和资源清单后由其显式运行。执行前必须确认 VM 到期标签、费用上限、无公网管理入口、三组独立 NAT 出口和私有管理通道。当前会话没有创建云资源。
 
 Terraform 管理源只定义基础设施。不得把 `terraform apply` 放进自动 runner，也不得提供会删除磁盘、快照、证据或历史运行目录的清理动作。停止实例、保留磁盘/快照和保留本地证据是不同操作；每次运行写入新的 UUID 目录，不覆盖既有结果。
 

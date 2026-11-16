@@ -229,4 +229,3 @@ class MemberScopedGateway:
             raise ValueError("Invalid gateway port")
         self._server = self._make_server(port)
         self._server.serve_forever()
-

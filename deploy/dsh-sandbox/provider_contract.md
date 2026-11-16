@@ -9,8 +9,10 @@ NAT observation, cloud acceptance, or a real DSH run.
 The operator selected Alibaba Cloud for the later provider stage, using Singapore
 region `ap-southeast-1` as the default. The region must remain an overridable runtime
 input. This contract does not inspect an account, validate quota, call Alibaba Cloud,
-or authorize infrastructure creation. Provider-specific resource mapping belongs in
-a later adapter/IaC stage.
+or authorize infrastructure creation. The Alibaba Cloud Terraform source is in
+`iac/alicloud/`; it defines isolated workloads but requires an already-routable
+approved private path to the shared proxy and Git endpoints. It does not create
+cross-VPC routing or establish actual P2P reachability.
 
 ## Inventory shape
 
