@@ -6,7 +6,7 @@
 
 本仓库实现的是可审阅的部署与实验工具，不代表云资源已创建，也不代表模型或原生 DSH 验收通过。完整验收分为 G0 到 G5：G0 验证 API/DSH/MCP 兼容；G1 验证 VM 与身份隔离；G2 验证独立 NAT 和实际 P2P 路径；G3 验证无工具名提示的真实开发剧本；G4 验证对照与证据质量；G5 是之后的独立用户、住宅/移动网络扩展。每个阶段只报告已有观测支持的门槛。
 
-本地协调入口 `experiments/agent-integration/dsh_sandbox/runner.py` 使用注入的 cloud/DSH/operator adapters，并把每次尝试写到新目录。当前测试只使用 fake adapters，结果标为 `harness_only`；它没有可用的云 provider adapter，也不连接真实 DSH。场景顺序、停止/留证、成本边界和人类决定协议已能本地验证，但不代表真实剧本执行。
+本地协调入口 `experiments/agent-integration/dsh_sandbox/runner.py` 使用注入的 cloud/DSH/operator adapters，并把每次尝试写到新目录。`cloud.py` 提供显式 opt-in 的阿里云 Cloud Assistant 执行适配器；`dsh_runner.py` 提供隔离 profile 的 DSH 原生执行和仅路径参数的 `run-config`。当前自动测试用 fake process/adapters，结果标为 `harness_only`；没有真实云或模型调用。场景顺序、停止/留证、成本边界和人类决定协议已能本地验证，但不代表真实剧本执行。
 
 控制面进程入口 `python -m dsh_sandbox.control_plane` 提供仅私网 IP 绑定的 TLS 模型代理、短期 VM 凭据校验和只记录 run/usage 的本地 ledger。证书、provider key、token 映射、预算和 Git SSH 端点必须经运行时凭据/配置注入。该入口只校验或显式探测私有 Git SSH endpoint；Git 服务本身、密钥授权、分支 ACL 和私有网络路由仍是部署依赖。
 
@@ -20,9 +20,9 @@
 
 拓扑由三台 agent VM 和一台独立 control-plane VM 组成。每个 agent 使用单独 VPC、子网、NAT 出口、成员身份、DSH profile、HOME、工作副本和 Git 分支。owner/host 位于前端成员 VM，Control plane 不运行 DSH 成员身份，也不承载 Coopagents 业务调用。任何 agent VM 都不挂载维护者主机目录、个人 DSH 配置、SSH 私钥或云凭据。
 
-阿里云模板位于 `deploy/dsh-sandbox/iac/alicloud/`。它定义四组独立 VPC/子网/NAT/EIP/ECS、安全组和保留快照，但没有建立各 VPC 到共享代理/Git 的私有路由，也没有验证 agent 到 owner 的 P2P 可达性；这些必须在 apply 前纳入经审阅的网络方案。区域、实例规格、基础镜像及镜像版本需使用已验证输入；禁止直接填入秘密值。云资源只可在操作者审阅计划、预算和资源清单后由其显式运行。执行前必须确认 VM 到期标签、费用上限、无公网管理入口、三组独立 NAT 出口和私有管理通道。当前会话没有创建云资源。
+阿里云模板位于 `deploy/dsh-sandbox/iac/alicloud/`。它定义四组独立 VPC/子网/NAT/EIP/ECS、安全组和保留快照，但没有建立各 VPC 到共享代理/Git 的私有路由，也没有验证 agent 到 owner 的 P2P 可达性。必须先增加或提供经过审阅的私有路由；否则 agent VM 无法访问私有代理和 Git。区域默认值为新加坡 `ap-southeast-1`，实例规格、基础镜像及镜像版本需使用已验证输入；禁止直接填入秘密值。云资源只可在操作者审阅计划、预算和资源清单后由其显式运行。执行前必须确认 VM 到期标签、费用上限、无公网管理入口、三组独立 NAT 出口和私有管理通道。当前会话没有创建云资源。
 
-镜像契约位于 `deploy/dsh-sandbox/images/`。由于当前无法从可信运行环境验证 Linux base image、DSH 包和镜像构建 digest，manifest 把这些版本留作必填、可覆盖输入；生成真实镜像前必须把它们解析成锁文件并通过 G0。bootstrap 只创建本机服务帐号和缺省 DSH MCP profile，不启用服务或注入成员/API 凭据。
+镜像契约位于 `deploy/dsh-sandbox/images/`。由于当前没有已验证的 Linux base image、DSH 包和镜像构建 digest，也没有实际镜像 builder，manifest 把这些版本留作必填、可覆盖输入；生成真实镜像前必须把它们解析成锁文件并通过 G0。bootstrap 只创建本机服务帐号和缺省 DSH MCP profile，不启用服务或注入成员/API 凭据。
 
 Terraform 管理源只定义基础设施。不得把 `terraform apply` 放进自动 runner，也不得提供会删除磁盘、快照、证据或历史运行目录的清理动作。停止实例、保留磁盘/快照和保留本地证据是不同操作；每次运行写入新的 UUID 目录，不覆盖既有结果。
 
@@ -35,7 +35,7 @@ Terraform 管理源只定义基础设施。不得把 `terraform apply` 放进自
 - DSH 能加载本机 Coopagents MCP gateway，工具身份只能对应这台 VM；验证 `whoami`、`read_team`、`work_brief` 和一次真实请求/回复。
 - 模型代理不会把 provider key 转发给 agent，限制单 VM 预算，拒绝重定向，并且日志不含 prompt、源码、Authorization 或完整响应。
 
-DSH MCP 客户端目前没有已验证的动态 Authorization header 注入契约。本沙箱通过每台 agent VM 的 localhost gateway 将调用交给该机持有的 bridge/P2P session；不得改用控制面业务代理或直接 HTTP 测试来替代 DSH 原生 MCP 验收。若 gateway 无法经真实成员 bridge 转发，G0 停止并记录阻塞。
+DSH MCP 客户端目前没有已验证的动态 Authorization header 注入契约。本沙箱通过每台 agent VM 的 localhost gateway 将调用交给该机持有的 bridge/P2P session；不得改用控制面业务代理或直接 HTTP 测试来替代 DSH 原生 MCP 验收。DSH 运行时如何安全取得短期模型代理凭据也必须在 G0 验证；凭据不能放进 `run-config`、命令行或 DSH 用户可读文件。若 gateway 无法经真实成员 bridge 转发，或模型凭据注入没有受限运行时通道，G0 停止并记录阻塞。
 
 ## 场景执行
 
