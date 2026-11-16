@@ -184,7 +184,7 @@ def create_local_mcp(adapter):
         'read_task_history':fields('task_id',{'before_id':None,'limit':20}),
         'release_task':fields('task_id expected_revision request_key summary',{'session_key':None,'ownership_epoch':None}),
         'propose_handoff':fields('task_id expected_revision request_key summary target_member_id',{'session_key':None,'ownership_epoch':None}),
-        'claim_task':fields('task_id',{'session_key':None}), 'register_session':{**fields('session_key tool repository branch',{'task_id':None,'ownership_epoch':None,'harness':None,'harness_version':None,'platform':None}),'capabilities':(dict,False,None)},
+        'claim_task':fields('task_id',{'session_key':None}), 'register_session':{**fields('session_key tool repository branch',{'task_id':None,'ownership_epoch':None,'harness':None,'harness_version':None,'platform':None,'native_session_id':None}),'capabilities':(dict,False,None)},
         'report_progress':fields('task_id state summary',{'evidence':'','session_key':None,'ownership_epoch':None}),
         'send_request':fields('request_key context_version body',{'receiver_member_id':None,'task_id':None}),
         'acknowledge':fields('request_id'),'reply':fields('request_id request_key context_version body',{'evidence':''}),

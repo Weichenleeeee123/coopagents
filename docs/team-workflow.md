@@ -131,14 +131,26 @@ If a new answer or route appears, refresh and read again. Resolving a dependency
 
 The result includes typed `items`, `execution_target`, category `totals`, `cursor`, `next_cursor`, `has_more`, `truncated`, `reset`, `reset_reason` and `unchanged`. Bodies may be excerpted. Responses have a fixed 16000-byte budget, so a short page or bounded projection does not imply all project records have been returned. Use complete returned identifiers and detail operations to inspect original content.
 
-To continue, send `after_cursor` with the same task, binding and limit. Store the final `cursor` too: checking it again with unchanged semantic content returns an empty page with `unchanged: true`. Cursors bind the project, member, task focus, execution fields, limit and content version. They are opaque pagination positions, not acknowledgements or durable change deltas.
+To continue, send `after_cursor` with the same task, binding and limit. A batch is frozen while `has_more` is true: finish it before checking for later changes. Store the final `cursor` too. Checking it again compares the completed baseline with current relevant source records. An unchanged baseline returns an empty page with `unchanged: true`; changed records arrive as a real delta.
 
-- Changed content resets to the beginning with `reset_reason: "content_changed"`.
-- Changed focus/member/project or pagination scope resets with `scope_changed`.
-- Malformed or impossible cursor positions reset with `invalid_cursor`.
-- `delta` is false. On reset, replace or rebuild your local brief rather than append the new first page as a delta.
+- Each item has a stable `item_key`. Delta items use `change: "added"`, `"updated"` or `"removed"`; removed items are tombstones, not instructions to delete source data or assume a dependency was satisfied. Decision payloads retain their nested shape, and queued `owner_question` records use their genuine question identity rather than fabricated message IDs.
+- New changes during pagination do not erase the frozen batch. They are compared after its final cursor, so records are not skipped when the source changes between pages.
+- Opaque cursor state is retained in a bounded private cache and binds project, member, task focus, logical execution, ownership epoch and page limit. Invalid, missing, expired or differently scoped state requests an explicit full resync, with `reset`, `resync` and `reset_reason`; rebuild the local baseline instead of appending that new full snapshot as a delta.
+- Complete record hashes drive changes even when displayed bodies are excerpted. Continue through all pages, and use the existing detail tools for original content. Relevant unread member-level questions/answers remain recoverable when their source execution cannot be determined; known unrelated task rows are excluded.
 
 Authority is checked before cursor reuse. Retired execution input fails even with an old valid cursor. A client restart can read outstanding work from the same retained service database; simply reopening or reading does not resolve it. All workflow/brief/snapshot reads leave inbox, reply-read and dependency-confirmation evidence untouched. The separate Git `repo_checkpoint` operation includes an explicit inbox read; do not confuse it with the read-only `checkpoint` brief.
+
+### Route pending work to a current native conversation
+
+`register_session` can link a current task execution to an actual native conversation with optional `native_session_id`. The existing `session_key` remains the logical execution key used by task authority; `ownership_epoch` is still required where the task binding requires it. This alias is routing metadata, not a new grant of task ownership. A registration with no task does not infer ownership or select a task merely because one exists for the member.
+
+The P2P bridge only supplements the native alias when the native process actually supplies it and the remote schema advertises the field. On a successful claim it can report the same authorized execution through the existing registration operation. An absent native identifier or an older server keeps the existing member-level fallback; no conversation is guessed from a display name, a tool name or teammate text.
+
+An opted-in watcher reports its native session through internal authenticated `session_presence`, using a short lease (90 seconds by default) and explicit watcher observations. This operation is not an extra model-facing MCP tool. `wake_digest(session_key=<native conversation>)` returns only that session's directed work and member-level fallback work. An omitted key does not consume work reserved for another currently eligible conversation. Items include `delivery_scope`, `target_session_key`, `execution_target` and a generation-bound `delivery_key`, without message bodies or read receipts.
+
+Incoming dependencies and responsibility questions use the actual target execution; outgoing dependency answers use the source execution. When there is no reliable task association, or the alias/credential/lease/ownership epoch is no longer current, pending work falls back to the member. A stopped or expired route receives a different delivery key so a prior notification cannot permanently swallow a needed recovery notification. Another watcher cannot baseline or claim a different session's targeted item. Same-member cross-session answers are supported, and already explicitly read answers are not fresh wake items.
+
+Watcher presence, a successful alias report and an invalidation never prove model consumption. A normal wake return does not mean the native conversation exited; its short lease is allowed to expire naturally. Only a real observed owner-process exit or explicit stop is reported as stopped. No personal hook installation, native trust, task approval or sandbox settings are changed by this routing code. Actual native/cross-device validation remains deferred in this code-only pass.
 
 ### Record reliance on an approved agreement
 

@@ -65,8 +65,10 @@ TOOL_DESCRIPTIONS = {
     'work_brief': ('Read a bounded task-focused recovery brief at startup, blockers, reply arrival and completion. '
                    'With task_id pass its current session_key and ownership_epoch. Includes relevant dependencies, '
                    'pending replies, approved agreement updates and next-step hints without creating read receipts. '
-                   'Follow next_cursor while has_more. Reuse cursor as after_cursor only with identical focus and limit; '
-                   'changed content resets to a full page (delta=false). Never interpret truncation as no pending work.'),
+                   'Follow next_cursor while has_more to finish the frozen batch. Reuse its final cursor as after_cursor '
+                   'with identical focus and limit for added, updated and removed items keyed by item_key. An invalid, '
+                   'expired or differently scoped cursor explicitly requires full resync. Current execution authority '
+                   'is rechecked before every cached page. Never interpret truncation as no pending work.'),
     'read_workflow': ('Read project collaboration facts: request wait reasons, observed session/checkpoint times, '
                       'one two-member exchange onboarding chain, agreement impacts and explicit human decision '
                       'summaries. This is read-only; no inbox or reply receipts, approvals or handoff decisions occur. '
@@ -85,8 +87,12 @@ TOOL_DESCRIPTIONS = {
     'report_progress': 'Report progress on a task you own.',
     'link_delivery': ('Explicitly associate one task with exactly one branch, PR number, full commit SHA, or discovered '
                       'GitHub release ID. Release linking records a relationship only; it never creates or publishes a release.'),
-    'register_session': ('Record which tool, repository and branch this session works in. It does not turn on '
-                         'wake-up: in an agent-hosted space call install_wake for that.'),
+    'register_session': ('Record which tool, repository and branch this session works in. With a current task execution, '
+                         'native_session_id can bind its logical session_key/ownership_epoch to the actual native '
+                         'conversation for targeted pending work. Dispatch needs a current watcher lease; missing, '
+                         'stopped or expired sessions fall back to member-level pending work. This is reported routing '
+                         'metadata, not proof of model responsiveness, and does not turn on wake-up: in an '
+                         'agent-hosted space call install_wake for that.'),
     'list_assets': 'List files explicitly shared with this project. No workspace scanning occurs.',
     'read_asset': 'Read one explicitly shared project asset. The result includes bounded base64 content and SHA-256.',
 }

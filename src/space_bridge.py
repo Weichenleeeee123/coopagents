@@ -4,6 +4,7 @@ import asyncio
 from contextlib import asynccontextmanager, contextmanager
 import json
 import logging
+import os
 from pathlib import Path
 import sqlite3
 import sys
@@ -123,6 +124,8 @@ class Bridge:
         self.identity = (profile['room_id'], profile['member_id'])
         self.cache = EventCache(self.profile_path, *self.identity)
         self.status = 'connecting'
+        self._native_alias_supported = False
+        self._native_alias_origin = profile['origin']
 
     async def verified_profile(self):
         profile = read_profile(self.profile_path)
@@ -141,6 +144,9 @@ class Bridge:
         from mcp.client.streamable_http import streamable_http_client
         import httpx2
         profile = await self.verified_profile()
+        if getattr(self, '_native_alias_origin', None) != profile['origin']:
+            self._native_alias_supported = False
+            self._native_alias_origin = profile['origin']
         remote_host = urlsplit(profile['origin']).hostname not in ('127.0.0.1', 'localhost')
         async with httpx2.AsyncClient(headers={'Authorization':'Bearer '+profile['agent_token'], 'Origin':profile['origin']},
                                       follow_redirects=False, trust_env=remote_host, timeout=10) as http:
@@ -189,6 +195,30 @@ class Bridge:
             await asyncio.sleep(delay)
             delay = min(delay * 2, 15)
 
+    async def _claim_native_alias(self, remote, context, arguments, result):
+        """Best-effort metadata for an already successful, current personal claim."""
+        if not getattr(self, '_native_alias_supported', False):
+            return False
+        native = trusted_native_identity(context)
+        task = successful_tool_payload(result)
+        if not native or not task or not isinstance(arguments, dict):
+            return False
+        logical = task.get('execution_session_key')
+        task_id, epoch = task.get('id'), task.get('ownership_epoch')
+        if (type(task_id) is not int or task_id <= 0 or arguments.get('task_id') != task_id
+                or type(epoch) is not int or not 0 < epoch < 2**63
+                or not session_identifier(logical) or arguments.get('session_key') != logical
+                or task.get('state') != 'claimed'
+                or (task.get('room_id'), task.get('owner_member_id')) != self.identity):
+            return False
+        native_id, tool = native
+        metadata = {'session_key': logical, 'tool': tool, 'repository': 'unknown', 'branch': 'unknown',
+                    'task_id': task_id, 'ownership_epoch': epoch, 'native_session_id': native_id}
+        reported = successful_tool_payload(await remote.call_tool('register_session', metadata))
+        return bool(reported and all(reported.get(key) == value for key, value in
+                    {'room_id': self.identity[0], 'member_id': self.identity[1],
+                     'session_key': logical, 'task_id': task_id}.items()))
+
     def server(self):
         from mcp.server import Server
         from mcp.types import Tool, ListToolsResult, CallToolResult, TextContent
@@ -198,6 +228,7 @@ class Bridge:
             return CallToolResult(is_error=True, content=[TextContent(type='text', text=text)])
 
         async def list_tools(ctx, params):
+            self._native_alias_supported = False
             try:
                 async with self.remote() as remote:
                     tools, cursor = [], None
@@ -211,6 +242,7 @@ class Bridge:
                         raise ValueError('Tool list exceeded bounded pages')
                 if any(t.name in LOCAL_TOOLS for t in tools):
                     raise ValueError('Remote tool name conflict')
+                self._native_alias_supported = any(native_alias_advertised(tool) for tool in tools)
                 tools.append(Tool(name='read_changes', description='Read cached invalidations. Arrival is not reading or acknowledging messages; after reset read_team then resume at returned cursor.',
                     input_schema={'type':'object','properties':{'after_id':{'type':'integer','minimum':0,'default':0},'limit':{'type':'integer','minimum':1,'maximum':200,'default':100}},'additionalProperties':False}))
                 tools.append(Tool(name='install_wake', description=INSTALL_WAKE_DESCRIPTION,
@@ -239,7 +271,25 @@ class Bridge:
                     result = install_wake(self.profile_path, params.arguments, client_name(ctx))
                     return CallToolResult(content=[TextContent(type='text', text=json.dumps(result))], structured_content=result)
                 async with self.remote() as remote:
-                    return await remote.call_tool(params.name, params.arguments)
+                    arguments = params.arguments
+                    if (params.name == 'register_session' and isinstance(arguments, dict)
+                            and 'native_session_id' not in arguments and getattr(self, '_native_alias_supported', False)):
+                        native = trusted_native_identity(ctx)
+                        if native:
+                            native_id, tool = native
+                            same_harness = (arguments.get('tool') == tool or
+                                tool.startswith('codex-') and arguments.get('tool') in ('codex-cli', 'codex-desktop'))
+                            if same_harness:
+                                arguments = {**arguments, 'native_session_id': native_id}
+                    result = await remote.call_tool(params.name, arguments)
+                    if params.name == 'claim_task':
+                        try:
+                            await self._claim_native_alias(remote, ctx, arguments, result)
+                        except Exception:
+                            # Claim success and metadata reporting are separate.
+                            # Never replace the claim result or assert registration.
+                            pass
+                    return result
             except Exception as error:
                 return failure(error)
         return Server('Coopagents space bridge', on_list_tools=list_tools, on_call_tool=call_tool,
@@ -283,6 +333,55 @@ def client_name(ctx):
         return ctx.session.client_params.client_info.name
     except AttributeError:
         return None
+
+
+def session_identifier(value):
+    return (isinstance(value, str) and 0 < len(value) <= 200 and value == value.strip()
+            and all(ord(char) >= 32 and ord(char) != 127 for char in value))
+
+
+def native_alias_advertised(tool):
+    if getattr(tool, 'name', None) != 'register_session':
+        return False
+    schema = getattr(tool, 'input_schema', None)
+    properties = schema.get('properties') if isinstance(schema, dict) else None
+    field = properties.get('native_session_id') if isinstance(properties, dict) else None
+    if not isinstance(field, dict):
+        return False
+    kind = field.get('type')
+    choices = field.get('anyOf')
+    choices = choices if isinstance(choices, list) else []
+    return (kind == 'string' or isinstance(kind, list) and 'string' in kind
+            or any(isinstance(choice, dict) and choice.get('type') == 'string'
+                   for choice in choices))
+
+
+def trusted_native_identity(context):
+    """Only inherited native-process environment supplies a conversation ID."""
+    name = client_name(context)
+    family = agent_tool(name)
+    values = {'codex': os.environ.get('CODEX_THREAD_ID'), 'claude': os.environ.get('CLAUDE_SESSION_ID')}
+    if family is None:
+        candidates = [kind for kind, value in values.items() if session_identifier(value)]
+        if len(candidates) != 1:
+            return None
+        family = candidates[0]
+    value = values[family]
+    if not session_identifier(value):
+        return None
+    tool = ('claude-code' if family == 'claude' else
+            'codex-desktop' if (name or '').lower().startswith('codex-desktop') else 'codex-cli')
+    return value, tool
+
+
+def successful_tool_payload(result):
+    """Do not infer SDK success or task identity from a text content block."""
+    if getattr(result, 'is_error', None) is not False:
+        return None
+    data = getattr(result, 'structured_content', None)
+    if not isinstance(data, dict) or data.get('isError') is True or data.get('is_error') is True:
+        return None
+    return data
 
 
 def agent_tool(name):

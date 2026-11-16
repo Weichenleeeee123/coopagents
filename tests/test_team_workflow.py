@@ -101,7 +101,7 @@ class TeamWorkflowTests(unittest.TestCase):
         with self.assertRaises(NotFound):
             self.workflow(task_id=foreign['id'])
 
-    def test_cursor_is_stable_bound_and_content_changes_reset_instead_of_fake_delta(self):
+    def test_cursor_is_stable_bound_and_content_changes_produce_real_delta(self):
         first = self.brief(**self.auth)
         second = self.brief(**self.auth)
         self.assertEqual(first['cursor'], second['cursor'])
@@ -111,8 +111,9 @@ class TeamWorkflowTests(unittest.TestCase):
         self.assertFalse(unchanged['delta'])
         self.request(task_id=self.front['id'])
         changed = self.brief(**self.auth, after_cursor=first['cursor'])
-        self.assertEqual(changed['reset_reason'], 'content_changed')
-        self.assertFalse(changed['delta'])
+        self.assertIsNone(changed['reset_reason'])
+        self.assertFalse(changed['reset'])
+        self.assertTrue(changed['delta'])
         self.assertTrue(changed['items'])
         self.assertEqual(self.brief(**self.auth, limit=1, after_cursor=changed['cursor'])['reset_reason'], 'scope_changed')
         self.assertEqual(self.brief(after_cursor=changed['cursor'])['reset_reason'], 'scope_changed')
@@ -121,9 +122,7 @@ class TeamWorkflowTests(unittest.TestCase):
     def test_bad_future_and_foreign_cursors_reset_safely(self):
         self.assertEqual(self.brief(after_cursor='malformed')['reset_reason'], 'invalid_cursor')
         first = self.brief()
-        body = json.loads(base64.urlsafe_b64decode(first['cursor'] + '=' * (-len(first['cursor']) % 4)))
-        body['offset'] = 10**9
-        future = base64.urlsafe_b64encode(json.dumps(body).encode()).decode().rstrip('=')
+        future = base64.urlsafe_b64encode(json.dumps({'v': 1, 'offset': 10**9}).encode()).decode().rstrip('=')
         self.assertEqual(self.brief(after_cursor=future)['reset_reason'], 'invalid_cursor')
         other = self.s.identity.create_room('Other', 'Other')
         self.assertEqual(self.brief(other, after_cursor=first['cursor'])['reset_reason'], 'scope_changed')
@@ -289,9 +288,10 @@ class TeamWorkflowTests(unittest.TestCase):
         original = self.s.identity.db.connect
         for method in (self.s.team_workflow.read_workflow, self.s.team_workflow.work_brief):
             traces, writes, connections = [], [], []
+            cache_write = method == self.s.team_workflow.work_brief
             @contextmanager
             def observed_connect(*args, **kwargs):
-                self.assertFalse(kwargs.get('write'))
+                self.assertEqual(bool(kwargs.get('write')), cache_write)
                 with original(*args, **kwargs) as db:
                     connections.append(db)
                     db.set_trace_callback(traces.append)
@@ -300,8 +300,13 @@ class TeamWorkflowTests(unittest.TestCase):
             with patch.object(self.s.identity.db, 'connect', observed_connect):
                 method(self.a['agent_token'])
             self.assertEqual(len(connections), 1)
-            self.assertEqual(writes, [0])
-            self.assertEqual(traces[0], 'BEGIN')
+            if cache_write:
+                self.assertGreater(writes[0], 0)
+                mutations = [sql for sql in traces if sql.lstrip().upper().startswith(('INSERT', 'UPDATE', 'DELETE'))]
+                self.assertTrue(all('brief_delta_' in sql for sql in mutations))
+            else:
+                self.assertEqual(writes, [0])
+                self.assertEqual(traces[0], 'BEGIN')
             self.assertTrue(any('credentials' in sql for sql in traces))
 
     def test_cursor_survives_reopen_and_hidden_reply_changes_are_not_skipped(self):
@@ -312,7 +317,9 @@ class TeamWorkflowTests(unittest.TestCase):
         self.s = CoordinationService(self.path)
         self.assertTrue(self.brief(**self.auth, after_cursor=first['cursor'])['unchanged'])
         self.s.call('read_replies', self.a['agent_token'], dict(limit=1))
-        self.assertEqual(self.brief(**self.auth, after_cursor=first['cursor'])['reset_reason'], 'content_changed')
+        changed = self.brief(**self.auth, after_cursor=first['cursor'])
+        self.assertTrue(changed['delta'])
+        self.assertFalse(changed['reset'])
 
     def test_cancelled_dependency_routes_are_historical_not_satisfied(self):
         dep = self.dependency()

@@ -59,8 +59,12 @@ class TeamWorkflowScenarioTests(unittest.TestCase):
             **self.back_auth)
         changed = self.call('work_brief', task_id=self.front['id'], limit=50,
             after_cursor=brief['cursor'], **self.front_auth)
-        self.assertEqual(changed['reset_reason'], 'content_changed')
-        self.assertFalse(changed['delta'])
+        self.assertIsNone(changed['reset_reason'])
+        self.assertFalse(changed['reset'])
+        self.assertTrue(changed['delta'])
+        self.assertTrue(any(item['kind'] == 'request' and item['id'] == recovered['id']
+            and item['change'] == 'updated' and item['latest_reply_id'] == answered['latest_reply']['id']
+            for item in changed['items']))
 
         replies = self.call('read_replies', task_id=self.front['id'])
         reply = replies['replies'][0]
@@ -133,17 +137,23 @@ class TeamWorkflowScenarioTests(unittest.TestCase):
         self.assertEqual(routed['dependency']['id'], queued['dependency']['id'])
         self.assertEqual(routed['request']['receiver_member_id'], third['member_id'])
 
-        ordinary = self.call('ask_owner', request_key='fixed-api-question', body='Which logging format?',
+        ordinary = self.call('ask_owner', request_key='owner-api-question', body='Which logging format?',
             target_task_id=self.back['id'])
+        fixed = self.call('send_request', request_key='fixed-api-question', body='Which example did you write?',
+            receiver_member_id=self.backend['member_id'], task_id=self.back['id'], context_version=1)
         moved = self.call('force_handoff', kind='web', task_id=self.back['id'],
             expected_revision=self.back['revision'], request_key='transfer-api', summary='Responsibility changed',
             target_member_id=third['member_id'])
         self.assertEqual(moved['owner_member_id'], third['member_id'])
-        retry = self.call('ask_owner', request_key='fixed-api-question', body='Which logging format?',
+        retry = self.call('ask_owner', request_key='owner-api-question', body='Which logging format?',
             target_task_id=self.back['id'])
-        self.assertEqual(retry['routing'], 'fixed_recipient')
+        self.assertEqual(retry['routing'], 'task_owner')
         self.assertTrue(retry['target_changed'])
-        self.assertEqual(retry['request']['receiver_member_id'], self.backend['member_id'])
+        self.assertNotEqual(retry['request']['id'], ordinary['request']['id'])
+        self.assertEqual(retry['request']['receiver_member_id'], third['member_id'])
+        direct = next(row for row in self.s.messages.list_requests(self.frontend['agent_token']) if row['id'] == fixed['id'])
+        self.assertEqual(direct['receiver_member_id'], self.backend['member_id'])
+        self.assertNotIn('owner_route_state', direct)
 
     def test_room_isolation_and_peeks_do_not_manufacture_read_evidence(self):
         local = self.ask_dependency()
