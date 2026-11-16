@@ -9,6 +9,7 @@ English is the default for the project README, contribution guide and agent-firs
 | Product, quick start and release boundaries | [README](../README.md) | [项目首页](../README.zh-CN.md) |
 | Contributing and development checks | [Contributing](../CONTRIBUTING.md) | [贡献指南](CONTRIBUTING.zh-CN.md) |
 | Agent-first setup and doctor (unreleased) | [Setup](agent-first-setup.md) | [首次配置](agent-first-setup.zh-CN.md) |
+| Teammates' own-agent workflow (unreleased) | [Practical guide](team-workflow.md) | [Acceptance status](team-workflow-acceptance.md) |
 | 1.0.0rc1 release candidate | [Release notes](release-notes-1.0.0rc1.md) | [RC readiness](rc-readiness-2026-11-01.md) |
 
 For operation and support: [P2P runtime](agent-hosted-runtime.md), [harness adapter matrix](harness-adapters-0.9.md), [security](../SECURITY.md), [self-hosted deployment](deployment.md), [setup acceptance](agent-first-setup-acceptance.md) and [two-machine acceptance](two-machine-acceptance.md).
@@ -21,6 +22,9 @@ For operation and support: [P2P runtime](agent-hosted-runtime.md), [harness adap
 
 | 文档 | 内容 |
 | --- | --- |
+| [Team workflow](team-workflow.md) | Owner questions, explicit reply reads, focused recovery, agreement reliance and human decisions across the ten approved requirements |
+| [Team workflow acceptance](team-workflow-acceptance.md) | Current automated evidence and pending integration, native-model and independent-user gates |
+| [Tool-free workflow evaluation](workflow-evaluation.md) | Separate participant goals, conservative evidence scoring and private provenance requirements |
 | [自托管团队服务](self-hosted-service.md) | 原首页的账号服务启动、Docker 部署、Git/GitHub 接入与各候选版状态（首页改版时迁出） |
 | [Agent 承载空间设计](agent-hosted-spaces-design.md) | 无账号、无需部署网页的轻量协作方向；异地连接、实时事件及 L0–L4 阶段 |
 | [Agent 承载空间实施](agent-hosted-implementation-plan.md) | 本机空间、异地网络、实时通信、原生 Skill 与共享看板的实施清单 |

@@ -730,13 +730,13 @@ class InstallTests(unittest.TestCase):
         merged = merge_zcode_hooks(merged, hook_config(self.profile, 'zcode'))
         events = merged['hooks']['events']
         self.assertEqual(len(events['SessionStart']), 2, 'Checkpoint and wake baselines share the event')
-        self.assertEqual(len(events['Stop']), 1)
+        self.assertEqual(len(events['Stop']), 2, 'Checkpoint and wake Stop hooks coexist')
         self.assertEqual(len(events['PostToolUse']), 1)
         self.assertEqual(len(events['UserPromptSubmit']), 1)
         removed = merge_zcode_hooks(merged, {})
         events = removed['hooks']['events']
         self.assertEqual(len(events['SessionStart']), 1, 'Wake disable keeps the checkpoint hook')
-        self.assertNotIn('Stop', events)
+        self.assertEqual(events['Stop'], checkpoint['Stop'], 'Wake disable keeps the completion checkpoint')
         self.assertIn('PostToolUse', events)
 
     def test_codex_desktop_alias_installs_and_disables_as_codex(self):

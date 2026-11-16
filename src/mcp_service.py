@@ -13,6 +13,7 @@ from starlette.middleware.authentication import AuthenticationMiddleware
 
 from .errors import AccessDenied, ValidationError
 from .api import error_payload, validate
+from .collaboration_policy import collaboration_instructions
 
 MAX_MCP_ASSET_BYTES = 10 * 1024 * 1024
 
@@ -23,6 +24,11 @@ def tool_error(error):
 
 
 TOOL_DESCRIPTIONS = {
+    'checkpoint': ('Recover the shared collaboration policy and bounded context using event startup, blocker, '
+                   'reply (answer arrival) or completion. Keep a stable session_key; with task_id '
+                   'pass its current ownership_epoch. The result reports the lifecycle phase and next actions, '
+                   'but never marks a message read, confirms a dependency or authorizes a human decision. '
+                   'A recorded checkpoint does not prove model comprehension or an installed native hook.'),
     'whoami': 'Your own identity in this space: your member id, display name and room.',
     'read_team': ('Everyone in this space and the shared state: members (member_id and display_name), tasks with '
                   'owners, sessions with the tool each member uses, requests, contracts and progress. Use it to find '
@@ -36,6 +42,40 @@ TOOL_DESCRIPTIONS = {
     'read_inbox': ('Read requests delivered to you (teammates asking you). It does not list replies to requests you '
                    'sent: those appear under your request in read_team (requests[].replies). Reading records that '
                    'you read them.'),
+    'ask_owner': ('Ask the responsible teammate using exactly one target_task_id or declared scope. '
+                  'Questions persist with or without source_task_id and wait while a unique target is unassigned. '
+                  'Follow the current route after responsibility changes; old routes remain history. '
+                  'Question body is at most 500 characters; context at most 3000. Ambiguity returns candidates '
+                  'without guessing or delivering. An initially missing scope creates no question. '
+                  'With source_task_id, pass its expected_revision/session/ownership_epoch: this creates an explicit '
+                  'task dependency. Without a source, the persisted owner question follows its selected target task. '
+                  'Reuse request_key with the same payload to recover the current route, not select another task; '
+                  'changed payloads conflict. Use send_request for a fixed recipient chosen by member id. '
+                  'This does not authorize new work or human decisions.'),
+    'read_replies': ('Read paginated replies to questions you sent, including answers from another of your sessions. '
+                     'Use next_cursor as after_id; has_more requires another page. Records only the exact reply ids '
+                     'returned as explicitly read, never resolves a request, approves an agreement or confirms a '
+                     'dependency. Reports the current route and historical owner-question/dependency routes. '
+                     'Historical replies cannot answer the current route or satisfy a current dependency; use read_dependency '
+                     'before resolve_dependency. A read receipt is not proof of model comprehension.'),
+    'record_agreement_use': ('Explicitly record which approved agreement version your current task execution relies on. '
+                             'Pass the current session_key and ownership_epoch. Does not approve a draft or silently '
+                             'accept an update. New approved versions remain review-required until explicitly used; '
+                             'retrying an older version never downgrades the current execution baseline.'),
+    'work_brief': ('Read a bounded task-focused recovery brief at startup, blockers, reply arrival and completion. '
+                   'With task_id pass its current session_key and ownership_epoch. Includes relevant dependencies, '
+                   'pending replies, approved agreement updates and next-step hints without creating read receipts. '
+                   'Follow next_cursor while has_more to finish the frozen batch. Reuse its final cursor as after_cursor '
+                   'with identical focus and limit for added, updated and removed items keyed by item_key. An invalid, '
+                   'expired or differently scoped cursor explicitly requires full resync. Current execution authority '
+                   'is rechecked before every cached page. Never interpret truncation as no pending work.'),
+    'read_workflow': ('Read project collaboration facts: request wait reasons, observed session/checkpoint times, '
+                      'one two-member exchange onboarding chain, agreement impacts and explicit human decision '
+                      'summaries. Bounded diagnostics distinguish recorded delivery/read/reply facts, execution or '
+                      'watcher-lease problems and unobservable network/native trust states, with concrete recovery '
+                      'actions. This is read-only; no inbox or reply receipts, approvals or handoff decisions occur. '
+                      'Unknown model responsiveness stays unknown. Cards describe authorized actions, not permission '
+                      'to execute them; human changes still need the actual user instruction and separate credential.'),
     'read_deliveries': 'Read task-to-delivery associations and reverse task links with source, freshness and unavailable states.',
     'suggest_delivery': 'Propose a delivery relationship with evidence. Project manager confirmation is required before linking; it never closes tasks.',
     'read_capabilities': 'Discover project members, their agent sessions and Harness capability evidence. Registration and event delivery do not imply model responsiveness.',
@@ -49,8 +89,12 @@ TOOL_DESCRIPTIONS = {
     'report_progress': 'Report progress on a task you own.',
     'link_delivery': ('Explicitly associate one task with exactly one branch, PR number, full commit SHA, or discovered '
                       'GitHub release ID. Release linking records a relationship only; it never creates or publishes a release.'),
-    'register_session': ('Record which tool, repository and branch this session works in. It does not turn on '
-                         'wake-up: in an agent-hosted space call install_wake for that.'),
+    'register_session': ('Record which tool, repository and branch this session works in. With a current task execution, '
+                         'native_session_id can bind its logical session_key/ownership_epoch to the actual native '
+                         'conversation for targeted pending work. Dispatch needs a current watcher lease; missing, '
+                         'stopped or expired sessions fall back to member-level pending work. This is reported routing '
+                         'metadata, not proof of model responsiveness, and does not turn on wake-up: in an '
+                         'agent-hosted space call install_wake for that.'),
     'list_assets': 'List files explicitly shared with this project. No workspace scanning occurs.',
     'read_asset': 'Read one explicitly shared project asset. The result includes bounded base64 content and SHA-256.',
 }
@@ -65,6 +109,7 @@ def create_mcp_app(service, *, origin=None):
              'acknowledge', 'reply', 'resolve_request', 'propose_contract', 'repo_checkpoint', 'link_delivery',
              'checkpoint', 'diagnostic_start', 'diagnostic_read', 'diagnostic_complete')
     names += ('lookup_owner', 'create_dependency', 'read_dependency', 'reply_dependency', 'resolve_dependency', 'cancel_dependency')
+    names += ('ask_owner', 'read_replies', 'record_agreement_use', 'work_brief', 'read_workflow')
     schemas = {name: service.operations[name][2] for name in names}
     schemas.update({'whoami': {}, 'read_team': {}, 'list_assets': {},
                     'read_asset': {'asset_id': (str, True, None)}})
@@ -79,11 +124,8 @@ def create_mcp_app(service, *, origin=None):
                     return tool_error(error)
         return await call_next(ctx)
 
-    server = MCPServer('Coopagents', instructions=(
-        'Call checkpoint(session_key,tool,event) at startup, blocker and completion using those event names. '
-        'Checkpoint peeks at collaboration context without marking messages read. Read and process messages explicitly. '
-        'Claim with a fresh session_key and pass its ownership_epoch on every task report. '
-        'After release or handoff, retired sessions cannot resume. Handoffs require explicit human web acceptance. '
+    server = MCPServer('Coopagents', instructions=collaboration_instructions(
+        'Handoffs require explicit human web acceptance. '
         'Find owners with lookup_owner and create explicit task dependencies. Reply using reply_dependency; '
         'the source owner must read_dependency then resolve_dependency with the latest reply_id and revision. '
         'Snapshot/checkpoint never count as reading or accepting a dependency. '

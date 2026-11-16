@@ -24,6 +24,8 @@ class ActivityStore:
         self.db = identity_store.db
         self.resolve = identity_store.resolve
         with self.db.connect(write=True) as connection:
+            from .session_routing import initialize
+            initialize(connection)
             connection.execute('''CREATE TABLE IF NOT EXISTS harness_sessions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,room_id TEXT NOT NULL,member_id TEXT NOT NULL,
                 session_key TEXT NOT NULL,tool TEXT NOT NULL,repository TEXT NOT NULL,branch TEXT NOT NULL,
@@ -45,7 +47,7 @@ class ActivityStore:
         return execution_task(connection, principal, task_id, session_key, ownership_epoch)
 
     def register_session(self, agent_token, session_key, tool, repository, branch, task_id=None, ownership_epoch=None,
-                         harness=None, harness_version=None, platform=None, capabilities=None):
+                         harness=None, harness_version=None, platform=None, capabilities=None, native_session_id=None):
         session_key = _text(session_key, "Session key", 200)
         repository = _text(repository, "Repository", 500)
         branch = _text(branch, "Branch", 200)
@@ -67,6 +69,9 @@ class ActivityStore:
             raise ValidationError('Capability entries must use bounded status values')
         if task_id is not None:
             task_id = _task_id(task_id)
+        if native_session_id is not None:
+            from .session_routing import native_key
+            native_key(native_session_id)
         with self.db.connect(write=True) as connection:
             principal = self.resolve(connection, agent_token, required_kind="agent")
             previous_capability = connection.execute('SELECT * FROM session_capabilities WHERE room_id=? AND member_id=? AND session_key=?',
@@ -78,7 +83,9 @@ class ActivityStore:
             harness_version = harness_version or 'unknown'
             platform = platform or 'unknown'
             if task_id is not None:
-                self._owned_task(connection, principal, task_id, session_key, ownership_epoch)
+                task = self._owned_task(connection, principal, task_id, session_key, ownership_epoch)
+                from .session_routing import bind_execution
+                bind_execution(connection, principal, agent_token, task, session_key, tool, native_session_id)
             table = 'sessions' if tool in LEGACY_TOOLS else 'harness_sessions'
             other = 'harness_sessions' if table == 'sessions' else 'sessions'
             if connection.execute(f'SELECT 1 FROM {other} WHERE room_id=? AND member_id=? AND session_key=?',

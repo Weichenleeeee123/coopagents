@@ -47,6 +47,11 @@ class MessageStore:
             dep = connection.execute('SELECT status,current_request_id FROM task_dependencies WHERE id=?', (linked['dependency_id'],)).fetchone()
             result['dependency_route_state'] = ('historical' if dep['current_request_id']!=row['id']
                 else 'closed' if dep['status']!='active' else 'current')
+        from .workflow import request_route_info
+        owner_route = request_route_info(connection, row['id'])
+        if owner_route:
+            result.update(owner_route_state=owner_route['state'], owner_target_task_id=owner_route['target_task_id'],
+                          owner_current_request_id=owner_route['current_request_id'], owner_route_version=owner_route['route_version'])
         result["replies"] = [dict(reply) for reply in connection.execute(
             "SELECT * FROM message_replies WHERE request_id = ? ORDER BY id", (row["id"],))]
         return result
@@ -59,36 +64,50 @@ class MessageStore:
         if row["context_version"] != version:
             raise Conflict("Context version does not match request")
 
+    @staticmethod
+    def _current_owner_route(connection, row):
+        from .workflow import request_route_info
+        route = request_route_info(connection, row['id'])
+        if route and not route['current']:
+            raise Conflict('Responsibility route is no longer current; refresh the owner question')
+        return route
+
     def send_request(self, agent_token, request_key, receiver_member_id, task_id, context_version, body):
+        with self.db.connect(write=True) as connection:
+            principal = self.resolve(connection, agent_token, required_kind="agent")
+            return self.send_in_connection(connection, principal, request_key, receiver_member_id,
+                                           task_id, context_version, body)
+
+    def send_in_connection(self, connection, principal, request_key, receiver_member_id,
+                           task_id, context_version, body):
+        """Shared domain mutation for callers already holding the write transaction."""
         request_key = _text(request_key, "Request key", 200)
         body = _text(body, "Body", 4000)
         context_version = _positive(context_version, "Context version")
         if task_id is not None:
             task_id = _positive(task_id, "Task id")
-        with self.db.connect(write=True) as connection:
-            principal = self.resolve(connection, agent_token, required_kind="agent")
+        if receiver_member_id is not None:
+            self._member(connection, principal, receiver_member_id)
+        if task_id is not None and not connection.execute(
+                "SELECT id FROM tasks WHERE id = ? AND room_id = ?", (task_id, principal.room_id)).fetchone():
+            raise NotFound("Task not found")
+        row = connection.execute("""SELECT * FROM message_requests
+            WHERE room_id = ? AND sender_member_id = ? AND request_key = ?""",
+            (principal.room_id, principal.member_id, request_key)).fetchone()
+        if row is not None:
+            if (row["initial_receiver_member_id"], row["task_id"], row["context_version"], row["body"]) != (receiver_member_id, task_id, context_version, body):
+                raise Conflict("Request key already has a different payload")
+        else:
+            cursor = connection.execute("""INSERT INTO message_requests
+                (room_id, sender_member_id, receiver_member_id, initial_receiver_member_id,
+                 task_id, context_version, body, request_key, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (principal.room_id, principal.member_id, receiver_member_id, receiver_member_id,
+                 task_id, context_version, body, request_key, _utc_now()))
+            row = self._request(connection, principal, cursor.lastrowid)
             if receiver_member_id is not None:
-                self._member(connection, principal, receiver_member_id)
-            if task_id is not None and not connection.execute(
-                    "SELECT id FROM tasks WHERE id = ? AND room_id = ?", (task_id, principal.room_id)).fetchone():
-                raise NotFound("Task not found")
-            row = connection.execute("""SELECT * FROM message_requests
-                WHERE room_id = ? AND sender_member_id = ? AND request_key = ?""",
-                (principal.room_id, principal.member_id, request_key)).fetchone()
-            if row is not None:
-                if (row["initial_receiver_member_id"], row["task_id"], row["context_version"], row["body"]) != (receiver_member_id, task_id, context_version, body):
-                    raise Conflict("Request key already has a different payload")
-            else:
-                cursor = connection.execute("""INSERT INTO message_requests
-                    (room_id, sender_member_id, receiver_member_id, initial_receiver_member_id,
-                     task_id, context_version, body, request_key, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (principal.room_id, principal.member_id, receiver_member_id, receiver_member_id,
-                     task_id, context_version, body, request_key, _utc_now()))
-                row = self._request(connection, principal, cursor.lastrowid)
-                if receiver_member_id is not None:
-                    self._deliver(connection, row["id"], principal.room_id, receiver_member_id)
-            return self._enrich(connection, row)
+                self._deliver(connection, row["id"], principal.room_id, receiver_member_id)
+        return self._enrich(connection, row)
 
     def _deliver(self, connection, request_id, room_id, receiver_member_id):
         connection.execute("""INSERT INTO message_deliveries
@@ -109,9 +128,11 @@ class MessageStore:
             raise ValidationError("Limit must be an integer from 1 to 50")
         with self.db.connect(write=True) as connection:
             principal = self.resolve(connection, agent_token, required_kind="agent")
+            from .workflow import live_owner_route_sql
             rows = connection.execute("""SELECT r.*, d.id AS delivery_id
                 FROM message_deliveries d JOIN message_requests r ON r.id = d.request_id
-                WHERE d.room_id = ? AND d.receiver_member_id = ? AND d.id > ? ORDER BY d.id LIMIT ?""",
+                WHERE d.room_id = ? AND d.receiver_member_id = ? AND d.id > ? AND """
+                + live_owner_route_sql('r') + ' ORDER BY d.id LIMIT ?',
                 (principal.room_id, principal.member_id, after_id, limit)).fetchall()
             now = _utc_now()
             for row in rows:
@@ -127,6 +148,7 @@ class MessageStore:
             principal = self.resolve(connection, agent_token, required_kind="agent")
             row = self._request(connection, principal, request_id)
             self._recipient(principal, row)
+            self._current_owner_route(connection, row)
             if not connection.execute("SELECT request_id FROM message_receipts WHERE request_id = ?",
                                       (request_id,)).fetchone():
                 raise Conflict("Request must be read before acknowledgement")
@@ -146,6 +168,7 @@ class MessageStore:
             principal = self.resolve(connection, agent_token, required_kind="agent")
             row = self._request(connection, principal, request_id)
             self._recipient(principal, row)
+            self._current_owner_route(connection, row)
             from .dependencies import linked_request
             if linked_request(connection, request_id):
                 raise Conflict('Use the dedicated dependency operation for linked requests')
@@ -175,13 +198,24 @@ class MessageStore:
                 raise Conflict('Use the dedicated dependency operation for linked requests')
             if row["sender_member_id"] != principal.member_id:
                 raise AccessDenied("Request sender required")
+            owner_route = self._current_owner_route(connection, row)
             self._version(row, context_version)
+            if owner_route and principal.kind == 'agent':
+                latest = connection.execute('''SELECT id FROM message_replies WHERE request_id=?
+                    AND author_member_id=? AND context_version=? ORDER BY id DESC LIMIT 1''',
+                    (request_id, row['receiver_member_id'], context_version)).fetchone()
+                if not latest or not connection.execute('''SELECT 1 FROM workflow_reply_reads
+                    WHERE room_id=? AND member_id=? AND reply_id=?''',
+                    (principal.room_id, principal.member_id, latest['id'])).fetchone():
+                    raise Conflict('Explicitly read the latest reply in the current responsibility route before resolving')
             if not connection.execute("""SELECT id FROM message_replies WHERE request_id = ?
                 AND author_member_id = ? AND context_version = ?""",
                 (request_id, row["receiver_member_id"], context_version)).fetchone():
                 raise Conflict("Current recipient reply required before resolution")
             connection.execute("UPDATE message_requests SET resolved_at = ? WHERE id = ? AND resolved_at IS NULL",
                                (_utc_now(), request_id))
+            if owner_route:
+                connection.execute("UPDATE workflow_questions SET routing_state='closed' WHERE request_id=? AND dependency_id IS NULL", (request_id,))
             return self._enrich(connection, self._request(connection, principal, request_id))
 
     def assign_receiver(self, web_token, request_id, receiver_member_id):
@@ -189,6 +223,9 @@ class MessageStore:
         with self.db.connect(write=True) as connection:
             principal = self.resolve(connection, web_token, required_kind="web")
             row = self._request(connection, principal, request_id)
+            from .workflow import request_route_info
+            if request_route_info(connection, request_id):
+                raise Conflict('Task responsibility controls this recipient; change the task owner instead')
             from .dependencies import linked_request
             if linked_request(connection, request_id):
                 raise Conflict('Use the dedicated dependency operation for linked requests')

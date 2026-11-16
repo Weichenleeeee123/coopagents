@@ -46,6 +46,8 @@ jobs:
       - run: node tests/task_lifecycle_ui_regression.js
       - run: node --check src/static/collaboration.js
       - run: node tests/collaboration_ui_regression.js
+      - run: node tests/team_workflow_ui_regression.js
+      - run: node tests/owner_question_ui_regression.js
       - run: node tests/git_ui_regression.js
       - run: node tests/project_activity_ui_regression.js
       - run: node tests/web_session_regression.js src/static/app.js

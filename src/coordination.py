@@ -39,6 +39,12 @@ class CoordinationService:
         self.github = GitHubSync(self.identity, self.repositories, github_app or GitHubApp())
         from .delivery import DeliveryStore
         self.delivery = DeliveryStore(self)
+        from .workflow import WorkflowStore, schemas as workflow_schemas
+        self.workflow = WorkflowStore(self)
+        from .agreement_usage import AgreementUsageStore, SCHEMA as AGREEMENT_USE_SCHEMA
+        self.agreement_usage = AgreementUsageStore(self.identity)
+        from .team_workflow import TeamWorkflowStore, schemas as team_workflow_schemas
+        self.team_workflow = TeamWorkflowStore(self)
         from .events import EventStore
         self.change_events = EventStore(self.identity)
         from .wake_digest import WakeDigest
@@ -52,7 +58,10 @@ class CoordinationService:
             'suggest_delivery': ('agent', self.delivery.suggest, {'task_id':(int,True,None),'request_key':(str,True,None),'branch':(str,False,''),'pr_number':(int,False,None),'commit_sha':(str,False,''),'release_id':(int,False,None),'evidence':(str,False,''),'session_key':(str,False,None),'ownership_epoch':(int,False,None)}),
             'decide_delivery': ('web', self.delivery.decide, {'suggestion_id':(int,True,None),'decision':(str,True,None)}),
             'read_capabilities': ('any', self.read_capabilities, fields()),
-            'wake_digest': ('agent', self.wake.digest, fields()),
+            'wake_digest': ('agent', self.wake.digest, fields('', {'session_key': None})),
+            'session_presence': ('agent', self.session_presence, {
+                'session_key': (str, True, None), 'tool': (str, True, None),
+                'state': (str, False, 'watching'), 'ttl_seconds': (int, False, 90)}),
             'checkpoint': ('agent', self.checkpoints.checkpoint, fields('session_key tool event', {'task_id': None, 'ownership_epoch': None})),
             'diagnostic_start': ('agent', self.checkpoints.diagnostic_start, fields('challenge')),
             'diagnostic_read': ('agent', self.checkpoints.diagnostic_read, fields('diagnostic_id')),
@@ -66,7 +75,7 @@ class CoordinationService:
             'connect_agent': ('web', self.identity.connect_agent, fields()),
             'create_task': ('web', self.tasks.create_task, fields('intent_key title scope')),
             'claim_task': ('agent', self.tasks.claim_task, fields('task_id', {'session_key': None})),
-            'register_session': ('agent', self.activity.register_session, {**fields('session_key tool repository branch', {'task_id': None, 'ownership_epoch': None, 'harness': None, 'harness_version': None, 'platform': None}), 'capabilities': (dict, False, None)}),
+            'register_session': ('agent', self.activity.register_session, {**fields('session_key tool repository branch', {'task_id': None, 'ownership_epoch': None, 'harness': None, 'harness_version': None, 'platform': None, 'native_session_id': None}), 'capabilities': (dict, False, None)}),
             'report_progress': ('agent', self.activity.report_progress, fields('task_id state summary', {'evidence': '', 'session_key': None, 'ownership_epoch': None})),
             'send_request': ('agent', self.messages.send_request, fields('request_key context_version body', {'receiver_member_id': None, 'task_id': None})),
             'read_inbox': ('agent', self.messages.read_inbox, fields('', {'after_id': 0, 'limit': 50})),
@@ -87,6 +96,12 @@ class CoordinationService:
         }
         for name, schema in dependency_schemas(fields).items():
             self.operations[name] = ('any', getattr(self.dependencies, name), schema)
+        for name, schema in workflow_schemas().items():
+            self.operations[name] = ('agent', getattr(self.workflow, name), schema)
+        self.operations['record_agreement_use'] = ('agent', self.agreement_usage.record, AGREEMENT_USE_SCHEMA)
+        for name, schema in team_workflow_schemas().items():
+            self.operations[name] = ('any' if name == 'read_workflow' else 'agent',
+                                     getattr(self.team_workflow, name), schema)
         for action in ACTIONS:
             optional = {'session_key': None, 'ownership_epoch': None} if action in ('release_task', 'propose_handoff') else {}
             required = 'task_id expected_revision request_key summary'
@@ -105,6 +120,17 @@ class CoordinationService:
         self.reads['collaboration'] = self.checkpoints.snapshot
         self.reads['lifecycle'] = self.lifecycle.snapshot
         self.reads['dependencies'] = self.dependencies.snapshot
+
+    @property
+    def session_routing(self):
+        if not hasattr(self, '_session_routing'):
+            from .session_routing import SessionRoutingStore
+            self._session_routing = SessionRoutingStore(self.identity)
+        return self._session_routing
+
+    def session_presence(self, token, session_key, tool, state='watching', ttl_seconds=90):
+        return self.session_routing.presence(token, session_key=session_key, tool=tool,
+                                             state=state, ttl_seconds=ttl_seconds)
 
     def read_deliveries(self, token, task_id=None, kind='', value=''):
         return self.delivery.read(token, task_id=task_id, kind=kind, value=value)
@@ -151,6 +177,7 @@ class CoordinationService:
         result['capabilities'] = self.capability_store.project(source)
         from .project_activity import project_activity
         result['activity'] = project_activity(result)
+        result['workflow'] = self.team_workflow.read_workflow(token)
         result['server_time'] = datetime.now(timezone.utc).isoformat()
         return result
 

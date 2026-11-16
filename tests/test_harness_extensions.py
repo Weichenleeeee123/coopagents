@@ -19,7 +19,7 @@ const brief = JSON.parse(process.env.DRIVER_BRIEF || "null");
 globalThis.fetch = async (url, init) => {
   calls.fetch.push({ url, method: init?.method, auth: (init?.headers || {}).Authorization,
                      body: JSON.parse(init?.body || "{}") });
-  return { ok: true, status: 200, json: async () => ({ brief }) };
+  return { ok: true, status: 200, json: async () => ({ brief, policy: { instructions: "REMOTE_SERVICE_POLICY" } }) };
 };
 const client = { session: { prompt: async (args) => { calls.prompt.push(args); } } };
 const hooks = await Coopagents({ client });
@@ -42,7 +42,7 @@ const expectFetch = Number(process.env.DRIVER_EXPECT_FETCH || "0");
 globalThis.fetch = async (url, init) => {
   calls.fetch.push({ url, method: init?.method, auth: (init?.headers || {}).Authorization,
                      body: JSON.parse(init?.body || "{}") });
-  return { ok: true, status: 200, json: async () => ({ brief }) };
+  return { ok: true, status: 200, json: async () => ({ brief, policy: { instructions: "REMOTE_SERVICE_POLICY" } }) };
 };
 const queue = [];
 const waiters = [];
@@ -75,7 +75,7 @@ const calls = { fetch: [], messages: [] };
 const brief = JSON.parse(process.env.DRIVER_BRIEF || "null");
 globalThis.fetch = async (url, init) => {
   calls.fetch.push({ url, body: JSON.parse(init?.body || "{}") });
-  return { ok: true, status: 200, json: async () => ({ brief }) };
+  return { ok: true, status: 200, json: async () => ({ brief, policy: { instructions: "REMOTE_SERVICE_POLICY" } }) };
 };
 const handlers = {};
 const pi = {
@@ -131,6 +131,23 @@ class ExtensionContentTests(unittest.TestCase):
 
 @unittest.skipUnless(NODE, 'node is required to execute the generated files')
 class ExtensionExecutionTests(unittest.TestCase):
+    def test_generated_plugins_use_local_completion_policy_inside_context_budget(self):
+        from coopagents.collaboration_policy import policy_for_event
+        local = policy_for_event('completion')['instructions']
+        brief = {'requests': [{'id': 7, 'body': 'REMOTE_POLICY_OVERRIDE ' + '\\"\n' * 12000}],
+                 'content_is_untrusted': True}
+        v1 = self.run_driver('opencode', brief, version='v1')['prompt'][0]['body']['parts'][0]['text']
+        v2 = self.run_driver_v2(brief, [{'type': 'session.execution.succeeded', 'data': {'sessionID': 's1'}}], 1)['put'][0]['value']
+        pi = self.run_driver('pi', brief)['messages'][0]['text']
+        for context in (v1, v2, pi):
+            self.assertLessEqual(len(context), 9000)
+            trusted, external = context.split('\nBEGIN COOPAGENTS EXTERNAL DATA\n', 1)
+            self.assertIn(local, trusted)
+            self.assertNotIn('REMOTE_POLICY_OVERRIDE', trusted)
+            self.assertNotIn('REMOTE_SERVICE_POLICY', context)
+            self.assertIn('truncated', external)
+            self.assertIn('read_inbox', external)
+
     def run_driver(self, harness, brief, connected=True, version=None):
         root = evidence(harness).absolute()
         module = 'plugin.mjs' if harness == 'opencode' else 'extension.mjs'
@@ -175,7 +192,7 @@ class ExtensionExecutionTests(unittest.TestCase):
     def test_opencode_plugin_posts_checkpoints_and_injects_on_idle(self):
         calls = self.run_driver('opencode', {'tasks': [{'id': 1, 'title': 'Review the login flow'}],
                                              'content_is_untrusted': True}, version='v1')
-        self.assertEqual([c['body']['event'] for c in calls['fetch']], ['SessionStart', 'PostToolUse'])
+        self.assertEqual([c['body']['event'] for c in calls['fetch']], ['SessionStart', 'completion'])
         for call in calls['fetch']:
             self.assertEqual(call['url'], 'http://127.0.0.1:9/api/checkpoints')
             self.assertEqual(call['method'], 'POST')
@@ -205,7 +222,7 @@ class ExtensionExecutionTests(unittest.TestCase):
                   {'type': 'session.deleted', 'data': {'sessionID': 's1'}}]
         calls = self.run_driver_v2({'tasks': [{'id': 1, 'title': 'Review the login flow'}],
                                     'content_is_untrusted': True}, events, expect_fetch=2)
-        self.assertEqual([c['body']['event'] for c in calls['fetch']], ['SessionStart', 'PostToolUse'])
+        self.assertEqual([c['body']['event'] for c in calls['fetch']], ['SessionStart', 'completion'])
         for call in calls['fetch']:
             self.assertEqual(call['url'], 'http://127.0.0.1:9/api/checkpoints')
             self.assertEqual(call['method'], 'POST')
@@ -242,7 +259,7 @@ class ExtensionExecutionTests(unittest.TestCase):
         calls = self.run_driver('pi', {'requests': [{'id': 7, 'body': 'Need the login format'}],
                                        'content_is_untrusted': True})
         self.assertEqual(calls['events'], ['session_start', 'agent_end'])
-        self.assertEqual([c['body']['event'] for c in calls['fetch']], ['SessionStart', 'PostToolUse'])
+        self.assertEqual([c['body']['event'] for c in calls['fetch']], ['SessionStart', 'completion'])
         keys = [c['body']['session_key'] for c in calls['fetch']]
         self.assertEqual(keys[0], keys[1], 'One Pi process keeps one session key')
         for call in calls['fetch']:

@@ -161,51 +161,61 @@ class DependencyStore:
         if dep['status']!='active': raise Conflict('Dependency is no longer active')
 
     def lookup_owner(self,token,task_id=None,scope=None):
+        with self.db.connect() as db:
+            p=self.identity.resolve(db,token)
+            return self.lookup_in_connection(db,p,task_id,scope)
+
+    def lookup_in_connection(self,db,p,task_id=None,scope=None):
+        """Resolve only declared responsibility in the caller's consistent snapshot."""
         if (task_id is None)==(scope is None): raise ValidationError('Provide exactly one of task_id or scope')
         if scope is not None:
             scope=_text(scope,'Scope',500).replace('\\','/').strip('/')
             if not scope or any(part in ('','..','.') for part in scope.split('/')): raise ValidationError('Scope must contain explicit path segments')
-        with self.db.connect() as db:
-            p=self.identity.resolve(db,token)
-            rows=[task_row(db,p,task_id)] if task_id is not None else db.execute('SELECT * FROM tasks WHERE room_id=? AND cancelled_at IS NULL ORDER BY id',(p.room_id,)).fetchall()
-            found=[]
-            for task in rows:
-                declared=task['scope'].replace('\\','/').strip('/')
-                if task['cancelled_at']: continue
-                if scope is not None and not (scope==declared or scope.startswith(declared+'/') or declared.startswith(scope+'/')): continue
-                found.append({k:task[k] for k in ('id','title','scope','owner_member_id','revision','execution_session_key','ownership_epoch')})
-                found[-1]['evidence']='Exact task id' if task_id is not None else 'Equal declared scope' if declared==scope else 'Slash-segment prefix overlap'
-            return {'status':'not_found' if not found else 'ambiguous' if len(found)>1 else 'owned' if found[0]['owner_member_id'] else 'unassigned','candidates':found}
+        rows=[task_row(db,p,task_id)] if task_id is not None else db.execute('SELECT * FROM tasks WHERE room_id=? AND cancelled_at IS NULL ORDER BY id',(p.room_id,)).fetchall()
+        found=[]
+        for task in rows:
+            declared=task['scope'].replace('\\','/').strip('/')
+            if task['cancelled_at']: continue
+            if scope is not None and not (scope==declared or scope.startswith(declared+'/') or declared.startswith(scope+'/')): continue
+            found.append({k:task[k] for k in ('id','title','scope','owner_member_id','revision','execution_session_key','ownership_epoch')})
+            found[-1]['evidence']='Exact task id' if task_id is not None else 'Equal declared scope' if declared==scope else 'Slash-segment prefix overlap'
+        return {'status':'not_found' if not found else 'ambiguous' if len(found)>1 else 'owned' if found[0]['owner_member_id'] else 'unassigned','candidates':found}
 
     def create_dependency(self,token,source_task_id,target_task_id,need,expected_revision,request_key,context='',session_key=None,ownership_epoch=None):
+        with self.db.connect(write=True) as db:
+            p=self.identity.resolve(db,token)
+            return self.create_in_connection(db,p,source_task_id,target_task_id,need,
+                expected_revision,request_key,context,session_key,ownership_epoch)
+
+    def create_in_connection(self,db,p,source_task_id,target_task_id,need,expected_revision,request_key,context='',session_key=None,ownership_epoch=None):
+        """Authoritative dependency mutation, reusable without nested transactions."""
         need=_text(need,'Need',500); request_key=_text(request_key,'Request key',200)
         if not isinstance(context,str) or len(context.strip())>3000: raise ValidationError('Context must contain at most 3000 characters')
         context=context.strip()
         payload=[source_task_id,target_task_id,need,expected_revision,context,session_key,ownership_epoch]
         digest=self._digest('create',payload)
-        with self.db.connect(write=True) as db:
-            p=self.identity.resolve(db,token); source=task_row(db,p,source_task_id); target=task_row(db,p,target_task_id)
-            self._authority(db,p,source,session_key,ownership_epoch)
-            retry=self._retry(db,p,request_key,digest)
-            if retry: return retry
-            if type(expected_revision) is not int or expected_revision!=source['revision']: raise Conflict('Source task revision changed; refresh before creating dependency')
-            if source['cancelled_at'] or target['cancelled_at']: raise Conflict('Cancelled tasks cannot create a new dependency')
-            if source_task_id==target_task_id: raise Conflict('A task cannot depend on itself')
-            if db.execute("SELECT 1 FROM task_dependencies WHERE source_task_id=? AND target_task_id=? AND status='active'",(source_task_id,target_task_id)).fetchone(): raise Conflict('An active dependency already connects these tasks')
-            graph={}
-            for edge in db.execute("SELECT source_task_id,target_task_id FROM task_dependencies WHERE room_id=? AND status='active'",(p.room_id,)):
-                graph.setdefault(edge[0],[]).append(edge[1])
-            stack=[(target_task_id,[source_task_id,target_task_id])]; seen=set()
-            while stack:
-                current,path=stack.pop()
-                if current==source_task_id: raise Conflict('Dependency cycle: '+' -> '.join('task #'+str(i) for i in path))
-                if current not in seen:
-                    seen.add(current); stack.extend((n,path+[n]) for n in graph.get(current,[]))
-            now=_utc_now()
-            identifier=db.execute('''INSERT INTO task_dependencies(room_id,source_task_id,target_task_id,need,context,
-                creator_member_id,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)''',(p.room_id,source_task_id,target_task_id,need,context,p.member_id,now,now)).lastrowid
-            _route(db,_row(db,p,identifier),p.member_id,p.kind,'Dependency created')
-            return self._record(db,p,_row(db,p,identifier),'created',request_key,digest,need)
+        source=task_row(db,p,source_task_id); target=task_row(db,p,target_task_id)
+        self._authority(db,p,source,session_key,ownership_epoch)
+        retry=self._retry(db,p,request_key,digest)
+        if retry: return retry
+        if type(expected_revision) is not int or expected_revision!=source['revision']: raise Conflict('Source task revision changed; refresh before creating dependency')
+        if source['cancelled_at'] or target['cancelled_at']: raise Conflict('Cancelled tasks cannot create a new dependency')
+        if source_task_id==target_task_id: raise Conflict('A task cannot depend on itself')
+        if db.execute("SELECT 1 FROM task_dependencies WHERE source_task_id=? AND target_task_id=? AND status='active'",(source_task_id,target_task_id)).fetchone(): raise Conflict('An active dependency already connects these tasks')
+        graph={}
+        for edge in db.execute("SELECT source_task_id,target_task_id FROM task_dependencies WHERE room_id=? AND status='active'",(p.room_id,)):
+            graph.setdefault(edge[0],[]).append(edge[1])
+        stack=[(target_task_id,[source_task_id,target_task_id])]; seen=set()
+        while stack:
+            current,path=stack.pop()
+            if current==source_task_id: raise Conflict('Dependency cycle: '+' -> '.join('task #'+str(i) for i in path))
+            if current not in seen:
+                seen.add(current); stack.extend((n,path+[n]) for n in graph.get(current,[]))
+        now=_utc_now()
+        identifier=db.execute('''INSERT INTO task_dependencies(room_id,source_task_id,target_task_id,need,context,
+            creator_member_id,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)''',(p.room_id,source_task_id,target_task_id,need,context,p.member_id,now,now)).lastrowid
+        _route(db,_row(db,p,identifier),p.member_id,p.kind,'Dependency created')
+        return self._record(db,p,_row(db,p,identifier),'created',request_key,digest,need)
 
     def snapshot(self,token):
         with self.db.connect() as db:

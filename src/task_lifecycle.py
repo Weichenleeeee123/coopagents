@@ -149,6 +149,8 @@ def archive_claim(db, principal, task, now):
 def ownership_changed(db, task_id, old_owner, new_owner, actor=None, kind="system", reason="Task responsibility changed"):
     from .dependencies import ownership_changed as route_dependencies
     route_dependencies(db, task_id, old_owner, new_owner, actor, kind, reason)
+    from .workflow import ownership_changed as route_owner_questions
+    route_owner_questions(db, task_id, old_owner, new_owner, actor, kind, reason)
 
 
 class TaskLifecycleStore:
