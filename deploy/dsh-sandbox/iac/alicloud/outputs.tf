@@ -4,13 +4,13 @@ output "workload_inventory" {
     run_id = var.run_id
     agents = [
       for name in ["front", "back", "integration"] : {
-        agent_id               = name
-        egress_network_id      = alicloud_nat_gateway.this[name].id
-        public_ip              = alicloud_eip_address.this[name].ip_address
-        subnet_id              = alicloud_vswitch.this[name].id
-        inbound_ports          = []
+        agent_id                = name
+        egress_network_id       = alicloud_nat_gateway.this[name].id
+        public_ip               = alicloud_eip_address.this[name].ip_address
+        subnet_id               = alicloud_vswitch.this[name].id
+        inbound_ports           = []
         public_control_endpoint = false
-        network_profile        = local.workloads[name].network_profile
+        network_profile         = local.workloads[name].network_profile
         network_policy = {
           peer_udp  = local.workloads[name].network_profile == "direct"
           relay_udp = contains(["direct", "relay-only"], local.workloads[name].network_profile)
@@ -44,14 +44,14 @@ output "workload_inventory" {
 output "control_plane_inventory" {
   description = "Control-plane inventory kept separate from the three-member provider contract."
   value = {
-    instance_id     = alicloud_instance.this["control"].id
-    system_disk_id  = alicloud_instance.this["control"].system_disk_id
-    vpc_id          = alicloud_vpc.this["control"].id
-    subnet_id       = alicloud_vswitch.this["control"].id
-    nat_gateway_id  = alicloud_nat_gateway.this["control"].id
-    egress_ip       = alicloud_eip_address.this["control"].ip_address
-    snapshot_id     = alicloud_ecs_snapshot.baseline["control"].id
-    image_id        = var.image_id
-    image_digest    = var.image_digest
+    instance_id    = alicloud_instance.this["control"].id
+    system_disk_id = alicloud_instance.this["control"].system_disk_id
+    vpc_id         = alicloud_vpc.this["control"].id
+    subnet_id      = alicloud_vswitch.this["control"].id
+    nat_gateway_id = alicloud_nat_gateway.this["control"].id
+    egress_ip      = alicloud_eip_address.this["control"].ip_address
+    snapshot_id    = alicloud_ecs_snapshot.baseline["control"].id
+    image_id       = var.image_id
+    image_digest   = var.image_digest
   }
 }

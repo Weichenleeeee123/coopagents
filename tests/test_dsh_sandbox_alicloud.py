@@ -30,7 +30,7 @@ class DshSandboxAlibabaTerraformTests(unittest.TestCase):
 
     def test_provider_string_attributes_are_not_indexed_or_unsupported(self):
         self.assertNotIn('snat_table_ids[0]', MAIN)
-        self.assertIn('snat_table_id  = split(",", alicloud_nat_gateway.this[each.key].snat_table_ids)[0]', MAIN)
+        self.assertRegex(MAIN, r'snat_table_id\s*=\s*split\(",", alicloud_nat_gateway\.this\[each\.key\]\.snat_table_ids\)\[0\]')
         self.assertNotIn('system_disk_delete_with_instance', MAIN)
         self.assertIn('system_disk_id', MAIN)
         self.assertIn('alicloud_nat_gateway.this[name].id', OUTPUTS)

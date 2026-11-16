@@ -108,11 +108,11 @@ resource "alicloud_vpc" "this" {
 }
 
 resource "alicloud_vswitch" "this" {
-  for_each      = local.workloads
-  vpc_id        = alicloud_vpc.this[each.key].id
-  cidr_block    = each.value.vswitch_cidr
-  zone_id       = var.availability_zone
-  vswitch_name  = "dsh-${var.run_id}-${each.key}"
+  for_each     = local.workloads
+  vpc_id       = alicloud_vpc.this[each.key].id
+  cidr_block   = each.value.vswitch_cidr
+  zone_id      = var.availability_zone
+  vswitch_name = "dsh-${var.run_id}-${each.key}"
 
   tags = {
     Project  = "dsh-sandbox"
@@ -146,9 +146,9 @@ resource "alicloud_nat_gateway" "this" {
 }
 
 resource "alicloud_eip_address" "this" {
-  for_each      = local.workloads
-  address_name  = "dsh-${var.run_id}-${each.key}"
-  bandwidth     = "5"
+  for_each             = local.workloads
+  address_name         = "dsh-${var.run_id}-${each.key}"
+  bandwidth            = "5"
   internet_charge_type = "PayByTraffic"
 
   tags = {
@@ -174,10 +174,10 @@ resource "alicloud_eip_association" "this" {
 }
 
 resource "alicloud_snat_entry" "this" {
-  for_each       = local.workloads
-  snat_table_id  = split(",", alicloud_nat_gateway.this[each.key].snat_table_ids)[0]
-  source_cidr    = each.value.vswitch_cidr
-  snat_ip        = alicloud_eip_address.this[each.key].ip_address
+  for_each        = local.workloads
+  snat_table_id   = split(",", alicloud_nat_gateway.this[each.key].snat_table_ids)[0]
+  source_cidr     = each.value.vswitch_cidr
+  snat_ip         = alicloud_eip_address.this[each.key].ip_address
   snat_entry_name = "dsh-${var.run_id}-${each.key}"
 
   lifecycle {
@@ -272,15 +272,15 @@ resource "alicloud_security_group_rule" "allow_egress" {
 }
 
 resource "alicloud_instance" "this" {
-  for_each                  = local.workloads
-  instance_name             = "dsh-${var.run_id}-${each.key}"
-  image_id                  = var.image_id
-  instance_type             = each.value.instance_type
-  vswitch_id                = alicloud_vswitch.this[each.key].id
-  security_groups           = [alicloud_security_group.this[each.key].id]
+  for_each                   = local.workloads
+  instance_name              = "dsh-${var.run_id}-${each.key}"
+  image_id                   = var.image_id
+  instance_type              = each.value.instance_type
+  vswitch_id                 = alicloud_vswitch.this[each.key].id
+  security_groups            = [alicloud_security_group.this[each.key].id]
   internet_max_bandwidth_out = 0
-  system_disk_category      = "cloud_essd"
-  system_disk_size          = each.value.system_disk_size
+  system_disk_category       = "cloud_essd"
+  system_disk_size           = each.value.system_disk_size
 
   tags = {
     Project     = "dsh-sandbox"
@@ -302,10 +302,10 @@ resource "alicloud_instance" "this" {
 }
 
 resource "alicloud_ecs_snapshot" "baseline" {
-  for_each       = alicloud_instance.this
-  disk_id        = each.value.system_disk_id
-  snapshot_name  = "dsh-${var.run_id}-${each.key}-baseline"
-  description    = "Retained baseline for DSH sandbox run ${var.run_id}; image digest ${var.image_digest}."
+  for_each      = alicloud_instance.this
+  disk_id       = each.value.system_disk_id
+  snapshot_name = "dsh-${var.run_id}-${each.key}-baseline"
+  description   = "Retained baseline for DSH sandbox run ${var.run_id}; image digest ${var.image_digest}."
 
   tags = {
     Project     = "dsh-sandbox"

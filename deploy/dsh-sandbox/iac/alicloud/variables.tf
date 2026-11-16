@@ -104,8 +104,10 @@ variable "workloads" {
   }
 
   validation {
-    condition = length(toset([for workload in values(var.workloads) : workload.vpc_cidr])) == 4 &&
+    condition = (
+      length(toset([for workload in values(var.workloads) : workload.vpc_cidr])) == 4 &&
       length(toset([for workload in values(var.workloads) : workload.vswitch_cidr])) == 4
+    )
     error_message = "All four workloads must use distinct VPC and VSwitch CIDRs."
   }
 }
