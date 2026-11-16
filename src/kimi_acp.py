@@ -16,9 +16,17 @@ never sees or stores credentials. Reverse-RPC requests are refused with
 terminals must be registered explicitly by the caller, who owns the trust
 decision.
 
-Live acceptance against a real ``kimi acp`` process needs a logged-in Kimi
-session with a model backend and is unverified. The client is tested
-against a stub ACP agent (tests/fake_acp_agent.py) over real stdio pipes.
+Live acceptance was verified 2026-11-15: the client drove a real
+``kimi acp`` 2.5.3 process (initialize, session/new forwarding an HTTP MCP
+server with a ``headers`` array carrying the Authorization header,
+session/set_model, prompt) and the model called the forwarded
+``mcp__coopagents__whoami`` + ``read_team`` tools natively with real space
+data. No ``authenticate`` call was needed: the session used the provider
+configuration already on the machine, and ``authenticate`` only gates the
+managed terminal-login flow. A ``session/request_permission`` handler that
+approves tool calls must be registered by callers that drive turns. The
+client is also tested against a stub ACP agent (tests/fake_acp_agent.py)
+over real stdio pipes.
 """
 from collections import deque
 import json

@@ -46,9 +46,12 @@ OPENCODE_PLUGIN = r'''// COOPAGENTS-MANAGED: do not edit by hand; regenerate wit
 // Install: copy this file to .opencode/plugins/coopagents.js (project) or
 // ~/.config/opencode/plugins/coopagents.js (global), then restart OpenCode.
 //
-// Unverified against a live OpenCode session: the session.created /
-// session.idle event payload shapes and the noReply prompt injection need a
-// real session with a model backend to confirm.
+// Verified live 2026-11-15 against OpenCode 1.19.5: session.created /
+// session.idle fire with the session id in properties.sessionID, and
+// the noReply prompt injection lands a user-role message in a session
+// that stays alive. In a one-shot `opencode run` process the injection
+// may not land before the process exits; the checkpoints themselves
+// always post.
 
 const ORIGIN = (process.env.COOPAGENTS_SERVICE_URL || "").replace(/\/$/, "");
 const PROJECT = process.env.COOPAGENTS_PROJECT_ID || "";
@@ -149,10 +152,11 @@ OPENCODE_PLUGIN_V2 = r'''// COOPAGENTS-MANAGED: do not edit by hand; regenerate 
 //
 // Coopagents collaboration checkpoint for OpenCode 2.x. Subscribes to the
 // server event stream: on session.created it records a SessionStart
-// checkpoint; on session.idle (fired after every assistant turn) it records
-// a completion checkpoint and, when the service returns a non-empty brief,
-// writes it to the session instructions, which the docs describe as
-// announced at the next step boundary without queuing a message turn.
+// checkpoint; on session.execution.succeeded (fired when a turn's
+// execution completes) it records a canonical completion checkpoint and, when the
+// service returns a non-empty brief, writes it to the session
+// instructions, which the docs describe as announced at the next step
+// boundary without queuing a message turn.
 // Teammate content is never sent anywhere except the configured
 // Coopagents service, and the plugin never throws: any failure is silent
 // and the session continues.
@@ -166,12 +170,14 @@ OPENCODE_PLUGIN_V2 = r'''// COOPAGENTS-MANAGED: do not edit by hand; regenerate 
 // file directly under .opencode/plugins/ is not a documented V2 form. For
 // OpenCode 1.x, generate the V1 plugin form with --plugin-version v1.
 //
-// Unverified against a live OpenCode 2.x session: the V2 event payload
-// shapes are not enumerated in the docs (the session id is read
-// defensively from several fields, with a process-stable fallback), and
-// the instructions-entry injection needs a real session with a model
-// backend to confirm. The V1 noReply prompt injection is undocumented in
-// V2 and is not used here.
+// Event names verified live 2026-11-15 against OpenCode 2.2.7 (ACP event
+// stream): session.created and session.execution.succeeded fire with the
+// session id in data.sessionID. There is no session.idle event in 2.2.7;
+// an earlier form of this file waited for it and never checkpointed a
+// turn end. The instructions-entry injection was verified live the same
+// day: entry.put resolves and a session.instructions.updated event
+// carries the coopagents entry. The V1 noReply prompt injection is
+// undocumented in V2 and is not used here.
 
 import { Plugin } from "@opencode/plugin";
 
@@ -264,7 +270,7 @@ export default Plugin.define({
           try {
             if (event?.type === "session.created") {
               await checkpoint(sessionKey(event), "SessionStart");
-            } else if (event?.type === "session.idle") {
+            } else if (event?.type === "session.execution.succeeded") {
               const id = sessionKey(event);
               const brief = await checkpoint(id, "completion");
               if (brief && briefHasContent(brief)) {
@@ -308,10 +314,10 @@ PI_EXTENSION = r'''// COOPAGENTS-MANAGED: do not edit by hand; regenerate with:
 // Extensions run inside the Pi process with full OS permissions; installing
 // one is a trust decision.
 //
-// Unverified against a live Pi session: the session_start / agent_end event
-// names come from the Pi extension docs, and sendUserMessage with
-// deliverAs: "followUp" from community extension sources; both need a real
-// Pi session with a model backend to confirm.
+// Verified live 2026-11-15 against Pi 1.5.2: session_start / agent_end
+// fire, the PostToolUse checkpoint posts, and sendUserMessage with
+// deliverAs: "followUp" delivers the brief as a follow-up turn the model
+// reads (confirmed with a stub service returning a marker brief).
 
 const ORIGIN = (process.env.COOPAGENTS_SERVICE_URL || "").replace(/\/$/, "");
 const PROJECT = process.env.COOPAGENTS_PROJECT_ID || "";

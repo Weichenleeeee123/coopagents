@@ -26,7 +26,7 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
         raise ValueError('Credential requests must not redirect')
 
 
-def request(origin, path, *, token=None, data=None):
+def request(origin, path, *, token=None, data=None, timeout=5):
     validate_origin(origin)
     headers = {'Accept': 'application/json', 'Origin': origin}
     if token:
@@ -39,7 +39,7 @@ def request(origin, path, *, token=None, data=None):
     # Do not route loopback control through an environment configured proxy.
     proxy = urllib.request.ProxyHandler({}) if urlsplit(origin).hostname in ('127.0.0.1', 'localhost') else urllib.request.ProxyHandler()
     opener = urllib.request.build_opener(NoRedirect(), proxy)
-    with opener.open(req, timeout=5) as response:
+    with opener.open(req, timeout=timeout) as response:
         raw = response.read(65537)
     if len(raw) > 65536:
         raise ValueError('Response exceeded limit')
@@ -319,6 +319,13 @@ def invite(profile_path, share=False, message=None, hours=1):
     return result
 
 
+# Join's HTTP request crosses the peer-to-peer link after the dial: a slow or
+# lossy relay path can need longer than the default 5s to deliver the reply,
+# and the request is not safely retryable (it consumes the invitation and
+# creates the member), so it gets the same budget as the dial itself.
+JOIN_REQUEST_TIMEOUT = 30
+
+
 def join(invitation_file, name, state_dir, invitation_code=None):
     if (invitation_file is None) == (invitation_code is None):
         raise ValueError('Provide exactly one invitation file or code')
@@ -336,9 +343,10 @@ def join(invitation_file, name, state_dir, invitation_code=None):
         raise FileExistsError('A personal profile already exists in %s; omit --state-dir to use a new folder' % state)
     target = {'origin': origin, 'room_id': descriptor['room_id']} | ({'p2p': link} if link else {})
     try:
-        with member_link(target):
+        with member_link(target, warm=True):
             identity = request(origin, '/api/join', data={'room_id': descriptor['room_id'],
-                                                        'invite_token': descriptor['invite_token'], 'display_name': name})
+                                                        'invite_token': descriptor['invite_token'], 'display_name': name},
+                               timeout=JOIN_REQUEST_TIMEOUT)
     except urllib.error.HTTPError as error:
         if error.code in (401, 403):
             raise ValueError('The space did not accept this invitation: it was already used, has expired or was '

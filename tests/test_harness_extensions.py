@@ -105,7 +105,7 @@ class ExtensionContentTests(unittest.TestCase):
         self.assertNotIn('coopagents.checkpoint_hook', plugin)
         plugin_v2 = opencode_plugin_text('v2')
         for needle in (MARKER, 'COOPAGENTS_SERVICE_URL', 'COOPAGENTS_PROJECT_ID', 'COOPAGENTS_AGENT_TOKEN',
-                       'session.created', 'session.idle', 'Plugin.define', 'ctx.event.subscribe',
+                       'session.created', 'session.execution.succeeded', 'Plugin.define', 'ctx.event.subscribe',
                        'instructions.entry.put', 'id: "coopagents"', '@opencode/plugin'):
             self.assertIn(needle, plugin_v2)
         self.assertNotIn('noReply: true', plugin_v2)
@@ -137,7 +137,7 @@ class ExtensionExecutionTests(unittest.TestCase):
         brief = {'requests': [{'id': 7, 'body': 'REMOTE_POLICY_OVERRIDE ' + '\\"\n' * 12000}],
                  'content_is_untrusted': True}
         v1 = self.run_driver('opencode', brief, version='v1')['prompt'][0]['body']['parts'][0]['text']
-        v2 = self.run_driver_v2(brief, [{'type': 'session.idle', 'data': {'sessionID': 's1'}}], 1)['put'][0]['value']
+        v2 = self.run_driver_v2(brief, [{'type': 'session.execution.succeeded', 'data': {'sessionID': 's1'}}], 1)['put'][0]['value']
         pi = self.run_driver('pi', brief)['messages'][0]['text']
         for context in (v1, v2, pi):
             self.assertLessEqual(len(context), 9000)
@@ -215,10 +215,10 @@ class ExtensionExecutionTests(unittest.TestCase):
         self.assertEqual(len(calls['fetch']), 2)
         self.assertEqual(calls['prompt'], [])
 
-    def test_opencode_v2_plugin_posts_checkpoints_and_writes_instructions_on_idle(self):
+    def test_opencode_v2_plugin_posts_checkpoints_and_writes_instructions_on_execution_succeeded(self):
         events = [{'type': 'session.created', 'data': {'sessionID': 's1'}},
-                  {'type': 'session.idle', 'data': {'sessionID': 's1'}},
-                  {'type': 'session.idle', 'data': {'sessionID': 's1'}},
+                  {'type': 'session.execution.succeeded', 'data': {'sessionID': 's1'}},
+                  {'type': 'session.execution.succeeded', 'data': {'sessionID': 's1'}},
                   {'type': 'session.deleted', 'data': {'sessionID': 's1'}}]
         calls = self.run_driver_v2({'tasks': [{'id': 1, 'title': 'Review the login flow'}],
                                     'content_is_untrusted': True}, events, expect_fetch=2)
@@ -239,7 +239,7 @@ class ExtensionExecutionTests(unittest.TestCase):
 
     def test_opencode_v2_plugin_reads_session_ids_defensively(self):
         events = [{'type': 'session.created'},
-                  {'type': 'session.idle', 'data': {'id': 's9'}}]
+                  {'type': 'session.execution.succeeded', 'data': {'id': 's9'}}]
         calls = self.run_driver_v2({'tasks': [{'id': 1, 'title': 'x'}]}, events, expect_fetch=2)
         keys = [c['body']['session_key'] for c in calls['fetch']]
         self.assertTrue(keys[0].startswith('opencode-'))
@@ -248,7 +248,7 @@ class ExtensionExecutionTests(unittest.TestCase):
 
     def test_opencode_v2_plugin_stays_silent_without_a_connection_or_content(self):
         events = [{'type': 'session.created', 'data': {'sessionID': 's1'}},
-                  {'type': 'session.idle', 'data': {'sessionID': 's1'}}]
+                  {'type': 'session.execution.succeeded', 'data': {'sessionID': 's1'}}]
         calls = self.run_driver_v2({'tasks': [{'id': 1, 'title': 'x'}]}, events, expect_fetch=0, connected=False)
         self.assertEqual(calls, {'fetch': [], 'put': []})
         calls = self.run_driver_v2({'tasks': [], 'content_is_untrusted': True}, events, expect_fetch=2)

@@ -45,6 +45,16 @@ class HookPolicyTests(unittest.TestCase):
         self.assertNotIn('hookSpecificOutput', output)
         self.assertEqual(checkpoint_hook.context_output('Stop', {'brief': {}}, 'zcode'), {})
 
+    def test_kimi_prompt_preserves_the_local_prompt_policy(self):
+        result = {'brief': {'body': 'REMOTE_TASK_TEXT'},
+                  'policy': {'instructions': 'REMOTE_POLICY_OVERRIDE'}}
+        context = checkpoint_hook.kimi_output('UserPromptSubmit', result)
+        trusted, external = context.split('\nBEGIN COOPAGENTS EXTERNAL DATA\n', 1)
+        self.assertIn(policy_for_event('UserPromptSubmit')['instructions'], trusted)
+        self.assertNotIn('REMOTE_POLICY_OVERRIDE', context)
+        self.assertIn('REMOTE_TASK_TEXT', external)
+        self.assertIsNone(checkpoint_hook.kimi_output('PostToolUse', result))
+
     def test_event_generation_and_payload_validation_are_host_specific(self):
         base = {'SessionStart', 'UserPromptSubmit', 'PostToolUse'}
         for tool, expected in (('claude-code', base | {'Stop', 'PostToolUseFailure'}),

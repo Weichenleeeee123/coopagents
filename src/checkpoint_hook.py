@@ -219,8 +219,10 @@ def kimi_hooks_text(tool):
     """[[hooks]] TOML for user-scope ~/.kimi-code/config.toml.
 
     No matchers: every occurrence of the three checkpoint events fires, and
-    the handler throttles PostToolUse itself. The handler needs no Kimi
-    adaptation — Kimi sends the same session_id/hook_event_name fields.
+    the handler throttles PostToolUse itself. Kimi sends the same
+    session_id/hook_event_name fields, so the handler needs no input
+    adaptation; its OUTPUT is Kimi-shaped (see kimi_output): only
+    UserPromptSubmit returns can reach the model.
     """
     blocks = []
     for event in NATIVE_HOOK_EVENTS[tool]:
@@ -234,31 +236,34 @@ def kimi_hooks_text(tool):
     return '\n\n'.join(blocks) + '\n'
 
 
-def _kimi_block_is_ours(lines):
+def _kimi_block_is_ours(lines, marker=KIMI_HOOK_MARKER, needles=('coopagents.checkpoint_hook',)):
     text = '\n'.join(lines)
-    return KIMI_HOOK_MARKER in text or 'coopagents.checkpoint_hook' in text
+    return marker in text or any(needle in text for needle in needles)
 
 
-def merge_kimi_hooks(existing_text, fragment_text):
+def merge_kimi_hooks(existing_text, fragment_text, *, marker=KIMI_HOOK_MARKER,
+                     needles=('coopagents.checkpoint_hook',)):
     """Append managed [[hooks]] blocks to a Kimi config.toml, preserving everything else.
 
     Existing managed blocks are dropped first, so re-applying is idempotent.
     Only [[hooks]] blocks are inspected; every other line — comments, blank
-    lines, other tables, foreign hook rules — is kept verbatim.
+    lines, other tables, foreign hook rules — is kept verbatim. Callers that
+    manage a different block family (wake hooks) pass their own marker and
+    command needles; the two families never drop each other's blocks.
     """
-    marker = '# %s (managed; do not edit)' % KIMI_HOOK_MARKER
+    marker_line = '# %s (managed; do not edit)' % marker
     header = re.compile(r'\s*\[\[hooks\]\]\s*(#.*)?$')
 
     def boundary(line):
         # A new table header, or the marker comment that starts a managed
         # block, ends the block being scanned; anything else is body trivia.
-        return line.lstrip().startswith('[') or line.strip() == marker
+        return line.lstrip().startswith('[') or line.strip() == marker_line
 
     lines = existing_text.splitlines()
     kept, index = [], 0
     while index < len(lines):
         line = lines[index]
-        if line.strip() == marker and index + 1 < len(lines) and header.match(lines[index + 1]):
+        if line.strip() == marker_line and index + 1 < len(lines) and header.match(lines[index + 1]):
             end = index + 2
             while end < len(lines) and not boundary(lines[end]):
                 end += 1
@@ -268,7 +273,7 @@ def merge_kimi_hooks(existing_text, fragment_text):
             end = index + 1
             while end < len(lines) and not boundary(lines[end]):
                 end += 1
-            if not _kimi_block_is_ours(lines[index:end]):
+            if not _kimi_block_is_ours(lines[index:end], marker, needles):
                 kept.extend(lines[index:end])
             index = end
             continue
@@ -357,6 +362,24 @@ def cursor_output(event, result):
     return {'additional_context': brief_text(result, event)}
 
 
+def kimi_output(event, result):
+    """Kimi hook output: plain-text brief only where Kimi honors returns.
+
+    Kimi's docs: only blockable events (PreToolUse, Stop,
+    UserPromptSubmit) have return values that affect the main flow;
+    SessionStart and PostToolUse are observation-only and ignore
+    returns. On UserPromptSubmit, returned text is appended to
+    context. Verified live 2026-11-15 (Kimi Code 2.5.3): plain text
+    on stdout is appended (the model quoted it verbatim); the
+    Claude-shaped hookSpecificOutput JSON is dropped; SessionStart
+    and PostToolUse output is ignored. Returns None when Kimi would
+    ignore the output, so the handler stays silent there.
+    """
+    if event == 'UserPromptSubmit':
+        return brief_text(result, event)
+    return None
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description='Coopagents opt-in collaboration checkpoint hook')
     parser.add_argument('--tool', required=True, choices=TOOLS)
@@ -396,8 +419,14 @@ def main(argv=None):
         session, event = normalize_payload(args.tool, payload)
         result = bounded_call(lambda: client.checkpoint(session, args.tool, event), 8)
         if result is not None:
-            output = cursor_output(event, result) if args.tool == 'cursor' else context_output(event, result, args.tool)
-            print(json.dumps(output, ensure_ascii=True))
+            if args.tool == 'cursor':
+                print(json.dumps(cursor_output(event, result), ensure_ascii=True))
+            elif args.tool == 'kimi-code':
+                text = kimi_output(event, result)
+                if text is not None:
+                    print(text)
+            else:
+                print(json.dumps(context_output(event, result, args.tool), ensure_ascii=True))
         return 0
     except Exception:
         # Fail open and never include untrusted payloads, connection credentials, or exception text.
@@ -407,9 +436,12 @@ def main(argv=None):
             return 1
         # Cursor hooks block on output that does not match their schema, so a
         # failed Cursor hook stays silent on stdout; the stderr warning is its
-        # visible channel. Native clients may hide stderr on exit 0;
+        # visible channel. Kimi drops JSON stdout (verified live) and ignores
+        # returns on observation-only events, so a systemMessage blob would
+        # never surface there either; the stderr warning is its visible
+        # channel too. Native clients may hide stderr on exit 0;
         # systemMessage is their visible warning channel.
-        if args.tool != 'cursor':
+        if args.tool not in ('cursor', 'kimi-code'):
             print(json.dumps({'systemMessage': warning}))
         return 0
 

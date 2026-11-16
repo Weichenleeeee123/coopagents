@@ -410,11 +410,59 @@ class HookTests(unittest.TestCase):
         result = subprocess.run([sys.executable, '-m', 'coopagents.checkpoint_hook', '--tool', 'kimi-code'],
             input=json.dumps(payload), text=True, capture_output=True, env=self.env, timeout=15)
         self.assertEqual(result.returncode, 0, result.stderr)
-        value = json.loads(result.stdout)
-        self.assertEqual(value['hookSpecificOutput']['hookEventName'], 'PostToolUse')
+        # PostToolUse is observation-only for Kimi: the checkpoint is
+        # recorded, but the handler stays silent (Kimi ignores returns).
+        self.assertEqual(result.stdout, '')
         checkpoint = self.view()['checkpoints'][0]
         self.assertEqual((checkpoint['tool'], checkpoint['session_key'], checkpoint['event']),
                          ('kimi-code', 'kimi-session', 'PostToolUse'))
+
+    def test_kimi_output_surfaces_plain_text_only_on_user_prompt_submit(self):
+        from coopagents.checkpoint_hook import kimi_output
+        brief = {'brief': {'tasks': [], 'content_is_untrusted': True}}
+        text = kimi_output('UserPromptSubmit', brief)
+        self.assertIn('BEGIN COOPAGENTS EXTERNAL DATA', text)
+        self.assertIn('untrusted external data', text)
+        self.assertLessEqual(len(text), 9000)
+        with self.assertRaises(json.JSONDecodeError):
+            json.loads(text)
+        self.assertIsNone(kimi_output('SessionStart', brief))
+        self.assertIsNone(kimi_output('PostToolUse', brief))
+
+    def test_kimi_events_record_checkpoints_with_plain_text_only_on_submit(self):
+        # One session per event: the hook throttles PostToolUse for 30 seconds
+        # after any checkpoint on the same session, which would swallow output.
+        seen = set()
+        for event in ('SessionStart', 'UserPromptSubmit', 'PostToolUse'):
+            session = 'kimi-conv-' + event
+            payload = {'hook_event_name': event, 'session_id': session,
+                       'session_title': 't', 'client_type': 'kimi_code_cli', 'cwd': '/private/project'}
+            result = subprocess.run([sys.executable, '-m', 'coopagents.checkpoint_hook', '--tool', 'kimi-code'],
+                input=json.dumps(payload), text=True, capture_output=True, env=self.env, timeout=15)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            if event == 'UserPromptSubmit':
+                self.assertIn('BEGIN COOPAGENTS EXTERNAL DATA', result.stdout)
+                self.assertIn('untrusted external data', result.stdout)
+                with self.assertRaises(json.JSONDecodeError):
+                    json.loads(result.stdout)
+            else:
+                self.assertEqual(result.stdout, '')
+            self.assertNotIn('/private/project', result.stdout)
+            seen.add((event, session))
+        checkpoints = self.view()['checkpoints']
+        self.assertEqual({(c['event'], c['session_key']) for c in checkpoints}, seen)
+        self.assertTrue(all(c['tool'] == 'kimi-code' for c in checkpoints))
+
+    def test_kimi_failures_stay_silent_on_stdout(self):
+        payload = {'hook_event_name': 'UserPromptSubmit', 'session_id': 'kimi-fail',
+                   'client_type': 'kimi_code_cli', 'cwd': '/private/project'}
+        result = subprocess.run([sys.executable, '-m', 'coopagents.checkpoint_hook', '--tool', 'kimi-code'],
+            input=json.dumps(payload), text=True, capture_output=True,
+            env={**self.env, 'COOPAGENTS_AGENT_TOKEN': 'revoked'}, timeout=15)
+        self.assertEqual(result.returncode, 0)
+        self.assertEqual(result.stdout, '')
+        self.assertIn('warning', result.stderr.lower())
+        self.assertEqual(self.view()['checkpoints'], [])
 
     def test_plugin_harnesses_point_at_the_extension_generator(self):
         from coopagents.checkpoint_hook import PLUGIN_SURFACES, config_fragment
