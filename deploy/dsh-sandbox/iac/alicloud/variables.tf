@@ -19,6 +19,16 @@ variable "run_id" {
   }
 }
 
+variable "run_expires_at" {
+  description = "Operator-selected RFC3339 UTC expiry for the provider inventory contract."
+  type        = string
+
+  validation {
+    condition     = can(formatdate("YYYY-MM-DD'T'hh:mm:ssZ", var.run_expires_at))
+    error_message = "run_expires_at must be a valid RFC3339 timestamp."
+  }
+}
+
 variable "image_id" {
   description = "Exact Alibaba Cloud ECS image ID for the pinned Linux image."
   type        = string
@@ -127,9 +137,9 @@ variable "private_git_cidrs" {
 }
 
 variable "private_git_port" {
-  description = "TCP port exposed by the private Git service."
+  description = "TCP SSH port exposed by the private synthetic Git service."
   type        = number
-  default     = 443
+  default     = 22
 }
 
 variable "dns_resolver_cidrs" {

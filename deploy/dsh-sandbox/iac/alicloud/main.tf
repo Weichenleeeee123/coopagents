@@ -1,5 +1,9 @@
 locals {
   workloads = var.workloads
+  agent_source_cidrs = [
+    for name, workload in local.workloads : workload.vswitch_cidr
+    if name != "control"
+  ]
 
   shared_tcp_rules = flatten([
     [for name, workload in local.workloads : [
@@ -63,6 +67,7 @@ locals {
           key      = "${name}-peer-${replace(cidr, "/", "_")}"
           workload = name
           cidr     = cidr
+          protocol = "udp"
           ports    = "1/65535"
         }
       ] : [],
@@ -72,6 +77,7 @@ locals {
             key      = "${name}-relay-${replace(cidr, "/", "_")}-${replace(ports, "/", "_")}"
             workload = name
             cidr     = cidr
+            protocol = "udp"
             ports    = ports
           }
         ]
@@ -169,7 +175,7 @@ resource "alicloud_eip_association" "this" {
 
 resource "alicloud_snat_entry" "this" {
   for_each       = local.workloads
-  snat_table_id  = alicloud_nat_gateway.this[each.key].snat_table_ids[0]
+  snat_table_id  = split(",", alicloud_nat_gateway.this[each.key].snat_table_ids)[0]
   source_cidr    = each.value.vswitch_cidr
   snat_ip        = alicloud_eip_address.this[each.key].ip_address
   snat_entry_name = "dsh-${var.run_id}-${each.key}"
@@ -197,13 +203,52 @@ resource "alicloud_security_group" "this" {
   vpc_id              = alicloud_vpc.this[each.key].id
   security_group_type = "normal"
   inner_access_policy = "Drop"
-  egress_rule         = "drop"
 
   tags = {
     Project  = "dsh-sandbox"
     RunId    = var.run_id
     Workload = each.key
   }
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
+resource "alicloud_security_group_rule" "deny_unlisted_egress" {
+  for_each          = alicloud_security_group.this
+  type              = "egress"
+  security_group_id = each.value.id
+  ip_protocol       = "all"
+  port_range        = "-1/-1"
+  policy            = "drop"
+  priority          = 100
+  nic_type          = "intranet"
+  cidr_ip           = "0.0.0.0/0"
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
+resource "alicloud_security_group_rule" "control_plane_private_ingress" {
+  for_each = {
+    for rule in flatten([
+      for cidr in local.agent_source_cidrs : [
+        { key = "model-${replace(cidr, "/", "_")}", cidr = cidr, ports = "${var.model_proxy_port}/${var.model_proxy_port}" },
+        { key = "git-${replace(cidr, "/", "_")}", cidr = cidr, ports = "${var.private_git_port}/${var.private_git_port}" },
+      ]
+    ]) : rule.key => rule
+  }
+
+  type              = "ingress"
+  security_group_id = alicloud_security_group.this["control"].id
+  ip_protocol       = "tcp"
+  port_range        = each.value.ports
+  policy            = "accept"
+  priority          = 1
+  nic_type          = "intranet"
+  cidr_ip           = each.value.cidr
 
   lifecycle {
     prevent_destroy = true
@@ -236,7 +281,6 @@ resource "alicloud_instance" "this" {
   internet_max_bandwidth_out = 0
   system_disk_category      = "cloud_essd"
   system_disk_size          = each.value.system_disk_size
-  system_disk_delete_with_instance = false
 
   tags = {
     Project     = "dsh-sandbox"
@@ -249,9 +293,15 @@ resource "alicloud_instance" "this" {
   lifecycle {
     prevent_destroy = true
   }
+
+  depends_on = [
+    alicloud_security_group_rule.deny_unlisted_egress,
+    alicloud_security_group_rule.allow_egress,
+    alicloud_security_group_rule.control_plane_private_ingress,
+  ]
 }
 
-resource "alicloud_snapshot" "baseline" {
+resource "alicloud_ecs_snapshot" "baseline" {
   for_each       = alicloud_instance.this
   disk_id        = each.value.system_disk_id
   snapshot_name  = "dsh-${var.run_id}-${each.key}-baseline"

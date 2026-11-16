@@ -2,7 +2,10 @@
 
 import argparse
 from contextlib import asynccontextmanager
-from mcp_gateway import MemberScopedGateway
+if __package__:
+    from .mcp_gateway import MemberScopedGateway
+else:
+    from mcp_gateway import MemberScopedGateway
 
 
 class BridgeMCPClient:

@@ -57,49 +57,53 @@ def probe_request(endpoint: str, model: str) -> Request:
 
 def _tool_is_valid(message: dict[str, Any]) -> bool:
     calls = message.get("tool_calls")
-    if not isinstance(calls, list):
+    if not isinstance(calls, list) or len(calls) != 1:
         return False
     for call in calls:
         function = call.get("function") if isinstance(call, dict) else None
-        if not isinstance(function, dict) or function.get("name") != TOOL_NAME:
-            continue
+        if (not isinstance(call, dict) or not isinstance(call.get("id"), str)
+                or not call["id"] or call.get("type") != "function"
+                or not isinstance(function, dict) or function.get("name") != TOOL_NAME):
+            return False
         try:
             arguments = json.loads(function.get("arguments", ""))
         except (TypeError, json.JSONDecodeError):
-            continue
-        if isinstance(arguments, dict) and isinstance(arguments.get("ok"), bool):
-            return True
+            return False
+        return isinstance(arguments, dict) and set(arguments) == {"ok"} and arguments["ok"] is True
     return False
 
 
 def classify_response(payload: Any, expected_model: str) -> dict[str, Any]:
     choices = payload.get("choices") if isinstance(payload, dict) else None
-    message = choices[0].get("message") if isinstance(choices, list) and choices else None
+    first_choice = choices[0] if isinstance(choices, list) and choices else None
+    message = first_choice.get("message") if isinstance(first_choice, dict) else None
     if not isinstance(message, dict):
         message = {}
     model_matches = isinstance(payload, dict) and payload.get("model") == expected_model
     has_text = isinstance(message.get("content"), str) and bool(message["content"].strip())
     tool_call = _tool_is_valid(message)
-    compatible = bool(model_matches and has_text and tool_call)
+    compatible = bool(model_matches and tool_call)
     return {
         "classification": "compatible" if compatible else "incompatible",
         "model_matches": bool(model_matches),
-        "text": bool(has_text),
-        "tool_call": tool_call,
+        "text_observed": bool(has_text),
+        "tool_compatible": tool_call,
         "usage": parse_usage(payload),
     }
 
 
 def _classify_stream_events(events: Iterable[dict[str, Any]], expected_model: str,
                             stream_done: bool) -> dict[str, Any]:
-    model_matches = False
+    model_seen = False
+    model_matches = True
     text = False
     usage = None
-    tool_names: dict[int, str] = {}
-    tool_args: dict[int, str] = {}
+    tool_calls: dict[int, dict[str, str]] = {}
+    finish_reasons: list[str] = []
     for event in events:
-        if event.get("model") is not None:
-            model_matches = event["model"] == expected_model
+        if "model" in event:
+            model_seen = True
+            model_matches = model_matches and event["model"] == expected_model
         usage = parse_usage(event) or usage
         choices = event.get("choices")
         if not isinstance(choices, list):
@@ -109,7 +113,10 @@ def _classify_stream_events(events: Iterable[dict[str, Any]], expected_model: st
                 continue
             delta = choice.get("delta", {})
             if not isinstance(delta, dict):
-                continue
+                delta = {}
+            finish_reason = choice.get("finish_reason")
+            if isinstance(finish_reason, str):
+                finish_reasons.append(finish_reason)
             content = delta.get("content")
             text = text or (isinstance(content, str) and bool(content.strip()))
             calls = delta.get("tool_calls", [])
@@ -120,25 +127,32 @@ def _classify_stream_events(events: Iterable[dict[str, Any]], expected_model: st
                     index = call.get("index", 0)
                     if isinstance(index, bool) or not isinstance(index, int):
                         continue
+                    parts = tool_calls.setdefault(index, {"id": "", "type": "", "name": "", "arguments": ""})
+                    if isinstance(call.get("id"), str):
+                        parts["id"] += call["id"]
+                    if isinstance(call.get("type"), str):
+                        parts["type"] = call["type"]
                     function = call.get("function", {})
                     if not isinstance(function, dict):
                         continue
                     if isinstance(function.get("name"), str):
-                        tool_names[index] = tool_names.get(index, "") + function["name"]
+                        parts["name"] += function["name"]
                     if isinstance(function.get("arguments"), str):
-                        tool_args[index] = tool_args.get(index, "") + function["arguments"]
-    tool_call = any(
-        name == TOOL_NAME and _tool_is_valid({"tool_calls": [{"function": {
-            "name": name, "arguments": tool_args.get(index, "")
-        }}]})
-        for index, name in tool_names.items()
-    )
-    compatible = bool(stream_done and model_matches and text and tool_call)
+                        parts["arguments"] += function["arguments"]
+    assembled_calls = [{
+        "id": parts["id"], "type": parts["type"],
+        "function": {"name": parts["name"], "arguments": parts["arguments"]},
+    } for _, parts in sorted(tool_calls.items())]
+    tool_call = _tool_is_valid({"tool_calls": assembled_calls})
+    model_matches = model_seen and model_matches
+    finish_ok = finish_reasons and finish_reasons[-1] == "tool_calls"
+    tool_compatible = bool(tool_call and finish_ok)
+    compatible = bool(stream_done and model_matches and tool_compatible)
     return {
         "classification": "compatible" if compatible else "incompatible",
         "model_matches": model_matches,
-        "text": text,
-        "tool_call": tool_call,
+        "text_observed": text,
+        "tool_compatible": tool_compatible,
         "stream_done": stream_done,
         "usage": usage,
     }

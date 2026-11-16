@@ -7,7 +7,10 @@ import re
 import secrets
 import subprocess
 
-from role_goals import role_goals
+if __package__:
+    from .role_goals import role_goals
+else:
+    from role_goals import role_goals
 
 
 ROLES = ("frontend", "backend", "integration")

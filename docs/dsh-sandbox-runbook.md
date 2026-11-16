@@ -8,6 +8,8 @@
 
 本地协调入口 `experiments/agent-integration/dsh_sandbox/runner.py` 使用注入的 cloud/DSH/operator adapters，并把每次尝试写到新目录。当前测试只使用 fake adapters，结果标为 `harness_only`；它没有可用的云 provider adapter，也不连接真实 DSH。场景顺序、停止/留证、成本边界和人类决定协议已能本地验证，但不代表真实剧本执行。
 
+控制面进程入口 `python -m dsh_sandbox.control_plane` 提供仅私网 IP 绑定的 TLS 模型代理、短期 VM 凭据校验和只记录 run/usage 的本地 ledger。证书、provider key、token 映射、预算和 Git SSH 端点必须经运行时凭据/配置注入。该入口只校验或显式探测私有 Git SSH endpoint；Git 服务本身、密钥授权、分支 ACL 和私有网络路由仍是部署依赖。
+
 ## 凭据与外部服务
 
 此前在聊天中粘贴过的模型 API key 必须先轮换。新 key 只能由操作者写入受控 secret manager，并在模型代理进程启动时注入 `LLM_API_KEY`；不得放入命令行、DSH VM、Terraform 变量文件、运行清单、提示词、日志、提交或实验输出。当前代码不自动连接模型服务。只有轮换后的凭据注入并通过 G0 后，才可运行一次受预算限制的原生模型探针。
