@@ -71,14 +71,35 @@ class TeamWorkflowStore:
             result = {**meta, **{name: [] for name in KINDS.values()}, 'truncated': False,
                       'has_more': False, 'limit': 50,
                       'detail_actions': ['read_team', 'read_dependency', 'read_replies']}
-            for category, record in records[:50]:
+            # This overview has no page cursor: sample every nonempty category
+            # before filling remaining space so a large task list cannot hide work.
+            priority = ('request', 'agreement_change', 'decision', 'dependency',
+                        'agreement', 'task', 'member_activity')
+            groups = {category: [r for kind, r in records if kind == category] for category in priority}
+            groups['request'].sort(key=lambda r: bool(r['resolved'] or r['route_state'] == 'historical'))
+            groups['agreement_change'].sort(key=lambda r: not r['review_required'])
+            ordered = [(category, groups[category][index])
+                       for index in range(max((len(g) for g in groups.values()), default=0))
+                       for category in priority if index < len(groups[category])]
+            represented = sum(bool(group) for group in groups.values())
+            for maximum in (160, 80, 40, 32):
+                for name in KINDS.values():
+                    result[name] = []
+                for category, record in ordered[:represented]:
+                    result[KINDS[category]].append(_clip(record, maximum))
+                result['truncated'] = result['has_more'] = represented < len(records)
+                if len(_json(result).encode()) <= MAX_BYTES:
+                    break
+            for category, record in ordered[represented:]:
+                shown = sum(len(result[name]) for name in KINDS.values())
+                if shown == result['limit']:
+                    break
                 collection = result[KINDS[category]]
                 collection.append(_clip(record))
-                result['truncated'] = result['has_more'] = sum(len(result[k]) for k in KINDS.values()) < len(records)
+                result['truncated'] = result['has_more'] = shown + 1 < len(records)
                 if len(_json(result).encode()) > MAX_BYTES:
                     collection.pop()
                     result['truncated'] = result['has_more'] = True
-                    break
             return result
 
     def work_brief(self, token, task_id=None, session_key=None, ownership_epoch=None,
@@ -247,14 +268,25 @@ class TeamWorkflowStore:
         result = {k: row[k] for k in ('id', 'task_id', 'sender_member_id', 'receiver_member_id',
                   'context_version', 'body', 'created_at', 'resolved_at')}
         enriched = []
-        for reply in replies[-2:]:
-            confirm = next((r['read_at'] for r in dep_reads if dep and r['dependency_id'] == dep['id']
-                and r['member_id'] == row['sender_member_id'] and r['reply_id'] == reply['id']
-                and r['revision'] == dep['revision'] and r['ownership_epoch'] == tasks[dep['source_task_id']]['ownership_epoch']
-                and (r['actor_kind'] == 'web' or r['session_key'] == (tasks[dep['source_task_id']]['execution_session_key'] or ''))), None)
-            enriched.append({**reply, 'sender_read_at': reply_reads.get((row['sender_member_id'], reply['id'])),
-                             'dependency_confirmation_read_at': confirm})
         latest = replies[-1] if replies else None
+
+        def current_read(read):
+            return bool(dep and state == 'current' and dep['status'] == 'active' and latest
+                and read['reply_id'] == latest['id'] and read['revision'] == dep['revision']
+                and read['ownership_epoch'] == tasks[dep['source_task_id']]['ownership_epoch']
+                and (read['actor_kind'] == 'web' or read['session_key'] ==
+                     (tasks[dep['source_task_id']]['execution_session_key'] or '')))
+
+        for reply in replies[-2:]:
+            recorded = [r for r in dep_reads if dep and r['dependency_id'] == dep['id']
+                        and r['member_id'] == row['sender_member_id'] and r['reply_id'] == reply['id']]
+            confirm = max(recorded, key=lambda r: (current_read(r), r['read_at'], r['revision'],
+                          r['session_key'], r['actor_kind']), default=None)
+            fact = ({**{k: confirm[k] for k in ('revision', 'ownership_epoch', 'session_key', 'actor_kind', 'read_at')},
+                     'currently_valid': current_read(confirm)} if confirm else None)
+            enriched.append({**reply, 'sender_read_at': reply_reads.get((row['sender_member_id'], reply['id'])),
+                             'dependency_confirmation_read_at': confirm['read_at'] if confirm else None,
+                             'dependency_confirmation_read': fact})
         sender_read = bool(latest and reply_reads.get((row['sender_member_id'], latest['id'])))
         recipient_read = True if receipt and receipt['read_at'] else None
         processing = bool(receipt and receipt['processed_at'])

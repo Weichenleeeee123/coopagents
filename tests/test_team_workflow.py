@@ -342,6 +342,66 @@ class TeamWorkflowTests(unittest.TestCase):
         cards = self.workflow(task_id=self.front['id'])['decisions']
         self.assertFalse(any(c['kind'] == 'contract' and c['id'] == contract['id'] for c in cards))
 
+    def test_projection_regression_many_tasks_keep_actionable_categories_visible(self):
+        for index in range(54):
+            self.task(self.a, 'unowned-' + str(index), False)
+        self.dependency()
+        self.request(task_id=self.front['id'], body='待处理问题' * 500)
+        agreement = self.s.contracts.propose(self.b['agent_token'], 'api', 0, 'API', 'Use cursor')
+        self.s.contracts.decide(self.a['web_token'], agreement['id'], 1, 'approved')
+        self.s.call('record_agreement_use', self.a['agent_token'],
+                    dict(**self.auth, contract_id=agreement['id'], version=1))
+        self.s.contracts.propose(self.b['agent_token'], 'api', 1, 'New API', 'Use next_cursor')
+        self.s.contracts.decide(self.a['web_token'], agreement['id'], 2, 'approved')
+        pending = self.s.contracts.propose(self.b['agent_token'], 'pending', 0,
+                                          'Human decision', '待确认协议' * 500)
+        result = self.workflow()
+        self.assertEqual(result['totals']['task'], 57)
+        self.assertEqual(result['totals']['request'], 2)
+        self.assertEqual(result['totals']['decision'], 56)
+        for category in ('tasks', 'requests', 'dependencies', 'agreements',
+                         'agreement_changes', 'decisions', 'member_activity'):
+            with self.subTest(category=category):
+                self.assertTrue(result[category], 'a nonempty category must have bounded representation')
+        self.assertTrue(any(c['kind'] == 'contract' and c['id'] == pending['id'] for c in result['decisions']))
+        self.assertTrue(result['agreement_changes'][0]['review_required'])
+        self.assertTrue(result['truncated'])
+        self.assertTrue(result['has_more'])
+        self.assertLessEqual(len(json.dumps(result).encode()), 16000)
+        self.assertEqual(result, self.workflow())
+        with self.s.identity.db.connect() as db:
+            for table in ('message_receipts', 'workflow_reply_reads', 'dependency_reads'):
+                self.assertEqual(db.execute('SELECT COUNT(*) FROM ' + table).fetchone()[0], 0)
+
+    def test_projection_regression_confirmation_read_survives_resolution_and_reopen(self):
+        dep = self.dependency()
+        replied = self.s.call('reply_dependency', self.b['agent_token'], dict(dependency_id=dep['id'],
+            expected_revision=dep['revision'], request_key='answer', body='user_id',
+            session_key='backend', ownership_epoch=self.back['ownership_epoch']))
+        self.s.call('read_dependency', self.a['agent_token'], dict(dependency_id=dep['id'],
+            session_key='frontend', ownership_epoch=self.front['ownership_epoch']))
+        before = self.workflow()['requests'][0]['replies'][0]
+        self.assertIsNotNone(before['dependency_confirmation_read_at'])
+        self.assertTrue(before['dependency_confirmation_read']['currently_valid'])
+        self.s.call('resolve_dependency', self.a['agent_token'], dict(dependency_id=dep['id'],
+            expected_revision=replied['revision'], reply_id=replied['latest_reply']['id'],
+            request_key='resolve', summary='Enough', session_key='frontend',
+            ownership_epoch=self.front['ownership_epoch']))
+        self.s = CoordinationService(self.path)
+        with self.s.identity.db.connect() as db:
+            retained = [dict(r) for r in db.execute('SELECT * FROM dependency_reads')]
+        projected = self.workflow()['requests'][0]['replies'][0]
+        self.assertEqual(projected['dependency_confirmation_read_at'], before['dependency_confirmation_read_at'])
+        self.assertFalse(projected['dependency_confirmation_read']['currently_valid'])
+        self.assertEqual(projected['dependency_confirmation_read']['revision'], replied['revision'])
+        self.assertEqual(projected['dependency_confirmation_read']['ownership_epoch'], self.front['ownership_epoch'])
+        self.assertEqual(projected['dependency_confirmation_read']['session_key'], 'frontend')
+        self.brief(**self.auth)
+        with self.s.identity.db.connect() as db:
+            self.assertEqual([dict(r) for r in db.execute('SELECT * FROM dependency_reads')], retained)
+            self.assertEqual(db.execute('SELECT COUNT(*) FROM message_receipts').fetchone()[0], 0)
+            self.assertEqual(db.execute('SELECT COUNT(*) FROM workflow_reply_reads').fetchone()[0], 0)
+
 
 if __name__ == '__main__':
     unittest.main()
