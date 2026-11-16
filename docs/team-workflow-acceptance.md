@@ -2,6 +2,8 @@
 
 Date: 2026-11-16. Branch: `codex/team-workflow-implementation`.
 
+Completion clarification: this document records the earlier development pass and its narrower delivered scope. It does **not** establish completion of the original ten requirements. The remaining original foundations are now tracked in [strict foundation completion](superpowers/plans/2026-11-16-foundation-completion.md); [foundation 1 native acceptance](foundation-1-native-acceptance.md) records the new real-execution work and retained failures. Later foundations must not start until their predecessor's gate is met.
+
 All ten approved points have a first implementation, maintained guides and automated coverage. The remaining implementation was delegated in parallel following the user's request to finish the whole first round before a unified review. That review found two projection defects; both were reproduced, corrected and covered by regressions. This is an unreleased development implementation, not native-model, independent-user or production acceptance.
 
 Final verified source commit: `490ed15ece923bc5b185e04b53d3785efd88dc6a`. Later changes to this record and the plan are documentation only. Scope: [approved design](superpowers/specs/2026-11-16-team-workflow-design.md). Usage: [team workflow guide](team-workflow.md). Evaluation: [tool-free workflow evaluation](workflow-evaluation.md).

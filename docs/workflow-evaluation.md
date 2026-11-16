@@ -1,5 +1,39 @@
 # Tool-free workflow evaluation
 
+There are two separate paths. The original `workflow_evaluation.py` prepares goals and scores reviewer-supplied normalized observations. The new `workflow_native_runner.py` actually starts native coding-agent processes against an authenticated local MCP service, captures their private event streams, and checks the resulting implementation. Neither path certifies two independent people by itself. The strict foundation completion ledger is in [foundation completion](superpowers/plans/2026-11-16-foundation-completion.md).
+
+## Real native execution
+
+Native runs spend the selected native account's model quota. They require an explicit execution switch, use newly created private profiles, preserve the existing selected model/provider, and never edit the user's live configuration. Run from the feature checkout using a verified interpreter whose `coopagents.__file__` belongs to that checkout:
+
+```text
+python experiments/agent-integration/workflow_native_runner.py run --execute-native --output .local/test-evidence/<fresh-run> --requester codex --responder claude
+```
+
+Use `--codex <executable>` and `--claude <executable>` when the native executables are not on PATH. On Windows, use the actual executable or `.cmd` entry point rather than the PowerShell `.ps1` shim. `--requester codex --responder codex` is a same-harness experiment, not cross-harness acceptance. A selected harness that fails preflight must be reported separately; changing to another model does not repair its result. `--timeout` bounds each native turn. `--scenario` and `--arm` allow an explicitly partial smoke run; partial coverage never completes the foundation gate.
+
+The original five foundational scenarios are `frontend-backend`, `three-member-routing`, `reply-continuation`, `session-reopen` and `teammate-unavailable`. Each uses separate role projects. Only the backend role receives a generated field definition. The requester starts with an unfinished payload builder and independent work; its prompt contains neither the field nor MCP tool names/call order. A bounded verifier checks two different input names against the private oracle, separately checks independent progress, and records source hashes. Correct code alone does not prove collaboration: the audit also requires native structured request/reply calls linked to real stored rows, a source-file read, a later answer read, and an implementation effect after the waiting-stage check. An answer observed in requester tool results before the response invalidates that exchange.
+
+The ordinary cases start a real responder worker as soon as a durable question appears, while the requester can still be working. The three-member case retains real task ownership-change history before the evaluated request. The reopen case closes the old worker after an actual question and independent progress exist, creates a genuinely different native conversation, and requires recovery of that outstanding work. The unavailable case holds the responder offline until a real question and independent progress have been observed, then starts it. These are single-machine native scenarios; they do not establish network outage handling, native hook wake-up or separate-device connectivity.
+
+Two paired arms use identical role goals, backend facts, selected models and tool-neutral initialization instructions. The `primitive` arm exposes the existing primitive descriptions. The `composite` arm adds only `ask_owner` and `read_replies`. A scoped evaluation registration adapter filters the real production MCP catalog; it does not copy domain mutations or alter authentication. Both arms deliberately use the same neutral evaluation instructions, so this experiment does not certify the production initialization policy or hooks. Results with different source bytes, configuration, actual native models or case fingerprints are rejected as paired comparisons. Arm order alternates across scenarios. One pair per scenario is an exploratory baseline, not a statistically reliable production success rate.
+
+The harness seeds project/member/task setup, but never sends the evaluated question or answer itself. Native resumes are scheduled with ordinary continuation goals. Report `scheduler_continuation_count` separately from actual `human_reminder_count`: zero manual reminders does not prove autonomous wake-up. The backend answer is not inserted into a requester prompt or hidden requester test. Approval operations and task setup performed by the synthetic harness are not attributed to agents or real human decisions.
+
+Metrics include the routing/answer-use denominators, observed response latencies, all native tool calls, manual reminders, scheduled continuation turns and native-reported input/output/cache tokens. Claude cache-creation tokens are separate from reported input tokens; cache reads are not added again. Missing usage or costs remain `null`. The intentionally closed pre-reopen worker can lack a final usage report; its observed calls remain visible separately from a complete count and its missing tokens are not invented. USD cost is copied only from native billing output; a subscription tool that does not report per-run money is not assigned an invented price or a zero cost. Failed workflow attempts remain in summaries. Quota, timeout, capture failures and effective-policy mismatches stop a suite and retain partial evidence; an unexecuted scenario cannot become a baseline result.
+
+Evidence includes exact goals, native CLI versions, actual native model/session metadata, selected-configuration hashes, source commit/content hashes, timestamped raw events, service snapshots and artifact checks. All such records stay in ignored private `.local/test-evidence/` directories. The native runner requires a fresh output directory and never deletes or overwrites old attempts. Windows profiles explicitly select the ordinary restricted-token backend and verify effective `workspace-write` from the native session record; permission flags alone are not accepted as proof. No permission/trust bypass or global native-setting edit is performed.
+
+Pure helper regressions can run without models or credentials:
+
+```text
+python -m unittest discover -s experiments/agent-integration -p 'test_workflow_native_*.py' -v
+```
+
+Fixture subprocesses used by these tests are labeled native-free and never count as successful native sessions. A native trace ending successfully means only that the native turn ended; receipts and successful process exits cannot replace the exchange/implementation audit. See [foundation 1 native acceptance](foundation-1-native-acceptance.md) for actual observed runs and remaining gates.
+
+## Supplied normalized scoring
+
 `experiments/agent-integration/workflow_evaluation.py` prepares outcome goals and scores supplied normalized evidence. It does not start a native agent, open a connection, install hooks, send requests or spend model quota. Coordinate any real native experiment separately. Retain evidence under ignored `.local/test-evidence/`; never commit credentials, profiles, raw conversations or raw experiment logs.
 
 From the repository root, using the verified environment's Python:
