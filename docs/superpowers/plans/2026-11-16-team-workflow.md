@@ -8,6 +8,8 @@
 
 **Tech Stack:** Python 3.11+, SQLite, existing MCP/Starlette services, native JavaScript workbench, unittest/Node regressions.
 
+**User execution adjustment:** Complete the first implementation round for all ten points through delegated tasks before the unified review. Do not insert repeated per-task spec/quality review gates. Necessary functional tests continue during implementation.
+
 ## Execution environment and invariants
 
 - Worktree: `C:/Users/Weichen Li/Documents/Codex/2026-10-10/wo-zhe/.local/worktrees/team-workflow-implementation`.
@@ -21,56 +23,56 @@
 
 **Files:** create `src/collaboration_policy.py`, `experiments/agent-integration/workflow_evaluation.py`, `experiments/agent-integration/test_workflow_evaluation.py`, `tests/test_collaboration_policy.py`; modify `src/mcp_service.py`, `src/space_bridge.py`, `src/git_adapter.py`, bundled Skills/protocols.
 
-- [ ] Write failing tests asserting HTTP, bridge and Git instructions include the same versioned policy, while retaining transport-specific wake/security notes.
-- [ ] Add scenario goals for frontend/backend dependency, three-member routing, offline/reopen, agreement change and human decision. Goals must not include MCP method names or a sequence of calls.
-- [ ] Test evidence scoring against missing/wrong sender, stale route, fixture-only evidence, actual native file-derived reply, requester consumption and independent-user provenance. Missing evidence must remain unknown/unverified; performance metrics cannot imply correctness.
-- [ ] Run `python -m unittest discover -s tests -p 'test_collaboration_policy.py' -v` and the new experiment tests; observe the missing-behavior failure first.
-- [ ] Implement common policy with task checkpoints, explicit reply reading, independent-work guidance, human authority and untrusted-content boundaries. Expose it via existing servers without automatically installing hooks.
-- [ ] Run new and existing MCP/space bridge/Git adapter tests; update exact-tool-set tests only when the tool set actually changes in later tasks.
-- [ ] Commit source, tests and corresponding docs as a coherent stage.
+- [x] Write failing tests asserting HTTP, bridge and Git instructions include the same versioned policy, while retaining transport-specific wake/security notes.
+- [x] Add scenario goals for frontend/backend dependency, three-member routing, offline/reopen, agreement change and human decision. Goals must not include MCP method names or a sequence of calls.
+- [x] Test evidence scoring against missing/wrong sender, stale route, fixture-only evidence, actual native file-derived reply, requester consumption and independent-user provenance. Missing evidence must remain unknown/unverified; performance metrics cannot imply correctness.
+- [x] Run `python -m unittest discover -s tests -p 'test_collaboration_policy.py' -v` and the new experiment tests; observe the missing-behavior failure first.
+- [x] Implement common policy with task checkpoints, explicit reply reading, independent-work guidance, human authority and untrusted-content boundaries. Expose it via existing servers without automatically installing hooks.
+- [x] Run new and existing MCP/space bridge/Git adapter tests; update exact-tool-set tests only when the tool set actually changes in later tasks.
+- [x] Commit source, tests and corresponding docs as a coherent stage.
 
 ## Task 2: Owner questions and explicit sent-reply reads (R3, R7, R8)
 
 **Files:** create `src/workflow.py`, `tests/test_workflow.py`; modify `src/coordination.py`, `src/mcp_service.py`, `src/git_adapter.py`, `src/events.py` and API integration tests.
 
-- [ ] Add failing tests that `ask_owner` uses exactly one of target task/scope, returns ambiguity/unassigned/not-found without creating a message, and sends only to a current authenticated-room owner.
-- [ ] With a source task, use `create_dependency` and its session/epoch/revision validation so owner changes reroute correctly. Verify request-key replay, changed-payload conflicts, retired sessions, cross-project targets and concurrent ownership changes.
-- [ ] Add explicit `read_replies` tests for sender isolation, numeric cursor pagination, task filtering, current/historical routes and no automatic resolution. Persist exact reply-read evidence separately from inbox/dependency receipts.
-- [ ] Run the focused tests and observe the absent operations fail.
-- [ ] Register additive schemas and tool descriptions through the shared service. Add ordinary MCP/Git forwarding and real HTTP/MCP smoke coverage. Reuse domain mutations rather than duplicating SQL for dependency state transitions.
-- [ ] Run focused workflow, dependencies, messages, MCP and Git adapter tests; commit the stage.
+- [x] Add failing tests that `ask_owner` uses exactly one of target task/scope, returns ambiguity/unassigned/not-found without creating a message, and sends only to a current authenticated-room owner.
+- [x] With a source task, use `create_dependency` and its session/epoch/revision validation so owner changes reroute correctly. Verify request-key replay, changed-payload conflicts, retired sessions, cross-project targets and concurrent ownership changes.
+- [x] Add explicit `read_replies` tests for sender isolation, numeric cursor pagination, task filtering, current/historical routes and no automatic resolution. Persist exact reply-read evidence separately from inbox/dependency receipts.
+- [x] Run the focused tests and observe the absent operations fail.
+- [x] Register additive schemas and tool descriptions through the shared service. Add ordinary MCP/Git forwarding and real HTTP/MCP smoke coverage. Reuse domain mutations rather than duplicating SQL for dependency state transitions.
+- [x] Run focused workflow, dependencies, messages, MCP and Git adapter tests; commit the stage.
 
 ## Task 3: Focused briefs and recovery projection (R4, R5, R8)
 
 **Files:** extend `src/workflow.py`; create `src/team_workflow.py`, `tests/test_team_workflow.py`; modify shared service registrations, MCP/Git forwarding and event registration for new tables.
 
-- [ ] Add failing tests for task-authorized `work_brief`, stable content cursor, changed-content delta, project/member/focus cursor binding, invalid/future cursor reset, fixed byte budget and explicit truncation.
-- [ ] Prioritize current task, direct dependencies, relevant requests and current approved agreements. Keep member-level access additive; enforce execution authority whenever task/session is supplied.
-- [ ] Project request lifecycle facts separately: delivered/read/acknowledged/replied/requester-read/resolved; include latest checkpoint timestamps as observations, not model availability guarantees.
-- [ ] Provide allowlisted recovery hints and task execution targets. Preserve historical-route status and never claim a status from transport events alone.
-- [ ] Reopen a fresh service instance on the retained test database and verify outstanding questions, explicit reply reads and changes can be recovered.
-- [ ] Run focused and existing context/checkpoint/capability tests; commit the stage.
+- [x] Add failing tests for task-authorized `work_brief`, stable content cursor, changed-content delta, project/member/focus cursor binding, invalid/future cursor reset, fixed byte budget and explicit truncation.
+- [x] Prioritize current task, direct dependencies, relevant requests and current approved agreements. Keep member-level access additive; enforce execution authority whenever task/session is supplied.
+- [x] Project request lifecycle facts separately: delivered/read/acknowledged/replied/requester-read/resolved; include latest checkpoint timestamps as observations, not model availability guarantees.
+- [x] Provide allowlisted recovery hints and task execution targets. Preserve historical-route status and never claim a status from transport events alone.
+- [x] Reopen a fresh service instance on the retained test database and verify outstanding questions, explicit reply reads and changes can be recovered.
+- [x] Run focused and existing context/checkpoint/capability tests; commit the stage.
 
 ## Task 4: Agreement impact and human decisions (R9, R10)
 
 **Files:** create `src/agreement_usage.py`, `tests/test_agreement_usage.py`; extend `src/team_workflow.py`; modify service/MCP/Git exposure and event schema.
 
-- [ ] Add failing tests for `record_agreement_use`: approved versions only, active task owner/session/epoch required, room isolation, idempotent reliance records and retained previous evidence.
-- [ ] Verify a new draft does not change effective agreement, a newer approved version reports review required, and only an explicit current-execution reliance record updates the accepted baseline.
-- [ ] Project decision cards for pending contract heads, handoffs, unassigned ownership and delivery suggestions. Include concrete identifiers/revisions and bounded summaries; do not expose human mutation tools to agent MCP.
-- [ ] Verify permissions and source/member filtering, stale responsibility cycles and no automatic approval/acceptance/read receipts.
-- [ ] Run domain, events, task lifecycle, contract, HTTP and MCP regressions; commit the stage.
+- [x] Add failing tests for `record_agreement_use`: approved versions only, active task owner/session/epoch required, room isolation, idempotent reliance records and retained previous evidence.
+- [x] Verify a new draft does not change effective agreement, a newer approved version reports review required, and only an explicit current-execution reliance record updates the accepted baseline.
+- [x] Project decision cards for pending contract heads, handoffs, unassigned ownership and delivery suggestions. Include concrete identifiers/revisions and bounded summaries; do not expose human mutation tools to agent MCP.
+- [x] Verify permissions and source/member filtering, stale responsibility cycles and no automatic approval/acceptance/read receipts.
+- [x] Run domain, events, task lifecycle, contract, HTTP and MCP regressions; commit the stage.
 
 ## Task 5: Team experience and first collaboration (R5, R6, R8, R9, R10)
 
 **Files:** modify `src/static/collaboration.js` and its existing invocation; create `tests/team_workflow_ui_regression.js`; extend collaboration UI regressions; add `docs/team-workflow.md`, `docs/team-workflow-acceptance.md` and link from `docs/README.md`.
 
-- [ ] Add behavioral Node tests for milestone display, request wait reasons, human decision summaries, safe text rendering, task links, empty state and project-switch isolation.
-- [ ] Add compact sections to the existing collaboration panel using native text DOM and existing task navigation callbacks. Keep the P2P board read-only and do not redesign the workbench.
-- [ ] Show identity/checkpoint, real addressed exchange and explicit requester reply-reading as separate onboarding facts. Explain that explicit reading is not proof of model comprehension.
-- [ ] Document owner questions, focused recovery, reply reads, agreement reliance and human decision boundaries with exact API examples. Include the ten-row requirement/evidence matrix.
-- [ ] Run Node behavioral regressions and syntax checks. Visually inspect the real synthetic-data service at desktop/mobile widths using the available browser skill; retain screenshots privately.
-- [ ] Commit interface and maintained documentation.
+- [x] Add behavioral Node tests for milestone display, request wait reasons, human decision summaries, safe text rendering, task links, empty state and project-switch isolation.
+- [x] Add compact sections to the existing collaboration panel using native text DOM and existing task navigation callbacks. Keep the P2P board read-only and do not redesign the workbench.
+- [x] Show identity/checkpoint, real addressed exchange and explicit requester reply-reading as separate onboarding facts. Explain that explicit reading is not proof of model comprehension.
+- [x] Document owner questions, focused recovery, reply reads, agreement reliance and human decision boundaries with exact API examples. Include the ten-row requirement/evidence matrix.
+- [x] Run Node behavioral regressions and syntax checks. Visually inspect the real synthetic-data service at desktop/mobile widths using the available browser skill; retain screenshots privately.
+- [x] Commit interface and maintained documentation.
 
 ## Task 6: Integration, independent review and acceptance
 
