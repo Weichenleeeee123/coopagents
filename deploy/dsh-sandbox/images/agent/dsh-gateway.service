@@ -1,0 +1,30 @@
+[Unit]
+Description=Single member loopback MCP gateway
+After=network-online.target
+ConditionPathExists=/opt/dsh-sandbox/bridge_client.py
+
+[Service]
+Type=simple
+User=dsh-gateway
+Group=dsh-gateway
+UMask=0077
+ImportCredential=member-profile
+ExecStart=/opt/dsh-sandbox/venv/bin/python /opt/dsh-sandbox/bridge_client.py --profile %d/member-profile --port 8769
+WorkingDirectory=/var/lib/dsh-gateway
+Environment=HOME=/var/lib/dsh-gateway
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/dsh-gateway
+InaccessiblePaths=/var/lib/dsh
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+IPAddressDeny=any
+IPAddressAllow=localhost
+# Builder must add reviewed exact peer/relay destinations to a private runtime drop-in.
+# The gateway HTTP server itself has a fixed 127.0.0.1 bind in MemberScopedGateway.
+StandardOutput=null
+StandardError=null
+
+[Install]
+WantedBy=multi-user.target

@@ -6,6 +6,8 @@
 
 本仓库实现的是可审阅的部署与实验工具，不代表云资源已创建，也不代表模型或原生 DSH 验收通过。完整验收分为 G0 到 G5：G0 验证 API/DSH/MCP 兼容；G1 验证 VM 与身份隔离；G2 验证独立 NAT 和实际 P2P 路径；G3 验证无工具名提示的真实开发剧本；G4 验证对照与证据质量；G5 是之后的独立用户、住宅/移动网络扩展。每个阶段只报告已有观测支持的门槛。
 
+本地协调入口 `experiments/agent-integration/dsh_sandbox/runner.py` 使用注入的 cloud/DSH/operator adapters，并把每次尝试写到新目录。当前测试只使用 fake adapters，结果标为 `harness_only`；它没有可用的云 provider adapter，也不连接真实 DSH。场景顺序、停止/留证、成本边界和人类决定协议已能本地验证，但不代表真实剧本执行。
+
 ## 凭据与外部服务
 
 此前在聊天中粘贴过的模型 API key 必须先轮换。新 key 只能由操作者写入受控 secret manager，并在模型代理进程启动时注入 `LLM_API_KEY`；不得放入命令行、DSH VM、Terraform 变量文件、运行清单、提示词、日志、提交或实验输出。当前代码不自动连接模型服务。只有轮换后的凭据注入并通过 G0 后，才可运行一次受预算限制的原生模型探针。
@@ -17,6 +19,8 @@
 拓扑由三台 agent VM 和一台独立 control-plane VM 组成。每个 agent 使用单独 VPC、子网、NAT 出口、成员身份、DSH profile、HOME、工作副本和 Git 分支。owner/host 位于前端成员 VM，Control plane 不运行 DSH 成员身份，也不承载 Coopagents 业务调用。任何 agent VM 都不挂载维护者主机目录、个人 DSH 配置、SSH 私钥或云凭据。
 
 阿里云模板位于 `deploy/dsh-sandbox/iac/alicloud/`。它定义四组独立 VPC/子网/NAT/EIP/ECS、安全组和保留快照，但没有建立各 VPC 到共享代理/Git 的私有路由，也没有验证 agent 到 owner 的 P2P 可达性；这些必须在 apply 前纳入经审阅的网络方案。区域、实例规格、基础镜像及镜像版本需使用已验证输入；禁止直接填入秘密值。云资源只可在操作者审阅计划、预算和资源清单后由其显式运行。执行前必须确认 VM 到期标签、费用上限、无公网管理入口、三组独立 NAT 出口和私有管理通道。当前会话没有创建云资源。
+
+镜像契约位于 `deploy/dsh-sandbox/images/`。由于当前无法从可信运行环境验证 Linux base image、DSH 包和镜像构建 digest，manifest 把这些版本留作必填、可覆盖输入；生成真实镜像前必须把它们解析成锁文件并通过 G0。bootstrap 只创建本机服务帐号和缺省 DSH MCP profile，不启用服务或注入成员/API 凭据。
 
 Terraform 管理源只定义基础设施。不得把 `terraform apply` 放进自动 runner，也不得提供会删除磁盘、快照、证据或历史运行目录的清理动作。停止实例、保留磁盘/快照和保留本地证据是不同操作；每次运行写入新的 UUID 目录，不覆盖既有结果。
 

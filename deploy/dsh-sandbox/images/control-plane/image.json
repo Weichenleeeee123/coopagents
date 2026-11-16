@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "image_role": "control-plane",
+  "base_image": {
+    "value": "${BASE_IMAGE_REFERENCE}",
+    "digest": "${BASE_IMAGE_SHA256}",
+    "digest_pattern": "^sha256:[0-9a-f]{64}$",
+    "required": true,
+    "overridable": true,
+    "status": "Required verified Linux systemd base; no upstream digest locally verified"
+  },
+  "build_digest": "${BUILD_SHA256}",
+  "packages": [
+    {"name": "linux-systemd-ca-certificates-git-python", "version": "REQUIRED_INPUT", "verified": false, "input": "OS_PACKAGE_LOCK"},
+    {"name": "sandbox-proxy-coordinator-git-evidence-artifacts", "version": "REQUIRED_INPUT", "verified": false, "input": "CONTROL_PLANE_ARTIFACT_SHA256"}
+  ],
+  "accounts": {"coordinator": "sandbox-coordinator", "model_proxy": "sandbox-proxy", "private_git": "sandbox-git", "evidence_collector": "sandbox-evidence"},
+  "services": {
+    "coordinator": {"account": "sandbox-coordinator", "entrypoint": "REQUIRED_VERIFIED_ARTIFACT", "network": "private outbound management only"},
+    "model_proxy": {"account": "sandbox-proxy", "entrypoint": "REQUIRED_VERIFIED_ARTIFACT", "network": "approved private listener only", "provider_secret": "runtime process channel only"},
+    "private_git": {"account": "sandbox-git", "entrypoint": "REQUIRED_VERIFIED_ARTIFACT", "network": "approved private listener only; participant branch ACL required"},
+    "evidence_collector": {"account": "sandbox-evidence", "entrypoint": "REQUIRED_VERIFIED_ARTIFACT", "network": "local sanitized evidence only"}
+  },
+  "participant_identity": false,
+  "business_call_proxy": false,
+  "cloud_credentials": false,
+  "host_mounts": false,
+  "enable_services": false,
+  "required_runtime_inputs": ["private bind addresses", "private endpoint allowlist", "runtime proxy secret channel", "per-service artifact hashes", "service confinement and branch ACL verification"]
+}

@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "image_role": "agent",
+  "base_image": {
+    "value": "${BASE_IMAGE_REFERENCE}",
+    "digest": "${BASE_IMAGE_SHA256}",
+    "digest_pattern": "^sha256:[0-9a-f]{64}$",
+    "required": true,
+    "overridable": true,
+    "status": "Required verified Linux systemd base; no upstream digest locally verified"
+  },
+  "build_digest": "${BUILD_SHA256}",
+  "packages": [
+    {"name": "linux-systemd-ca-certificates-git-python-node", "version": "REQUIRED_INPUT", "verified": false, "input": "OS_PACKAGE_LOCK"},
+    {"name": "deepseek-harness", "version": "REQUIRED_INPUT", "verified": false, "input": "DSH_PACKAGE_LOCK"},
+    {"name": "coopagents-space-and-sandbox-gateway", "version": "REQUIRED_INPUT", "verified": false, "input": "COOPAGENTS_ARTIFACT_SHA256"}
+  ],
+  "accounts": {"dsh": "dsh", "gateway": "dsh-gateway"},
+  "dsh_home": "/var/lib/dsh/profiles/${RUN_ID}/${AGENT_ALIAS}",
+  "gateway_bind": "127.0.0.1",
+  "participant_identity": "runtime-only unique per VM; never baked into snapshot",
+  "secret_channel": "systemd runtime credential member-profile, gateway account only",
+  "model_proxy_credential": "runtime process channel for this VM only; no profile or image value",
+  "cloud_credentials": false,
+  "management": "outbound-only provider management; no login credentials",
+  "clock": "Linux monotonic clock; approved private HTTPS time source required",
+  "host_mounts": false,
+  "enable_services": false
+}
