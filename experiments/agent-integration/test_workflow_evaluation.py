@@ -18,9 +18,9 @@ def exchange(kind='native'):
         'expected': {'requester_member_id': 'front', 'responder_member_id': 'back', 'route_revision': 2},
         'participants': [
             {'member_id': 'front', 'human_id': 'person-1', 'device_id': 'device-1',
-             'session_id': 'native-1', 'evidence_ref': 'private:provenance-front'},
+             'session_id': 'native-1', 'network_id': 'network-1', 'evidence_ref': 'private:provenance-front'},
             {'member_id': 'back', 'human_id': 'person-2', 'device_id': 'device-2',
-             'session_id': 'native-2', 'evidence_ref': 'private:provenance-back'}],
+             'session_id': 'native-2', 'network_id': 'network-2', 'evidence_ref': 'private:provenance-back'}],
         'records': [
             {'kind': 'request', 'request_id': 'q1', 'actor': 'front', 'recipient': 'back',
              'route_revision': 2, 'source': kind, 'evidence_ref': 'private:request', 'at': 10},
@@ -58,10 +58,34 @@ class WorkflowEvaluationTests(unittest.TestCase):
                                               'scenario_id': 'frontend-backend'})
         self.assertEqual(result['checks']['model_reply'], 'unverified')
         self.assertEqual(result['checks']['requester_consumption'], 'unverified')
+        self.assertEqual(result['checks']['scenario_outcome'], 'unverified')
         self.assertFalse(result['native_success'])
         self.assertIsNone(result['metrics']['tool_call_count'])
         self.assertIsNone(result['metrics']['human_reminder_count'])
         self.assertIsNone(result['metrics']['reply_latency_seconds'])
+
+    def test_preparation_separates_participant_goals_and_private_evidence_files(self):
+        for scenario in self.module.scenarios():
+            participants = scenario.get('participants', [])
+            self.assertEqual(len(participants), scenario['people'])
+            self.assertEqual(len({p['evidence_file'] for p in participants}), scenario['people'])
+            self.assertEqual(len({p['role'] for p in participants}), scenario['people'])
+            for participant in participants:
+                self.assertTrue(participant['goal'])
+                self.assertNotIn('send_request', participant['goal'])
+                self.assertNotIn('read_team', participant['goal'])
+
+    def test_independent_acceptance_requires_distinct_referenced_networks(self):
+        evidence = exchange()
+        evidence['records'] += [dict(kind='human_acceptance', source='human', evidence_ref='private:accepted',
+            human_id=p['human_id']) for p in evidence['participants']]
+        for value in (None, 'same-network'):
+            for participant in evidence['participants']:
+                if value is None:
+                    participant.pop('network_id', None)
+                else:
+                    participant['network_id'] = value
+            self.assertFalse(self.module.score_evidence(evidence)['independent_user_acceptance'])
 
     def test_actual_file_derived_model_reply_and_requester_effect_are_separate(self):
         evidence = exchange()

@@ -11,7 +11,7 @@ from pathlib import Path
 
 def scenarios():
     """Describe outcomes without teaching the agent a protocol or call sequence."""
-    return [
+    result = [
         {'id': 'frontend-backend', 'people': 2,
          'goal': 'Deliver a profile form across frontend and backend responsibilities. The frontend needs a '
                  'field definition only present in the backend source. Obtain the responsible teammate’s '
@@ -33,6 +33,29 @@ def scenarios():
                  'Present the concrete decision to the actual user, preserve pending work, and apply only '
                  'the specific decision authorized by that user’s current instruction.'},
     ]
+    role_goals = {
+        'frontend-backend': [
+            ('requester', 'Implement the frontend profile form. Obtain the field definition from the teammate responsible for the backend and use it in your work.'),
+            ('responder', 'Own the backend profile interface. Answer teammates within your responsibility using your local source files; retain your existing authorized work.')],
+        'three-member-routing': [
+            ('requester', 'Implement the dependent interface. Find the current service responsibility and obtain a usable answer, including after its owner changes.'),
+            ('responder', 'Own the service interface. Answer questions about your responsibility from the current source and preserve responsibility history.'),
+            ('bystander', 'Own unrelated documentation. Continue that work; do not impersonate the service owner.')],
+        'offline-reopen': [
+            ('requester', 'Advance the dependent task while your teammate is away. Preserve the outstanding question, do independent authorized work and use the answer after it becomes available.'),
+            ('responder', 'Resume your responsibility in a new session after being offline. Recover outstanding team questions and answer from your current source files.')],
+        'agreement-change': [
+            ('requester', 'Continue implementation that relied on an earlier interface agreement. Check relevant approved changes, review their impact and record the version your work now relies on.'),
+            ('responder', 'Own the shared interface. Explain the approved interface change and its evidence to dependent teammates without treating a draft as approved.')],
+        'human-decision': [
+            ('requester', 'Advance the dependent task. When a joint agreement or responsibility change needs a human decision, present its specific impact and wait for the actual user instruction.'),
+            ('responder', 'Own the related responsibility. Supply technical evidence for the pending decision; do not approve or accept changes on another person’s behalf.')],
+    }
+    for scenario in result:
+        scenario['participants'] = [dict(role=role, goal=goal,
+            evidence_file='participants/'+role+'-observations.json')
+            for role, goal in role_goals[scenario['id']]]
+    return result
 
 
 def _present(value):
@@ -124,7 +147,7 @@ def score_evidence(evidence):
     }
 
     people = [p for p in participants if p.get('member_id') in (requester, responder)]
-    provenance_fields = ('human_id', 'device_id', 'session_id')
+    provenance_fields = ('human_id', 'device_id', 'session_id', 'network_id')
     provenance_valid = (len(people) == 2 and {p.get('member_id') for p in people} == {requester, responder}
                         and all(_present(p.get('evidence_ref')) for p in people)
                         and all(all(_present(p.get(f)) for p in people)
@@ -135,7 +158,7 @@ def score_evidence(evidence):
     acceptance_valid = provenance_valid and {p['human_id'] for p in people} <= accepted
     checks['human_acceptance'] = _status(accepted, acceptance_valid)
 
-    scenario_record, scenario_valid = None, scenario_id == 'frontend-backend'
+    scenario_record, scenario_valid = consumed if scenario_id == 'frontend-backend' else None, consumption_valid if scenario_id == 'frontend-backend' else False
     if scenario_id == 'three-member-routing':
         scenario_record = latest('owner_route')
         scenario_valid = bool(native(scenario_record) and scenario_record.get('current_owner') == responder
@@ -162,7 +185,7 @@ def score_evidence(evidence):
         scenario_valid = bool(kind == 'native' and observed(scenario_record, 'human')
                               and _present(scenario_record.get('actual_user_instruction_ref'))
                               and scenario_record.get('current') is True)
-    checks['scenario_outcome'] = _status(scenario_record or scenario_id == 'frontend-backend', scenario_valid)
+    checks['scenario_outcome'] = _status(scenario_record, scenario_valid)
 
     complete = evidence.get('metrics_complete', [])
     if not isinstance(complete, list):

@@ -11,6 +11,8 @@ python experiments/agent-integration/workflow_evaluation.py score .local/test-ev
 
 `prepare` prints five goals: frontend/backend dependency, three-member responsibility routing, offline/reopen recovery, changed approved agreement, and a real human decision. Goals contain no MCP method names or prescribed call sequence. The agent must discover available capabilities itself. `score` reads one supplied file and prints JSON; it writes no files and contacts no service. A successful CLI exit means the input was scored, not that the workflow passed.
 
+Each prepared scenario also has separate participant `role`, `goal` and `evidence_file` entries. Give each participant only their own role goal and retain their observations in a separate private run directory using those relative filenames; do not share the responder's private answer/source with the requester. A reviewer then normalizes the independently retained observations into the single scoring input. Preparation prints these paths but does not create or overwrite evidence files.
+
 ## Normalize evidence before scoring
 
 The scorer evaluates supplied observations; it does not authenticate reference contents or infer facts from raw logs. A reviewer must verify the referenced records and their provenance privately. A `native_success` result means the supplied normalized evidence met the checks, not independent verification of the experiment. Do not manufacture native observations from a fixture, an SDK client, direct HTTP calls or a read receipt.
@@ -23,7 +25,7 @@ The schema version is integer `1`. Use opaque local aliases for identities and p
 | `kind` | `fixture`, `protocol` or `native`; never upgrade a fixture's classification |
 | `scenario_id` | One of the five IDs printed by `prepare` |
 | `expected` | `requester_member_id`, `responder_member_id` and positive integer `route_revision` for the evaluated exchange |
-| `participants` | Objects with `member_id`, `human_id`, `device_id`, `session_id`, `evidence_ref`; independent provenance needs distinct human/device/session aliases and references for both exchange participants |
+| `participants` | Objects with `member_id`, `human_id`, `device_id`, `session_id`, `network_id`, `evidence_ref`; independent provenance needs distinct human/device/session/network aliases and references for both exchange participants. Network identifiers are opaque aliases backed by privately reviewed network evidence, never public IP addresses. |
 | `records` | Ordered normalized observations, using the record shapes below |
 | `metrics_complete` | Optional list containing `tool_call_count` and/or `human_reminder_count` only when that full observation window is verified, including explicit zero counts |
 
@@ -52,7 +54,7 @@ In addition to the exchange, all scenarios except `frontend-backend` require the
 | `agreement-change` | Native `agreement_review` with positive `previous_version` less than `current_version`, `current_approved: true` and `used_version` equal to the current version |
 | `human-decision` | `human_decision` from `human` with a reference to the applied action, `actual_user_instruction_ref` and `current: true`; an agent message cannot supply this authority |
 
-The checks use `verified`, `failed` and `unverified`. Missing evidence remains unverified. `independent_user_acceptance` additionally requires a successful native exchange, distinct referenced human/device/session provenance and each person's own acceptance. A fixture or protocol result can never satisfy native success or independent-user acceptance. Provenance and acceptance remain separate: two devices alone do not prove two people accepted the behavior.
+The checks use `verified`, `failed` and `unverified`. Missing evidence remains unverified, including the frontend/backend scenario outcome when no requester effect is observed. `independent_user_acceptance` additionally requires a successful native exchange, distinct referenced human/device/session/network provenance and each person's own acceptance. A fixture or protocol result can never satisfy native success or independent-user acceptance. Provenance and acceptance remain separate: two devices alone do not prove two people accepted the behavior.
 
 Counts are `null` when the observation window is incomplete. Reply and consumption latencies are `null` without referenced, linked observations and comparable nondecreasing timestamps. Metrics report observations for any evidence kind and never upgrade correctness or provenance. A low call count or short latency cannot repair a wrong sender, stale route or missing requester effect.
 
