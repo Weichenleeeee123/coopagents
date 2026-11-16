@@ -43,6 +43,8 @@ class CoordinationService:
         self.workflow = WorkflowStore(self)
         from .agreement_usage import AgreementUsageStore, SCHEMA as AGREEMENT_USE_SCHEMA
         self.agreement_usage = AgreementUsageStore(self.identity)
+        from .team_workflow import TeamWorkflowStore, schemas as team_workflow_schemas
+        self.team_workflow = TeamWorkflowStore(self)
         from .events import EventStore
         self.change_events = EventStore(self.identity)
         from .wake_digest import WakeDigest
@@ -94,6 +96,9 @@ class CoordinationService:
         for name, schema in workflow_schemas().items():
             self.operations[name] = ('agent', getattr(self.workflow, name), schema)
         self.operations['record_agreement_use'] = ('agent', self.agreement_usage.record, AGREEMENT_USE_SCHEMA)
+        for name, schema in team_workflow_schemas().items():
+            self.operations[name] = ('any' if name == 'read_workflow' else 'agent',
+                                     getattr(self.team_workflow, name), schema)
         for action in ACTIONS:
             optional = {'session_key': None, 'ownership_epoch': None} if action in ('release_task', 'propose_handoff') else {}
             required = 'task_id expected_revision request_key summary'
@@ -158,6 +163,7 @@ class CoordinationService:
         result['capabilities'] = self.capability_store.project(source)
         from .project_activity import project_activity
         result['activity'] = project_activity(result)
+        result['workflow'] = self.team_workflow.read_workflow(token)
         result['server_time'] = datetime.now(timezone.utc).isoformat()
         return result
 
