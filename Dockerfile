@@ -3,6 +3,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 WORKDIR /app
 COPY pyproject.toml README.md LICENSE ./
 COPY src ./src
+COPY docs/agent-first-setup.md docs/agent-first-setup.zh-CN.md ./docs/
 COPY deploy/constraints.txt ./constraints.txt
 RUN pip install --no-cache-dir -c constraints.txt '.[service]' \
     && groupadd --gid 10001 coopagents \
