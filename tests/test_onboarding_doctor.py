@@ -162,6 +162,7 @@ class LocalChecksTests(DoctorTestCase):
                 '/api/diagnostics/read': {'diagnostic_id': 'diagnostic-1', 'challenge': 'challenge-value',
                                            'proof': 'proof-value', 'status': 'read_back'},
                 '/api/diagnostics/complete': {'diagnostic_id': 'diagnostic-1', 'status': 'completed'},
+                '/api/git': {'binding': None},
             }
             calls = []
 
@@ -177,7 +178,7 @@ class LocalChecksTests(DoctorTestCase):
         self.assertEqual(next(item for item in result['checks'] if item['id'] == 'runtime_reachability')['status'], 'pass')
         self.assertEqual(next(item for item in result['checks'] if item['id'] == 'challenge_round_trip')['status'], 'pass')
         self.assertEqual([path for path, _ in calls], [
-            '/api/me', '/api/diagnostics/start', '/api/diagnostics/read', '/api/diagnostics/complete'])
+            '/api/me', '/api/git', '/api/diagnostics/start', '/api/diagnostics/read', '/api/diagnostics/complete'])
         encoded = json.dumps(result)
         self.assertNotIn('agent-secret-value', encoded)
         self.assertNotIn('challenge-value', encoded)
@@ -228,6 +229,7 @@ class LocalChecksTests(DoctorTestCase):
             responses = [
                 OSError('transient'),
                 {'me': {'room_id': 'room-1', 'member_id': 'member-1', 'kind': 'agent'}},
+                {'binding': None},
                 {'diagnostic_id': 'diagnostic-1', 'status': 'sent'},
                 {'diagnostic_id': 'diagnostic-1', 'challenge': 'challenge-value',
                  'proof': 'proof-value', 'status': 'read_back'},
@@ -239,7 +241,7 @@ class LocalChecksTests(DoctorTestCase):
                     patch('time.sleep') as slept:
                 result = onboarding_doctor.profile_checks(profile_path)
         self.assertEqual(network.call_count, 2)
-        self.assertEqual(fetch.call_count, 5)
+        self.assertEqual(fetch.call_count, 6)
         slept.assert_called_once_with(2)
         self.assertEqual(next(item for item in result['checks'] if item['id'] == 'runtime_reachability')['status'], 'pass')
         self.assertEqual(next(item for item in result['checks'] if item['id'] == 'challenge_round_trip')['status'], 'pass')
