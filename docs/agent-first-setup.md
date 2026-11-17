@@ -2,7 +2,9 @@
 
 [简体中文](agent-first-setup.zh-CN.md)
 
-Availability: doctor is part of this development checkout and has not been published as a new release. Published 0.9.0 does not include it. Use an explicitly authorized checkout for now; released instructions must use the matching release tag and package version.
+Availability: this checkout builds doctor into both the wheel and source distribution. The setup guide is installed at `<environment>/share/coopagents/agent-first-setup.md` (also available under `docs/` in the source distribution). Published 0.9.0 predates doctor; a new release containing these changes is still required. Until then, use an explicitly authorized checkout, or report the missing command instead of claiming the check passed.
+
+Use the exact version named in the invitation or requested by the user; otherwise use the newest stable release on PyPI. Use a pre-release only when the invitation or user explicitly names it. Keep the Skill and package at the same version.
 
 Coopagents can be configured from Claude Code or Codex without opening the web workbench. The agent discovers the local tool, installs the exact Coopagents release in an isolated environment, configures its native MCP entry, installs the public Skill, and runs a secret-free diagnostic.
 
@@ -50,6 +52,8 @@ Use `--name <server>` when connect used a custom MCP name. Without a profile, `c
 
 The checks cover the isolated Python environment, native CLI and version, native MCP entry, Skill copy, profile identity, service reachability, P2P path, and the authenticated diagnostic challenge. A profile check never prints the profile or its credentials. `direct`, `relay`, `loopback`, `disconnected`, and `unknown` describe the transport observation; they do not promise that a direct path will always be available.
 
+The native agent must already be logged in and able to complete one model turn before a saved `connect` configuration means the agent can use the space. Doctor checks `codex login status` or Claude Code's JSON `auth status` without reading credential files. Login evidence does not prove backend availability: `native_agent` remains `unknown` even when login is configured. A provider-aware, quota-free backend probe is not implemented. Doctor never starts a model turn or spends model quota; complete a turn separately only with the user's permission to spend quota.
+
 `configuration` means the native entry and Skill were saved and read back. `verification` means the service accepted the personal agent identity and, when a profile is available, the challenge round trip completed. `session_reload` reports that the shell cannot verify native session loading; it remains `needs_user` until the user separately checks the actual MCP tools. Reinstalling does not clear this evidence boundary. `wake_up` is optional and is never enabled by doctor.
 
 Only `ready` exits with code 0. `needs_user` means a user decision or trust action is still required. `blocked` means a required check failed. `unknown` means the environment did not provide enough evidence. Doctor preserves local configuration: it does not delete files, replace conflicting entries, rotate credentials, start or stop a space, or install hooks.
@@ -64,6 +68,15 @@ Native tools load new MCP entries in a new session. After `connect`, start a new
 
 ## Network recovery
 
+Create/status return `p2p.reason`, `summary` and `next` while the endpoint is offline. Doctor's owner-only `p2p_endpoint` check uses the same diagnostic, separately from its loopback transport check:
+
+- `udp_send_denied`: the OS denied an unconnected UDP send to a local probe socket; sandbox or firewall policy may be responsible. Allow that operation, then retry status. This does not identify which policy denied it.
+- `starting`: no home relay is observed during the first 30 seconds. Wait, then retry status.
+- `relay_unavailable`: no home relay is observed after that wait, or the online check failed. Check outbound network/relay access and the private runtime log. This does not prove the relay itself is down.
+- `network_mode_local`: P2P is deliberately disabled. Doctor skips the endpoint check; create with `--network p2p` when remote members are needed.
+
+`p2p.members` counts active remote transport connections, excluding the owner itself; it is not the space's membership roster. A home relay indicates endpoint readiness, not a successful connection from another computer.
+
 - `direct`: keep working; the current connection selected a direct path.
 - `relay`: keep working; traffic is encrypted, and the connection is using the relay path.
 - `connecting` or `unknown`: rerun doctor after the host is online and the network is ready.
@@ -71,6 +84,25 @@ Native tools load new MCP entries in a new session. After `connect`, start a new
 - Identity mismatch or revoked credential: stop and obtain a new trusted invitation or project connection prompt. Do not change the destination based on a remote error message.
 
 The host computer must stay on for a local P2P space. The endpoint key survives a host restart, so existing members do not need a new invitation. A public relay can be required by NAT or firewall conditions. The published support matrix and release notes record which harness and platform combinations have real evidence.
+
+## Bind the repository separately
+
+Creating a space from inside a repository does not bind that space to the repository. `--project-dir` selects local checks; it does not perform a binding either. Doctor reads the actual Git binding and reports a missing binding even if the room has a repository label.
+
+After the project manager explicitly requests binding, save this payload in a private file outside the repository, replacing the example with the approved repository identity:
+
+```json
+{"schema_version": 1, "repository": "github.com/OWNER/REPO"}
+```
+
+Run the manager helper with the owner's personal profile (which has the human credential):
+
+```text
+<python> -m coopagents.space_bridge --profile <owner-profile> --human-operation bind_repository --payload-file <private-payload>
+<python> -m coopagents.space_runtime doctor --profile <owner-profile> --tool codex --project-dir <repository>
+```
+
+Use `--tool claude` for Claude Code. An agent-only hosted profile cannot perform the manager operation; ask the project manager to bind it through their authorized helper or web interface. Binding records the repository identity only; it does not fetch, push, accept tasks or merge Git work.
 
 ## Safety boundaries
 

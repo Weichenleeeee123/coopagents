@@ -2,6 +2,8 @@
 
 Use the absolute isolated Python path as `<python>`. None of these commands includes a credential. Helpers emit only safe status/identity/path summaries; the stdio bridge emits MCP exclusively. Private invitation and profile files have schema version 1. Preserve all historical state files.
 
+Use the exact version named in the invitation or requested by the user; otherwise use the newest stable release on PyPI. Use a pre-release only when the invitation or user explicitly names it. Keep the Skill and package on that version.
+
 ## Runtime commands
 
 ```text
@@ -23,6 +25,8 @@ Use the absolute isolated Python path as `<python>`. None of these commands incl
 
 `create` and `join` take an optional `--state-dir`; without it they make a new private folder under `~/.coopagents/spaces` (or `$COOPAGENTS_HOME/spaces`). With `--connect`, they then run `connect` for the new profile; if only that step fails, the space or membership is kept and the output has `connect_error` and a `retry` command. Failures print a specific reason; remote response text is never repeated.
 
+The native agent must be logged in and able to complete one model turn before a saved connection can be used. Doctor probes login state only through a read-only native CLI command when one exists; it never starts a model turn or spends model quota.
+
 First-run setup uses the agent and CLI, without a web account. Route a setup request to the user's invitation, trusted project connection details, existing profile, or a new P2P space in the current repository. Never assume that a globally registered space belongs to this repository. When several connections exist, ask which one the user intends; do not create duplicate membership or switch destinations to repair a connection.
 
 ```text
@@ -36,6 +40,8 @@ JSON has `overall`, `checks`, `next` and `connections`. Each check has `id`, `st
 `connect`, including create/join with `--connect`, retains its configuration-write exit status for compatibility, and adds `configuration`, `verification` and `next`. A zero connect exit code means configuration was saved, not that every diagnostic passed. Inspect `verification.overall`; network failures retain the configured profile and tell the agent what to check. `--name` must be carried into doctor for a custom MCP name.
 
 The P2P path is direct or relay only when this diagnostic owns a live link and observes its selected path. Reusing another bridge cannot reveal that bridge's selected path: it stays unknown, not loopback. An owner's local request verifies loopback access only, not external reachability. Optional wake checks inspect hook files; they do not run hooks, initialize wake databases, grant trust or prove idle wake-up. JSON/text never contains tokens, invitation values, challenge/proof, full profiles or remote error bodies. File paths are local troubleshooting information, not a public support bundle.
+
+Creating a space inside a repository does not bind it to that repository. A manager must perform the separate `bind_repository` operation; doctor reports a missing binding without changing it.
 
 The invite helper saves a protected descriptor and normally emits its path. With `--message`, it also emits `message`: a shareable text with a short pitch, the project and Skill links, a prompt for the invitee's agent and the one-time compact code `coopagents-invite-2.<Crockford-base32>` (the same descriptor as the file), plus `local_only` when the space only accepts agents on the host computer. The compact code is case-insensitive, tolerates spaces, line breaks and dashes, and includes a checksum that detects copying errors; older `coopagents-invite-1.<base64url>` and `crewmesh-invite-1.<base64url>` codes remain accepted. The message is a bearer secret like `--share` output. `--hours` sets the lifetime (default 1, at most 72). `join --invitation-code-stdin` reads up to 64 KiB from standard input, accepts the code alone or the whole message, and reports a fixed secret-free reason when the code is missing, repeated with different values, truncated or malformed. Never repair or edit a code by hand; save the whole message again or ask for it to be pasted again. Use `--share` only if sharing was requested and the output channel is private; it can emit the bearer invitation. Never run it in a captured/public terminal transcript. Revoke a leaked or unused invite with `revoke-invitation --profile <owner-profile> --invitation-file <private-invite>`; revoke a member with `revoke-member --profile <owner-profile> --member-id <member>` only when the actual user requests it. Database and identity survive start/stop. In p2p mode the endpoint key also survives, so the origin and invitations stay valid; the quick-tunnel origin may change.
 
