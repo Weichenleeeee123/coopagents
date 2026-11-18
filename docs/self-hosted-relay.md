@@ -7,7 +7,7 @@
 ## 设计
 
 - `create --relay-url <URL>`（可重复，最多 4 个），仅 p2p 模式接受；写入私有 `host.json` 的 `relay_urls`，`serve()` 传给 `HostLink`，`space_link()` 写进邀请链接，成员侧 `member_link()` 传给 `MemberLink`。JSON 描述文件原样携带；短邀请码（v2 编码只接受 `endpoint_id` 一个键）遇到带中继的邀请时回落到 v1 长码。
-- 校验（`validate_relay_urls`）：只接受裸 origin（允许根路径 `/`，根路径以下的 path 不接受），不带 userinfo、query、fragment、控制字符；主机名按 iroh 可接受的形式校验（DNS/IDNA 名称、IP 字面量、WHATWG 数字地址，拒绝带 scope 的 IPv6 字面量与非法数字地址），端口在保存前就解析；非回环地址必须 HTTPS，HTTP 只允许回环（`localhost` 与 IP 回环地址，含 `::1` 的展开写法）；单条 ≤2048 字符，序列化后合计 ≤1024 字符，保证邀请码可解码。
+- 校验（`validate_relay_urls`）：只接受裸 origin（允许根路径 `/`，根路径以下的 path 不接受），不带 userinfo、query、fragment、控制字符；主机名按 iroh 的 URL 解析校验：括号内只接受 IPv6 字面量（拒绝带 scope 的写法与 IPvFuture），非 ASCII 名称先经 IDNA 转换再校验（转换后成数字地址的拒绝，joiner 直接拒绝），数字结尾的主机名按 WHATWG IPv4 规则校验（含空十六进制分量为 0、无效八进制拒绝），`xn--` label 须经 punycode 往返校验；另有收窄：拒绝下划线、空 label、首尾连字符 label、百分号编码主机名、端口 0；非回环地址必须 HTTPS，HTTP 只允许回环（`localhost` 与 IP 回环地址，含 `::1` 的展开写法）；单条 ≤2048 字符，四个 URL 的 JSON 转义后内容之和 ≤1024 字符，保证邀请码可解码。
 - iroh 映射：`RelayMode.custom_from_urls(urls)` + `preset_n0`。`RelayMode.relay_map(m)` 在 iroh 1.1.0 会段错误（exit 139），永不使用（代码中有注释）。
 - 未配置中继时，`HostLink` / `MemberLink` 的构造调用与原来逐字节相同：`relay_urls` 只在配置了才传参，避免破坏已有 fake 与子类。
 - iroh 上报的 `addr().relay_url()` 带尾部斜杠（`http://127.0.0.1:3340/`），与配置字符串比较时需先去掉斜杠。
