@@ -196,7 +196,7 @@ def project_activity(snapshot, limit=MAX_ITEMS):
                     summary, task_id = 'Branch '+branch+' is not associated with any task', None
                 elif kind == 'default_branch_direct_push':
                     event_type, item_id = 'github_default_branch_direct_push', 'github-direct-default:'+branch
-                    summary, task_id = 'Default branch '+branch+' advanced outside the governed flow', None
+                    summary, task_id = 'Default branch '+branch+' head has no matching governed evidence', None
                 else:
                     continue
                 # The id is branch-stable: a new push to the same branch does

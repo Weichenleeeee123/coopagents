@@ -111,7 +111,7 @@ class ProjectActivityTests(unittest.TestCase):
         self.assertEqual(direct['reference']['branch'], 'coopagents/task-3-1-build')
         self.assertIn('not associated', feed['items'][1]['summary'])
         self.assertIsNone(feed['items'][1]['task_id'])
-        self.assertIn('outside the governed flow', feed['items'][2]['summary'])
+        self.assertIn('no matching governed evidence', feed['items'][2]['summary'])
         resynced = project_activity({'git': {'github_unattributed': [
             {'kind': 'direct_branch', 'task_id': 3, 'ownership_epoch': 1,
              'branch': 'coopagents/task-3-1-build', 'head_sha': 'e'*40,
