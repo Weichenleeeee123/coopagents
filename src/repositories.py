@@ -470,9 +470,32 @@ class RepositoryStore:
                 item['path_count']=len(item.pop('paths'))
             branches = [dict(r) for r in c.execute(
                 'SELECT * FROM git_branches WHERE room_id=? ORDER BY id DESC LIMIT 50', (principal.room_id,))]
+            blocks = []
+            for r in c.execute('''SELECT b.* FROM git_conflict_blocks b JOIN tasks t
+                ON t.id=b.task_id AND t.room_id=b.room_id WHERE b.room_id=? AND t.cancelled_at IS NULL
+                AND b.ownership_epoch=t.ownership_epoch ORDER BY b.id DESC LIMIT 50''', (principal.room_id,)):
+                row = dict(r)
+                try:
+                    conflicts = json.loads(row.pop('conflicts_json'))
+                except (TypeError, ValueError):
+                    conflicts = []
+                row['conflicts'] = [{**conflict, 'paths': self.compact_paths(conflict.get('paths', []), 4000)}
+                                    for conflict in conflicts[:5] if isinstance(conflict, dict)]
+                try:
+                    row['paths'] = self.compact_paths(json.loads(row.pop('paths_json')), 4000)
+                except (TypeError, ValueError):
+                    row['paths'] = []
+                blocks.append(row)
+            merges = []
+            if c.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='git_merge_requests'").fetchone():
+                merges = [dict(r) for r in c.execute('''SELECT m.* FROM git_merge_requests m JOIN tasks t
+                    ON t.id=m.task_id AND t.room_id=m.room_id WHERE m.room_id=? AND m.state='pending'
+                    AND t.cancelled_at IS NULL AND m.ownership_epoch=t.ownership_epoch ORDER BY m.id DESC LIMIT 50''',
+                    (principal.room_id,))]
             return {'binding':dict(binding) if binding else None,'can_manage':can_manage,'workspaces':workspaces,
                     'overlaps':overlaps,'events':events,'deliveries':[],'workspaces_truncated':truncated,
-                    'git_write_enabled':bool(binding and binding['git_write_enabled']),'branches':branches}
+                    'git_write_enabled':bool(binding and binding['git_write_enabled']),'branches':branches,
+                    'conflict_blocks':blocks,'merge_requests':merges}
 
     def read_observation(self,token,observation_id):
         if type(observation_id) is not int or not 0<observation_id<2**63:

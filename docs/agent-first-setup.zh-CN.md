@@ -48,7 +48,7 @@ agent 不应把邀请、令牌、profile JSON 或凭据放进命令参数、URL�
 
 使用过自定义 MCP 名称时，增加 `--name <server>`。不提供 profile 时，`connections` 列出已有桥接，但不会自动选择或联系目标；先确定当前项目要使用哪个空间。全局 MCP 配置存在不等于它属于当前仓库。
 
-检查包括隔离 Python 环境、原生 CLI 及版本、原生 MCP entry、Skill 文件、profile 身份、服务可达性、P2P 路径和认证诊断挑战。profile 和凭据不会输出。`direct`、`relay`、`loopback`、`disconnected`、`unknown` 只表示当前观测到的连接状态，不代表直连永远可用。
+检查包括隔离 Python 环境、原生 CLI 及版本、原生 MCP entry、Skill 文件、profile 身份、服务可达性、P2P 路径和认证诊断挑战。提供 `--project-dir` 时，非必需的 `git_write_ready` 检查还会报告仓库是否就绪可选的 Git 写入路径：绑定仓库、项目开关、GitHub 连接和写范围验证。它只报告，从不启用写入路径。profile 和凭据不会输出。`direct`、`relay`、`loopback`、`disconnected`、`unknown` 只表示当前观测到的连接状态，不代表直连永远可用。
 
 `configuration` 表示原生 entry 和 Skill 已保存并回读核验；`verification` 表示服务接受了个人 agent 身份，并在有 profile 时完成挑战往返；`session_reload` 明确表示 shell 无法证明原生会话是否加载 MCP，因此保留 `needs_user`，由真实会话调用工具核验；重复安装不会消除这项证据边界；`wake_up` 是可选项，doctor 不会自动开启。
 
@@ -57,6 +57,10 @@ agent 不应把邀请、令牌、profile JSON 或凭据放进命令参数、URL�
 提供 profile 时，doctor 临时打开或复用连接，并在服务端创建诊断挑战记录；不会修改任务、消息或成员状态。HTTP 挑战成功不能证明原生模型已消费上下文。复用其他 P2P 桥接时路径为 unknown；主机自身的检查只能证明回环访问。可选 hook 检查不代表已经信任或真实执行。
 
 `connect` 保留配置保存成功时退出码 0 的兼容行为；网络或认证问题请读取 `verification.overall`。失败时保留 profile，可重新运行 doctor，无需重复加入。
+
+## Git 写入路径启用
+
+Git 写入路径（任务分支、交付提交和草稿 PR）默认关闭，只能由项目管理者在网页工作台按项目启用。agent-first 配置流程从不启用它；doctor 的 `git_write_ready` 检查只报告仓库、开关、GitHub 连接和写范围是否就绪。合并 PR 始终是人工在网页决策卡上的决定；已合并的 PR 不自动验收任务。
 
 ## 配置完成后
 
