@@ -22,3 +22,6 @@ package-dir = { coopagents = "src" }
 
 [tool.setuptools.package-data]
 coopagents = ["static/*.html", "static/*.css", "static/*.js", "static/*.png", "skills/coopagents-connect/*.md", "skills/coopagents-space/*.md", "skills/coopagents-space/scripts/*.py"]
+
+[tool.setuptools.data-files]
+"share/coopagents" = ["docs/agent-first-setup.md", "docs/agent-first-setup.zh-CN.md"]

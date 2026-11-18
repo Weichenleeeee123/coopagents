@@ -117,6 +117,18 @@ class Profiles(unittest.TestCase):
              patch.object(runtime, 'request', return_value={'room_id': 'room', 'status': 'running'}):
             self.assertEqual(runtime.status(self.directory / 'profile.json')['origin'], updated['origin'])
 
+    def test_status_reports_local_network_p2p_reason(self):
+        profile = dict(schema_version=1, origin='http://127.0.0.1:8765', room_id='room',
+                       member_id='member', web_token='web', agent_token='agent',
+                       control_origin='http://127.0.0.1:8766', control_token='control')
+        p2p = {'online': False, 'members': 0, 'reason': 'network_mode_local',
+               'next': 'Use --network p2p for remote members.'}
+        with patch.object(runtime, 'read_profile', return_value=profile), \
+                patch.object(runtime, 'request', return_value={'room_id': 'room', 'status': 'running', 'p2p': p2p}):
+            result = runtime.status(self.directory / 'profile.json')
+        self.assertFalse(result['p2p']['online'])
+        self.assertEqual(result['p2p']['reason'], 'network_mode_local')
+
     @unittest.skipUnless(os.name == 'nt', 'Windows reparse point regression')
     def test_junction_is_refused_without_pathlib_junction_support(self):
         from coopagents.spaces import checked_path
@@ -249,6 +261,7 @@ class Runtime(unittest.TestCase):
 
     def test_real_supervisor_personal_join_http_websocket_restart(self):
         created = runtime.create('Test space', 'Owner', self.profile_path.parent, network='local')
+        self.assertEqual(created['p2p']['reason'], 'network_mode_local')
         owner = read_profile(self.profile_path)
         self.assertNotIn(owner['web_token'], json.dumps(created))
         self.assertNotEqual(owner['origin'], owner['control_origin'])

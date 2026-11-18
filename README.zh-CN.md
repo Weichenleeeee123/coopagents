@@ -33,11 +33,9 @@
 
 需要 **Python 3.11+** 和受支持的 coding agent。首次配置 P2P 空间不需要网页账号或已启动的工作台。可以先在一台电脑上接入两个 agent，再邀请队友。
 
-`1.0.0rc1` 文件已准备，但尚未发布。README 更新为正式发布链接前，请勿从 PyPI 安装该版本，也不要打开尚未创建的 GitHub tag。当前最新可安装版本仍是 0.9.0：
+使用邀请或用户指定的精确版本；否则使用 PyPI 上最新的稳定版。仅在邀请或用户明确指定预发布版本时使用它，并保持 Skill 和包版本一致：
 
-> 阅读 [Coopagents 1.0.0rc1 space Skill](https://github.com/Weichenleeeee123/coopagents/blob/v1.0.0rc1/src/skills/coopagents-space/SKILL.md)。把 `coopagents[space]==1.0.0rc1` 安装到仓库外独立的虚拟环境，显式使用该环境的 Python。帮我为当前仓库配置 Coopagents：已有匹配连接就复用，否则为这个仓库创建本机 P2P 空间，并把当前 agent 作为我的成员接入。保留现有配置，暂不开启唤醒，也不邀请别人。分别说明配置了什么，以及哪些步骤仍需要新会话或我的确认。
-
-使用**已发布的 0.9.0**时，请用对应的 [0.9.0 Skill](https://github.com/Weichenleeeee123/coopagents/blob/v0.9.0/src/skills/coopagents-space/SKILL.md)，安装 `coopagents[space]==0.9.0`。
+> 阅读 [Coopagents space Skill](https://github.com/Weichenleeeee123/coopagents/blob/main/src/skills/coopagents-space/SKILL.md)。把选定的精确版本安装到仓库外独立的虚拟环境，显式使用该环境的 Python。帮我为当前仓库配置 Coopagents：已有匹配连接就复用，否则为这个仓库创建本机 P2P 空间，并把当前 agent 作为我的成员接入。保留现有配置，暂不开启唤醒，也不邀请别人。分别说明配置了什么，以及哪些步骤仍需要新会话或我的确认。
 
 配置后新开一个 agent 会话，让原生工具加载 MCP。请 agent 调用 `whoami` 核对项目与成员身份，再调用 `read_team`。磁盘上写好了配置，不等于当前会话已经加载工具。
 

@@ -11,9 +11,11 @@ from iroh discovery, with relay fallback when no direct path exists.
 """
 import asyncio
 from contextlib import nullcontext
+import errno
 import json
 import logging
 import re
+import socket
 import threading
 import time
 import urllib.request
@@ -111,6 +113,31 @@ def _options(*, secret=None, alpns=None, local_only=False):
     return iroh.EndpointOptions(preset=preset, secret_key=bytes.fromhex(secret) if secret else None, alpns=alpns)
 
 
+def udp_send_denied():
+    """Observe OS denial of unconnected UDP sends, without contacting a peer."""
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+            sock.bind(('127.0.0.1', 0))
+            sock.sendto(b'\0', sock.getsockname())
+    except OSError as error:
+        return error.errno in (errno.EPERM, errno.EACCES)
+    return False
+
+
+def offline_diagnostic(reason):
+    summary, next_step = {
+        'network_mode_local': ('P2P is disabled in local network mode.',
+                               'Use --network p2p when creating a space for remote members.'),
+        'udp_send_denied': ('The OS denied an unconnected UDP send; sandbox or firewall policy may block P2P.',
+                            'Allow unconnected UDP sends in the sandbox/firewall, then rerun status.'),
+        'starting': ('The endpoint is waiting for a home relay.',
+                     'Wait for relay registration, then rerun status.'),
+        'relay_unavailable': ('No home relay is available; relay reachability is unverified.',
+                              'Check outbound network/relay access and the private runtime log, then rerun status.'),
+    }[reason]
+    return {'reason': reason, 'summary': summary, 'next': next_step}
+
+
 async def _pump_quic_to_tcp(recv, writer):
     try:
         while chunk := await recv.read(CHUNK):
@@ -157,6 +184,8 @@ class HostLink:
         self.target_port = target_port
         self.connections = set()
         self._online = False
+        self._online_reason = 'network_mode_local' if local_only else 'starting'
+        self._started_at = time.monotonic()
         self._closed = False
         self.endpoint = None
         self.endpoint = _run(self._bind(secret, local_only, online_timeout), online_timeout + 20)
@@ -181,7 +210,15 @@ class HostLink:
 
     def status(self):
         """Secret-free diagnostics for the owner control endpoint."""
-        result = {'endpoint_id': self.endpoint_id, 'online': self.online, 'members': len(self.connections)}
+        online = self.online
+        result = {'endpoint_id': self.endpoint_id, 'online': online, 'members': len(self.connections)}
+        if not online:
+            reason = self._online_reason
+            if reason != 'network_mode_local' and udp_send_denied():
+                reason = 'udp_send_denied'
+            elif reason == 'starting' and time.monotonic() - self._started_at >= 30:
+                reason = 'relay_unavailable'
+            result.update(offline_diagnostic(reason))
         try:
             addresses = self.addresses()
         except Exception:
@@ -206,7 +243,9 @@ class HostLink:
                             online_timeout)
             except Exception as error:
                 self._online = False
-                log.warning('p2p endpoint online check failed: %r', error)
+                self._online_reason = 'relay_unavailable'
+                log.warning('p2p endpoint online check failed (%s); check outbound network/relay access',
+                            type(error).__name__)
         return endpoint
 
     def addresses(self):

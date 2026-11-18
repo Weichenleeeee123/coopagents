@@ -67,7 +67,7 @@ def create_space_app(service, *, room_id, origin):
 
 
 def create_control_app(control_origin, control_token, stop_event, room_id, ready_event=None, *, service=None, source_token=None,
-                       p2p=None):
+                       p2p=None, network=None):
     async def control(request):
         try:
             if request.client.host not in ('127.0.0.1', '::1'):
@@ -83,6 +83,9 @@ def create_control_app(control_origin, control_token, stop_event, room_id, ready
             result = {'status': status, 'room_id': room_id}
             if p2p is not None:
                 result['p2p'] = p2p.status()
+            elif network == 'local':
+                from .p2p import offline_diagnostic
+                result['p2p'] = {'online': False, 'members': 0, **offline_diagnostic('network_mode_local')}
             return JSONResponse(result)
         except Exception as error:
             payload, status = error_payload(error)
