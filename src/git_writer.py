@@ -191,6 +191,16 @@ class GitWriter:
             return []
         return [item.decode('utf-8', 'surrogateescape') for item in data.split(b'\0') if item]
 
+    def head_identity(self):
+        """(author name, author email, subject, body) of HEAD, or None."""
+        data, code = self._read('log', '-1', '--format=%an%x00%ae%x00%s%x00%B', 'HEAD', allowed=(0, 1))
+        if code != 0:
+            return None
+        parts = data.decode('utf-8', 'surrogateescape').split('\0', 3)
+        if len(parts) != 4:
+            return None
+        return parts[0], parts[1], parts[2], parts[3]
+
     def ref_sha(self, ref):
         if not isinstance(ref, str) or not ref or any(ord(char) < 33 for char in ref) or '..' in ref:
             raise ValidationError('Expected a safe Git reference')

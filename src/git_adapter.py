@@ -129,7 +129,8 @@ class LocalAdapter:
         if not isinstance(attempt.get('task_title'), str) or not isinstance(attempt.get('summary'), str):
             return False
         return all(isinstance(attempt.get(key), str) and attempt[key]
-                   for key in ('request_key', 'base_branch', 'title'))
+                   for key in ('request_key', 'base_branch', 'title',
+                               'author_name', 'author_email', 'subject'))
 
     def _read_attempt(self, path):
         if path is None:
@@ -361,9 +362,12 @@ class LocalAdapter:
         written before the commit, so a commit only happens once the record
         is durable, and the complete record (head SHA, PR body) replaces it
         after the commit. A retry with no new changes resumes a complete
-        record by head, or adopts a pending record when HEAD is the immediate
-        child of the recorded parent touching exactly the recorded paths.
-        The attempt is cleared only after registration succeeds.
+        record by head, or adopts a pending record when HEAD is the
+        adapter's own immediate child commit of the recorded parent. A
+        delivery with new changes resolves any previous attempt first
+        (resume, or discard as stale) before recording its own, so a
+        previous attempt is never silently overwritten. The attempt is
+        cleared only after registration succeeds.
         """
         from .git_writer import GitWriter, commit_message
         from .git_workspace import task_branch_name
@@ -436,23 +440,26 @@ class LocalAdapter:
                 raise ValidationError('Checkpoint did not return observation paths')
             if not paths:
                 attempt = self._read_attempt(attempt_path)
-                if (attempt is not None and attempt['task_id'] == task_id
-                        and attempt['ownership_epoch'] == epoch and attempt['branch'] == branch):
-                    if attempt['head_sha'] is not None and attempt['head_sha'] == writer.head_sha():
-                        return self._resume_delivery(task_id, session_key, epoch, branch, writer,
-                                                     attempt, attempt_path)
-                    if attempt['head_sha'] is None:
-                        adopted = self._adopt_pending_attempt(writer, attempt)
-                        if adopted is not None:
-                            attempt = dict(attempt, head_sha=adopted,
-                                           body=self._pr_body(task_id, attempt['task_title'],
-                                                              attempt['summary'], branch,
-                                                              attempt['base_branch'], adopted))
-                            return self._resume_delivery(task_id, session_key, epoch, branch, writer,
-                                                         attempt, attempt_path)
                 if attempt is not None:
-                    self._clear_attempt(attempt_path)
+                    if (attempt['task_id'] == task_id and attempt['ownership_epoch'] == epoch
+                            and attempt['branch'] == branch):
+                        result = self._resolve_attempt(task_id, session_key, epoch, branch, writer,
+                                                       attempt, attempt_path)
+                        if result is not None:
+                            return result
+                    else:
+                        self._clear_attempt(attempt_path)
                 raise ValidationError('No changes to deliver')
+            attempt = self._read_attempt(attempt_path)
+            if attempt is not None:
+                if (attempt['task_id'] == task_id and attempt['ownership_epoch'] == epoch
+                        and attempt['branch'] == branch):
+                    result = self._resolve_attempt(task_id, session_key, epoch, branch, writer,
+                                                   attempt, attempt_path)
+                    if result is not None and result.get('status') == 'conflict':
+                        return result
+                else:
+                    self._clear_attempt(attempt_path)
             gate = self.request('/api/git/overlap-check', {'task_id': task_id, 'paths': paths,
                                                            'session_key': session_key,
                                                            'ownership_epoch': epoch, 'gate': 'delivery'})
@@ -463,13 +470,15 @@ class LocalAdapter:
             title = ('Task %d: %s' % (task_id, line))[:250].strip()
             request_key = str(uuid4())
             parent_sha = writer.head_sha()
+            subject = message.split('\n', 1)[0]
             if attempt_path is not None and len(parent_sha) == 40:
                 self._write_attempt(attempt_path, {
                     'schema_version': 1, 'task_id': task_id, 'ownership_epoch': epoch,
                     'branch': branch, 'head_sha': None, 'parent_sha': parent_sha,
                     'paths': paths, 'request_key': request_key, 'base_branch': default,
                     'title': title, 'body': None, 'task_title': task.get('title') or '',
-                    'summary': line})
+                    'summary': line, 'author_name': name, 'author_email': email,
+                    'subject': subject})
             committed = writer.stage_and_commit(branch, paths, message, name, email)
             head_sha = committed['head_sha']
             body = self._pr_body(task_id, task.get('title') or '', line, branch, default, head_sha)
@@ -479,7 +488,8 @@ class LocalAdapter:
                     'branch': branch, 'head_sha': head_sha, 'parent_sha': parent_sha,
                     'paths': paths, 'request_key': request_key, 'base_branch': default,
                     'title': title, 'body': body, 'task_title': task.get('title') or '',
-                    'summary': line})
+                    'summary': line, 'author_name': name, 'author_email': email,
+                    'subject': subject})
             writer.push_branch(branch)
             record = self.request('/api/git/deliveries', {'task_id': task_id, 'branch': branch,
                 'head_sha': head_sha, 'base_branch': default, 'title': title, 'body': body,
@@ -493,9 +503,10 @@ class LocalAdapter:
 
         A pending record proves the delivery reached the commit step but not
         that the commit's head was recorded. Adopt HEAD only when it is the
-        immediate child of the recorded parent and touches exactly the
-        recorded paths: that is the commit this delivery made. Any other
-        state (no commit, or an unrelated commit) is not adopted.
+        immediate child of the recorded parent, touches exactly the recorded
+        paths, and carries the adapter's author identity, subject, and task
+        trailer: shape alone cannot distinguish the adapter's commit from
+        one made with the agent's own tools. Any other state is not adopted.
         """
         head = writer.head_sha()
         if not head or head == attempt['parent_sha']:
@@ -504,7 +515,41 @@ class LocalAdapter:
             return None
         if sorted(writer.head_paths()) != sorted(attempt['paths']):
             return None
+        identity = writer.head_identity()
+        if identity is None:
+            return None
+        name, email, subject, body = identity
+        if (name != attempt['author_name'] or email != attempt['author_email']
+                or subject != attempt['subject']):
+            return None
+        if 'Coopagents-task: %d' % attempt['task_id'] not in body.splitlines():
+            return None
         return head
+
+    def _resolve_attempt(self, task_id, session_key, epoch, branch, writer, attempt, attempt_path):
+        """Resume a matching previous attempt, or discard it as stale.
+
+        Returns the resume result when the attempt was resumed (including a
+        gate conflict), or None when the attempt was stale and cleared. The
+        caller decides what each outcome means for its own path: a retry
+        with no new changes returns the resume result, while a delivery
+        with new changes resumes first and then proceeds, so a previous
+        attempt is never silently overwritten.
+        """
+        if attempt['head_sha'] is not None and attempt['head_sha'] == writer.head_sha():
+            return self._resume_delivery(task_id, session_key, epoch, branch, writer,
+                                         attempt, attempt_path)
+        if attempt['head_sha'] is None:
+            adopted = self._adopt_pending_attempt(writer, attempt)
+            if adopted is not None:
+                attempt = dict(attempt, head_sha=adopted,
+                               body=self._pr_body(task_id, attempt['task_title'],
+                                                  attempt['summary'], branch,
+                                                  attempt['base_branch'], adopted))
+                return self._resume_delivery(task_id, session_key, epoch, branch, writer,
+                                             attempt, attempt_path)
+        self._clear_attempt(attempt_path)
+        return None
 
     def _resume_delivery(self, task_id, session_key, epoch, branch, writer, attempt, attempt_path):
         """Finish a delivery interrupted after its commit: re-check the gate, push, register.

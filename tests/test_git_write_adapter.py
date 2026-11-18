@@ -449,7 +449,9 @@ class DeliverAdapterTests(unittest.TestCase):
             'branch': self.branch, 'head_sha': None, 'parent_sha': self.head,
             'paths': ['README.md'], 'request_key': 'k-pending',
             'base_branch': 'main', 'title': 'Task 7: Ship the login', 'body': None,
-            'task_title': 'Build Login', 'summary': 'Ship the login'})
+            'task_title': 'Build Login', 'summary': 'Ship the login',
+            'author_name': 'Wei Chen', 'author_email': 'wei@example.com',
+            'subject': 'Task 7: Ship the login'})
         (self.repo / 'extra.py').write_text('x=1\n', encoding='utf-8')
         git(self.repo, 'add', 'extra.py')
         git(self.repo, 'commit', '-m', 'own tools')
@@ -466,11 +468,88 @@ class DeliverAdapterTests(unittest.TestCase):
             'branch': self.branch, 'head_sha': None, 'parent_sha': self.head,
             'paths': ['README.md'], 'request_key': 'k-pending',
             'base_branch': 'main', 'title': 'Task 7: Ship the login', 'body': None,
-            'task_title': 'Build Login', 'summary': 'Ship the login'})
+            'task_title': 'Build Login', 'summary': 'Ship the login',
+            'author_name': 'Wei Chen', 'author_email': 'wei@example.com',
+            'subject': 'Task 7: Ship the login'})
         with self.assertRaises(ValidationError) as caught:
             self.adapter.deliver(7, 'Ship the login', session_key='s1')
         self.assertIn('No changes to deliver', str(caught.exception))
         self.assertFalse(path.exists())
+
+    def test_pending_attempt_rejects_same_path_commit_by_other_author(self):
+        self.stub()
+        path = self.attempt_path()
+        self.adapter._write_attempt(path, {
+            'schema_version': 1, 'task_id': 7, 'ownership_epoch': 1,
+            'branch': self.branch, 'head_sha': None, 'parent_sha': self.head,
+            'paths': ['README.md'], 'request_key': 'k-pending',
+            'base_branch': 'main', 'title': 'Task 7: Ship the login', 'body': None,
+            'task_title': 'Build Login', 'summary': 'Ship the login',
+            'author_name': 'Wei Chen', 'author_email': 'wei@example.com',
+            'subject': 'Task 7: Ship the login'})
+        (self.repo / 'README.md').write_text('shipped\n', encoding='utf-8')
+        git(self.repo, 'add', 'README.md')
+        git(self.repo, 'commit', '-m', 'own tools')
+        with self.assertRaises(ValidationError) as caught:
+            self.adapter.deliver(7, 'Ship the login', session_key='s1')
+        self.assertIn('No changes to deliver', str(caught.exception))
+        self.assertFalse(path.exists())
+
+    def test_second_delivery_resumes_previous_attempt_first(self):
+        import json
+        calls = self.stub(fail_deliveries=1)
+        (self.repo / 'README.md').write_text('shipped\n', encoding='utf-8')
+        with self.assertRaises(OutboxError):
+            self.adapter.deliver(7, 'Ship the login', session_key='s1')
+        first_key = json.loads(self.attempt_path().read_text(encoding='utf-8'))['request_key']
+        first_head = git(self.repo, 'rev-parse', 'HEAD').decode().strip()
+        (self.repo / 'README.md').write_text('shipped v2\n', encoding='utf-8')
+        result = self.adapter.deliver(7, 'Ship the extra', session_key='s1')
+        self.assertEqual(result['status'], 'pr_opened')
+        self.assertNotEqual(result['head_sha'], first_head)
+        self.assertEqual(git(self.repo, 'rev-list', '--count', 'HEAD').decode().strip(), '3')
+        delivered = self.paths_called(calls, '/api/git/deliveries')
+        self.assertEqual(len(delivered), 3)
+        self.assertEqual(delivered[0]['request_key'], first_key)
+        self.assertEqual(delivered[1]['request_key'], first_key)
+        self.assertNotEqual(delivered[2]['request_key'], first_key)
+        self.assertEqual(delivered[1]['head_sha'], first_head)
+        self.assertEqual(delivered[2]['head_sha'], result['head_sha'])
+        self.assertFalse(self.attempt_path().exists())
+
+    def test_stale_attempt_with_new_changes_is_discarded(self):
+        calls = self.stub(fail_deliveries=1)
+        (self.repo / 'README.md').write_text('shipped\n', encoding='utf-8')
+        with self.assertRaises(OutboxError):
+            self.adapter.deliver(7, 'Ship the login', session_key='s1')
+        (self.repo / 'extra.py').write_text('x=1\n', encoding='utf-8')
+        git(self.repo, 'add', 'extra.py')
+        git(self.repo, 'commit', '-m', 'own tools')
+        (self.repo / 'README.md').write_text('shipped v2\n', encoding='utf-8')
+        result = self.adapter.deliver(7, 'Ship the login', session_key='s1')
+        self.assertEqual(result['status'], 'pr_opened')
+        delivered = self.paths_called(calls, '/api/git/deliveries')
+        self.assertEqual(len(delivered), 2)
+        self.assertNotEqual(delivered[0]['request_key'], delivered[1]['request_key'])
+        self.assertFalse(self.attempt_path().exists())
+
+    def test_blocked_resume_stops_new_delivery_and_keeps_attempt(self):
+        calls = self.stub(fail_deliveries=1)
+        (self.repo / 'README.md').write_text('shipped\n', encoding='utf-8')
+        with self.assertRaises(OutboxError):
+            self.adapter.deliver(7, 'Ship the login', session_key='s1')
+        first_head = git(self.repo, 'rev-parse', 'HEAD').decode().strip()
+        (self.repo / 'README.md').write_text('shipped v2\n', encoding='utf-8')
+        blocked_calls = self.stub(blocked=True)
+        result = self.adapter.deliver(7, 'Ship the extra', session_key='s1')
+        self.assertEqual(result['status'], 'conflict')
+        self.assertEqual(git(self.repo, 'rev-parse', 'HEAD').decode().strip(), first_head)
+        self.assertTrue(self.attempt_path().is_file())
+        self.assertEqual(self.paths_called(blocked_calls, '/api/git/deliveries'), [])
+        self.stub()
+        result = self.adapter.deliver(7, 'Ship the extra', session_key='s1')
+        self.assertEqual(result['status'], 'pr_opened')
+        self.assertFalse(self.attempt_path().exists())
 
     def test_deliver_preview_executes_no_writes(self):
         calls = self.stub()
