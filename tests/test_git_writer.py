@@ -9,7 +9,7 @@ from unittest.mock import patch
 from uuid import uuid4
 
 from coopagents.errors import AccessDenied, Conflict, ValidationError
-from coopagents.git_workspace import branch_name, task_branch_name, validate_relative_paths
+from coopagents.git_workspace import branch_name, parse_task_branch_name, task_branch_name, validate_relative_paths
 from coopagents.git_writer import GitWriter, commit_message, find_secret_paths
 from coopagents.identity import IdentityStore
 from coopagents.repositories import RepositoryStore, now
@@ -79,6 +79,20 @@ class BranchNamingTests(unittest.TestCase):
         self.assertEqual(task_branch_name(1, 1, '你好世界'), 'coopagents/task-1-1-task')
         self.assertEqual(task_branch_name(1, 1, 'Fix: crash!! now'), 'coopagents/task-1-1-fix-crash-now')
         self.assertNotEqual(task_branch_name(3, 2, 'Build'), task_branch_name(3, 3, 'Build'))
+
+    def test_parse_task_branch_name_round_trips_and_rejects_foreign_names(self):
+        for task_id, epoch, title in [(3, 2, 'Build Login Page!'), (1, 0, 'x'), (1, 1, '你好世界'),
+                                      (7, 12, 'a' * 100)]:
+            name = task_branch_name(task_id, epoch, title)
+            self.assertEqual(parse_task_branch_name(name), {'task_id': task_id, 'ownership_epoch': epoch})
+        for foreign in ['main', 'feature/login', 'coopagents/task-3-2-', 'coopagents/task-0-2-build',
+                        'coopagents/task-007-2-build', 'coopagents/task-3-02-build',
+                        'coopagents/task-3-2-Build', 'coopagents/task-3-2--build',
+                        'coopagents/task-3-2-build-', 'coopagents/task-3-2-' + 'a' * 41,
+                        'coopagents/task-3-build', 'coopagents/task-3-2-build/extra',
+                        'xcoopagents/task-3-2-build', '', None, 42]:
+            self.assertIsNone(parse_task_branch_name(foreign), foreign)
+        self.assertIsNone(parse_task_branch_name('coopagents/task-%d-0-build' % 2**63))
 
     def test_branch_name_rejects_injection_and_option_like_values(self):
         for bad in ('', 'main --force', '+main', '-x', 'a..b', 'a@{b}', 'a b', 'a/b/.c', 'a.lock', 'a/', '/a',

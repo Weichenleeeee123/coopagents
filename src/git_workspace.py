@@ -97,6 +97,26 @@ def task_branch_name(task_id, ownership_epoch, title):
     return branch_name(f'coopagents/task-{task_id}-{ownership_epoch}-{slug or "task"}')
 
 
+_TASK_BRANCH = re.compile(r'coopagents/task-(0|[1-9][0-9]*)-(0|[1-9][0-9]*)-([a-z0-9]+(?:-[a-z0-9]+)*)')
+
+
+def parse_task_branch_name(branch):
+    """Parse a task branch name back to its task id and ownership epoch.
+
+    Mirrors task_branch_name exactly: only names that constructor could have
+    produced match. Anything else returns None; no exception for foreign names.
+    """
+    if not isinstance(branch, str):
+        return None
+    match = _TASK_BRANCH.fullmatch(branch)
+    if not match or len(match.group(3)) > 40:
+        return None
+    task_id, epoch = int(match.group(1)), int(match.group(2))
+    if not 0 < task_id < 2**63 or not 0 <= epoch < 2**63:
+        return None
+    return {'task_id': task_id, 'ownership_epoch': epoch}
+
+
 def _remote_identity(remote):
     """Discard HTTPS authentication before producing any externally visible value."""
     if remote.lower().startswith('https://'):
