@@ -65,6 +65,12 @@ def _encode_2(descriptor):
     expires = int(datetime.fromisoformat(descriptor['expires_at']).timestamp())
     link = b''
     if 'p2p' in descriptor:
+        if set(descriptor['p2p']) - {'endpoint_id'}:
+            # The compact record carries only the endpoint key. Anything more
+            # (relay URLs) must fall back to the version-1 code, which keeps
+            # the whole link; silently dropping it would strand the member on
+            # the wrong relay.
+            raise ValueError('Not a compact descriptor')
         link = bytes.fromhex(descriptor['p2p']['endpoint_id'])
         if len(link) != 32 or link.hex() != descriptor['p2p']['endpoint_id']:
             raise ValueError('Not a compact descriptor')

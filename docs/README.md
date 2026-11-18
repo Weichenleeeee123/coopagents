@@ -37,6 +37,7 @@ For operation and support: [P2P runtime](agent-hosted-runtime.md), [harness adap
 | [可选本机看板](agent-hosted-board.md) | 共用视图和实时客户端、只读会话与主机回环访问 |
 | [空间发行验收](agent-hosted-release-report.md) | 完整回归、浏览器、发行安装与外部验证边界 |
 | [点对点异地入口](agent-hosted-p2p-report.md) | iroh 按公钥直连的设计、修正的问题、跨网络产品验收与边界 |
+| [自建中继](self-hosted-relay.md) | 自建 iroh 中继的配置面：create --relay-url、校验规则、运行方式与验证边界；默认仍用 n0 公共中继 |
 | [Agent-first acceptance](agent-first-setup-acceptance.md) | 本机 CLI/HTTP/MCP 验证、测试与发行包证据，以及待完成的真实模型/双机验收 |
 | [Agent-first setup](agent-first-setup.md) | English default: install, connect, doctor states, network recovery and security boundaries |
 | [Agent-first 首次配置](agent-first-setup.zh-CN.md) | 中文同步版：agent 配置路径、doctor 检查、网络恢复和安全边界 |

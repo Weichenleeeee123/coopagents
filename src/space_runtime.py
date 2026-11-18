@@ -127,7 +127,7 @@ def _start(profile_path):
     raise RuntimeError('Runtime did not become ready')
 
 
-def create(name, owner, state_dir, network='p2p', public_url=None, cloudflared=None):
+def create(name, owner, state_dir, network='p2p', public_url=None, cloudflared=None, relay_urls=None):
     state = private_directory(state_dir)
     profile_path, host_path = runtime_paths(state / 'profile.json')
     if profile_path.exists() or host_path.exists() or (state / 'space.sqlite3').exists():
@@ -135,6 +135,11 @@ def create(name, owner, state_dir, network='p2p', public_url=None, cloudflared=N
                               '--state-dir to create a new one' % (state, profile_path))
     if network not in ('p2p', 'local', 'quick', 'external'):
         raise ValueError('Unsupported network')
+    if relay_urls is not None:
+        if network != 'p2p':
+            raise ValueError('Relay URLs are only accepted in peer-to-peer mode')
+        from .p2p import validate_relay_urls
+        relay_urls = validate_relay_urls(relay_urls)
     if network == 'external':
         from .config import public_origin
         public_url = public_origin(public_url)
@@ -160,6 +165,8 @@ def create(name, owner, state_dir, network='p2p', public_url=None, cloudflared=N
         from .p2p import new_secret
         # The endpoint key is the space's stable network identity across restarts.
         host['p2p_secret'] = new_secret()
+        if relay_urls is not None:
+            host['relay_urls'] = relay_urls
     private_write(host_path, host)
     return start(profile_path)
 
@@ -203,7 +210,10 @@ def serve(profile_path):
                     private_write(profile_path, profile, update=True)
             elif host['network'] == 'p2p':
                 from .p2p import HostLink
-                link = HostLink(host['p2p_secret'], urlsplit(host['local_origin']).port)
+                # Pass relay URLs only when configured: the default
+                # construction must stay exactly HostLink(secret, port).
+                kwargs = {'relay_urls': host['relay_urls']} if host.get('relay_urls') is not None else {}
+                link = HostLink(host['p2p_secret'], urlsplit(host['local_origin']).port, **kwargs)
             app = create_space_app(service, room_id=profile['room_id'], origin=profile['origin'])
             control = create_control_app(profile['control_origin'], profile['control_token'], stop, profile['room_id'], ready,
                                          service=service, source_token=profile['agent_token'], p2p=link,
@@ -289,8 +299,11 @@ def space_link(profile_path, profile):
     if profile.get('control_token') and host_path.exists():
         host = read_json(host_path)
         if host.get('network') == 'p2p':
-            from .p2p import endpoint_id
-            return {'endpoint_id': endpoint_id(host['p2p_secret'])}
+            from .p2p import endpoint_id, validate_relay_urls
+            link = {'endpoint_id': endpoint_id(host['p2p_secret'])}
+            if host.get('relay_urls') is not None:
+                link['relay_urls'] = validate_relay_urls(host['relay_urls'])
+            return link
     return None
 
 
@@ -405,6 +418,9 @@ def main(argv=None):
     create_parser.add_argument('--owner', required=True)
     create_parser.add_argument('--state-dir', help='New private folder (default: a new folder under ~/.coopagents/spaces)')
     create_parser.add_argument('--network', choices=['p2p', 'local', 'quick', 'external'], default='p2p')
+    create_parser.add_argument('--relay-url', dest='relay_urls', action='append', metavar='URL',
+                               help='Self-hosted relay URL for peer-to-peer mode; repeatable, up to 4 '
+                                    '(default: the public n0 relays)')
     create_parser.add_argument('--public-url')
     create_parser.add_argument('--cloudflared')
     connect_options(create_parser)

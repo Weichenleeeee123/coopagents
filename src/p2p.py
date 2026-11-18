@@ -6,12 +6,14 @@ binds the same loopback port number on its own computer, so HTTP Host and
 Origin are byte-identical to local access and the shared boundary checks,
 HTTP/MCP operations and WebSocket events stay unchanged.
 
-Only the endpoint id (a public key) is shared in invitations; addresses come
-from iroh discovery, with relay fallback when no direct path exists.
+Invitations share the endpoint id (a public key) and, when a space configures
+them, its relay URLs; addresses come from iroh discovery, with relay fallback
+when no direct path exists.
 """
 import asyncio
 from contextlib import nullcontext
 import errno
+import ipaddress
 import json
 import logging
 import re
@@ -90,11 +92,229 @@ def validate_endpoint_id(value):
     return value
 
 
+MAX_RELAY_URLS = 4
+MAX_RELAY_URL_LENGTH = 2048
+# The v1 invitation code body is capped at 4096 base64 characters (~3072 JSON
+# bytes); the aggregate bound is measured on the JSON-serialized form of the
+# URLs, so escaping (controls, non-ASCII) cannot push an accepted list past
+# the ceiling, and keeps every accepted relay list decodable with headroom
+# for the descriptor's other fields.
+MAX_RELAY_URLS_TOTAL_LENGTH = 1024
+_HOST_LABEL = re.compile(r'[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?')
+
+
+def _ipv4_number(part):
+    """WHATWG IPv4 part value, or None if the part is not a valid number.
+
+    Hex (0x, an empty suffix means zero), octal (leading 0, digits 0-7
+    only), else decimal; an invalid octal digit fails the part rather
+    than falling back to decimal.
+    """
+    if not part:
+        return None
+    if part[:2].lower() == '0x':
+        digits = part[2:]
+        if any(char not in '0123456789abcdefABCDEF' for char in digits):
+            return None
+        return int(digits, 16) if digits else 0
+    if len(part) > 1 and part[0] == '0':
+        if any(char not in '01234567' for char in part):
+            return None
+        return int(part, 8)
+    if any(char not in '0123456789' for char in part):
+        return None
+    return int(part, 10)
+
+
+def _ends_in_number(labels):
+    """WHATWG ends-in-a-number check: an all-ASCII-digits last label, or a
+    last label the IPv4-number parser accepts.
+
+    The two rules are separate: an all-digits label enters IPv4 parsing
+    even when it is invalid octal ('09'), and an empty hex suffix ('0x')
+    is a valid number with value zero.
+    """
+    last = labels[-1]
+    if last and all('0' <= char <= '9' for char in last):
+        return True
+    return _ipv4_number(last) is not None
+
+
+def _valid_whatwg_ipv4(labels):
+    """WHATWG IPv4 validation for a host whose last label is numeric."""
+    if len(labels) > 4:
+        return False
+    numbers = []
+    for label in labels:
+        value = _ipv4_number(label)
+        if value is None:
+            return False
+        numbers.append(value)
+    if any(value > 255 for value in numbers[:-1]):
+        return False
+    return numbers[-1] < 256 ** (5 - len(numbers))
+
+
+def _valid_ace_label(label):
+    """Preliminary ACE shape check: an xn-- label's punycode payload must
+    decode to a label containing non-ASCII text that re-encodes without
+    error. 'xn--a' decodes to a C1 control and fails re-encoding; 'xn--0'
+    fails decoding outright. Equality with a re-encoded form is
+    deliberately NOT required: the IDNA2003 codec maps sharp-s and final
+    sigma, so valid modern ACE labels (xn--fa-hia, xn--3xa) would fail an
+    equality check while iroh accepts them. This helper is not a UTS46
+    verdict; full validity is established by the construction check in
+    validate_relay_urls when the binding is available.
+    """
+    if not label.startswith('xn--'):
+        return True
+    try:
+        decoded = label[4:].encode('ascii').decode('punycode')
+    except (UnicodeError, ValueError):
+        return False
+    if not any(ord(char) > 127 for char in decoded):
+        return False
+    try:
+        decoded.encode('idna')
+    except UnicodeError:
+        return False
+    return True
+
+
+def _loopback_host(hostname):
+    if hostname == 'localhost':
+        return True
+    try:
+        return ipaddress.ip_address(hostname).is_loopback
+    except ValueError:
+        return False
+
+
+def _valid_hostname(hostname, bracketed=False):
+    """Preliminary host shape/compatibility check: IP literal, WHATWG
+    IPv4, or DNS/IDNA. Full construction acceptance is reserved for the
+    binding check in validate_relay_urls; this helper only rejects what
+    is certainly unusable or outside application policy.
+
+    Bracketed authorities hold IPv6 literals only: IPvFuture spellings
+    reach this check with their brackets stripped, so they are rejected
+    here rather than read as DNS names. Scoped literals are rejected:
+    ipaddress accepts them, iroh does not. Joiners (U+200C/U+200D) are
+    rejected outright: Python's IDNA codec drops them, iroh rejects the
+    original spelling. Non-ASCII names are IDNA-converted first and all
+    later checks run on the converted form, so a name that converts to a
+    numeric host (fullwidth digits, mapped separators, removed soft
+    hyphen) is classified as numeric. The optional root dot is removed
+    after conversion, before the length cap, so mapped Unicode root
+    separators stay valid. ACE labels must decode to non-ASCII text.
+    """
+    if bracketed:
+        if '%' in hostname:
+            return False
+        try:
+            ipaddress.IPv6Address(hostname)
+            return True
+        except ValueError:
+            return False
+    if '%' in hostname or '\u200c' in hostname or '\u200d' in hostname:
+        return False
+    name = hostname
+    if any(ord(char) > 127 for char in name):
+        try:
+            name = name.encode('idna').decode('ascii')
+        except UnicodeError:
+            return False
+    if name.endswith('.'):
+        name = name[:-1]
+    if not name or len(name) > 253:
+        return False
+    try:
+        ipaddress.ip_address(name)
+        return True
+    except ValueError:
+        pass
+    labels = name.split('.')
+    if _ends_in_number(labels):
+        return _valid_whatwg_ipv4(labels)
+    return all(_HOST_LABEL.fullmatch(label) and len(label) <= 63 and _valid_ace_label(label)
+               for label in labels)
+
+
+def _check_relay_urls_construct(urls):
+    """Construction check against the iroh binding: a URL the Python
+    checks accept must also construct a relay mode, or it would fail at
+    endpoint setup after being saved. Python's IDNA codec cannot
+    establish UTS46 validity on its own, so the binding is the oracle
+    for the IDNA surface. Skipped when the binding is not installed
+    (the space extra): the Python checks are the approximation there,
+    and construction fails loudly at serve time. Any construction
+    failure rejects the URL: fail closed rather than save a URL that
+    cannot be used.
+    """
+    try:
+        import iroh
+    except (ImportError, OSError):
+        return
+    try:
+        iroh.RelayMode.custom_from_urls(urls)
+    except Exception as error:
+        raise ValueError('Relay URL rejected by the relay backend') from error
+
+
+def validate_relay_urls(value):
+    """Relay URLs for a self-hosted relay: 1-4 bare origins.
+
+    Plain HTTP is accepted only for loopback relays used in local development
+    and tests; a relay on any other host must be HTTPS. Credentials, queries,
+    fragments and paths below the root are rejected: the relay serves its own
+    fixed paths, so anything more is a misconfigured URL. The authority is
+    validated up front — a host or port iroh cannot consume is rejected here,
+    not deferred to endpoint setup after the URL has been saved. The Python
+    checks enforce the application policy and WHATWG/IDNA shape rules; when
+    the iroh binding is installed, the URLs must additionally construct a
+    relay mode, which is the final word on IDNA validity.
+    """
+    if not isinstance(value, (list, tuple)) or not 1 <= len(value) <= MAX_RELAY_URLS:
+        raise ValueError('Relay URLs must be a list of 1 to 4 URLs')
+    urls = []
+    for url in value:
+        if (not isinstance(url, str) or not url or len(url) > MAX_RELAY_URL_LENGTH
+                or any(char.isspace() or ord(char) < 32 or ord(char) == 127 for char in url)):
+            raise ValueError('Invalid relay URL')
+        if '?' in url or '#' in url:
+            raise ValueError('Relay URL must not carry a query or a fragment')
+        parts = urlsplit(url)
+        if parts.scheme not in ('http', 'https'):
+            raise ValueError('Relay URL must be an HTTP(S) URL with a host')
+        try:
+            hostname = parts.hostname
+            port = parts.port
+        except ValueError:
+            raise ValueError('Invalid relay URL authority') from None
+        bracketed = parts.netloc.rsplit('@', 1)[-1].startswith('[')
+        if not hostname or not _valid_hostname(hostname, bracketed) or port == 0:
+            raise ValueError('Invalid relay URL authority')
+        if parts.username is not None or parts.password is not None:
+            raise ValueError('Relay URL must not carry credentials')
+        if parts.path not in ('', '/'):
+            raise ValueError('Relay URL must be a bare origin without a path')
+        if parts.scheme == 'http' and not _loopback_host(hostname):
+            raise ValueError('A non-loopback relay URL must use HTTPS')
+        urls.append(url)
+    if sum(len(json.dumps(url)) - 2 for url in urls) > MAX_RELAY_URLS_TOTAL_LENGTH:
+        raise ValueError('Relay URLs exceed the total length an invitation code can carry')
+    _check_relay_urls_construct(urls)
+    return urls
+
+
 def validate_link(value):
-    if not isinstance(value, dict) or set(value) != {'endpoint_id'}:
+    if not isinstance(value, dict) or 'endpoint_id' not in value or set(value) - {'endpoint_id', 'relay_urls'}:
         raise ValueError('Invalid peer-to-peer link')
     validate_endpoint_id(value['endpoint_id'])
-    return value
+    link = {'endpoint_id': value['endpoint_id']}
+    if 'relay_urls' in value:
+        link['relay_urls'] = validate_relay_urls(value['relay_urls'])
+    return link
 
 
 def new_secret():
@@ -105,10 +325,19 @@ def endpoint_id(secret):
     return str(_iroh().SecretKey.from_bytes(bytes.fromhex(secret)).public())
 
 
-def _options(*, secret=None, alpns=None, local_only=False):
+def _options(*, secret=None, alpns=None, local_only=False, relay_urls=None):
     iroh = _iroh()
     # local_only disables relay and discovery: direct addresses on this
     # computer only. It exists for deterministic offline tests.
+    if relay_urls is not None:
+        if local_only:
+            raise ValueError('Custom relay URLs conflict with local-only mode')
+        # RelayMode.relay_map segfaults in the iroh 1.1.0 Python bindings
+        # (verified by construction probes); custom_from_urls is the working
+        # constructor for a caller-supplied relay list.
+        return iroh.EndpointOptions(preset=iroh.preset_n0(),
+                                    secret_key=bytes.fromhex(secret) if secret else None, alpns=alpns,
+                                    relay_mode=iroh.RelayMode.custom_from_urls(validate_relay_urls(relay_urls)))
     preset = iroh.preset_minimal() if local_only else iroh.preset_n0()
     return iroh.EndpointOptions(preset=preset, secret_key=bytes.fromhex(secret) if secret else None, alpns=alpns)
 
@@ -180,7 +409,7 @@ def _splice(reader, writer, bi):
 class HostLink:
     """Accept members by endpoint key and forward streams to the loopback port."""
 
-    def __init__(self, secret, target_port, *, local_only=False, online_timeout=10):
+    def __init__(self, secret, target_port, *, local_only=False, online_timeout=10, relay_urls=None):
         self.target_port = target_port
         self.connections = set()
         self._online = False
@@ -188,7 +417,7 @@ class HostLink:
         self._started_at = time.monotonic()
         self._closed = False
         self.endpoint = None
-        self.endpoint = _run(self._bind(secret, local_only, online_timeout), online_timeout + 20)
+        self.endpoint = _run(self._bind(secret, local_only, online_timeout, relay_urls), online_timeout + 20)
         self.endpoint_id = str(self.endpoint.id())
         self.accepting = asyncio.run_coroutine_threadsafe(self._accept(), _background_loop())
 
@@ -227,8 +456,9 @@ class HostLink:
         result['direct_addresses'] = addresses['addresses']
         return result
 
-    async def _bind(self, secret, local_only, online_timeout):
-        endpoint = await _iroh().Endpoint.bind(_options(secret=secret, alpns=[ALPN], local_only=local_only))
+    async def _bind(self, secret, local_only, online_timeout, relay_urls):
+        endpoint = await _iroh().Endpoint.bind(_options(secret=secret, alpns=[ALPN], local_only=local_only,
+                                                        relay_urls=relay_urls))
         if not local_only:
             # Remote members need the relay and discovery record. Without them
             # the space still serves direct dialers, so report rather than fail.
@@ -313,17 +543,17 @@ class HostLink:
 class MemberLink:
     """Listen on the space's loopback port and carry each connection to the host."""
 
-    def __init__(self, endpoint_id, port, *, addresses=None, local_only=False, connect_timeout=30):
+    def __init__(self, endpoint_id, port, *, addresses=None, local_only=False, connect_timeout=30, relay_urls=None):
         self.remote = validate_endpoint_id(endpoint_id)
         self.port = port
         self.addresses = addresses or {}
         self.connect_timeout = connect_timeout
         self.connection = None
-        self.server, self.endpoint = _run(self._start(local_only), 30)
+        self.server, self.endpoint = _run(self._start(local_only, relay_urls), 30)
 
-    async def _start(self, local_only):
+    async def _start(self, local_only, relay_urls):
         self.lock = asyncio.Lock()
-        endpoint = await _iroh().Endpoint.bind(_options(local_only=local_only))
+        endpoint = await _iroh().Endpoint.bind(_options(local_only=local_only, relay_urls=relay_urls))
         try:
             server = await asyncio.start_server(self._local, '127.0.0.1', self.port)
         except OSError:
@@ -432,7 +662,11 @@ def member_link(profile, *, warm=False):
         return nullcontext()
     port = urlsplit(profile['origin']).port
     try:
-        member = MemberLink(validate_link(link)['endpoint_id'], port)
+        validated = validate_link(link)
+        # Pass relay URLs only when the link carries them: the default
+        # construction must stay exactly MemberLink(endpoint_id, port).
+        kwargs = {'relay_urls': validated['relay_urls']} if 'relay_urls' in validated else {}
+        member = MemberLink(validated['endpoint_id'], port, **kwargs)
     except OSError:
         if _serves_space(profile['origin'], profile['room_id']):
             return nullcontext()

@@ -87,7 +87,7 @@ Create/status return `p2p.reason`, `summary` and `next` while the endpoint is of
 - `disconnected`: confirm that the host space is running, then rerun doctor. Do not create a second space just to recover a stopped one.
 - Identity mismatch or revoked credential: stop and obtain a new trusted invitation or project connection prompt. Do not change the destination based on a remote error message.
 
-The host computer must stay on for a local P2P space. The endpoint key survives a host restart, so existing members do not need a new invitation. A public relay can be required by NAT or firewall conditions. The published support matrix and release notes record which harness and platform combinations have real evidence.
+The host computer must stay on for a local P2P space. The endpoint key survives a host restart, so existing members do not need a new invitation. A public relay can be required by NAT or firewall conditions. By default, spaces use n0's public relays; a host can point a P2P space at self-hosted relays with `create --relay-url <URL>` instead — see [self-hosted relays](self-hosted-relay.md). The published support matrix and release notes record which harness and platform combinations have real evidence.
 
 ## Bind the repository separately
 
