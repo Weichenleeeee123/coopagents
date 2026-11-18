@@ -92,10 +92,49 @@ def validate_endpoint_id(value):
 MAX_RELAY_URLS = 4
 MAX_RELAY_URL_LENGTH = 2048
 # The v1 invitation code body is capped at 4096 base64 characters (~3072 JSON
-# bytes); the aggregate bound keeps every accepted relay list decodable with
-# headroom for the descriptor's other fields.
+# bytes); the aggregate bound is measured on the JSON-serialized form of the
+# URLs, so escaping (controls, non-ASCII) cannot push an accepted list past
+# the ceiling, and keeps every accepted relay list decodable with headroom
+# for the descriptor's other fields.
 MAX_RELAY_URLS_TOTAL_LENGTH = 1024
 _HOST_LABEL = re.compile(r'[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?')
+
+
+def _ipv4_number(part):
+    """WHATWG IPv4 part value, or None if the part is not a valid number.
+
+    Hex (0x), octal (leading 0, digits 0-7 only), else decimal; an invalid
+    octal digit fails the part rather than falling back to decimal.
+    """
+    if not part:
+        return None
+    if part[:2].lower() == '0x':
+        digits = part[2:]
+        if not digits or any(char not in '0123456789abcdefABCDEF' for char in digits):
+            return None
+        return int(digits, 16)
+    if len(part) > 1 and part[0] == '0':
+        if any(char not in '01234567' for char in part):
+            return None
+        return int(part, 8)
+    if any(char not in '0123456789' for char in part):
+        return None
+    return int(part, 10)
+
+
+def _valid_whatwg_ipv4(labels):
+    """WHATWG IPv4 validation for a host whose last label is numeric."""
+    if len(labels) > 4:
+        return False
+    numbers = []
+    for label in labels:
+        value = _ipv4_number(label)
+        if value is None:
+            return False
+        numbers.append(value)
+    if any(value > 255 for value in numbers[:-1]):
+        return False
+    return numbers[-1] < 256 ** (5 - len(numbers))
 
 
 def _loopback_host(hostname):
@@ -108,14 +147,32 @@ def _loopback_host(hostname):
 
 
 def _valid_hostname(hostname):
+    """A host iroh's URL parser accepts: IP literal, WHATWG IPv4, or DNS/IDNA.
+
+    The optional root dot is removed before the length cap, so a maximum
+    253-character name stays valid with its trailing dot. Scoped IPv6
+    literals are rejected: ipaddress accepts them, iroh does not. A host
+    whose last label is numeric must be a valid WHATWG IPv4 address, or
+    iroh rejects it as a malformed number (999.1.1.1, example.123).
+    Non-ASCII names are checked through IDNA, then as ASCII labels.
+    """
+    name = hostname[:-1] if hostname.endswith('.') else hostname
+    if not name or len(name) > 253 or '%' in name:
+        return False
     try:
-        ipaddress.ip_address(hostname)
+        ipaddress.ip_address(name)
         return True
     except ValueError:
         pass
-    if not hostname or len(hostname) > 253:
-        return False
-    labels = hostname[:-1].split('.') if hostname.endswith('.') else hostname.split('.')
+    labels = name.split('.')
+    if _ipv4_number(labels[-1]) is not None:
+        return _valid_whatwg_ipv4(labels)
+    if any(ord(char) > 127 for char in name):
+        try:
+            name = name.encode('idna').decode('ascii')
+        except UnicodeError:
+            return False
+        labels = name.split('.')
     return all(_HOST_LABEL.fullmatch(label) and len(label) <= 63 for label in labels)
 
 
@@ -134,7 +191,7 @@ def validate_relay_urls(value):
     urls = []
     for url in value:
         if (not isinstance(url, str) or not url or len(url) > MAX_RELAY_URL_LENGTH
-                or any(char.isspace() for char in url)):
+                or any(char.isspace() or ord(char) < 32 or ord(char) == 127 for char in url)):
             raise ValueError('Invalid relay URL')
         if '?' in url or '#' in url:
             raise ValueError('Relay URL must not carry a query or a fragment')
@@ -155,7 +212,7 @@ def validate_relay_urls(value):
         if parts.scheme == 'http' and not _loopback_host(hostname):
             raise ValueError('A non-loopback relay URL must use HTTPS')
         urls.append(url)
-    if sum(len(url) for url in urls) > MAX_RELAY_URLS_TOTAL_LENGTH:
+    if sum(len(json.dumps(url)) - 2 for url in urls) > MAX_RELAY_URLS_TOTAL_LENGTH:
         raise ValueError('Relay URLs exceed the total length an invitation code can carry')
     return urls
 

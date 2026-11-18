@@ -84,6 +84,29 @@ class ValidateRelayUrls(unittest.TestCase):
         self.assertEqual(sum(len(url) for url in at), p2p.MAX_RELAY_URLS_TOTAL_LENGTH)
         self.assertEqual(p2p.validate_relay_urls(at), at)
 
+    def test_rejects_numeric_and_scoped_hosts(self):
+        bad = ['https://999.1.1.1', 'https://1.2.3.999', 'https://[::1%lo]', 'http://[::1%lo]',
+               'https://example.123', 'https://1.2.3.4.5', 'https://08.1.1.1']
+        for url in bad:
+            with self.assertRaises(ValueError, msg=url):
+                p2p.validate_relay_urls([url])
+
+    def test_accepts_whatwg_numeric_hosts(self):
+        for url in ['https://127.1', 'https://1.2.3', 'https://0x7f000001', 'https://1.2.3.4']:
+            self.assertEqual(p2p.validate_relay_urls([url]), [url])
+
+    def test_accepts_idna_names_and_max_length_trailing_dot(self):
+        self.assertEqual(p2p.validate_relay_urls(['https://例子.测试']), ['https://例子.测试'])
+        host = '.'.join(['a' * 63, 'a' * 63, 'a' * 63, 'a' * 61]) + '.'
+        self.assertEqual(p2p.validate_relay_urls(['https://' + host]), ['https://' + host])
+
+    def test_rejects_control_characters(self):
+        bad = ['\x01' * 10 + 'https://relay.example.com', 'https://relay.example.com\x00',
+               'https://relay.example.com\x7f', 'https://relay.example.com/\x02']
+        for url in bad:
+            with self.assertRaises(ValueError, msg=repr(url)):
+                p2p.validate_relay_urls([url])
+
     def test_rejects_wrong_shapes(self):
         for value in [None, RELAY, [], ['https://a.example'] * 5, [None], [123]]:
             with self.assertRaises(ValueError, msg=repr(value)):
@@ -228,6 +251,22 @@ class InviteCodec(unittest.TestCase):
         data = descriptor(p2p={'endpoint_id': 'a' * 64, 'relay_urls': urls})
         code = invite_message.encode(data)
         self.assertTrue(code.startswith(invite_message.CODE_PREFIX))
+        body = code[len(invite_message.CODE_PREFIX):]
+        self.assertLessEqual(len(body), invite_message.MAX_CODE_LENGTH)
+        self.assertEqual(invite_message.decode(code), data)
+
+    def test_aggregate_bound_counts_serialized_length(self):
+        # Four short-looking URLs whose JSON-escaped form exceeds the bound.
+        over = ['https://' + '例' * 50] * 4
+        self.assertLess(sum(len(url) for url in over), p2p.MAX_RELAY_URLS_TOTAL_LENGTH)
+        self.assertGreater(sum(len(json.dumps(url)) - 2 for url in over),
+                           p2p.MAX_RELAY_URLS_TOTAL_LENGTH)
+        with self.assertRaises(ValueError):
+            p2p.validate_relay_urls(over)
+        under = ['https://' + '例' * 50] * 3
+        self.assertEqual(p2p.validate_relay_urls(under), under)
+        data = descriptor(p2p={'endpoint_id': 'a' * 64, 'relay_urls': under})
+        code = invite_message.encode(data)
         body = code[len(invite_message.CODE_PREFIX):]
         self.assertLessEqual(len(body), invite_message.MAX_CODE_LENGTH)
         self.assertEqual(invite_message.decode(code), data)
