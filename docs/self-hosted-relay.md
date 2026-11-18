@@ -7,7 +7,7 @@
 ## 设计
 
 - `create --relay-url <URL>`（可重复，最多 4 个），仅 p2p 模式接受；写入私有 `host.json` 的 `relay_urls`，`serve()` 传给 `HostLink`，`space_link()` 写进邀请链接，成员侧 `member_link()` 传给 `MemberLink`。JSON 描述文件原样携带；短邀请码（v2 编码只接受 `endpoint_id` 一个键）遇到带中继的邀请时回落到 v1 长码。
-- 校验（`validate_relay_urls`）：只接受裸 origin，不带 userinfo、query、fragment、path；非回环地址必须 HTTPS，HTTP 只允许回环（`localhost` 与 IP 回环地址，含 `::1` 的展开写法）；主机名与端口在保存前就校验（非法端口、超范围端口、百分号编码混淆的主机名都会被拒）；单条 ≤2048 字符，合计 ≤1024 字符，保证邀请码可解码。
+- 校验（`validate_relay_urls`）：只接受裸 origin（允许根路径 `/`，根路径以下的 path 不接受），不带 userinfo、query、fragment、控制字符；主机名按 iroh 可接受的形式校验（DNS/IDNA 名称、IP 字面量、WHATWG 数字地址，拒绝带 scope 的 IPv6 字面量与非法数字地址），端口在保存前就解析；非回环地址必须 HTTPS，HTTP 只允许回环（`localhost` 与 IP 回环地址，含 `::1` 的展开写法）；单条 ≤2048 字符，序列化后合计 ≤1024 字符，保证邀请码可解码。
 - iroh 映射：`RelayMode.custom_from_urls(urls)` + `preset_n0`。`RelayMode.relay_map(m)` 在 iroh 1.1.0 会段错误（exit 139），永不使用（代码中有注释）。
 - 未配置中继时，`HostLink` / `MemberLink` 的构造调用与原来逐字节相同：`relay_urls` 只在配置了才传参，避免破坏已有 fake 与子类。
 - iroh 上报的 `addr().relay_url()` 带尾部斜杠（`http://127.0.0.1:3340/`），与配置字符串比较时需先去掉斜杠。
