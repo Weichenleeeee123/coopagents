@@ -10,7 +10,7 @@ import threading
 
 from .errors import AccessDenied, Conflict, NotFound, ValidationError
 from .github_app import GitHubError, positive_id, complete_sha
-from .git_workspace import branch_name  # noqa: F401  (re-exported; delivery and callers import it here)
+from .git_workspace import branch_name, parse_task_branch_name  # noqa: F401  (re-exported; delivery and callers import it here)
 from .repositories import now, require_manager, timestamp, visible_task
 
 
@@ -73,6 +73,8 @@ class GitHubSync:
                 c.execute("ALTER TABLE github_evidence ADD COLUMN discovery_json TEXT NOT NULL DEFAULT '{}' ")
             if 'releases_json' not in {r['name'] for r in c.execute('PRAGMA table_info(github_evidence)')}:
                 c.execute("ALTER TABLE github_evidence ADD COLUMN releases_json TEXT NOT NULL DEFAULT '[]'")
+            if 'unattributed_json' not in {r['name'] for r in c.execute('PRAGMA table_info(github_evidence)')}:
+                c.execute("ALTER TABLE github_evidence ADD COLUMN unattributed_json TEXT NOT NULL DEFAULT '[]'")
             c.execute('''CREATE TABLE IF NOT EXISTS git_deliveries (
                 id INTEGER PRIMARY KEY AUTOINCREMENT, room_id TEXT NOT NULL,
                 task_id INTEGER NOT NULL, ownership_epoch INTEGER NOT NULL,
@@ -741,7 +743,61 @@ class GitHubSync:
                 or ('limit' in discovery and (type(discovery['limit']) is not int or not 1<=discovery['limit']<=20))
                 or ('truncated' in discovery and type(discovery['truncated']) is not bool)):
             raise GitHubError('GitHub release discovery bounds are invalid')
-        return deliveries,[p for p in normalized if p['number'] not in associated],list(normalized_releases.values()),discovery
+        unattributed=GitHubSync._classify_discovered(state,refs,branches,commits,normalized,sync_at)
+        return deliveries,[p for p in normalized if p['number'] not in associated],list(normalized_releases.values()),discovery,unattributed
+
+    @staticmethod
+    def _classify_discovered(state,refs,branches,commits,normalized,sync_at):
+        """Classify discovered branches: governed, task-named direct, or unattributed.
+
+        Presentation only: nothing here creates refs, associates tasks, or
+        blocks. A branch matching a task branch name is attributed to that
+        task with source 'direct'; snapshot() later drops entries whose task
+        is cancelled or whose epoch no longer matches. The default branch is
+        reported only through its own entry, never duplicated below.
+        """
+        discovered=state.get('discovered_branches',[])
+        if not isinstance(discovered,list) or len(discovered)>50:
+            raise GitHubError('GitHub branch discovery is invalid')
+        default_branch=state.get('default_branch')
+        if default_branch is not None and not isinstance(default_branch,str):
+            raise GitHubError('GitHub default branch is invalid')
+        governed={ref['branch'] for ref in refs if ref.get('branch')}
+        known={sha for sha in branches.values() if isinstance(sha,str) and SHA.fullmatch(sha)}
+        known.update(sha for sha in commits if isinstance(sha,str) and SHA.fullmatch(sha))
+        for pr in normalized:
+            known.add(pr['head_sha'])
+        for pr in state.get('pull_requests',[]):
+            merge_sha=pr.get('merge_commit_sha') if isinstance(pr,dict) else None
+            if isinstance(merge_sha,str) and SHA.fullmatch(merge_sha):
+                known.add(merge_sha)
+        unattributed=[]
+        for item in discovered:
+            if not isinstance(item,dict):
+                raise GitHubError('GitHub branch discovery is invalid')
+            name,sha=item.get('branch'),item.get('head_sha')
+            try: branch_name(name)
+            except ValidationError: raise GitHubError('GitHub branch discovery is invalid') from None
+            if not isinstance(sha,str) or not SHA.fullmatch(sha):
+                raise GitHubError('GitHub branch discovery is invalid')
+            if name in governed or name==default_branch:
+                continue
+            parsed=parse_task_branch_name(name)
+            if parsed:
+                unattributed.append({'kind':'direct_branch','task_id':parsed['task_id'],
+                    'ownership_epoch':parsed['ownership_epoch'],'branch':name,'head_sha':sha,
+                    'source':'direct','sync_at':sync_at,'stale':False})
+            else:
+                unattributed.append({'kind':'unattributed_branch','branch':name,'head_sha':sha,
+                    'source':'direct','sync_at':sync_at,'stale':False})
+        default_head=state.get('default_branch_head_sha')
+        if default_branch and default_head:
+            if not isinstance(default_head,str) or not SHA.fullmatch(default_head):
+                raise GitHubError('GitHub default branch head is invalid')
+            if default_head not in known:
+                unattributed.append({'kind':'default_branch_direct_push','branch':default_branch,
+                    'head_sha':default_head,'source':'direct','sync_at':sync_at,'stale':False})
+        return unattributed
 
     def _reconcile(self,room_id,token=None):
         with self.db.connect(write=True) as c:
@@ -772,14 +828,20 @@ class GitHubSync:
             state=self.app.repository_state(conn['installation_id'],conn['repository_id'],conn['full_name'],
                 branches=sorted({r['branch'] for r in refs if r['branch']}),pr_numbers=sorted(explicit.union(prior_candidates)),
                 commit_shas=sorted({r['commit_sha'] for r in refs if r.get('commit_sha')}),release_ids=explicit_releases)
-            sync_at=now().isoformat();deliveries,pending,releases,release_discovery=self._evidence(state,refs,conn,sync_at)
+            sync_at=now().isoformat();deliveries,pending,releases,release_discovery,unattributed=self._evidence(state,refs,conn,sync_at)
             discovery=state.get('discovery',{})
             if (not isinstance(discovery,dict) or set(discovery)-{'limit','truncated','state'}
                     or ('limit' in discovery and (type(discovery['limit']) is not int or not 1<=discovery['limit']<=50))):
                 raise GitHubError('GitHub discovery bounds are invalid')
+            branch_discovery=state.get('branch_discovery',{'limit':50,'truncated':False})
+            if (not isinstance(branch_discovery,dict) or set(branch_discovery)-{'limit','truncated'}
+                    or ('limit' in branch_discovery and (type(branch_discovery['limit']) is not int or not 1<=branch_discovery['limit']<=50))
+                    or ('truncated' in branch_discovery and type(branch_discovery['truncated']) is not bool)):
+                raise GitHubError('GitHub branch discovery bounds are invalid')
             discovery['releases']=release_discovery
-            deliveries_json=json.dumps(deliveries);pending_json=json.dumps(pending);discovery_json=json.dumps(discovery);releases_json=json.dumps(releases)
-            if len((deliveries_json+pending_json+discovery_json+releases_json).encode())>MAX_EVIDENCE_BYTES:
+            discovery['branches']=branch_discovery
+            deliveries_json=json.dumps(deliveries);pending_json=json.dumps(pending);discovery_json=json.dumps(discovery);releases_json=json.dumps(releases);unattributed_json=json.dumps(unattributed)
+            if len((deliveries_json+pending_json+discovery_json+releases_json+unattributed_json).encode())>MAX_EVIDENCE_BYTES:
                 raise GitHubError('GitHub evidence exceeds output budget')
         except AccessDenied:
             self._revoke(room_id,conn['revision'])
@@ -795,12 +857,12 @@ class GitHubSync:
             if token: self.identity.resolve(c,token)
             current=c.execute('SELECT revision,status FROM github_connections WHERE room_id=?',(room_id,)).fetchone()
             if not current or current['revision']!=conn['revision'] or current['status']!='active': return False
-            c.execute('''INSERT INTO github_evidence(room_id,revision,deliveries_json,pending_json,sync_at,discovery_json,releases_json)
-                VALUES(?,?,?,?,?,?,?) ON CONFLICT(room_id) DO UPDATE SET
+            c.execute('''INSERT INTO github_evidence(room_id,revision,deliveries_json,pending_json,sync_at,discovery_json,releases_json,unattributed_json)
+                VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(room_id) DO UPDATE SET
                 revision=excluded.revision,deliveries_json=excluded.deliveries_json,
                 pending_json=excluded.pending_json,sync_at=excluded.sync_at,discovery_json=excluded.discovery_json,
-                releases_json=excluded.releases_json''',
-                (room_id,conn['revision'],deliveries_json,pending_json,sync_at,discovery_json,releases_json))
+                releases_json=excluded.releases_json,unattributed_json=excluded.unattributed_json''',
+                (room_id,conn['revision'],deliveries_json,pending_json,sync_at,discovery_json,releases_json,unattributed_json))
             c.execute('UPDATE github_connections SET sync_at=? WHERE room_id=?',(sync_at,room_id))
         return True
 
@@ -809,7 +871,7 @@ class GitHubSync:
             principal=self.identity.resolve(c,token)
             conn=c.execute('SELECT * FROM github_connections WHERE room_id=?',(principal.room_id,)).fetchone()
             evidence=c.execute('SELECT * FROM github_evidence WHERE room_id=?',(principal.room_id,)).fetchone()
-            deliveries=[];pending=[];events=[];discovery={};releases=[]
+            deliveries=[];pending=[];events=[];discovery={};releases=[];unattributed=[]
             if conn:
                 events=[dict(r) for r in c.execute('''SELECT delivery_id,event,status,received_at,completed_at,attempts
                     FROM github_inbox WHERE installation_id=? AND (repository_id=? OR repository_id IS NULL)
@@ -818,7 +880,8 @@ class GitHubSync:
                     deliveries=json.loads(evidence['deliveries_json']);pending=json.loads(evidence['pending_json'])
                     discovery=json.loads(evidence['discovery_json'])
                     releases=json.loads(evidence['releases_json'])
-                    for row in deliveries+pending+releases:
+                    unattributed=json.loads(evidence['unattributed_json'])
+                    for row in deliveries+pending+releases+unattributed:
                         row['stale']=timestamp(evidence['sync_at'])<now()-timedelta(minutes=15)
             active_refs = {r['id']:(r['task_id'],r['ownership_epoch'],r['linked_at']) for r in c.execute('SELECT * FROM github_refs WHERE room_id=?',(principal.room_id,))}
             active_refs.update({'commit:'+str(r['id']):(r['task_id'],r['ownership_epoch'],r['linked_at']) for r in c.execute('SELECT * FROM github_commit_refs WHERE room_id=?',(principal.room_id,))})
@@ -828,8 +891,11 @@ class GitHubSync:
                 and r['task_id'] in tasks and not tasks[r['task_id']]['cancelled_at']
                 and r.get('ownership_epoch',0)==tasks[r['task_id']]['ownership_epoch']==active_refs[r['ref_id']][1]
                 and r['sync_at'] >= active_refs[r['ref_id']][2]]
+            unattributed = [r for r in unattributed if r.get('task_id') is None
+                or (r['task_id'] in tasks and not tasks[r['task_id']]['cancelled_at']
+                    and r.get('ownership_epoch',0)==tasks[r['task_id']]['ownership_epoch'])]
             snapshot={'connection':dict(conn) if conn else None,'deliveries':deliveries,'releases':releases,'github_events':events,
-                      'github_pending':pending,'github_discovery':discovery}
+                      'github_pending':pending,'github_discovery':discovery,'github_unattributed':unattributed}
             if len(json.dumps(snapshot).encode())>MAX_SNAPSHOT_BYTES: raise GitHubError('GitHub snapshot exceeds output budget')
             return snapshot
 
