@@ -115,6 +115,24 @@ class CheckOverlapTests(GateFixture, unittest.TestCase):
         self.check(gate='delivery')
         self.assertEqual(self.blocks(), [])
 
+    def test_gated_read_with_flag_off_is_rejected_and_records_nothing(self):
+        self.observe(self.member['agent_token'], self.first['id'], ['src/shared.py'], fresh(), 's1', 'workspace-first-1')
+        self.observe(self.other['agent_token'], self.second['id'], ['src/shared.py'], fresh(), 's2', 'workspace-second-1')
+        self.repositories.set_git_write_enabled(self.owner['web_token'], False)
+        with self.assertRaises(Conflict):
+            self.check(gate='claim')
+        with self.assertRaises(Conflict):
+            self.check(gate='delivery')
+        self.assertEqual(self.blocks(), [])
+
+    def test_pure_read_with_flag_off_still_works_and_records_nothing(self):
+        self.observe(self.member['agent_token'], self.first['id'], ['src/shared.py'], fresh(), 's1', 'workspace-first-1')
+        self.observe(self.other['agent_token'], self.second['id'], ['src/shared.py'], fresh(), 's2', 'workspace-second-1')
+        self.repositories.set_git_write_enabled(self.owner['web_token'], False)
+        result = self.check()
+        self.assertTrue(result['blocked'])
+        self.assertEqual(self.blocks(), [])
+
     def test_invalid_gate_and_paths_rejected(self):
         with self.assertRaises(ValidationError):
             self.check(gate='merge')

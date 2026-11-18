@@ -311,6 +311,8 @@ class RepositoryStore:
 
         Without paths, the caller's fresh observation paths are checked. The
         read itself never blocks; callers enforcing a gate raise on `blocked`.
+        A gated call is a write-path act and requires the space's git write
+        flag; a pure read persists nothing and needs no flag.
         """
         if gate is not None and gate not in ('claim', 'delivery'):
             raise ValidationError('Expected an overlap gate')
@@ -319,6 +321,10 @@ class RepositoryStore:
         with self.db.connect(write=True) as c:
             principal = self.identity.resolve(c, token, required_kind='agent')
             task = visible_task(c, principal, task_id, session_key=session_key, ownership_epoch=ownership_epoch)
+            if gate is not None:
+                binding = c.execute('SELECT * FROM repo_bindings WHERE room_id=?', (principal.room_id,)).fetchone()
+                if not binding or not binding['git_write_enabled']:
+                    raise Conflict('Git write path is not enabled for this space')
             checked, fresh, conflicts = self.evaluate_gate(
                 c, principal.room_id, principal.member_id, task_id, task['ownership_epoch'], paths)
             blocked = bool(conflicts)
