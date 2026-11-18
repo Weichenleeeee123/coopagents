@@ -543,6 +543,12 @@ class GitHubSync:
                   None) if isinstance(prs, list) else None
         if pr is None:
             raise Conflict('PR is no longer visible to the App; re-check it on GitHub')
+        # The statuses list is the full per-context history, newest first;
+        # the preflight must judge only the latest entry per context, using
+        # the same normalizer as the evidence path. Check runs arrive
+        # deduplicated (?filter=latest), so only the SHA filter applies.
+        checks, statuses = self._checks_at(pr['head_sha'], pr)
+        pr = {**pr, 'checks': checks, 'statuses': statuses}
         if pr.get('merged'):
             if preview:
                 return {'preview': True, 'merge_request_id': request['id'], 'task_id': request['task_id'],

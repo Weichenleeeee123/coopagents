@@ -408,6 +408,29 @@ class MergePrTests(MergeFixture, unittest.TestCase):
         self.assertIn('deploy', str(caught.exception))
         self.assertEqual(self.app.merges, [])
 
+    def test_only_latest_status_per_context_counts(self):
+        self.app.protection = {'required_status_checks': {'contexts': ['ci']},
+                               'required_pull_request_reviews': {'required_approving_review_count': 0},
+                               'restrictions': None}
+        # Newest first: a stale success must not satisfy a required context
+        # whose latest report is still pending.
+        self.app.pr['statuses'] = [
+            {'head_sha': 'c' * 40, 'context': 'ci', 'state': 'pending'},
+            {'head_sha': 'c' * 40, 'context': 'ci', 'state': 'success'}]
+        with self.assertRaises(Conflict) as caught:
+            self.merge()
+        self.assertIn('required checks not passing', str(caught.exception))
+        self.assertEqual(self.app.merges, [])
+        # Newest first: a stale failure must not block once the context
+        # reports success, and the preview carries the normalized list.
+        self.app.pr['statuses'] = [
+            {'head_sha': 'c' * 40, 'context': 'ci', 'state': 'success'},
+            {'head_sha': 'c' * 40, 'context': 'ci', 'state': 'failure'}]
+        preview = self.merge(preview=True)
+        self.assertFalse(preview['blocked'])
+        self.assertEqual(preview['statuses'], [{'head_sha': 'c' * 40, 'context': 'ci', 'state': 'success'}])
+        self.assertEqual(self.merge()['state'], 'merged')
+
     def test_truncated_checks_block(self):
         self.app.pr['checks_truncated'] = True
         with self.assertRaises(Conflict) as caught:
