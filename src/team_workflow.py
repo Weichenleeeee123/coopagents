@@ -463,7 +463,9 @@ class TeamWorkflowStore:
                     'pr_number': merge['pr_number'], 'pr_url': merge['pr_url'],
                     'branch': merge['branch'], 'head_sha': merge['head_sha'],
                     'ownership_epoch': merge['ownership_epoch'], 'operation': 'merge_pr',
-                    'payload': {'merge_request_id': merge['id']},
+                    'payload': {'merge_request_id': merge['id'], 'expected_revision': merge['revision'],
+                                'expected_head_sha': merge['head_sha'],
+                                'expected_base_branch': merge['base_branch']},
                     'eligible': can_manage, 'requires_human': True,
                     'authority': 'project_manager_web_user'})
         return agreements, cards

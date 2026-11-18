@@ -82,7 +82,7 @@ global.document={createElement:tag=>new Element(tag),activeElement:null};
   const writeGit={can_manage:true,binding:{repository:'acme/demo'},
     branches:[{task_id:1,ownership_epoch:1,branch:'coopagents/task-1-1-build-login',base_sha:'a'.repeat(40),created_at:'2026-01-01T00:00:00Z',pushed_at:null}],
     conflict_blocks:[{id:7,task_id:1,ownership_epoch:1,gate:'delivery',paths:['src/shared.py'],conflicts:[{task_id:2,member_id:'m2',paths:['src/shared.py']}]}],
-    merge_requests:[{id:9,task_id:1,ownership_epoch:1,pr_number:42,branch:'coopagents/task-1-1-build-login',base_branch:'main',head_sha:'c'.repeat(40),created_at:'2026-01-01T00:00:00Z'}]};
+    merge_requests:[{id:9,task_id:1,ownership_epoch:1,pr_number:42,branch:'coopagents/task-1-1-build-login',base_branch:'main',head_sha:'c'.repeat(40),revision:3,created_at:'2026-01-01T00:00:00Z'}]};
   Git.renderDetails(writeDetail,{...task,ownership_epoch:1},writeGit,{...context,me:{member_id:'member'},memberName:()=>'Member',api:async(path,payload)=>{writeCall={path,payload};},sync:async()=>{}});
   const writeText=descendants(writeDetail).map(n=>n.textContent).join(' ');
   assert.match(writeText,/任务分支 coopagents\/task-1-1-build-login · 基准 aaaaaaaaaaaa/);
@@ -95,7 +95,7 @@ global.document={createElement:tag=>new Element(tag),activeElement:null};
   assert.deepEqual(writeCall,{path:'/api/git/overlap-overrides',payload:{block_id:7,reason:'coordinated'}});
   const mergeButton=descendants(writeDetail).find(n=>n.textContent==='合并 PR #42');
   await mergeButton.listeners.click();
-  assert.deepEqual(writeCall,{path:'/api/git/merge',payload:{merge_request_id:9}});
+  assert.deepEqual(writeCall,{path:'/api/git/merge',payload:{merge_request_id:9,expected_revision:3,expected_head_sha:'c'.repeat(40),expected_base_branch:'main'}});
   // A non-manager sees the wait state without the mutation controls.
   const plainDetail=new Element('div');
   Git.renderDetails(plainDetail,{...task,ownership_epoch:1},{...writeGit,can_manage:false},{...context,me:{member_id:'other'},memberName:()=>'Member',api:async()=>{},sync:async()=>{}});

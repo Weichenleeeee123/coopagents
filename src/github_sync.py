@@ -90,10 +90,13 @@ class GitHubSync:
                 pr_number INTEGER NOT NULL, pr_url TEXT NOT NULL DEFAULT '',
                 branch TEXT NOT NULL, head_sha TEXT NOT NULL, base_branch TEXT NOT NULL,
                 state TEXT NOT NULL, request_key TEXT NOT NULL, requested_by TEXT NOT NULL,
+                revision INTEGER NOT NULL DEFAULT 1,
                 merge_sha TEXT NOT NULL DEFAULT '', merged_by TEXT NOT NULL DEFAULT '',
                 merged_at TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
                 UNIQUE(room_id,task_id,ownership_epoch),
                 FOREIGN KEY(task_id,room_id) REFERENCES tasks(id,room_id))''')
+            if 'revision' not in {r['name'] for r in c.execute('PRAGMA table_info(git_merge_requests)')}:
+                c.execute('ALTER TABLE git_merge_requests ADD COLUMN revision INTEGER NOT NULL DEFAULT 1')
             if 'write_scope_verified' not in {r['name'] for r in c.execute('PRAGMA table_info(github_connections)')}:
                 c.execute('ALTER TABLE github_connections ADD COLUMN write_scope_verified INTEGER NOT NULL DEFAULT 0')
             c.execute('''CREATE TABLE IF NOT EXISTS github_inbox (
@@ -422,7 +425,7 @@ class GitHubSync:
                                                        or existing['base_branch'] != delivery['base_branch']):
                     if not preview:
                         c.execute('''UPDATE git_merge_requests SET head_sha=?, branch=?, base_branch=?,
-                            updated_at=? WHERE id=?''',
+                            revision=revision+1, updated_at=? WHERE id=?''',
                             (delivery['head_sha'], delivery['branch'], delivery['base_branch'],
                              now().isoformat(), existing['id']))
                         return dict(c.execute('SELECT * FROM git_merge_requests WHERE id=?', (existing['id'],)).fetchone())
@@ -505,7 +508,8 @@ class GitHubSync:
             (stamp, request['room_id'], request['task_id'], request['ownership_epoch'], request['pr_number']))
         return dict(connection.execute('SELECT * FROM git_merge_requests WHERE id=?', (request['id'],)).fetchone())
 
-    def merge_pr(self, token, merge_request_id, preview=False):
+    def merge_pr(self, token, merge_request_id, preview=False, *, expected_head_sha, expected_base_branch,
+                 expected_revision):
         """Execute a human-approved merge (W4, D1: web-only, manager-only).
 
         Verifies preconditions against live GitHub state, then merges with a
@@ -513,10 +517,20 @@ class GitHubSync:
         accepts the task (D6); acceptance stays a separate human act. Preview
         runs the live precondition reads and describes the PUT without merging,
         and never writes — including when the PR is already merged.
+
+        The decision is bound to the exact card the human saw: the caller
+        supplies the revision, head SHA, and base branch that were displayed,
+        and any drift since — a redelivery mutating the request in place, or
+        the PR itself retargeted on GitHub — blocks the merge until the human
+        reviews the current state.
         """
         positive_id(merge_request_id)
         if type(preview) is not bool:
             raise ValidationError('Expected a preview flag')
+        expected_head_sha = complete_sha(expected_head_sha)
+        expected_base_branch = branch_name(expected_base_branch)
+        if type(expected_revision) is not int or expected_revision < 1:
+            raise ValidationError('Expected a positive merge request revision')
         with self.db.connect() as c:
             principal = self.identity.resolve(c, token, required_kind='web')
             require_manager(self.identity, c, principal)
@@ -535,6 +549,9 @@ class GitHubSync:
             connection = dict(conn)
         if request['state'] == 'merged':
             return request
+        if (request['revision'] != expected_revision or request['head_sha'] != expected_head_sha
+                or request['base_branch'] != expected_base_branch):
+            raise Conflict('Merge request changed since it was displayed; refresh and review the current head and target')
         self._enabled()
         state = self.app.repository_state(connection['installation_id'], connection['repository_id'],
                                           connection['full_name'], pr_numbers=(request['pr_number'],))
@@ -566,6 +583,12 @@ class GitHubSync:
         review_payload = self.app.read_pull_reviews(connection['installation_id'], connection['repository_id'],
                                                     connection['full_name'], request['pr_number']) if count else {'reviews': [], 'truncated': False}
         reasons = self._merge_block_reasons(pr, request['head_sha'], protection, review_payload)
+        if pr.get('base_branch') and pr['base_branch'] != request['base_branch']:
+            reasons.insert(0, 'PR target changed from %s to %s; re-request the merge for the current target'
+                           % (request['base_branch'], pr['base_branch']))
+        if pr.get('head_branch') and pr['head_branch'] != request['branch']:
+            reasons.insert(0, 'PR head branch changed from %s to %s; re-request the merge for the current head'
+                           % (request['branch'], pr['head_branch']))
         if preview:
             return {'preview': True, 'merge_request_id': request['id'], 'task_id': request['task_id'],
                     'pr_number': request['pr_number'], 'pr_url': request['pr_url'],

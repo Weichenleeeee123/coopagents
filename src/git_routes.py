@@ -105,7 +105,9 @@ def git_routes(service,sync):
 
     async def merge(request):
         token=bearer(request)
-        data=await body_object(request,{'merge_request_id':(int,True,None),'preview':(bool,False,False)})
+        data=await body_object(request,{'merge_request_id':(int,True,None),'preview':(bool,False,False),
+                                        'expected_head_sha':(str,True,None),'expected_base_branch':(str,True,None),
+                                        'expected_revision':(int,True,None)})
         return await run_in_threadpool(sync.merge_pr,token,**data)
 
     async def overlap_override(request):

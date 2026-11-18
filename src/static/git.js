@@ -94,7 +94,7 @@
       if(git?.can_manage){
         const button=element('button','合并 PR #'+merge.pr_number),feedback=element('p','','meta');
         button.type='button';
-        button.addEventListener('click',async()=>{button.disabled=true;try{await context.api('/api/git/merge',{merge_request_id:merge.id});if(!context.isCurrent())return;document.activeElement?.blur();await context.sync();feedback.textContent='已合并。';}catch(error){feedback.textContent=error.message;}finally{button.disabled=false;}});
+        button.addEventListener('click',async()=>{button.disabled=true;try{await context.api('/api/git/merge',{merge_request_id:merge.id,expected_revision:merge.revision,expected_head_sha:merge.head_sha,expected_base_branch:merge.base_branch});if(!context.isCurrent())return;document.activeElement?.blur();await context.sync();feedback.textContent='已合并。';}catch(error){feedback.textContent=error.message;}finally{button.disabled=false;}});
         append(row,button,feedback);
       }else append(row,element('p','等待项目管理者合并。','muted'));
       container.append(row);

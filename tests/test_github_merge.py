@@ -278,10 +278,12 @@ class RequestMergeTests(MergeFixture, unittest.TestCase):
         self.assertEqual(first['state'], 'pending')
         self.assertEqual(first['pr_number'], 42)
         self.assertEqual(first['head_sha'], 'c' * 40)
+        self.assertEqual(first['revision'], 1)
         self.assertEqual(first['requested_by'], self.member['member_id'])
         again = self.request_merge(request_key='m2')
         self.assertEqual(again['id'], first['id'])
         self.assertEqual(again['state'], 'pending')
+        self.assertEqual(again['revision'], 1)
 
     def test_preview_describes_without_writing(self):
         result = self.request_merge(preview=True)
@@ -302,10 +304,12 @@ class RequestMergeTests(MergeFixture, unittest.TestCase):
             self.request_merge(task_id=other['id'], session_key='s3')
 
     def test_re_request_refreshes_head_after_redelivery(self):
-        self.request_merge()
+        first = self.request_merge()
+        self.assertEqual(first['revision'], 1)
         self.sync.open_pr(self.member['agent_token'], self.task['id'], self.branch, 'e' * 40,
                           'main', 'Task 1: Build it', 'Delivery body', 'd2', 's1', 1)
         refreshed = self.request_merge(request_key='m2')
+        self.assertEqual(refreshed['revision'], 2)
         self.assertEqual(refreshed['head_sha'], 'e' * 40)
 
 
@@ -317,7 +321,10 @@ class MergePrTests(MergeFixture, unittest.TestCase):
         self.request = self.request_merge()
 
     def merge(self, **overrides):
-        args = {'token': self.owner['web_token'], 'merge_request_id': self.request['id']}
+        row = self.merge_request_row()
+        args = {'token': self.owner['web_token'], 'merge_request_id': self.request['id'],
+                'expected_head_sha': row['head_sha'], 'expected_base_branch': row['base_branch'],
+                'expected_revision': row['revision']}
         args.update(overrides)
         return self.sync.merge_pr(**args)
 
@@ -380,6 +387,36 @@ class MergePrTests(MergeFixture, unittest.TestCase):
         self.repositories.set_git_write_enabled(self.owner['web_token'], False)
         with self.assertRaises(Conflict):
             self.merge()
+        self.assertEqual(self.app.merges, [])
+
+    def test_stale_display_tuple_is_rejected_after_redelivery(self):
+        stale = {'expected_revision': 1, 'expected_head_sha': 'c' * 40, 'expected_base_branch': 'main'}
+        self.sync.open_pr(self.member['agent_token'], self.task['id'], self.branch, 'e' * 40,
+                          'main', 'Task 1: Build it', 'Delivery body', 'd2', 's1', 1)
+        refreshed = self.request_merge(request_key='m2')
+        self.assertEqual(refreshed['revision'], 2)
+        with self.assertRaises(Conflict) as caught:
+            self.merge(**stale)
+        self.assertIn('changed since it was displayed', str(caught.exception))
+        self.assertEqual(self.app.merges, [])
+        self.app.pr['head_sha'] = 'e' * 40
+        self.assertEqual(self.merge()['state'], 'merged')
+
+    def test_live_target_change_blocks(self):
+        self.app.pr['base_branch'] = 'develop'
+        preview = self.merge(preview=True)
+        self.assertTrue(preview['blocked'])
+        self.assertTrue(any('target changed' in reason for reason in preview['reasons']))
+        with self.assertRaises(Conflict) as caught:
+            self.merge()
+        self.assertIn('target changed', str(caught.exception))
+        self.assertEqual(self.app.merges, [])
+
+    def test_live_head_branch_change_blocks(self):
+        self.app.pr['head_branch'] = 'coopagents/task-1-1-other'
+        with self.assertRaises(Conflict) as caught:
+            self.merge()
+        self.assertIn('head branch changed', str(caught.exception))
         self.assertEqual(self.app.merges, [])
 
     def test_head_moved_blocks_without_api_merge(self):
@@ -629,10 +666,11 @@ class MergeCardTests(unittest.TestCase):
         card = cards[0]
         self.assertEqual(card['pr_number'], 42)
         self.assertEqual(card['operation'], 'merge_pr')
-        self.assertEqual(card['payload'], {'merge_request_id': requested['id']})
+        self.assertEqual(card['payload'], {'merge_request_id': requested['id'], 'expected_revision': 1,
+                                           'expected_head_sha': 'c' * 40, 'expected_base_branch': 'main'})
         self.assertTrue(card['eligible'])
         self.assertTrue(card['requires_human'])
-        merged = service.call('merge_pr', owner['web_token'], {'merge_request_id': requested['id']})
+        merged = service.call('merge_pr', owner['web_token'], card['payload'])
         self.assertEqual(merged['state'], 'merged')
         workflow = service.call('read_workflow', owner['web_token'], {})
         self.assertEqual([card for card in workflow['decisions'] if card['kind'] == 'git_merge'], [])
@@ -676,9 +714,13 @@ class MergeRouteTests(unittest.TestCase):
                 'session_key': 's1', 'ownership_epoch': 1})
             self.assertEqual(requested.status_code, 200, requested.text)
             merge_id = requested.json()['id']
-            denied = client.post('/api/git/merge', headers=agent, json={'merge_request_id': merge_id})
+            merge_tuple = {'merge_request_id': merge_id, 'expected_head_sha': 'c' * 40,
+                           'expected_base_branch': 'main', 'expected_revision': 1}
+            denied = client.post('/api/git/merge', headers=agent, json=merge_tuple)
             self.assertEqual(denied.status_code, 401, denied.text)
-            merged = client.post('/api/git/merge', headers=web, json={'merge_request_id': merge_id})
+            missing_tuple = client.post('/api/git/merge', headers=web, json={'merge_request_id': merge_id})
+            self.assertEqual(missing_tuple.status_code, 400, missing_tuple.text)
+            merged = client.post('/api/git/merge', headers=web, json=merge_tuple)
             self.assertEqual(merged.status_code, 200, merged.text)
             self.assertEqual(merged.json()['state'], 'merged')
             missing = client.post('/api/git/overlap-overrides', headers=web,
