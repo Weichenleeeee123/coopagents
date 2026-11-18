@@ -153,14 +153,15 @@ def _valid_whatwg_ipv4(labels):
 
 
 def _valid_ace_label(label):
-    """An xn-- label must be a genuine ACE encoding: its punycode payload
-    decodes to a label containing non-ASCII text that re-encodes without
-    error. 'xn--a' and friends fail decoding and are not valid IDNA.
-    Equality with a re-encoded form is deliberately NOT required: the
-    IDNA2003 codec maps sharp-s and final sigma, so valid modern ACE
-    labels (xn--fa-hia, xn--3xa) would fail an equality check while iroh
-    accepts them. Full UTS46 validity is established by the construction
-    check in validate_relay_urls when the binding is available.
+    """Preliminary ACE shape check: an xn-- label's punycode payload must
+    decode to a label containing non-ASCII text that re-encodes without
+    error. 'xn--a' decodes to a C1 control and fails re-encoding; 'xn--0'
+    fails decoding outright. Equality with a re-encoded form is
+    deliberately NOT required: the IDNA2003 codec maps sharp-s and final
+    sigma, so valid modern ACE labels (xn--fa-hia, xn--3xa) would fail an
+    equality check while iroh accepts them. This helper is not a UTS46
+    verdict; full validity is established by the construction check in
+    validate_relay_urls when the binding is available.
     """
     if not label.startswith('xn--'):
         return True
@@ -187,7 +188,10 @@ def _loopback_host(hostname):
 
 
 def _valid_hostname(hostname, bracketed=False):
-    """A host iroh's URL parser accepts: IP literal, WHATWG IPv4, or DNS/IDNA.
+    """Preliminary host shape/compatibility check: IP literal, WHATWG
+    IPv4, or DNS/IDNA. Full construction acceptance is reserved for the
+    binding check in validate_relay_urls; this helper only rejects what
+    is certainly unusable or outside application policy.
 
     Bracketed authorities hold IPv6 literals only: IPvFuture spellings
     reach this check with their brackets stripped, so they are rejected
@@ -199,7 +203,7 @@ def _valid_hostname(hostname, bracketed=False):
     numeric host (fullwidth digits, mapped separators, removed soft
     hyphen) is classified as numeric. The optional root dot is removed
     after conversion, before the length cap, so mapped Unicode root
-    separators stay valid. ACE labels must round-trip through punycode.
+    separators stay valid. ACE labels must decode to non-ASCII text.
     """
     if bracketed:
         if '%' in hostname:
