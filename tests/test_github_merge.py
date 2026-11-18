@@ -37,7 +37,7 @@ class MergeFakeProvider(WriteFakeProvider):
         super().__init__()
         self.pr = {'number': 42, 'state': 'open', 'merged': False, 'head_sha': 'c' * 40,
                    'head_repository_id': 11, 'head_branch': 'coopagents/task-1-1-build-login',
-                   'base_branch': 'main', 'mergeable': True, 'merge_commit_sha': None,
+                   'base_branch': 'main', 'author': 'author-login', 'mergeable': True, 'merge_commit_sha': None,
                    'checks': [], 'statuses': [], 'checks_truncated': False,
                    'statuses_truncated': False, 'checks_verified': True}
         self.protection = None
@@ -459,6 +459,21 @@ class MergePrTests(MergeFixture, unittest.TestCase):
             self.merge()
         self.assertIn('1 approving', str(caught.exception))
         self.app.review_payload['reviews'].append({'reviewer': 'b', 'state': 'APPROVED'})
+        self.assertEqual(self.merge()['state'], 'merged')
+
+    def test_unknown_author_blocks_when_approvals_required(self):
+        self.app.pr['author'] = None
+        self.app.protection = {'required_status_checks': {'contexts': []},
+                               'required_pull_request_reviews': {'required_approving_review_count': 1},
+                               'restrictions': None}
+        self.app.review_payload = {'reviews': [{'reviewer': 'a', 'state': 'APPROVED'}], 'truncated': False}
+        with self.assertRaises(Conflict) as caught:
+            self.merge()
+        self.assertIn('cannot verify the PR author', str(caught.exception))
+        self.assertEqual(self.app.merges, [])
+
+    def test_unknown_author_without_required_approvals_still_merges(self):
+        self.app.pr['author'] = None
         self.assertEqual(self.merge()['state'], 'merged')
 
     def test_truncated_reviews_block_when_approvals_required(self):

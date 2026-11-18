@@ -485,6 +485,8 @@ class GitHubSync:
             if count:
                 if review_payload.get('truncated'):
                     reasons.append('review list is truncated; cannot verify approvals')
+                elif pr.get('author') is None:
+                    reasons.append('cannot verify the PR author; merge on GitHub')
                 else:
                     approvals = GitHubSync._approvals(review_payload.get('reviews', []), pr.get('author'))
                     if approvals < count:
