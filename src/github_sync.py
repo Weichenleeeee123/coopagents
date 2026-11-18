@@ -439,12 +439,18 @@ class GitHubSync:
             return dict(c.execute('SELECT * FROM git_merge_requests WHERE id=?', (row.lastrowid,)).fetchone())
 
     @staticmethod
-    def _approvals(reviews):
-        """Latest review per reviewer wins; only a standing approval counts."""
+    def _approvals(reviews, author=None):
+        """Latest review per reviewer wins; only a standing approval counts.
+
+        The PR author's own approval never counts: GitHub's required-approval
+        rules disregard it. When the author is unknown (None), no review is
+        excluded and GitHub remains the final enforcer at merge time.
+        """
         latest = {}
         for review in reviews:
             latest[review['reviewer']] = review['state']
-        return sum(1 for state in latest.values() if state == 'APPROVED')
+        return sum(1 for reviewer, state in latest.items()
+                   if state == 'APPROVED' and reviewer != author)
 
     @staticmethod
     def _merge_block_reasons(pr, expected_sha, protection, review_payload):
@@ -480,7 +486,7 @@ class GitHubSync:
                 if review_payload.get('truncated'):
                     reasons.append('review list is truncated; cannot verify approvals')
                 else:
-                    approvals = GitHubSync._approvals(review_payload.get('reviews', []))
+                    approvals = GitHubSync._approvals(review_payload.get('reviews', []), pr.get('author'))
                     if approvals < count:
                         reasons.append('requires %d approving review(s); %d recorded' % (count, approvals))
         return reasons

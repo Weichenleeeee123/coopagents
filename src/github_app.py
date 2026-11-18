@@ -538,6 +538,11 @@ class GitHubApp:
                 base_branch=pr['base'].get('ref')
                 if base_branch is not None and (not isinstance(base_branch,str) or not base_branch or len(base_branch)>250):
                     raise GitHubError('GitHub PR branch is invalid')
+                author_user=pr.get('user') or {}
+                author=author_user.get('login') if isinstance(author_user,dict) else None
+                if author is not None and (not isinstance(author,str) or not author or len(author)>250
+                                           or any(ord(char)<33 for char in author)):
+                    raise GitHubError('GitHub PR author is invalid')
                 mergeable=pr.get('mergeable')
                 if mergeable is not None and type(mergeable) is not bool:
                     raise GitHubError('GitHub PR merge state is invalid')
@@ -548,6 +553,7 @@ class GitHubApp:
                 current=checks_at(sha) if detail else {'checks':[],'statuses':[], 'checks_truncated':False,'statuses_truncated':False}
                 return {'number':number,'state':pr['state'],'merged':merged,'head_sha':sha,
                     'head_repository_id':head_id,'head_branch':branch,'base_branch':base_branch,
+                    'author':author,
                     'mergeable':mergeable,'merge_commit_sha':merge_commit_sha,**current,'checks_verified':detail}
             except (KeyError,TypeError,ValidationError): raise GitHubError('GitHub PR response is invalid') from None
         for summary in summaries:

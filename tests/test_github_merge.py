@@ -201,7 +201,7 @@ class GitHubAppMergeTests(unittest.TestCase):
             if path == '/repos/acme/demo/pulls/42':
                 return httpx.Response(200, json={
                     'number': 42, 'state': 'open', 'merged': False, 'mergeable': True,
-                    'merge_commit_sha': None,
+                    'merge_commit_sha': None, 'user': {'login': 'author-login'},
                     'head': {'sha': sha, 'ref': 'feature', 'repo': {'id': 11}},
                     'base': {'ref': 'main', 'repo': {'id': 11}}})
             if path.endswith('/check-runs'):
@@ -214,6 +214,7 @@ class GitHubAppMergeTests(unittest.TestCase):
         state = self.app(handler).repository_state(22, 11, 'acme/demo', pr_numbers=(42,))
         pr = state['pull_requests'][0]
         self.assertEqual(pr['base_branch'], 'main')
+        self.assertEqual(pr['author'], 'author-login')
         self.assertTrue(pr['mergeable'])
         self.assertIsNone(pr['merge_commit_sha'])
 
@@ -446,6 +447,18 @@ class MergePrTests(MergeFixture, unittest.TestCase):
         self.assertIn('2 approving', str(caught.exception))
         self.assertEqual(self.app.review_calls, [42])
         self.app.review_payload['reviews'].append({'reviewer': 'a', 'state': 'APPROVED'})
+        self.assertEqual(self.merge()['state'], 'merged')
+
+    def test_author_approval_never_counts_toward_required_reviews(self):
+        self.app.pr['author'] = 'a'
+        self.app.protection = {'required_status_checks': {'contexts': []},
+                               'required_pull_request_reviews': {'required_approving_review_count': 1},
+                               'restrictions': None}
+        self.app.review_payload = {'reviews': [{'reviewer': 'a', 'state': 'APPROVED'}], 'truncated': False}
+        with self.assertRaises(Conflict) as caught:
+            self.merge()
+        self.assertIn('1 approving', str(caught.exception))
+        self.app.review_payload['reviews'].append({'reviewer': 'b', 'state': 'APPROVED'})
         self.assertEqual(self.merge()['state'], 'merged')
 
     def test_truncated_reviews_block_when_approvals_required(self):
