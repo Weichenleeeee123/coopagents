@@ -11,7 +11,7 @@ from coopagents import onboarding_doctor, space_runtime
 class OnboardingPackageTests(unittest.TestCase):
     def test_setuptools_includes_doctor_module_and_setup_guides(self):
         root = Path(__file__).resolve().parents[1]
-        config = tomllib.loads((root / 'pyproject.toml').read_text())['tool']['setuptools']
+        config = tomllib.loads((root / 'pyproject.toml').read_text(encoding='utf-8'))['tool']['setuptools']
         self.assertEqual(config['packages'], ['coopagents'])
         self.assertEqual(config['package-dir']['coopagents'], 'src')
         self.assertEqual(Path(onboarding_doctor.__file__).name, 'onboarding_doctor.py')
@@ -34,10 +34,10 @@ class OnboardingPackageTests(unittest.TestCase):
         for name in ('README.md', 'src/skills/coopagents-space/SKILL.md',
                      'src/skills/coopagents-space/protocol.md'):
             with self.subTest(name=name):
-                text = (root / name).read_text()
+                text = (root / name).read_text(encoding='utf-8')
                 self.assertIn(rule, text)
                 self.assertNotIn('including pre-releases', text)
-        skill = (root / 'src/skills/coopagents-space/SKILL.md').read_text()
+        skill = (root / 'src/skills/coopagents-space/SKILL.md').read_text(encoding='utf-8')
         for command in ('create', 'join', 'connect', 'status', 'doctor'):
             self.assertIn('<python> -m coopagents.space_runtime ' + command + ' ', skill)
 
