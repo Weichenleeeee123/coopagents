@@ -220,7 +220,10 @@ class GitWriterCommandTests(unittest.TestCase):
         outside = self.root / 'outside-dir'
         outside.mkdir()
         (outside / 'evil.txt').write_text('secret\n', encoding='utf-8')
-        (self.repo / 'link').symlink_to(outside, target_is_directory=True)
+        link = self.repo / 'link'
+        link.symlink_to(outside.resolve(), target_is_directory=True)
+        self.assertEqual(link.resolve(), outside.resolve())
+        self.assertTrue((link / 'evil.txt').is_file())
         writer = GitWriter(self.repo)
         with self.assertRaises(ValidationError):
             writer.stage_and_commit('main', ['link/evil.txt'], commit_message(4, 'Work'),
