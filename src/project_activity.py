@@ -208,7 +208,8 @@ def project_activity(snapshot, limit=MAX_ITEMS):
                 # bounded name stays in the reference.
                 items.append(_item(item_id, event_type, row.get('sync_at'), 'github_verified',
                     summary, None, task_id,
-                    {'branch': branch, 'head_sha': _text(row.get('head_sha'), 64)}))
+                    {'branch': branch, 'head_sha': _text(row.get('head_sha'), 64),
+                     'stale': bool(row.get('stale'))}))
         graph = git.get('delivery_graph', {})
         for row in graph.get('items', [])[:MAX_SOURCE_ITEMS] if isinstance(graph, dict) else []:
             for association in row.get('associations', [])[:MAX_SOURCE_ITEMS] if isinstance(row, dict) else []:

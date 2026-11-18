@@ -171,7 +171,7 @@
       unattributed.forEach(d=>append(root,element('p',(d.branch||'分支')+' · HEAD '+(d.head_sha||'').slice(0,12)+' · '+when(d.sync_at)+(d.stale?' · 同步过期':''))));
     }
     const defaultPush=(git.github_unattributed||[]).find(d=>d.kind==='default_branch_direct_push');
-    if(defaultPush)append(root,element('p','默认分支 '+(defaultPush.branch||'')+' 的 HEAD 暂无对应的治理记录 · HEAD '+(defaultPush.head_sha||'').slice(0,12)+' · '+when(defaultPush.sync_at),'muted'));
+    if(defaultPush)append(root,element('p','默认分支 '+(defaultPush.branch||'')+' 的 HEAD 暂无对应的治理记录 · HEAD '+(defaultPush.head_sha||'').slice(0,12)+' · '+when(defaultPush.sync_at)+(defaultPush.stale?' · 同步过期':''),'muted'));
     if(git.github_discovery?.branches?.truncated)append(root,element('p','分支列表仅展示最近 '+git.github_discovery.branches.limit+' 条，其他分支可按名称明确关联。','muted'));
     if((git.github_events||[]).some(e=>e.status!=='completed'))append(root,element('p','有事件等待同步或重试；最后成功记录保留。','muted'));
   }

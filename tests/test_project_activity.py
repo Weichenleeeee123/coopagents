@@ -118,6 +118,16 @@ class ProjectActivityTests(unittest.TestCase):
              'source': 'direct', 'sync_at': '2026-01-05T00:00:00Z', 'stale': False}]}})
         self.assertEqual([item['id'] for item in resynced['items']], [direct['id']])
 
+    def test_stale_flag_reaches_activity_references(self):
+        feed = project_activity({'git': {'github_unattributed': [
+            {'kind': 'default_branch_direct_push', 'branch': 'main', 'head_sha': 'c'*40,
+             'sync_at': '2026-01-01T00:00:00Z', 'stale': True},
+            {'kind': 'unattributed_branch', 'branch': 'wip', 'head_sha': 'b'*40,
+             'sync_at': '2026-01-01T00:00:00Z', 'stale': False}]}})
+        by_type = {item['type']: item for item in feed['items']}
+        self.assertIs(by_type['github_default_branch_direct_push']['reference']['stale'], True)
+        self.assertIs(by_type['github_unattributed_branch']['reference']['stale'], False)
+
     def test_long_branch_names_get_distinct_stable_ids(self):
         first = 'x' * 100 + 'a'
         second = 'x' * 100 + 'b'

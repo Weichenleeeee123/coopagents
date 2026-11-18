@@ -127,12 +127,13 @@ global.document={createElement:tag=>new Element(tag),activeElement:null};
   Git.renderPanel(unattributedPanel,{me:{room_id:'first'},git:{binding:{repository:'github.com/acme/demo'},can_manage:false,github_configured:true,
     github_unattributed:[
       {kind:'unattributed_branch',branch:'wip',head_sha:'f'.repeat(40),sync_at:'2026-01-01T00:00:00Z',stale:false},
-      {kind:'default_branch_direct_push',branch:'main',head_sha:'a'.repeat(40),sync_at:'2026-01-01T00:00:00Z',stale:false}],
+      {kind:'default_branch_direct_push',branch:'main',head_sha:'a'.repeat(40),sync_at:'2026-01-01T00:00:00Z',stale:true}],
     github_discovery:{branches:{limit:50,truncated:true}}}},{...context,api:async()=>({}),sync:async()=>{}});
   const panelText=descendants(unattributedPanel).map(n=>n.textContent).join(' ');
   assert.match(panelText,/未归属分支/);
   assert.match(panelText,/wip · HEAD ffffffffffff/);
   assert.match(panelText,/默认分支 main 的 HEAD 暂无对应的治理记录 · HEAD aaaaaaaaaaaa/);
+  assert.match(panelText,/同步过期/);
   assert.match(panelText,/分支列表仅展示最近 50 条/);
   const emptyPanel=new Element('div');
   Git.renderPanel(emptyPanel,{me:{room_id:'first'},git:{binding:{repository:'github.com/acme/demo'},can_manage:false,github_configured:true,github_unattributed:[]}},{...context,api:async()=>({}),sync:async()=>{}});
