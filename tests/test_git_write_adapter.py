@@ -232,8 +232,9 @@ class DeliverAdapterTests(unittest.TestCase):
         self.env.start()
         self.addCleanup(self.env.stop)
 
-    def stub(self, enabled=True, connection='default', fail_network=False, blocked=False):
+    def stub(self, enabled=True, connection='default', fail_network=False, blocked=False, fail_deliveries=0):
         calls = []
+        remaining_failures = [fail_deliveries]
 
         def request(path, data=None):
             calls.append((path, data))
@@ -254,6 +255,9 @@ class DeliverAdapterTests(unittest.TestCase):
                         'conflicts': [{'task_id': 9, 'member_id': 'm2', 'paths': ['src/shared.py'],
                                        'path_count': 1}] if blocked else []}
             if path == '/api/git/deliveries':
+                if remaining_failures[0] > 0:
+                    remaining_failures[0] -= 1
+                    raise OutboxError('network')
                 return {'state': 'pr_opened', 'pr_number': 42,
                         'pr_url': 'https://github.com/acme/demo/pull/42',
                         'branch': data['branch'], 'head_sha': data['head_sha']}
@@ -261,6 +265,9 @@ class DeliverAdapterTests(unittest.TestCase):
 
         self.adapter.request = request
         return calls
+
+    def attempt_path(self):
+        return self.adapter._attempt_path(self.adapter.workspace.inspect(), 7, self.branch)
 
     def paths_called(self, calls, path):
         return [data for called, data in calls if called == path]
@@ -303,6 +310,88 @@ class DeliverAdapterTests(unittest.TestCase):
             self.adapter.deliver(7, 'Ship it', session_key='s1')
         author = git(self.repo, 'log', '-1', '--format=%an <%ae>').decode().strip()
         self.assertEqual(author, 'Custom Name <wei@example.com>')
+
+    def test_retry_after_registration_failure_resumes_without_new_edits(self):
+        calls = self.stub(fail_deliveries=1)
+        (self.repo / 'README.md').write_text('shipped\n', encoding='utf-8')
+        with self.assertRaises(OutboxError):
+            self.adapter.deliver(7, 'Ship the login', session_key='s1')
+        head = git(self.repo, 'rev-parse', 'HEAD').decode().strip()
+        self.assertNotEqual(head, self.head)
+        self.assertEqual(git(self.bare, 'rev-parse', 'refs/heads/' + self.branch).decode().strip(), head)
+        self.assertTrue(self.attempt_path().is_file())
+        result = self.adapter.deliver(7, 'Ship the login', session_key='s1')
+        self.assertEqual(result['status'], 'pr_opened')
+        self.assertEqual(result['head_sha'], head)
+        self.assertEqual(git(self.repo, 'rev-parse', 'HEAD').decode().strip(), head)
+        delivered = self.paths_called(calls, '/api/git/deliveries')
+        self.assertEqual(len(delivered), 2)
+        self.assertEqual(delivered[0]['request_key'], delivered[1]['request_key'])
+        self.assertFalse(self.attempt_path().exists())
+
+    def test_retry_after_push_failure_resumes_without_new_edits(self):
+        from coopagents.git_writer import GitWriter
+        calls = self.stub()
+        (self.repo / 'README.md').write_text('shipped\n', encoding='utf-8')
+        original = GitWriter.push_branch
+        state = {'failed': False}
+
+        def flaky(self, branch, preview=False):
+            if not state['failed']:
+                state['failed'] = True
+                raise ValidationError('Git push was rejected')
+            return original(self, branch, preview=preview)
+
+        with patch.object(GitWriter, 'push_branch', flaky):
+            with self.assertRaises(ValidationError):
+                self.adapter.deliver(7, 'Ship the login', session_key='s1')
+        head = git(self.repo, 'rev-parse', 'HEAD').decode().strip()
+        self.assertEqual(git(self.bare, 'branch', '--list', 'coopagents/*').decode(), '')
+        self.assertTrue(self.attempt_path().is_file())
+        result = self.adapter.deliver(7, 'Ship the login', session_key='s1')
+        self.assertEqual(result['status'], 'pr_opened')
+        self.assertEqual(result['head_sha'], head)
+        self.assertEqual(git(self.bare, 'rev-parse', 'refs/heads/' + self.branch).decode().strip(), head)
+        self.assertFalse(self.attempt_path().exists())
+
+    def test_resume_honors_overlap_gate_and_keeps_attempt(self):
+        calls = self.stub(fail_deliveries=1)
+        (self.repo / 'README.md').write_text('shipped\n', encoding='utf-8')
+        with self.assertRaises(OutboxError):
+            self.adapter.deliver(7, 'Ship the login', session_key='s1')
+        blocked_calls = self.stub(blocked=True)
+        result = self.adapter.deliver(7, 'Ship the login', session_key='s1')
+        self.assertEqual(result['status'], 'conflict')
+        self.assertTrue(self.attempt_path().is_file())
+        gate = self.paths_called(blocked_calls, '/api/git/overlap-check')
+        self.assertEqual(gate[-1]['paths'], ['README.md'])
+        self.assertEqual(gate[-1]['gate'], 'delivery')
+        self.stub()
+        result = self.adapter.deliver(7, 'Ship the login', session_key='s1')
+        self.assertEqual(result['status'], 'pr_opened')
+        self.assertFalse(self.attempt_path().exists())
+
+    def test_stale_attempt_is_discarded_when_head_moves(self):
+        self.stub(fail_deliveries=1)
+        (self.repo / 'README.md').write_text('shipped\n', encoding='utf-8')
+        with self.assertRaises(OutboxError):
+            self.adapter.deliver(7, 'Ship the login', session_key='s1')
+        (self.repo / 'extra.py').write_text('x=1\n', encoding='utf-8')
+        git(self.repo, 'add', 'extra.py')
+        git(self.repo, 'commit', '-m', 'own tools')
+        with self.assertRaises(ValidationError) as caught:
+            self.adapter.deliver(7, 'Ship the login', session_key='s1')
+        self.assertIn('No changes to deliver', str(caught.exception))
+        self.assertFalse(self.attempt_path().exists())
+
+    def test_corrupt_attempt_file_is_ignored(self):
+        self.stub()
+        path = self.attempt_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text('{not json', encoding='utf-8')
+        with self.assertRaises(ValidationError) as caught:
+            self.adapter.deliver(7, 'Ship the login', session_key='s1')
+        self.assertIn('No changes to deliver', str(caught.exception))
 
     def test_deliver_preview_executes_no_writes(self):
         calls = self.stub()

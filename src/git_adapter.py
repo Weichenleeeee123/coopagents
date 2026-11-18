@@ -95,6 +95,63 @@ class LocalAdapter:
         key = hashlib.sha256(json.dumps([self.origin, self.project, local['workspace_id'], local['repository']]).encode()).hexdigest()
         return self.state_root / ('outbox-' + key + '.sqlite3')
 
+    def _attempt_path(self, local, task_id, branch):
+        """Local record of a delivery interrupted after its commit (M3 resume)."""
+        if not hasattr(self, 'state_root') or not all(local.get(k) for k in ('workspace_id', 'repository')):
+            return None
+        key = hashlib.sha256(json.dumps([self.origin, self.project, local['workspace_id'],
+                                         local['repository'], task_id, branch]).encode()).hexdigest()
+        return self.state_root / ('delivery-attempt-' + key + '.json')
+
+    @staticmethod
+    def _valid_attempt(attempt):
+        if not isinstance(attempt, dict) or attempt.get('schema_version') != 1:
+            return False
+        if type(attempt.get('task_id')) is not int or type(attempt.get('ownership_epoch')) is not int:
+            return False
+        if not isinstance(attempt.get('branch'), str) or not attempt['branch']:
+            return False
+        if not isinstance(attempt.get('head_sha'), str) or len(attempt['head_sha']) != 40:
+            return False
+        paths = attempt.get('paths')
+        if not isinstance(paths, list) or not paths or not all(isinstance(item, str) and item for item in paths):
+            return False
+        return all(isinstance(attempt.get(key), str) and attempt[key]
+                   for key in ('request_key', 'base_branch', 'title', 'body'))
+
+    def _read_attempt(self, path):
+        if path is None:
+            return None
+        try:
+            if not path.is_file() or path.stat().st_size > 65536:
+                return None
+            attempt = json.loads(path.read_text(encoding='utf-8'))
+        except (OSError, ValueError):
+            return None
+        return attempt if self._valid_attempt(attempt) else None
+
+    @staticmethod
+    def _write_attempt(path, attempt):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        staging = path.with_name(path.name + '.' + uuid4().hex + '.pending')
+        encoded = (json.dumps(attempt, ensure_ascii=True, indent=2) + '\n').encode('utf-8')
+        with staging.open('xb') as stream:
+            stream.write(encoded)
+            stream.flush()
+            os.fsync(stream.fileno())
+        if os.name != 'nt':
+            staging.chmod(0o600)
+        os.replace(staging, path)
+
+    @staticmethod
+    def _clear_attempt(path):
+        if path is None:
+            return
+        try:
+            path.unlink()
+        except OSError:
+            pass
+
     def _cached_outbox(self, local):
         path = self._outbox_path(local)
         identity = stored_identity(path) if path else None
@@ -286,6 +343,11 @@ class LocalAdapter:
         supplies the exact paths to stage; preview instead reads the working
         tree once and executes zero writes anywhere. Offline fails fast and is
         never queued: git writes are not outbox intents.
+
+        A delivery interrupted after its commit is resumable: the attempt is
+        recorded locally before the push, and a retry with no new changes
+        resumes it (gate re-checked, same request key) instead of reporting
+        no changes. The attempt is cleared only after registration succeeds.
         """
         from .git_writer import GitWriter, commit_message
         from .git_workspace import task_branch_name
@@ -345,6 +407,7 @@ class LocalAdapter:
                 return {'status': 'preview', 'preview': True,
                         'commands': staged['commands'] + pushed['commands'],
                         'branch': branch, 'paths': paths, 'record': record}
+            attempt_path = self._attempt_path(local, task_id, branch)
             try:
                 checked = self.checkpoint(task_id, session_key=session_key, ownership_epoch=epoch)
             except OutboxError as error:
@@ -356,6 +419,14 @@ class LocalAdapter:
             if not isinstance(paths, list):
                 raise ValidationError('Checkpoint did not return observation paths')
             if not paths:
+                attempt = self._read_attempt(attempt_path)
+                if (attempt is not None and attempt['task_id'] == task_id
+                        and attempt['ownership_epoch'] == epoch and attempt['branch'] == branch
+                        and attempt['head_sha'] == writer.head_sha()):
+                    return self._resume_delivery(task_id, session_key, epoch, branch, writer,
+                                                 attempt, attempt_path)
+                if attempt is not None:
+                    self._clear_attempt(attempt_path)
                 raise ValidationError('No changes to deliver')
             gate = self.request('/api/git/overlap-check', {'task_id': task_id, 'paths': paths,
                                                            'session_key': session_key,
@@ -366,14 +437,47 @@ class LocalAdapter:
                         'detail': 'Another task is editing the same paths; wait or ask a project manager to override'}
             committed = writer.stage_and_commit(branch, paths, message, name, email)
             head_sha = committed['head_sha']
+            title = ('Task %d: %s' % (task_id, line))[:250].strip()
+            body = self._pr_body(task_id, task.get('title') or '', line, branch, default, head_sha)
+            request_key = str(uuid4())
+            if attempt_path is not None:
+                self._write_attempt(attempt_path, {
+                    'schema_version': 1, 'task_id': task_id, 'ownership_epoch': epoch,
+                    'branch': branch, 'head_sha': head_sha, 'paths': paths,
+                    'request_key': request_key, 'base_branch': default,
+                    'title': title, 'body': body})
             writer.push_branch(branch)
             record = self.request('/api/git/deliveries', {'task_id': task_id, 'branch': branch,
-                'head_sha': head_sha, 'base_branch': default,
-                'title': ('Task %d: %s' % (task_id, line))[:250].strip(),
-                'body': self._pr_body(task_id, task.get('title') or '', line, branch, default, head_sha),
-                'request_key': str(uuid4()), 'session_key': session_key, 'ownership_epoch': epoch})
+                'head_sha': head_sha, 'base_branch': default, 'title': title, 'body': body,
+                'request_key': request_key, 'session_key': session_key, 'ownership_epoch': epoch})
+            self._clear_attempt(attempt_path)
             return {'status': record.get('state', 'pr_opened'), 'branch': branch, 'head_sha': head_sha,
                     'pr_number': record.get('pr_number'), 'pr_url': record.get('pr_url'), 'record': record}
+
+    def _resume_delivery(self, task_id, session_key, epoch, branch, writer, attempt, attempt_path):
+        """Finish a delivery interrupted after its commit: re-check the gate, push, register.
+
+        The stored request key, title, and body resume the exact interrupted
+        delivery; the service lookup-before-create dedupes a registration
+        that already landed. The attempt is kept when the gate blocks or any
+        step fails, so a later retry resumes again.
+        """
+        gate = self.request('/api/git/overlap-check', {'task_id': task_id, 'paths': attempt['paths'],
+                                                       'session_key': session_key,
+                                                       'ownership_epoch': epoch, 'gate': 'delivery'})
+        if isinstance(gate, dict) and gate.get('blocked'):
+            return {'status': 'conflict', 'conflicts': gate.get('conflicts', []),
+                    'paths_checked': gate.get('paths_checked', []),
+                    'detail': 'Another task is editing the same paths; wait or ask a project manager to override'}
+        writer.push_branch(branch)
+        record = self.request('/api/git/deliveries', {'task_id': task_id, 'branch': branch,
+            'head_sha': attempt['head_sha'], 'base_branch': attempt['base_branch'],
+            'title': attempt['title'], 'body': attempt['body'],
+            'request_key': attempt['request_key'], 'session_key': session_key,
+            'ownership_epoch': epoch})
+        self._clear_attempt(attempt_path)
+        return {'status': record.get('state', 'pr_opened'), 'branch': branch, 'head_sha': attempt['head_sha'],
+                'pr_number': record.get('pr_number'), 'pr_url': record.get('pr_url'), 'record': record}
 
     @staticmethod
     def _pr_body(task_id, title, summary, branch, base_branch, head_sha):
