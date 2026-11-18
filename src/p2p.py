@@ -154,15 +154,27 @@ def _valid_whatwg_ipv4(labels):
 
 def _valid_ace_label(label):
     """An xn-- label must be a genuine ACE encoding: its punycode payload
-    decodes and re-encodes to the same label. 'xn--a' and friends pass a
-    label-shape check but are not valid IDNA and iroh rejects them."""
+    decodes to a label containing non-ASCII text that re-encodes without
+    error. 'xn--a' and friends fail decoding and are not valid IDNA.
+    Equality with a re-encoded form is deliberately NOT required: the
+    IDNA2003 codec maps sharp-s and final sigma, so valid modern ACE
+    labels (xn--fa-hia, xn--3xa) would fail an equality check while iroh
+    accepts them. Full UTS46 validity is established by the construction
+    check in validate_relay_urls when the binding is available.
+    """
     if not label.startswith('xn--'):
         return True
     try:
         decoded = label[4:].encode('ascii').decode('punycode')
-        return decoded.encode('idna').decode('ascii') == label
     except (UnicodeError, ValueError):
         return False
+    if not any(ord(char) > 127 for char in decoded):
+        return False
+    try:
+        decoded.encode('idna')
+    except UnicodeError:
+        return False
+    return True
 
 
 def _loopback_host(hostname):
@@ -221,6 +233,27 @@ def _valid_hostname(hostname, bracketed=False):
                for label in labels)
 
 
+def _check_relay_urls_construct(urls):
+    """Construction check against the iroh binding: a URL the Python
+    checks accept must also construct a relay mode, or it would fail at
+    endpoint setup after being saved. Python's IDNA codec cannot
+    establish UTS46 validity on its own, so the binding is the oracle
+    for the IDNA surface. Skipped when the binding is not installed
+    (the space extra): the Python checks are the approximation there,
+    and construction fails loudly at serve time. Any construction
+    failure rejects the URL: fail closed rather than save a URL that
+    cannot be used.
+    """
+    try:
+        import iroh
+    except (ImportError, OSError):
+        return
+    try:
+        iroh.RelayMode.custom_from_urls(urls)
+    except Exception as error:
+        raise ValueError('Relay URL rejected by the relay backend') from error
+
+
 def validate_relay_urls(value):
     """Relay URLs for a self-hosted relay: 1-4 bare origins.
 
@@ -229,7 +262,10 @@ def validate_relay_urls(value):
     fragments and paths below the root are rejected: the relay serves its own
     fixed paths, so anything more is a misconfigured URL. The authority is
     validated up front — a host or port iroh cannot consume is rejected here,
-    not deferred to endpoint setup after the URL has been saved.
+    not deferred to endpoint setup after the URL has been saved. The Python
+    checks enforce the application policy and WHATWG/IDNA shape rules; when
+    the iroh binding is installed, the URLs must additionally construct a
+    relay mode, which is the final word on IDNA validity.
     """
     if not isinstance(value, (list, tuple)) or not 1 <= len(value) <= MAX_RELAY_URLS:
         raise ValueError('Relay URLs must be a list of 1 to 4 URLs')
@@ -260,6 +296,7 @@ def validate_relay_urls(value):
         urls.append(url)
     if sum(len(json.dumps(url)) - 2 for url in urls) > MAX_RELAY_URLS_TOTAL_LENGTH:
         raise ValueError('Relay URLs exceed the total length an invitation code can carry')
+    _check_relay_urls_construct(urls)
     return urls
 
 

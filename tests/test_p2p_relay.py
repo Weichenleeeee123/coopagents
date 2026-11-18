@@ -1,4 +1,5 @@
 import base64
+import importlib.util
 import json
 from pathlib import Path
 import unittest
@@ -139,6 +140,49 @@ class ValidateRelayUrls(unittest.TestCase):
     def test_accepts_mapped_unicode_root_separators(self):
         for url in ['https://例子.测试。', 'https://例子.测试．', 'https://例子.测试｡']:
             self.assertEqual(p2p.validate_relay_urls([url]), [url])
+
+    def test_accepts_valid_modern_ace_labels(self):
+        for url in ['https://xn--fa-hia.de', 'https://xn--3xa.gr', 'https://xn--zca.example',
+                    'https://xn--ab-gia.example', 'https://xn--ab-sbc.example',
+                    'https://xn--bcher-kva.example', 'https://xn--n3h.example']:
+            self.assertEqual(p2p.validate_relay_urls([url]), [url])
+
+    @unittest.skipUnless(importlib.util.find_spec('iroh') is not None, 'iroh binding required')
+    def test_validator_agrees_with_iroh_on_hostile_idna(self):
+        import iroh
+        hostile = ['\u0340.example', '\u0341.example',
+                   '\u061c.example', 'a\u061cb.example', 'xn--bgb.example', 'xn--ab-esd.example',
+                   '\u08e2.example', 'a\u08e2b.example', 'xn--l0b.example', 'xn--ab-8if.example',
+                   'xn--jxg.example', 'xn--ab-28t.example',
+                   '\u2066.example', 'a\u2066b.example', 'xn--lxg.example', 'xn--ab-88t.example',
+                   '\u2069.example', 'a\u2069b.example', 'xn--oxg.example', 'xn--ab-i9t.example',
+                   '\u0378.example', 'a\u0378b.example', 'xn--zva.example', 'xn--ab-g4b.example',
+                   'a\u0870b.example', 'xn--ab-h8e.example',
+                   'a\u08b3b.example', 'xn--ab-7ef.example',
+                   'a\u08a0b.example', 'xn--ab-ldf.example',
+                   'xn--23f.example', 'xn--ab-ptr.example']
+        self.assertEqual(len(hostile), 32)
+        for host in hostile:
+            url = 'https://' + host
+            with self.assertRaises(Exception, msg=url):
+                iroh.RelayMode.custom_from_urls([url])
+            with self.assertRaises(ValueError, msg=url):
+                p2p.validate_relay_urls([url])
+
+    def test_validation_without_iroh_binding(self):
+        import sys
+        with patch.dict(sys.modules, {'iroh': None}):
+            self.assertEqual(p2p.validate_relay_urls(['https://xn--fa-hia.de']), ['https://xn--fa-hia.de'])
+            self.assertEqual(p2p.validate_relay_urls(['https://relay.example.com']),
+                             ['https://relay.example.com'])
+            with self.assertRaises(ValueError):
+                p2p.validate_relay_urls(['https://xn--a.example'])
+            # Without the binding the Python checks are the approximation:
+            # a host only UTS46 rejects slips through here and fails loudly
+            # at endpoint setup instead. This assertion pins the fallback
+            # path: with the binding installed the same URL is rejected.
+            self.assertEqual(p2p.validate_relay_urls(['https://\u0340.example']),
+                             ['https://\u0340.example'])
 
     def test_rejects_wrong_shapes(self):
         for value in [None, RELAY, [], ['https://a.example'] * 5, [None], [123]]:
