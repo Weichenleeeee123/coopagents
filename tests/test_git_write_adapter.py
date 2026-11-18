@@ -5,7 +5,7 @@ from pathlib import Path
 from unittest.mock import patch
 from uuid import uuid4
 
-from coopagents.errors import ValidationError
+from coopagents.errors import Conflict, ValidationError
 from coopagents.git_adapter import LocalAdapter
 from coopagents.local_outbox import OutboxError
 
@@ -122,10 +122,16 @@ class CreateBranchAdapterTests(unittest.TestCase):
     def test_create_branch_reuses_existing_branch_at_same_base(self):
         self.stub()
         self.adapter.create_branch(7, session_key='s1', ownership_epoch=1)
-        git(self.repo, 'checkout', 'main')
         again = self.adapter.create_branch(7, session_key='s1', ownership_epoch=1)
         self.assertEqual(again['status'], 'reused')
         self.assertEqual(git(self.repo, 'rev-parse', 'HEAD').decode().strip(), self.head)
+
+    def test_create_branch_reuse_from_another_branch_is_a_conflict(self):
+        self.stub()
+        self.adapter.create_branch(7, session_key='s1', ownership_epoch=1)
+        git(self.repo, 'checkout', 'main')
+        with self.assertRaises(Conflict):
+            self.adapter.create_branch(7, session_key='s1', ownership_epoch=1)
 
     def test_preview_executes_no_writes(self):
         calls = self.stub()
@@ -308,7 +314,8 @@ class DeliverAdapterTests(unittest.TestCase):
         commands = [' '.join(command) for command in result['commands']]
         self.assertTrue(any('add -- README.md' in command for command in commands))
         self.assertTrue(any('commit -F' in command for command in commands))
-        self.assertTrue(any('push origin ' + self.branch in command for command in commands))
+        self.assertTrue(any('push origin refs/heads/' + self.branch + ':refs/heads/' + self.branch in command for command in commands))
+        self.assertTrue(any('push.followTags=false' in command for command in commands))
         self.assertEqual(git(self.repo, 'rev-parse', 'HEAD').decode().strip(), self.head)
         self.assertEqual(git(self.bare, 'branch', '--list', 'coopagents/*').decode(), '')
         self.assertEqual(self.paths_called(calls, '/api/git/checkpoint'), [])

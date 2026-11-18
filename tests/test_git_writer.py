@@ -183,12 +183,29 @@ class GitWriterCommandTests(unittest.TestCase):
                 writer.create_branch(bad_branch, bad_sha)
         self.assertEqual(recorder.calls, [])
 
+    def test_create_branch_reuse_preview_shape_and_checkout_requirement(self):
+        branch = 'coopagents/task-1-1-build'
+        git(self.repo, 'checkout', '-b', branch)
+        git(self.repo, 'checkout', 'main')
+        writer = self.writer()
+        preview = writer.create_branch(branch, self.head, preview=True)
+        self.assertTrue(preview['preview'])
+        self.assertTrue(preview['reused'])
+        self.assertEqual(preview['commands'], [])
+        with self.assertRaises(Conflict):
+            writer.create_branch(branch, self.head)
+        git(self.repo, 'checkout', branch)
+        self.assertTrue(writer.create_branch(branch, self.head)['reused'])
+
     def test_push_command_is_plain_and_cannot_be_forced(self):
         recorder = Recorder()
         writer = self.writer(recorder)
         writer.push_branch('coopagents/task-1-1-build')
         command = recorder.calls[0][0]
-        self.assertEqual(command[-3:], ['push', 'origin', 'coopagents/task-1-1-build'])
+        self.assertEqual(command[-3:], ['push', 'origin', 'refs/heads/coopagents/task-1-1-build:refs/heads/coopagents/task-1-1-build'])
+        self.assertIn('push.followTags=false', command)
+        self.assertIn('push.recurseSubmodules=no', command)
+        self.assertLess(command.index('push.followTags=false'), command.index('push'))
         self.assertNotIn('--force', command)
         self.assertNotIn('--force-with-lease', command)
         self.assertFalse(any('+' in part for part in command[-3:]))
@@ -346,6 +363,46 @@ class GitWriterRealGitTests(unittest.TestCase):
         with self.assertRaises(ValidationError):
             writer.stage_and_commit('main', ['README.md'], commit_message(1, 'Nothing'),
                                     'A', 'a@example.com')
+
+    @unittest.skipIf(os.name == 'nt', 'glob characters are illegal in Windows filenames')
+    def test_glob_named_file_stages_only_itself(self):
+        repo = make_repo(self.root)
+        (repo / '*.txt').write_text('star\n', encoding='utf-8')
+        git(repo, 'add', '--', '*.txt')
+        git(repo, 'commit', '-m', 'glob file')
+        (repo / '*.txt').write_text('star changed\n', encoding='utf-8')
+        (repo / 'credentials.txt').write_text('token\n', encoding='utf-8')
+        delivered = GitWriter(repo).stage_and_commit('main', ['*.txt'], commit_message(1, 'Change glob file'),
+                                                     'A', 'a@example.com')
+        files = git(repo, 'diff-tree', '--no-commit-id', '--name-only', '-r',
+                    delivered['head_sha']).decode().splitlines()
+        self.assertEqual(files, ['*.txt'])
+        self.assertIn('?? credentials.txt', git(repo, 'status', '--porcelain').decode())
+
+    def test_pre_staged_extra_file_is_rejected(self):
+        repo = make_repo(self.root)
+        (repo / 'a.py').write_text('a\n', encoding='utf-8')
+        (repo / 'b.py').write_text('b\n', encoding='utf-8')
+        git(repo, 'add', 'a.py', 'b.py')
+        writer = GitWriter(repo)
+        head = git(repo, 'rev-parse', 'HEAD').decode().strip()
+        with self.assertRaises(ValidationError) as caught:
+            writer.stage_and_commit('main', ['a.py'], commit_message(1, 'Only a'),
+                                    'A', 'a@example.com')
+        self.assertIn('do not match the checked paths', str(caught.exception))
+        self.assertEqual(git(repo, 'rev-parse', 'HEAD').decode().strip(), head)
+
+    def test_push_does_not_follow_tags(self):
+        bare = make_bare(self.root)
+        repo = make_repo(self.root, remote=bare)
+        git(repo, 'config', 'push.followTags', 'true')
+        git(repo, 'push', 'origin', 'main')
+        git(repo, 'tag', '-a', 'v1', '-m', 'version 1')
+        pushed = GitWriter(repo).push_branch('main')
+        self.assertTrue(pushed['pushed'])
+        self.assertEqual(git(bare, 'tag', '-l').decode().strip(), '')
+        self.assertEqual(git(bare, 'rev-parse', 'refs/heads/main').decode().strip(),
+                         git(repo, 'rev-parse', 'HEAD').decode().strip())
 
 
 class BranchRecordingTests(unittest.TestCase):

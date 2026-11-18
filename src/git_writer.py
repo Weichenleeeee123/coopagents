@@ -152,7 +152,11 @@ class GitWriter:
         return _git(self.root, *arguments, allowed=allowed)
 
     def _command(self, *arguments, author=None):
-        command = ['git', '--no-pager', '-c', 'core.fsmonitor=false',
+        # --literal-pathspecs: a tracked file literally named `*.txt` must
+        # stage only itself. Without it git expands globs in the add
+        # pathspec, staging files the caller never checked (including
+        # secret-shaped ones) past the path-name secret scan.
+        command = ['git', '--no-pager', '--literal-pathspecs', '-c', 'core.fsmonitor=false',
                    '-c', 'core.hooksPath=' + os.devnull, '-c', 'status.renames=true',
                    '-C', str(self.root)]
         if author is not None:
@@ -212,6 +216,11 @@ class GitWriter:
         existing = self.ref_sha('refs/heads/' + branch)
         if existing:
             if existing == base_sha:
+                if preview:
+                    return {'preview': True, 'commands': [], 'branch': branch,
+                            'base_sha': base_sha, 'reused': True}
+                if self.current_branch() != branch:
+                    raise Conflict('Task branch already exists but is not checked out')
                 return {'branch': branch, 'base_sha': base_sha, 'reused': True}
             raise Conflict('Task branch already exists from a different base')
         arguments = ['checkout', '-b', branch, base_sha]
@@ -246,9 +255,18 @@ class GitWriter:
         # traversal; a symlink file itself stages as a symlink, which is
         # legitimate content.
         self._execute(['add', '--', *paths], error='Git staging failed')
-        _, staged = self._read('diff', '--cached', '--quiet', allowed=(0, 1))
-        if staged == 0:
+        # Verify what is actually staged: the index may already hold entries
+        # the caller never checked (staged by other tools before this call).
+        # Fail closed instead of committing them.
+        staged_data, _ = self._read('diff', '--cached', '--name-only', '-z', allowed=(0,))
+        staged = [entry for entry in staged_data.decode('utf-8', 'surrogateescape').split('\0') if entry]
+        if not staged:
             raise ValidationError('No staged changes to commit')
+        unexpected = sorted(set(staged) - set(paths))
+        offenders = find_secret_paths(staged)
+        if unexpected or offenders:
+            details = sorted(set(unexpected) | set(offenders))
+            raise ValidationError('Staged paths do not match the checked paths: ' + ', '.join(details[:10]))
         handle = tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', prefix='coopagents-commit-',
                                              suffix='.txt', delete=False)
         try:
@@ -264,9 +282,15 @@ class GitWriter:
         return {'branch': branch, 'head_sha': self.head_sha(), 'paths': paths}
 
     def push_branch(self, branch, *, preview=False):
-        """Plain push only; force variants cannot be constructed (D2)."""
+        """Plain push only; force variants cannot be constructed (D2).
+
+        Push behavior is pinned per invocation: the user's config files are
+        retained for credentials, so followTags and recurseSubmodules must
+        not leak in from them, and the refspec is fully qualified.
+        """
         branch_name(branch)
-        arguments = ['push', 'origin', branch]
+        arguments = ['-c', 'push.followTags=false', '-c', 'push.recurseSubmodules=no',
+                     'push', 'origin', 'refs/heads/' + branch + ':refs/heads/' + branch]
         if preview:
             return {'preview': True, 'commands': [self._command(*arguments)], 'branch': branch}
         self._execute(arguments, error='Git push was rejected; the remote branch moved or the push was not allowed')
