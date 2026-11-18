@@ -179,6 +179,31 @@ def project_activity(snapshot, limit=MAX_ITEMS):
                     reference['url'] = row['url']
                 items.append(_item('github:'+str(row.get('ref_id', row.get('release_id', ''))), kind,
                     row.get('sync_at'), 'github_verified', summary, None, row.get('task_id'), reference))
+        unattributed = git.get('github_unattributed', [])
+        if isinstance(unattributed, list):
+            for row in unattributed[:MAX_SOURCE_ITEMS]:
+                if not isinstance(row, dict):
+                    continue
+                branch = _text(row.get('branch'), 250)
+                kind = row.get('kind')
+                if not branch:
+                    continue
+                if kind == 'direct_branch':
+                    event_type, item_id = 'github_direct_branch', 'github-direct:'+branch
+                    summary, task_id = 'Direct push to task branch '+branch, row.get('task_id')
+                elif kind == 'unattributed_branch':
+                    event_type, item_id = 'github_unattributed_branch', 'github-direct:'+branch
+                    summary, task_id = 'Branch '+branch+' is not associated with any task', None
+                elif kind == 'default_branch_direct_push':
+                    event_type, item_id = 'github_default_branch_direct_push', 'github-direct-default:'+branch
+                    summary, task_id = 'Default branch '+branch+' advanced outside the governed flow', None
+                else:
+                    continue
+                # The id is branch-stable: a new push to the same branch does
+                # not add another item; the item disappears when the branch does.
+                items.append(_item(item_id, event_type, row.get('sync_at'), 'github_verified',
+                    summary, None, task_id,
+                    {'branch': branch, 'head_sha': _text(row.get('head_sha'), 64)}))
         graph = git.get('delivery_graph', {})
         for row in graph.get('items', [])[:MAX_SOURCE_ITEMS] if isinstance(graph, dict) else []:
             for association in row.get('associations', [])[:MAX_SOURCE_ITEMS] if isinstance(row, dict) else []:

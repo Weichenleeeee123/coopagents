@@ -89,6 +89,35 @@ class ProjectActivityTests(unittest.TestCase):
         self.assertTrue(any(item['task_id'] == task['id'] and item['summary'] == 'Release metadata verified'
                             for item in snapshot['activity']['items']))
 
+    def test_direct_branches_project_one_stable_item_each(self):
+        snapshot = {'git': {'github_unattributed': [
+            {'kind': 'direct_branch', 'task_id': 3, 'ownership_epoch': 1,
+             'branch': 'coopagents/task-3-1-build', 'head_sha': 'a'*40,
+             'source': 'direct', 'sync_at': '2026-01-03T00:00:00Z', 'stale': False},
+            {'kind': 'unattributed_branch', 'branch': 'wip', 'head_sha': 'b'*40,
+             'source': 'direct', 'sync_at': '2026-01-02T00:00:00Z', 'stale': False},
+            {'kind': 'default_branch_direct_push', 'branch': 'main', 'head_sha': 'c'*40,
+             'source': 'direct', 'sync_at': '2026-01-01T00:00:00Z', 'stale': False},
+            {'kind': 'unknown_kind', 'branch': 'nope', 'head_sha': 'd'*40,
+             'sync_at': '2026-01-04T00:00:00Z'},
+            'not-a-row']}}
+        feed = project_activity(snapshot)
+        self.assertEqual([item['type'] for item in feed['items']],
+                         ['github_direct_branch', 'github_unattributed_branch',
+                          'github_default_branch_direct_push'])
+        direct = feed['items'][0]
+        self.assertEqual(direct['task_id'], 3)
+        self.assertEqual(direct['summary'], 'Direct push to task branch coopagents/task-3-1-build')
+        self.assertEqual(direct['reference']['branch'], 'coopagents/task-3-1-build')
+        self.assertIn('not associated', feed['items'][1]['summary'])
+        self.assertIsNone(feed['items'][1]['task_id'])
+        self.assertIn('outside the governed flow', feed['items'][2]['summary'])
+        resynced = project_activity({'git': {'github_unattributed': [
+            {'kind': 'direct_branch', 'task_id': 3, 'ownership_epoch': 1,
+             'branch': 'coopagents/task-3-1-build', 'head_sha': 'e'*40,
+             'source': 'direct', 'sync_at': '2026-01-05T00:00:00Z', 'stale': False}]}})
+        self.assertEqual([item['id'] for item in resynced['items']], [direct['id']])
+
 
 if __name__ == '__main__':
     unittest.main()
