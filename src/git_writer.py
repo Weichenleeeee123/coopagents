@@ -240,6 +240,11 @@ class GitWriter:
         if preview:
             return {'preview': True, 'commands': [add, self._command('commit', '-F', '<message-file>', author=(name, email))],
                     'branch': branch, 'paths': paths, 'message': message}
+        # Path ancestry through symlinked directories is enforced by git
+        # itself: `git add` refuses a pathspec beyond a symlink that leaves
+        # the worktree. The lexical validator above only rejects textual
+        # traversal; a symlink file itself stages as a symlink, which is
+        # legitimate content.
         self._execute(['add', '--', *paths], error='Git staging failed')
         _, staged = self._read('diff', '--cached', '--quiet', allowed=(0, 1))
         if staged == 0:

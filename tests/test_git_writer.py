@@ -216,6 +216,17 @@ class GitWriterCommandTests(unittest.TestCase):
             writer.stage_and_commit('main', ['../evil.py'], message, 'A', 'a@example.com')
         self.assertEqual(recorder.calls, [])
 
+    def test_stage_and_commit_refuses_paths_beyond_symlinked_dirs(self):
+        outside = self.root / 'outside-dir'
+        outside.mkdir()
+        (outside / 'evil.txt').write_text('secret\n', encoding='utf-8')
+        (self.repo / 'link').symlink_to(outside, target_is_directory=True)
+        writer = GitWriter(self.repo)
+        with self.assertRaises(ValidationError):
+            writer.stage_and_commit('main', ['link/evil.txt'], commit_message(4, 'Work'),
+                                    'A', 'a@example.com')
+        self.assertEqual(git(self.repo, 'status', '--porcelain').decode().strip(), '?? link')
+
     def test_preview_executes_zero_writes(self):
         recorder = Recorder()
         writer = self.writer(recorder)
