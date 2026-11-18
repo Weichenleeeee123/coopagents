@@ -550,6 +550,20 @@ class OverlapGateReadTests(unittest.TestCase):
         self.assertEqual(conflicts[0]['task_id'], self.second['id'])
         self.assertEqual(conflicts[0]['paths'], ['src/shared.py'])
 
+    def test_fresh_conflict_survives_a_flood_of_stale_observations(self):
+        from datetime import timedelta
+        fresh = now().isoformat()
+        stale = (now() - timedelta(minutes=10)).isoformat()
+        self.observe(self.other['agent_token'], self.second['id'], ['src/shared.py'], fresh, 's2', 'workspace-conflict')
+        for index in range(60):
+            self.observe(self.other['agent_token'], self.second['id'], ['src/stale-%d.py' % index],
+                         stale, 's2', 'workspace-stale-%d' % index)
+        with self.identity.db.connect() as c:
+            conflicts = self.repositories.overlap_conflicts(c, self.owner['room_id'], self.first['id'], ['src/shared.py'])
+        self.assertEqual(len(conflicts), 1)
+        self.assertEqual(conflicts[0]['task_id'], self.second['id'])
+        self.assertEqual(conflicts[0]['paths'], ['src/shared.py'])
+
 
 if __name__ == '__main__':
     unittest.main()

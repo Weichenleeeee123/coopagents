@@ -213,17 +213,21 @@ class RepositoryStore:
         wanted = set(validate_relative_paths(paths))
         if not wanted:
             return []
+        cutoff = (now() - timedelta(minutes=5)).isoformat()
         rows = connection.execute('''SELECT g.* FROM git_observations g JOIN tasks t ON t.id=g.task_id
             WHERE g.room_id=? AND t.cancelled_at IS NULL AND t.owner_member_id IS NOT NULL
-            AND g.ownership_epoch=t.ownership_epoch AND g.task_id!=? AND NOT EXISTS
+            AND g.ownership_epoch=t.ownership_epoch AND g.task_id!=?
+            AND datetime(g.captured_at) >= datetime(?) AND NOT EXISTS
             (SELECT 1 FROM git_observations n WHERE n.room_id=g.room_id AND n.member_id=g.member_id
              AND n.workspace_id=g.workspace_id AND n.task_id=g.task_id AND n.ownership_epoch=g.ownership_epoch
              AND (n.captured_at>g.captured_at OR (n.captured_at=g.captured_at AND n.id>g.id)))
             ORDER BY g.id DESC''',
-            (room_id, task_id)).fetchall()
-        # No row cap: the freshness filter runs in Python below, so capping here
-        # would silently drop a fresh conflict that falls beyond the cap. The
-        # NOT EXISTS clause already keeps only the latest row per workspace.
+            (room_id, task_id, cutoff)).fetchall()
+        # The datetime predicate bounds the result set to fresh rows: SQLite
+        # normalizes ISO offsets, and its second truncation can only admit
+        # extra rows, never drop a fresh one. The NOT EXISTS clause still
+        # selects the latest row per workspace over all rows, and the exact
+        # five-minute check below remains the arbiter.
         conflicts = []
         for row in rows:
             if timestamp(row['captured_at']) < now() - timedelta(minutes=5):
@@ -238,12 +242,14 @@ class RepositoryStore:
 
     def _fresh_caller_paths(self, connection, room_id, member_id, task_id, ownership_epoch):
         """Union of fresh latest-per-workspace observation paths for one execution."""
+        cutoff = (now() - timedelta(minutes=5)).isoformat()
         rows = connection.execute('''SELECT g.paths_json,g.captured_at FROM git_observations g
-            WHERE g.room_id=? AND g.member_id=? AND g.task_id=? AND g.ownership_epoch=? AND NOT EXISTS
+            WHERE g.room_id=? AND g.member_id=? AND g.task_id=? AND g.ownership_epoch=?
+            AND datetime(g.captured_at) >= datetime(?) AND NOT EXISTS
             (SELECT 1 FROM git_observations n WHERE n.room_id=g.room_id AND n.member_id=g.member_id
              AND n.workspace_id=g.workspace_id AND n.task_id=g.task_id AND n.ownership_epoch=g.ownership_epoch
              AND (n.captured_at>g.captured_at OR (n.captured_at=g.captured_at AND n.id>g.id)))''',
-            (room_id, member_id, task_id, ownership_epoch)).fetchall()
+            (room_id, member_id, task_id, ownership_epoch, cutoff)).fetchall()
         paths = set()
         fresh = False
         for row in rows:
