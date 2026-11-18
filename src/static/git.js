@@ -63,6 +63,10 @@
       container.append(row);
     });
     const events=(git?.events||[]).filter(e=>e.task_id===task.id).sort((a,b)=>Date.parse(b.captured_at)-Date.parse(a.captured_at)||b.id-a.id).slice(0,12);
+    const direct=(git?.github_unattributed||[]).filter(d=>d.kind==='direct_branch'&&d.task_id===task.id);
+    direct.forEach(d=>append(container,append(element('article','','git-evidence git-direct'),
+      element('p','直接推送 '+(d.branch||'分支')+' · 未走 adapter'),
+      element('p','HEAD '+(d.head_sha||'').slice(0,12)+' · '+when(d.sync_at)+(d.stale?' · 同步过期':'')+(!connected(git)?' · 仓库授权不可用':''),'meta'))));
     const branchRow=(git?.branches||[]).find(b=>b.task_id===task.id&&(task.ownership_epoch===undefined||b.ownership_epoch===task.ownership_epoch));
     if(branchRow)append(container,append(element('article','','git-evidence'),
       element('p','任务分支 '+branchRow.branch+' · 基准 '+(branchRow.base_sha||'').slice(0,12)),
@@ -161,6 +165,14 @@
     if((git.github_pending||[]).length)append(root,element('p',git.github_pending.length+' 个开放 PR 尚未关联任务；在任务详情中指定 PR 编号。','muted'));
     if(git.github_discovery?.truncated)append(root,element('p','开放 PR 列表仅展示最近 '+git.github_discovery.limit+' 条，其他 PR 可按编号明确关联。','muted'));
     if(git.github_discovery?.releases?.truncated)append(root,element('p','Release 列表仅展示最近 '+git.github_discovery.releases.limit+' 条，其他 Release 可按 ID 明确关联。','muted'));
+    const unattributed=(git.github_unattributed||[]).filter(d=>d.kind==='unattributed_branch');
+    if(unattributed.length){
+      append(root,element('h3','未归属分支'),element('p','以下分支不在治理流程中，未关联任务。','muted'));
+      unattributed.forEach(d=>append(root,element('p',(d.branch||'分支')+' · HEAD '+(d.head_sha||'').slice(0,12)+' · '+when(d.sync_at)+(d.stale?' · 同步过期':''))));
+    }
+    const defaultPush=(git.github_unattributed||[]).find(d=>d.kind==='default_branch_direct_push');
+    if(defaultPush)append(root,element('p','默认分支 '+(defaultPush.branch||'')+' 在治理流程外前进了 · HEAD '+(defaultPush.head_sha||'').slice(0,12)+' · '+when(defaultPush.sync_at),'muted'));
+    if(git.github_discovery?.branches?.truncated)append(root,element('p','分支列表仅展示最近 '+git.github_discovery.branches.limit+' 条，其他分支可按名称明确关联。','muted'));
     if((git.github_events||[]).some(e=>e.status!=='completed'))append(root,element('p','有事件等待同步或重试；最后成功记录保留。','muted'));
   }
   function renderOverlaps(root,git,taskName){

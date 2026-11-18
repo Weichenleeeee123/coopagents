@@ -110,5 +110,33 @@ global.document={createElement:tag=>new Element(tag),activeElement:null};
   assert.ok(toggle);
   await toggle.listeners.click();
   assert.deepEqual(toggleCall,{path:'/api/git/write-enabled',payload:{enabled:true}});
+  // Direct pushes render as distinct evidence on the owning task only.
+  const directDetail=new Element('div');
+  Git.renderDetails(directDetail,task,{github_unattributed:[
+    {kind:'direct_branch',task_id:1,branch:'coopagents/task-1-1-build',head_sha:'d'.repeat(40),sync_at:'2026-01-01T00:00:00Z',stale:false},
+    {kind:'direct_branch',task_id:2,branch:'coopagents/task-2-1-other',head_sha:'e'.repeat(40),sync_at:'2026-01-01T00:00:00Z',stale:false},
+    {kind:'unattributed_branch',branch:'wip',head_sha:'f'.repeat(40),sync_at:'2026-01-01T00:00:00Z',stale:false}]},
+    {...context,me:{member_id:'other'},memberName:()=>'Member'});
+  const directText=descendants(directDetail).map(n=>n.textContent).join(' ');
+  assert.match(directText,/直接推送 coopagents\/task-1-1-build · 未走 adapter/);
+  assert.doesNotMatch(directText,/task-2-1-other/);
+  assert.doesNotMatch(directText,/wip/);
+  assert.ok(descendants(directDetail).some(n=>n.className==='git-evidence git-direct'));
+  // Unattributed branches get their own panel section; empty state takes no space.
+  const unattributedPanel=new Element('div');
+  Git.renderPanel(unattributedPanel,{me:{room_id:'first'},git:{binding:{repository:'github.com/acme/demo'},can_manage:false,github_configured:true,
+    github_unattributed:[
+      {kind:'unattributed_branch',branch:'wip',head_sha:'f'.repeat(40),sync_at:'2026-01-01T00:00:00Z',stale:false},
+      {kind:'default_branch_direct_push',branch:'main',head_sha:'a'.repeat(40),sync_at:'2026-01-01T00:00:00Z',stale:false}],
+    github_discovery:{branches:{limit:50,truncated:true}}}},{...context,api:async()=>({}),sync:async()=>{}});
+  const panelText=descendants(unattributedPanel).map(n=>n.textContent).join(' ');
+  assert.match(panelText,/未归属分支/);
+  assert.match(panelText,/wip · HEAD ffffffffffff/);
+  assert.match(panelText,/默认分支 main 在治理流程外前进了 · HEAD aaaaaaaaaaaa/);
+  assert.match(panelText,/分支列表仅展示最近 50 条/);
+  const emptyPanel=new Element('div');
+  Git.renderPanel(emptyPanel,{me:{room_id:'first'},git:{binding:{repository:'github.com/acme/demo'},can_manage:false,github_configured:true,github_unattributed:[]}},{...context,api:async()=>({}),sync:async()=>{}});
+  assert.ok(!descendants(emptyPanel).some(n=>n.textContent.includes('未归属分支')));
+  assert.ok(!descendants(emptyPanel).some(n=>n.textContent.includes('在治理流程外前进了')));
   console.log('Git state, freshness, safe DOM, authorization, project-switch and timeline regressions passed');
 })().catch(error=>{console.error(error);process.exitCode=1;});
