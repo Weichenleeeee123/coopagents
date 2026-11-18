@@ -418,15 +418,18 @@ def git_write_ready_check(profile_path, project_dir=None):
     """
     if not project_dir:
         return make_check('git_write_ready', 'skipped',
-                          'No project directory was selected for the git write check.')
+                          'No project directory was selected for the git write check.',
+                          evidence={'branch_protection': dict(BRANCH_PROTECTION_REPORT)})
     if shutil.which('git') is None:
         return make_check('git_write_ready', 'fail', 'The git binary was not found on PATH.',
-                          'Install git, then rerun doctor.')
+                          'Install git, then rerun doctor.',
+                          {'branch_protection': dict(BRANCH_PROTECTION_REPORT)})
     try:
         profile = read_profile(checked_path(profile_path).resolve())
     except Exception:
         return make_check('git_write_ready', 'unknown',
-                          'The private profile is invalid or unavailable.')
+                          'The private profile is invalid or unavailable.',
+                          evidence={'branch_protection': dict(BRANCH_PROTECTION_REPORT)})
     try:
         from .git_workspace import GitWorkspace
         local_repository = GitWorkspace(Path(project_dir)).inspect()['repository']
@@ -441,7 +444,8 @@ def git_write_ready_check(profile_path, project_dir=None):
                           {'local_repository': local_repository,
                            'branch_protection': dict(BRANCH_PROTECTION_REPORT)})
     if not isinstance(snapshot, dict):
-        return make_check('git_write_ready', 'unknown', 'The service snapshot was invalid.')
+        return make_check('git_write_ready', 'unknown', 'The service snapshot was invalid.',
+                          evidence={'branch_protection': dict(BRANCH_PROTECTION_REPORT)})
     binding = snapshot.get('binding')
     connection = snapshot.get('connection')
     enabled = bool(snapshot.get('git_write_enabled'))

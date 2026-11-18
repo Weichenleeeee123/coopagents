@@ -801,6 +801,37 @@ class GitWriteReadyCheckTests(DoctorTestCase):
         self.assertEqual(result['status'], 'unknown')
         self.assertEqual(result['evidence']['branch_protection']['status'], 'unknown')
 
+    def test_branch_protection_evidence_present_on_all_early_returns(self):
+        cases = {}
+
+        def skipped(directory):
+            return onboarding_doctor.git_write_ready_check(self.profile(directory))
+
+        def git_missing(directory):
+            with patch('coopagents.onboarding_doctor.shutil.which', return_value=None):
+                return onboarding_doctor.git_write_ready_check(
+                    self.profile(directory), self.repo(directory))
+
+        def invalid_profile(directory):
+            bad = Path(directory) / 'bad-profile.json'
+            bad.write_text('{invalid', encoding='utf-8')
+            return onboarding_doctor.git_write_ready_check(bad, self.repo(directory))
+
+        def invalid_snapshot(directory):
+            return self.check(directory, ['not', 'a', 'dict'])
+
+        cases['skipped'] = (skipped, 'skipped')
+        cases['git_missing'] = (git_missing, 'fail')
+        cases['invalid_profile'] = (invalid_profile, 'unknown')
+        cases['invalid_snapshot'] = (invalid_snapshot, 'unknown')
+        for name, (run, status) in cases.items():
+            with self.subTest(case=name), retained_directory() as directory:
+                result = run(directory)
+            self.assertEqual(result['status'], status)
+            protection = result['evidence']['branch_protection']
+            self.assertEqual(protection['status'], 'unknown')
+            self.assertIn('branch-protection', protection['reason'])
+
     def test_missing_git_binary_fails(self):
         with retained_directory() as directory:
             with patch('coopagents.onboarding_doctor.shutil.which', return_value=None):
