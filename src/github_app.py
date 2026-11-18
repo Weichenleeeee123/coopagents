@@ -1,4 +1,4 @@
-"""Read-only GitHub App REST adapter. No credential-bearing redirects or URLs."""
+"""GitHub App REST adapter. Reads are GET; writes are the allowlisted PR open and merge calls only. No credential-bearing redirects or URLs."""
 import json
 import math
 from contextvars import ContextVar
@@ -166,9 +166,10 @@ class GitHubApp:
             raise GitHubError('GitHub response is invalid') from None
 
     def request(self,method,path,token,data=None):
-        if (method not in ('GET','POST') or not isinstance(path,str) or not path.startswith('/')
-                or path.startswith('//') or '#' in path or any(ord(x)<32 for x in path)
-                or '\\' in path or len(path)>2000):
+        if (not isinstance(path,str) or not path.startswith('/') or path.startswith('//')
+                or '#' in path or any(ord(x)<32 for x in path) or '\\' in path or len(path)>2000
+                or (method not in ('GET','POST')
+                    and not (method=='PUT' and re.fullmatch(r'/repos/[^/]+/[^/]+/pulls/[0-9]+/merge',path)))):
             raise ValidationError('Unsupported GitHub API request')
         return self._request_url(method,'https://api.github.com'+path,token,data)
 
@@ -315,6 +316,102 @@ class GitHubApp:
                     'url':f'https://github.com/{full_name}/pull/{number}'}
         return self._run_bounded(create)
 
+    def read_branch_protection(self,installation_id,repository_id,full_name,branch):
+        """Branch protection for one branch, or None when unprotected (404).
+
+        Uses a read-only token. Only the sections the merge gate reads are
+        normalized: required status checks, required reviews, restrictions.
+        """
+        branch_name(branch)
+        path=self._repository_path(full_name)
+        def read():
+            token=self.installation_token(installation_id,repository_id)
+            try:
+                result=self.request('GET',path+'/branches/'+quote(branch,safe='')+'/protection',token)
+            except GitHubAccessDenied as error:
+                if error.status==404: return None
+                raise
+            if not isinstance(result,dict): raise GitHubError('GitHub protection response is invalid')
+            def section(key):
+                value=result.get(key)
+                return value if isinstance(value,dict) else None
+            checks=section('required_status_checks')
+            contexts=[]
+            if checks is not None:
+                raw=checks.get('contexts')
+                if not isinstance(raw,list) or len(raw)>100: raise GitHubError('GitHub protection response is invalid')
+                for context in raw:
+                    if not isinstance(context,str) or not context or len(context)>200:
+                        raise GitHubError('GitHub protection response is invalid')
+                    contexts.append(context)
+            reviews=section('required_pull_request_reviews')
+            count=0
+            if reviews is not None:
+                count=reviews.get('required_approving_review_count',0)
+                if type(count) is not int or count<0: raise GitHubError('GitHub protection response is invalid')
+            restrictions=section('restrictions')
+            limited={}
+            if restrictions is not None:
+                for key in ('users','teams','apps'):
+                    raw=restrictions.get(key)
+                    if raw is None: raw=[]
+                    if not isinstance(raw,list) or len(raw)>100: raise GitHubError('GitHub protection response is invalid')
+                    names=[]
+                    for entry in raw:
+                        if not isinstance(entry,dict): raise GitHubError('GitHub protection response is invalid')
+                        name=entry.get('login') or entry.get('name') or entry.get('slug')
+                        if not isinstance(name,str) or not name: raise GitHubError('GitHub protection response is invalid')
+                        names.append(name[:200])
+                    limited[key]=names
+            return {'required_status_checks':{'contexts':contexts} if checks is not None else None,
+                    'required_pull_request_reviews':{'required_approving_review_count':count} if reviews is not None else None,
+                    'restrictions':limited if restrictions is not None else None}
+        return self._run_bounded(read)
+
+    def read_pull_reviews(self,installation_id,repository_id,full_name,number):
+        """PR reviews in API order with a truncation flag; uses a read-only token."""
+        positive_id(number)
+        path=self._repository_path(full_name)
+        def read():
+            token=self.installation_token(installation_id,repository_id)
+            items,truncated=self.bounded_page(path+'/pulls/'+str(number)+'/reviews',token,limit=100)
+            reviews=[]
+            for item in items:
+                if not isinstance(item,dict): raise GitHubError('GitHub review response is invalid')
+                user=item.get('user') or {}
+                reviewer=user.get('login') if isinstance(user,dict) else None
+                if reviewer is None and isinstance(user,dict): reviewer=user.get('id')
+                state=item.get('state')
+                if (reviewer is None or state not in ('APPROVED','CHANGES_REQUESTED','COMMENTED','DISMISSED','PENDING')):
+                    raise GitHubError('GitHub review response is invalid')
+                reviews.append({'reviewer':str(reviewer)[:200],'state':state})
+            return {'reviews':reviews,'truncated':truncated}
+        return self._run_bounded(read)
+
+    def merge_pull_request(self,installation_id,repository_id,full_name,number,head_sha):
+        """Merge a PR with a merge commit, guarded by the expected head SHA (D1).
+
+        Mints write scope. The method is fixed to 'merge' and the expected head
+        SHA is passed as 'sha', so a moved head aborts the merge server-side.
+        """
+        positive_id(number)
+        complete_sha(head_sha)
+        path=self._repository_path(full_name)
+        def merge():
+            token=self.installation_token(installation_id,repository_id,write=True)
+            try:
+                result=self.request('PUT',path+'/pulls/'+str(number)+'/merge',token,
+                                    {'sha':head_sha,'merge_method':'merge'})
+            except GitHubError as error:
+                raise GitHubError('GitHub refused the merge',retryable=error.retryable,
+                                  retry_after=error.retry_after,rate_limited=error.rate_limited) from None
+            if not isinstance(result,dict) or result.get('merged') is not True:
+                raise GitHubError('GitHub merge response is invalid')
+            try: sha=complete_sha(result.get('sha',''))
+            except ValidationError: raise GitHubError('GitHub merge response is invalid') from None
+            return {'merged':True,'sha':sha,'number':number}
+        return self._run_bounded(merge)
+
     def verify_repository(self,installation_id,repository_id,full_name):
         self.verify_installation(installation_id)
         token=self.installation_token(installation_id,repository_id)
@@ -438,11 +535,20 @@ class GitHubApp:
                 if head_id is not None: positive_id(head_id)
                 branch=pr['head']['ref']
                 if not isinstance(branch,str) or len(branch)>250: raise GitHubError('GitHub PR branch is invalid')
+                base_branch=pr['base'].get('ref')
+                if base_branch is not None and (not isinstance(base_branch,str) or not base_branch or len(base_branch)>250):
+                    raise GitHubError('GitHub PR branch is invalid')
+                mergeable=pr.get('mergeable')
+                if mergeable is not None and type(mergeable) is not bool:
+                    raise GitHubError('GitHub PR merge state is invalid')
+                raw_merge=pr.get('merge_commit_sha')
+                merge_commit_sha=complete_sha(raw_merge) if raw_merge is not None else None
                 merged=pr['merged'] if detail else False
                 if type(merged) is not bool: raise GitHubError('GitHub PR merge state is invalid')
                 current=checks_at(sha) if detail else {'checks':[],'statuses':[], 'checks_truncated':False,'statuses_truncated':False}
                 return {'number':number,'state':pr['state'],'merged':merged,'head_sha':sha,
-                    'head_repository_id':head_id,'head_branch':branch,**current,'checks_verified':detail}
+                    'head_repository_id':head_id,'head_branch':branch,'base_branch':base_branch,
+                    'mergeable':mergeable,'merge_commit_sha':merge_commit_sha,**current,'checks_verified':detail}
             except (KeyError,TypeError,ValidationError): raise GitHubError('GitHub PR response is invalid') from None
         for summary in summaries:
             number=summary.get('number') if isinstance(summary,dict) else None

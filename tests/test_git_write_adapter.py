@@ -90,6 +90,8 @@ class CreateBranchAdapterTests(unittest.TestCase):
                                        'path_count': 1}] if blocked else []}
             if path == '/api/git/branches':
                 return {'id': 1, 'branch': data['branch'], 'base_sha': data['base_sha']}
+            if path == '/api/operations/request_merge':
+                return {'id': 1, 'state': 'pending', 'pr_number': data['pr_number']}
             raise AssertionError('unexpected path ' + path)
 
         self.adapter.request = request
@@ -188,6 +190,16 @@ class CreateBranchAdapterTests(unittest.TestCase):
         self.assertEqual(gate[0]['gate'], 'claim')
         self.assertEqual(gate[0]['task_id'], 7)
         self.assertNotIn('paths', gate[0])
+
+    def test_request_merge_forwards_to_operations_endpoint(self):
+        calls = self.stub()
+        result = self.adapter.forward('request_merge', {'task_id': 7, 'pr_number': 42,
+                                                       'request_key': 'm1', 'session_key': 's1',
+                                                       'ownership_epoch': 1})
+        self.assertEqual(result['state'], 'pending')
+        forwarded = [(path, data) for path, data in calls if path == '/api/operations/request_merge']
+        self.assertEqual(len(forwarded), 1)
+        self.assertEqual(forwarded[0][1]['pr_number'], 42)
 
 
 if __name__ == '__main__':

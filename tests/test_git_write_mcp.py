@@ -134,6 +134,45 @@ class GitWriteMCPTests(unittest.TestCase):
                 self.assertFalse(result.structured_content['blocked'])
         asyncio.run(flag_on())
 
+    def test_request_merge_listed_only_when_flag_enabled(self):
+        status, _, _ = self.live.request('POST', '/api/git/binding', self.owner['web_token'],
+                                         {'repository': 'github.com/acme/demo'})
+        self.assertEqual(status, 200)
+        task = self.live.request('POST', '/api/tasks', self.owner['web_token'],
+                                 {'intent_key': 't', 'title': 'Build Login', 'scope': 'src'})[1]
+        status, _, _ = self.live.request('POST', f"/api/tasks/{task['id']}/claim",
+                                         self.member['agent_token'], {'session_key': 's1'})
+        self.assertEqual(status, 200)
+        arguments = {'task_id': task['id'], 'pr_number': 42, 'request_key': 'm1',
+                     'session_key': 's1', 'ownership_epoch': 1}
+
+        async def flag_off():
+            async with self.client(self.member['agent_token']) as client:
+                names = {tool.name for tool in (await client.list_tools()).tools}
+                self.assertNotIn('request_merge', names)
+                self.assertNotIn('merge_pr', names)
+                self.assertNotIn('override_overlap', names)
+                result = await client.call_tool('request_merge', arguments)
+                self.assertTrue(result.is_error)
+                self.assertIn('not enabled', result.content[0].text)
+        asyncio.run(flag_off())
+
+        status, body, _ = self.live.request('POST', '/api/git/write-enabled',
+                                            self.owner['web_token'], {'enabled': True})
+        self.assertEqual(status, 200, body)
+
+        async def flag_on():
+            async with self.client(self.member['agent_token']) as client:
+                names = {tool.name for tool in (await client.list_tools()).tools}
+                self.assertIn('request_merge', names)
+                # Human-only operations stay out of agent discovery entirely.
+                self.assertNotIn('merge_pr', names)
+                self.assertNotIn('override_overlap', names)
+                result = await client.call_tool('request_merge', arguments)
+                self.assertTrue(result.is_error)
+                self.assertIn('No opened delivery', result.content[0].text)
+        asyncio.run(flag_on())
+
 
 if __name__ == '__main__':
     unittest.main()

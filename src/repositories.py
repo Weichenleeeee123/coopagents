@@ -331,6 +331,42 @@ class RepositoryStore:
                     'paths_checked': checked, 'fresh_checkpoint': fresh, 'conflicts': display,
                     'blocked': blocked}
 
+    def override_overlap(self, token, block_id, reason):
+        """Record a project-manager overlap override (W4, D9) and clear the block.
+
+        The override covers exactly the paths the blocked gate checked, for the
+        blocked execution epoch only; a new epoch needs a new override. The
+        manager, reason, and scope are written to the write audit trail.
+        """
+        if type(block_id) is not int or block_id < 1:
+            raise ValidationError('Expected a positive block id')
+        if (not isinstance(reason, str) or not 1 <= len(reason) <= 500 or reason != reason.strip()
+                or any(ord(char) < 32 for char in reason)):
+            raise ValidationError('Override reason is invalid')
+        with self.db.connect(write=True) as c:
+            principal = self.identity.resolve(c, token, required_kind='web')
+            require_manager(self.identity, c, principal)
+            block = c.execute('''SELECT * FROM git_conflict_blocks WHERE id=? AND room_id=?''',
+                              (block_id, principal.room_id)).fetchone()
+            if not block:
+                raise NotFound('Conflict block not found')
+            binding = c.execute('SELECT * FROM repo_bindings WHERE room_id=?', (principal.room_id,)).fetchone()
+            if not binding or not binding['git_write_enabled']:
+                raise Conflict('Git write path is not enabled for this space')
+            stamp = now().isoformat()
+            row = c.execute('''INSERT INTO git_overlap_overrides(room_id,task_id,ownership_epoch,
+                paths_json,reason,overridden_by,created_at) VALUES(?,?,?,?,?,?,?)''',
+                (principal.room_id, block['task_id'], block['ownership_epoch'], block['paths_json'],
+                 reason, principal.member_id, stamp))
+            c.execute('DELETE FROM git_conflict_blocks WHERE id=?', (block_id,))
+            c.execute('''INSERT INTO git_write_audit(room_id,member_id,action,scope_json,created_at)
+                VALUES(?,?,?,?,?)''',
+                (principal.room_id, principal.member_id, 'overlap_override',
+                 json.dumps({'task_id': block['task_id'], 'ownership_epoch': block['ownership_epoch'],
+                             'gate': block['gate'], 'paths': json.loads(block['paths_json']),
+                             'reason': reason}), stamp))
+            return dict(c.execute('SELECT * FROM git_overlap_overrides WHERE id=?', (row.lastrowid,)).fetchone())
+
     @staticmethod
     def validate_observation(observation):
         keys = {'request_key','workspace_id','repository','branch','head','paths','captured_at'}

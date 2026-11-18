@@ -448,4 +448,22 @@ class TeamWorkflowStore:
                     'payload': {'block_id': block['id']}, 'required_input': ['reason'],
                     'eligible': can_manage, 'requires_human': True,
                     'authority': 'project_manager_web_user'})
+        if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='git_merge_requests'").fetchone():
+            merges = db.execute('''SELECT m.* FROM git_merge_requests m JOIN tasks t
+                ON t.id=m.task_id AND t.room_id=m.room_id WHERE m.room_id=? AND m.state='pending'
+                AND t.cancelled_at IS NULL AND m.ownership_epoch=t.ownership_epoch ORDER BY m.id''',
+                (p.room_id,)).fetchall()
+            for merge in merges:
+                if task_id is not None and merge['task_id'] != task_id:
+                    continue
+                cards.append({'kind': 'git_merge', 'id': merge['id'], 'task_id': merge['task_id'],
+                    'title': 'Merge request for PR #%d' % merge['pr_number'],
+                    'summary': 'Task %d asks a project manager to merge PR #%d (%s into %s). Merging records delivery; it never accepts the task.'
+                               % (merge['task_id'], merge['pr_number'], merge['branch'], merge['base_branch']),
+                    'pr_number': merge['pr_number'], 'pr_url': merge['pr_url'],
+                    'branch': merge['branch'], 'head_sha': merge['head_sha'],
+                    'ownership_epoch': merge['ownership_epoch'], 'operation': 'merge_pr',
+                    'payload': {'merge_request_id': merge['id']},
+                    'eligible': can_manage, 'requires_human': True,
+                    'authority': 'project_manager_web_user'})
         return agreements, cards

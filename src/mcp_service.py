@@ -108,6 +108,9 @@ TOOL_DESCRIPTIONS = {
     'check_overlap': ('Check whether paths overlap with fresh observations from other tasks. Without paths, the '
                       "caller's fresh checkpoint paths are checked. Only listed in spaces with the git write path "
                       'enabled. Pass the current session_key and ownership_epoch.'),
+    'request_merge': ('Request a human merge of the task\'s opened pull request. Creates a decision card for a '
+                      'project manager; performs no merge. Only listed in spaces with the git write path enabled. '
+                      'Pass the current session_key and ownership_epoch.'),
     'register_session': ('Record which tool, repository and branch this session works in. With a current task execution, '
                          'native_session_id can bind its logical session_key/ownership_epoch to the actual native '
                          'conversation for targeted pending work. Dispatch needs a current watcher lease; missing, '
@@ -126,7 +129,7 @@ def create_mcp_app(service, *, origin=None):
     """Return (SDK lifespan application, authenticated ASGI application)."""
     names = ('read_deliveries', 'suggest_delivery', 'read_capabilities', 'read_context', 'read_task_history', 'release_task', 'propose_handoff', 'claim_task', 'register_session', 'report_progress', 'send_request', 'read_inbox',
              'acknowledge', 'reply', 'resolve_request', 'propose_contract', 'repo_checkpoint', 'link_delivery',
-             'create_task_branch', 'deliver_task', 'check_overlap',
+             'create_task_branch', 'deliver_task', 'check_overlap', 'request_merge',
              'checkpoint', 'diagnostic_start', 'diagnostic_read', 'diagnostic_complete')
     names += ('lookup_owner', 'create_dependency', 'read_dependency', 'reply_dependency', 'resolve_dependency', 'cancel_dependency')
     names += ('ask_owner', 'read_replies', 'record_agreement_use', 'work_brief', 'read_workflow')

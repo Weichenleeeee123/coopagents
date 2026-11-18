@@ -82,6 +82,16 @@ class GitHubSync:
                 created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
                 UNIQUE(room_id,task_id,request_key),
                 FOREIGN KEY(task_id,room_id) REFERENCES tasks(id,room_id))''')
+            c.execute('''CREATE TABLE IF NOT EXISTS git_merge_requests (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, room_id TEXT NOT NULL,
+                task_id INTEGER NOT NULL, ownership_epoch INTEGER NOT NULL,
+                pr_number INTEGER NOT NULL, pr_url TEXT NOT NULL DEFAULT '',
+                branch TEXT NOT NULL, head_sha TEXT NOT NULL, base_branch TEXT NOT NULL,
+                state TEXT NOT NULL, request_key TEXT NOT NULL, requested_by TEXT NOT NULL,
+                merge_sha TEXT NOT NULL DEFAULT '', merged_by TEXT NOT NULL DEFAULT '',
+                merged_at TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+                UNIQUE(room_id,task_id,ownership_epoch),
+                FOREIGN KEY(task_id,room_id) REFERENCES tasks(id,room_id))''')
             if 'write_scope_verified' not in {r['name'] for r in c.execute('PRAGMA table_info(github_connections)')}:
                 c.execute('ALTER TABLE github_connections ADD COLUMN write_scope_verified INTEGER NOT NULL DEFAULT 0')
             c.execute('''CREATE TABLE IF NOT EXISTS github_inbox (
@@ -373,6 +383,197 @@ class GitHubSync:
                                                    task['ownership_epoch'], 'delivery')
         result['created'] = created
         return result
+
+    def request_merge(self, token, task_id, pr_number, request_key, session_key=None,
+                      ownership_epoch=None, preview=False):
+        """Record a human merge request for the task's opened PR (W4).
+
+        Creates a decision card; performs no merge. Re-requesting refreshes
+        the recorded head SHA from the latest delivery, so a head that moved
+        after a re-delivery can be merged without a stale request wedging it.
+        """
+        positive_id(pr_number)
+        if not isinstance(request_key, str) or not request_key or len(request_key) > 200:
+            raise ValidationError('Invalid request key')
+        if type(preview) is not bool:
+            raise ValidationError('Expected a preview flag')
+        with self.db.connect(write=True) as c:
+            principal = self.identity.resolve(c, token, required_kind='agent')
+            task = visible_task(c, principal, task_id, session_key=session_key, ownership_epoch=ownership_epoch)
+            binding = c.execute('SELECT * FROM repo_bindings WHERE room_id=?', (principal.room_id,)).fetchone()
+            if not binding:
+                raise Conflict('Project repository is not bound')
+            if not binding['git_write_enabled']:
+                raise Conflict('Git write path is not enabled for this space')
+            delivery = c.execute('''SELECT * FROM git_deliveries WHERE room_id=? AND task_id=?
+                AND ownership_epoch=? AND state='pr_opened' ORDER BY id DESC LIMIT 1''',
+                (principal.room_id, task_id, task['ownership_epoch'])).fetchone()
+            if not delivery or delivery['pr_number'] != pr_number:
+                raise Conflict('No opened delivery matches this merge request')
+            existing = c.execute('''SELECT * FROM git_merge_requests WHERE room_id=? AND task_id=?
+                AND ownership_epoch=?''', (principal.room_id, task_id, task['ownership_epoch'])).fetchone()
+            if existing:
+                if existing['pr_number'] != pr_number:
+                    raise Conflict('A merge request already exists for a different PR')
+                if existing['state'] == 'pending' and (existing['head_sha'] != delivery['head_sha']
+                                                       or existing['branch'] != delivery['branch']
+                                                       or existing['base_branch'] != delivery['base_branch']):
+                    if not preview:
+                        c.execute('''UPDATE git_merge_requests SET head_sha=?, branch=?, base_branch=?,
+                            updated_at=? WHERE id=?''',
+                            (delivery['head_sha'], delivery['branch'], delivery['base_branch'],
+                             now().isoformat(), existing['id']))
+                        return dict(c.execute('SELECT * FROM git_merge_requests WHERE id=?', (existing['id'],)).fetchone())
+                return dict(existing)
+            if preview:
+                return {'preview': True, 'task_id': task_id, 'pr_number': pr_number,
+                        'pr_url': delivery['pr_url'], 'branch': delivery['branch'],
+                        'head_sha': delivery['head_sha'], 'base_branch': delivery['base_branch'],
+                        'ownership_epoch': task['ownership_epoch']}
+            row = c.execute('''INSERT INTO git_merge_requests(room_id,task_id,ownership_epoch,pr_number,
+                pr_url,branch,head_sha,base_branch,state,request_key,requested_by,created_at,updated_at)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)''',
+                (principal.room_id, task_id, task['ownership_epoch'], pr_number, delivery['pr_url'],
+                 delivery['branch'], delivery['head_sha'], delivery['base_branch'], 'pending',
+                 request_key, principal.member_id, now().isoformat(), now().isoformat()))
+            return dict(c.execute('SELECT * FROM git_merge_requests WHERE id=?', (row.lastrowid,)).fetchone())
+
+    @staticmethod
+    def _approvals(reviews):
+        """Latest review per reviewer wins; only a standing approval counts."""
+        latest = {}
+        for review in reviews:
+            latest[review['reviewer']] = review['state']
+        return sum(1 for state in latest.values() if state == 'APPROVED')
+
+    @staticmethod
+    def _merge_block_reasons(pr, expected_sha, protection, review_payload):
+        """Merge preconditions (W4): head SHA, checks, truncation, protection."""
+        reasons = []
+        if pr['state'] != 'open':
+            return ['PR is not open']
+        if pr['head_sha'] != expected_sha:
+            reasons.append('PR head moved; re-request the merge for the current head')
+        if pr.get('mergeable') is False:
+            reasons.append('PR has merge conflicts; resolve them on GitHub')
+        if pr.get('checks_truncated') or pr.get('statuses_truncated'):
+            reasons.append('check results are truncated; cannot verify all checks')
+        failing = sorted({check['name'] for check in pr.get('checks', [])
+                          if check.get('conclusion') in ('failure', 'cancelled', 'timed_out', 'action_required')})
+        failing += sorted({status['context'] for status in pr.get('statuses', [])
+                           if status.get('state') in ('failure', 'error')})
+        if failing:
+            reasons.append('failing checks: ' + ', '.join(failing[:10]))
+        if protection:
+            restrictions = protection.get('restrictions') or {}
+            if any(restrictions.get(key) for key in ('users', 'teams', 'apps')):
+                reasons.append('branch restrictions may exclude the App; merge on GitHub')
+            required = ((protection.get('required_status_checks') or {}).get('contexts') or [])
+            passing = {check['name'] for check in pr.get('checks', []) if check.get('conclusion') == 'success'}
+            passing |= {status['context'] for status in pr.get('statuses', []) if status.get('state') == 'success'}
+            missing = [context for context in required if context not in passing]
+            if missing:
+                reasons.append('required checks not passing: ' + ', '.join(missing[:10]))
+            count = ((protection.get('required_pull_request_reviews') or {})
+                     .get('required_approving_review_count') or 0)
+            if count:
+                if review_payload.get('truncated'):
+                    reasons.append('review list is truncated; cannot verify approvals')
+                else:
+                    approvals = GitHubSync._approvals(review_payload.get('reviews', []))
+                    if approvals < count:
+                        reasons.append('requires %d approving review(s); %d recorded' % (count, approvals))
+        return reasons
+
+    def _mark_merged(self, connection, request, merge_sha, merged_by):
+        stamp = now().isoformat()
+        connection.execute('''UPDATE git_merge_requests SET state='merged', merge_sha=?, merged_by=?,
+            merged_at=?, updated_at=? WHERE id=? AND state='pending' ''',
+            (merge_sha, merged_by, stamp, stamp, request['id']))
+        connection.execute('''UPDATE git_deliveries SET state='merged', updated_at=? WHERE room_id=?
+            AND task_id=? AND ownership_epoch=? AND pr_number=? AND state='pr_opened' ''',
+            (stamp, request['room_id'], request['task_id'], request['ownership_epoch'], request['pr_number']))
+        return dict(connection.execute('SELECT * FROM git_merge_requests WHERE id=?', (request['id'],)).fetchone())
+
+    def merge_pr(self, token, merge_request_id, preview=False):
+        """Execute a human-approved merge (W4, D1: web-only, manager-only).
+
+        Verifies preconditions against live GitHub state, then merges with a
+        merge commit guarded by the expected head SHA. A merged PR never
+        accepts the task (D6); acceptance stays a separate human act. Preview
+        runs the live precondition reads and describes the PUT without merging.
+        """
+        positive_id(merge_request_id)
+        if type(preview) is not bool:
+            raise ValidationError('Expected a preview flag')
+        with self.db.connect() as c:
+            principal = self.identity.resolve(c, token, required_kind='web')
+            require_manager(self.identity, c, principal)
+            request = c.execute('''SELECT * FROM git_merge_requests WHERE id=? AND room_id=?''',
+                                (merge_request_id, principal.room_id)).fetchone()
+            if not request:
+                raise NotFound('Merge request not found')
+            request = dict(request)
+            binding = c.execute('SELECT * FROM repo_bindings WHERE room_id=?', (principal.room_id,)).fetchone()
+            if not binding or not binding['git_write_enabled']:
+                raise Conflict('Git write path is not enabled for this space')
+            conn = c.execute("SELECT * FROM github_connections WHERE room_id=? AND status='active'",
+                             (principal.room_id,)).fetchone()
+            if not conn:
+                raise Conflict('GitHub repository is not authorized')
+            connection = dict(conn)
+        if request['state'] == 'merged':
+            return request
+        self._enabled()
+        state = self.app.repository_state(connection['installation_id'], connection['repository_id'],
+                                          connection['full_name'], pr_numbers=(request['pr_number'],))
+        prs = state.get('pull_requests') if isinstance(state, dict) else None
+        pr = next((item for item in prs if isinstance(item, dict) and item.get('number') == request['pr_number']),
+                  None) if isinstance(prs, list) else None
+        if pr is None:
+            raise Conflict('PR is no longer visible to the App; re-check it on GitHub')
+        if pr.get('merged'):
+            with self.db.connect(write=True) as c:
+                return self._mark_merged(c, request, pr.get('merge_commit_sha') or '', principal.member_id)
+        base = pr.get('base_branch') or request['base_branch']
+        protection = self.app.read_branch_protection(connection['installation_id'], connection['repository_id'],
+                                                     connection['full_name'], base)
+        count = ((protection or {}).get('required_pull_request_reviews') or {}).get('required_approving_review_count') or 0
+        review_payload = self.app.read_pull_reviews(connection['installation_id'], connection['repository_id'],
+                                                    connection['full_name'], request['pr_number']) if count else {'reviews': [], 'truncated': False}
+        reasons = self._merge_block_reasons(pr, request['head_sha'], protection, review_payload)
+        if preview:
+            return {'preview': True, 'merge_request_id': request['id'], 'task_id': request['task_id'],
+                    'pr_number': request['pr_number'], 'pr_url': request['pr_url'],
+                    'head_sha': request['head_sha'], 'base_branch': base,
+                    'api_call': {'method': 'PUT',
+                                 'path': '/repos/' + connection['full_name'] + '/pulls/%d/merge' % request['pr_number'],
+                                 'sha': request['head_sha'], 'merge_method': 'merge'},
+                    'checks': pr.get('checks', []), 'statuses': pr.get('statuses', []),
+                    'protection': protection, 'blocked': bool(reasons), 'reasons': reasons}
+        if reasons:
+            raise Conflict('Merge blocked: ' + '; '.join(reasons))
+        try:
+            result = self.app.merge_pull_request(connection['installation_id'], connection['repository_id'],
+                                                 connection['full_name'], request['pr_number'], request['head_sha'])
+        except GitHubError:
+            # A concurrent merge may have completed between the read and the PUT.
+            state = self.app.repository_state(connection['installation_id'], connection['repository_id'],
+                                              connection['full_name'], pr_numbers=(request['pr_number'],))
+            prs = state.get('pull_requests') if isinstance(state, dict) else None
+            pr = next((item for item in prs if isinstance(item, dict) and item.get('number') == request['pr_number']),
+                      None) if isinstance(prs, list) else None
+            if pr is not None and pr.get('merged'):
+                with self.db.connect(write=True) as c:
+                    return self._mark_merged(c, request, pr.get('merge_commit_sha') or '', principal.member_id)
+            raise Conflict('GitHub refused the merge; the PR may conflict or branch protection may block it') from None
+        with self.db.connect(write=True) as c:
+            merged = self._mark_merged(c, request, result['sha'], principal.member_id)
+        try:
+            self._reconcile(principal.room_id, token)
+        except Exception:
+            pass  # Best-effort evidence refresh; the merge record above stands.
+        return merged
 
     def refresh(self,token):
         self._enabled()
