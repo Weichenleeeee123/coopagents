@@ -393,6 +393,85 @@ class DeliverAdapterTests(unittest.TestCase):
             self.adapter.deliver(7, 'Ship the login', session_key='s1')
         self.assertIn('No changes to deliver', str(caught.exception))
 
+    def test_pending_attempt_adopted_when_post_commit_write_fails(self):
+        import json
+        from coopagents.git_adapter import LocalAdapter
+        calls = self.stub()
+        (self.repo / 'README.md').write_text('shipped\n', encoding='utf-8')
+        original = LocalAdapter.__dict__['_write_attempt'].__func__
+        state = {'writes': 0}
+
+        def flaky(path, attempt):
+            state['writes'] += 1
+            if state['writes'] == 2:
+                raise OSError('disk full')
+            return original(path, attempt)
+
+        with patch.object(LocalAdapter, '_write_attempt', staticmethod(flaky)):
+            with self.assertRaises(OSError):
+                self.adapter.deliver(7, 'Ship the login', session_key='s1')
+        head = git(self.repo, 'rev-parse', 'HEAD').decode().strip()
+        self.assertNotEqual(head, self.head)
+        pending = json.loads(self.attempt_path().read_text(encoding='utf-8'))
+        self.assertIsNone(pending['head_sha'])
+        self.assertEqual(pending['parent_sha'], self.head)
+        result = self.adapter.deliver(7, 'Ship the login', session_key='s1')
+        self.assertEqual(result['status'], 'pr_opened')
+        self.assertEqual(result['head_sha'], head)
+        delivered = self.paths_called(calls, '/api/git/deliveries')
+        self.assertEqual(len(delivered), 1)
+        self.assertEqual(delivered[0]['request_key'], pending['request_key'])
+        self.assertIn('Commit: ' + head, delivered[0]['body'])
+        self.assertFalse(self.attempt_path().exists())
+
+    def test_pre_commit_write_failure_blocks_before_any_commit(self):
+        from coopagents.git_adapter import LocalAdapter
+        self.stub()
+        (self.repo / 'README.md').write_text('shipped\n', encoding='utf-8')
+
+        def failing(path, attempt):
+            raise OSError('read-only filesystem')
+
+        with patch.object(LocalAdapter, '_write_attempt', staticmethod(failing)):
+            with self.assertRaises(OSError):
+                self.adapter.deliver(7, 'Ship the login', session_key='s1')
+        self.assertEqual(git(self.repo, 'rev-parse', 'HEAD').decode().strip(), self.head)
+        self.assertFalse(self.attempt_path().exists())
+        result = self.adapter.deliver(7, 'Ship the login', session_key='s1')
+        self.assertEqual(result['status'], 'pr_opened')
+        self.assertFalse(self.attempt_path().exists())
+
+    def test_pending_attempt_rejected_when_head_touches_other_paths(self):
+        self.stub()
+        path = self.attempt_path()
+        self.adapter._write_attempt(path, {
+            'schema_version': 1, 'task_id': 7, 'ownership_epoch': 1,
+            'branch': self.branch, 'head_sha': None, 'parent_sha': self.head,
+            'paths': ['README.md'], 'request_key': 'k-pending',
+            'base_branch': 'main', 'title': 'Task 7: Ship the login', 'body': None,
+            'task_title': 'Build Login', 'summary': 'Ship the login'})
+        (self.repo / 'extra.py').write_text('x=1\n', encoding='utf-8')
+        git(self.repo, 'add', 'extra.py')
+        git(self.repo, 'commit', '-m', 'own tools')
+        with self.assertRaises(ValidationError) as caught:
+            self.adapter.deliver(7, 'Ship the login', session_key='s1')
+        self.assertIn('No changes to deliver', str(caught.exception))
+        self.assertFalse(path.exists())
+
+    def test_pending_attempt_discarded_when_no_commit_happened(self):
+        self.stub()
+        path = self.attempt_path()
+        self.adapter._write_attempt(path, {
+            'schema_version': 1, 'task_id': 7, 'ownership_epoch': 1,
+            'branch': self.branch, 'head_sha': None, 'parent_sha': self.head,
+            'paths': ['README.md'], 'request_key': 'k-pending',
+            'base_branch': 'main', 'title': 'Task 7: Ship the login', 'body': None,
+            'task_title': 'Build Login', 'summary': 'Ship the login'})
+        with self.assertRaises(ValidationError) as caught:
+            self.adapter.deliver(7, 'Ship the login', session_key='s1')
+        self.assertIn('No changes to deliver', str(caught.exception))
+        self.assertFalse(path.exists())
+
     def test_deliver_preview_executes_no_writes(self):
         calls = self.stub()
         (self.repo / 'README.md').write_text('shipped\n', encoding='utf-8')

@@ -180,6 +180,17 @@ class GitWriter:
         data, code = self._read('rev-parse', '--verify', '--quiet', 'HEAD', allowed=(0, 1))
         return data.decode('utf-8', 'surrogateescape').strip() if code == 0 else ''
 
+    def parent_sha(self):
+        data, code = self._read('rev-parse', '--verify', '--quiet', 'HEAD^', allowed=(0, 1))
+        return data.decode('utf-8', 'surrogateescape').strip() if code == 0 else ''
+
+    def head_paths(self):
+        data, code = self._read('diff-tree', '--no-commit-id', '--name-only', '-r', '-z', 'HEAD',
+                                allowed=(0, 1))
+        if code != 0:
+            return []
+        return [item.decode('utf-8', 'surrogateescape') for item in data.split(b'\0') if item]
+
     def ref_sha(self, ref):
         if not isinstance(ref, str) or not ref or any(ord(char) < 33 for char in ref) or '..' in ref:
             raise ValidationError('Expected a safe Git reference')
