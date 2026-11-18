@@ -18,7 +18,7 @@ from starlette.testclient import TestClient
 from coopagents.api import create_app
 from coopagents.coordination import CoordinationService
 from coopagents.errors import AccessDenied, Conflict, NotFound, ValidationError
-from coopagents.github_app import GitHubApp, GitHubError
+from coopagents.github_app import GitHubAccessDenied, GitHubApp, GitHubError
 from coopagents.github_sync import GitHubSync
 from coopagents.identity import IdentityStore
 from coopagents.repositories import RepositoryStore, now
@@ -142,6 +142,21 @@ class GitHubAppMergeTests(unittest.TestCase):
             self.assertEqual(request.headers['authorization'], 'Bearer protection-token')
             return httpx.Response(404, json={'message': 'Not Found'})
         self.assertIsNone(self.app(handler).read_branch_protection(22, 11, 'acme/demo', 'main'))
+        self.assertEqual(seen, [{'contents': 'read', 'pull_requests': 'read',
+                                 'checks': 'read', 'statuses': 'read', 'administration': 'read'}])
+
+    def test_read_branch_protection_access_denied_propagates_403(self):
+        seen = []
+
+        def handler(request):
+            if request.url.path.endswith('/access_tokens'):
+                seen.append(json.loads(request.content)['permissions'])
+                return httpx.Response(201, json=protection_token_response())
+            self.assertEqual(request.headers['authorization'], 'Bearer protection-token')
+            return httpx.Response(403, json={'message': 'Resource not accessible by integration'})
+        with self.assertRaises(GitHubAccessDenied) as caught:
+            self.app(handler).read_branch_protection(22, 11, 'acme/demo', 'main')
+        self.assertEqual(caught.exception.status, 403)
         self.assertEqual(seen, [{'contents': 'read', 'pull_requests': 'read',
                                  'checks': 'read', 'statuses': 'read', 'administration': 'read'}])
 

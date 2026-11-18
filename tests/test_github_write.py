@@ -147,12 +147,65 @@ class GitHubAppWriteTests(unittest.TestCase):
         with self.assertRaises(GitHubError):
             app.installation_token(22, 11, write=True)
 
+    def spied_app(self):
+        """App whose request handler and JWT mint fail if reached; returns (app, seen, jwt_calls)."""
+        seen = []
+        jwt_calls = []
+
+        def handler(request):
+            seen.append((request.method, request.url.path))
+            raise AssertionError('flag validation must reject before any request')
+
+        app = self.app(handler)
+
+        def jwt_spy():
+            jwt_calls.append(True)
+            raise AssertionError('flag validation must reject before minting a JWT')
+
+        app.jwt = jwt_spy
+        return app, seen, jwt_calls
+
+    def test_non_boolean_flag_values_reject_before_any_request(self):
+        messages = {'write': 'Expected a write-scope flag',
+                    'administration': 'Expected an administration-scope flag'}
+        values = [1, 0, None, '', 'read', 'true', [], {}, [True], {'flag': True}]
+        for flag, message in messages.items():
+            for value in values:
+                with self.subTest(flag=flag, value=value):
+                    app, seen, jwt_calls = self.spied_app()
+                    with self.assertRaises(ValidationError) as caught:
+                        app.installation_token(22, 11, **{flag: value})
+                    self.assertEqual(str(caught.exception), message)
+                    self.assertEqual(seen, [])
+                    self.assertEqual(jwt_calls, [])
+
+    def test_flag_type_errors_take_precedence_over_invalid_ids(self):
+        cases = [('write', 1, 'Expected a write-scope flag'),
+                 ('write', None, 'Expected a write-scope flag'),
+                 ('administration', 0, 'Expected an administration-scope flag'),
+                 ('administration', 'read', 'Expected an administration-scope flag')]
+        for flag, value, message in cases:
+            for installation_id, repository_id in [(0, 11), (22, 0)]:
+                with self.subTest(flag=flag, value=value,
+                                  installation_id=installation_id, repository_id=repository_id):
+                    app, seen, jwt_calls = self.spied_app()
+                    with self.assertRaises(ValidationError) as caught:
+                        app.installation_token(installation_id, repository_id, **{flag: value})
+                    self.assertEqual(str(caught.exception), message)
+                    self.assertEqual(seen, [])
+                    self.assertEqual(jwt_calls, [])
+
     def test_write_and_administration_scopes_cannot_combine(self):
-        app = self.app(lambda r: httpx.Response(201, json=protection_token_response()))
-        with self.assertRaises(ValidationError):
-            app.installation_token(22, 11, write=True, administration=True)
-        with self.assertRaises(ValidationError):
-            app.installation_token(22, 11, administration='read')
+        id_pairs = [(22, 11), (0, 11), (22, 0), ('x', 11), (22, None), (-1, -2)]
+        for installation_id, repository_id in id_pairs:
+            with self.subTest(installation_id=installation_id, repository_id=repository_id):
+                app, seen, jwt_calls = self.spied_app()
+                with self.assertRaises(ValidationError) as caught:
+                    app.installation_token(installation_id, repository_id,
+                                           write=True, administration=True)
+                self.assertEqual(str(caught.exception), 'Administration scope is read-only')
+                self.assertEqual(seen, [])
+                self.assertEqual(jwt_calls, [])
 
     def test_create_pull_request_posts_draft_and_builds_safe_url(self):
         seen = []
