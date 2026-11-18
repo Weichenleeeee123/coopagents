@@ -397,6 +397,18 @@ def _verified_link(profile):
     raise last_error
 
 
+# The App manifest deliberately requests no Administration permission
+# (experiments/agent-integration/github_app_registration.py,
+# docs/git-github-setup.md), so no installation token can read branch
+# protection: a 404 from that endpoint cannot distinguish "unprotected"
+# from "not permitted". Doctor reports unknown and never guesses.
+BRANCH_PROTECTION_REPORT = {
+    'status': 'unknown',
+    'reason': 'The GitHub App does not request branch-protection read permission, so protection state cannot be verified.',
+    'suggestion': 'Enable branch protection on GitHub (require pull requests, block force pushes) as a human decision; doctor never changes repository settings.',
+}
+
+
 def git_write_ready_check(profile_path, project_dir=None):
     """Report git write-path readiness; never enables anything.
 
@@ -426,7 +438,8 @@ def git_write_ready_check(profile_path, project_dir=None):
         return make_check('git_write_ready', 'unknown',
                           'The service snapshot was unavailable; git write readiness is unknown.',
                           'Rerun doctor when the space is reachable.',
-                          {'local_repository': local_repository})
+                          {'local_repository': local_repository,
+                           'branch_protection': dict(BRANCH_PROTECTION_REPORT)})
     if not isinstance(snapshot, dict):
         return make_check('git_write_ready', 'unknown', 'The service snapshot was invalid.')
     binding = snapshot.get('binding')
@@ -436,6 +449,7 @@ def git_write_ready_check(profile_path, project_dir=None):
                 'bound_repository': binding.get('repository') if isinstance(binding, dict) else None,
                 'git_write_enabled': enabled,
                 'github_connection': connection.get('status') if isinstance(connection, dict) else None,
+                'branch_protection': dict(BRANCH_PROTECTION_REPORT),
                 'write_scope_verified': (bool(connection.get('write_scope_verified'))
                                          if isinstance(connection, dict) and 'write_scope_verified' in connection
                                          else None)}

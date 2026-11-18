@@ -8,6 +8,8 @@ G2 使用独立 GitHub App 读取已授权仓库。现有 GitHub 账号登录继
 
 服务配置如下。真实值和私钥文件放在部署机配置或 secret mount，不放进版本库、命令行参数或网页。
 
+App 不申请 Administration 权限，因此安装 token 读不到分支保护状态：doctor 的 `git_write_ready` 检查把分支保护报为 unknown，并说明原因，不猜测。是否开启分支保护（要求 PR、禁止 force-push）由人在 GitHub 上决定，doctor 只报状态、绝不改配置。
+
 | 环境变量 | 内容 |
 | --- | --- |
 | `COOPAGENTS_GITHUB_APP_ID` | 数字 App ID |

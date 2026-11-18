@@ -785,6 +785,22 @@ class GitWriteReadyCheckTests(DoctorTestCase):
                     self.profile(directory), self.repo(directory))
         self.assertEqual(result['status'], 'unknown')
 
+    def test_branch_protection_reports_unknown_without_administration_permission(self):
+        with retained_directory() as directory:
+            result = self.check(directory, self.snapshot())
+        protection = result['evidence']['branch_protection']
+        self.assertEqual(protection['status'], 'unknown')
+        self.assertIn('branch-protection', protection['reason'])
+        self.assertIn('human decision', protection['suggestion'])
+        with retained_directory() as directory:
+            def failing(origin, path, **kwargs):
+                raise OSError('unreachable')
+            with patch('coopagents.space_runtime.request', side_effect=failing):
+                result = onboarding_doctor.git_write_ready_check(
+                    self.profile(directory), self.repo(directory))
+        self.assertEqual(result['status'], 'unknown')
+        self.assertEqual(result['evidence']['branch_protection']['status'], 'unknown')
+
     def test_missing_git_binary_fails(self):
         with retained_directory() as directory:
             with patch('coopagents.onboarding_doctor.shutil.which', return_value=None):
