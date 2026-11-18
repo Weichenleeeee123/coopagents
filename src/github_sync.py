@@ -459,10 +459,16 @@ class GitHubSync:
 
     @staticmethod
     def _merge_block_reasons(pr, expected_sha, protection, review_payload):
-        """Merge preconditions (W4): head SHA, checks, truncation, protection."""
+        """Merge preconditions (W4): open state, draft state, head SHA, checks, truncation, protection."""
         reasons = []
         if pr['state'] != 'open':
             return ['PR is not open']
+        if pr.get('draft') is True:
+            # D8 opens every PR as a draft; GitHub refuses to merge drafts.
+            # The human marks the PR ready outside the code (D1) and re-runs
+            # the merge — the gate reports the draft instead of attempting a
+            # PUT that is certain to fail.
+            reasons.append('PR is still a draft; mark it ready for review on GitHub, then re-run the merge')
         if pr['head_sha'] != expected_sha:
             reasons.append('PR head moved; re-request the merge for the current head')
         if pr.get('mergeable') is False:
@@ -603,8 +609,12 @@ class GitHubSync:
         try:
             result = self.app.merge_pull_request(connection['installation_id'], connection['repository_id'],
                                                  connection['full_name'], request['pr_number'], request['head_sha'])
-        except GitHubError:
+        except GitHubError as error:
             # A concurrent merge may have completed between the read and the PUT.
+            # Capture the refusal diagnostics before the recheck: the Conflict
+            # below must carry the HTTP status and GitHub's message when the
+            # refusal came from the merge PUT.
+            status, detail = error.status, error.detail
             state = self.app.repository_state(connection['installation_id'], connection['repository_id'],
                                               connection['full_name'], pr_numbers=(request['pr_number'],))
             prs = state.get('pull_requests') if isinstance(state, dict) else None
@@ -613,7 +623,10 @@ class GitHubSync:
             if pr is not None and pr.get('merged'):
                 with self.db.connect(write=True) as c:
                     return self._mark_merged(c, request, pr.get('merge_commit_sha') or '', principal.member_id)
-            raise Conflict('GitHub refused the merge; the PR may conflict or branch protection may block it') from None
+            message = 'GitHub refused the merge; the PR may conflict or branch protection may block it'
+            if status is not None:
+                message += ' (HTTP %s%s)' % (status, ': ' + detail if detail else '')
+            raise Conflict(message) from None
         with self.db.connect(write=True) as c:
             merged = self._mark_merged(c, request, result['sha'], principal.member_id)
         try:

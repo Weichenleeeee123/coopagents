@@ -46,6 +46,7 @@ class MergeFakeProvider(WriteFakeProvider):
         self.review_calls = []
         self.merges = []
         self.fail_merge = False
+        self.fail_error = None
         self.flip_on_fail = False
 
     def repository_state(self, installation_id, repository_id, full_name, branches=(),
@@ -72,6 +73,8 @@ class MergeFakeProvider(WriteFakeProvider):
                 self.pr['merged'] = True
                 self.pr['state'] = 'closed'
                 self.pr['merge_commit_sha'] = 'd' * 40
+            if self.fail_error is not None:
+                raise self.fail_error
             raise GitHubError('GitHub refused the merge')
         if head_sha != self.pr['head_sha']:
             raise GitHubError('GitHub refused the merge')
@@ -206,6 +209,8 @@ class GitHubAppMergeTests(unittest.TestCase):
             self.app(refused).merge_pull_request(22, 11, 'acme/demo', 42, 'c' * 40)
         self.assertIn('refused', str(caught.exception))
         self.assertFalse(caught.exception.retryable)
+        self.assertEqual(caught.exception.status, 409)
+        self.assertEqual(caught.exception.detail, 'Merge conflict')
 
         def unmerged(request):
             if request.url.path.endswith('/access_tokens'):
@@ -213,6 +218,20 @@ class GitHubAppMergeTests(unittest.TestCase):
             return httpx.Response(200, json={'merged': False, 'sha': 'd' * 40})
         with self.assertRaises(GitHubError):
             self.app(unmerged).merge_pull_request(22, 11, 'acme/demo', 42, 'c' * 40)
+
+    def test_merge_pull_request_draft_refusal_carries_status_and_message(self):
+        def refused(request):
+            if request.url.path.endswith('/access_tokens'):
+                return httpx.Response(201, json=write_token_response())
+            return httpx.Response(405, json={'message': 'Pull Request is still a draft'})
+        with self.assertRaises(GitHubError) as caught:
+            self.app(refused).merge_pull_request(22, 11, 'acme/demo', 42, 'c' * 40)
+        self.assertIn('refused', str(caught.exception))
+        self.assertFalse(caught.exception.retryable)
+        self.assertEqual(caught.exception.status, 405)
+        self.assertEqual(caught.exception.detail, 'Pull Request is still a draft')
+        # The provider message rides on attributes, never in the message text.
+        self.assertNotIn('still a draft', str(caught.exception))
 
     def test_repository_state_detail_carries_merge_fields(self):
         sha = 'c' * 40
@@ -248,6 +267,39 @@ class GitHubAppMergeTests(unittest.TestCase):
         self.assertEqual(pr['author'], 'author-login')
         self.assertTrue(pr['mergeable'])
         self.assertIsNone(pr['merge_commit_sha'])
+        # A payload without a draft key normalizes to non-draft.
+        self.assertIs(pr['draft'], False)
+
+    def test_repository_state_detail_carries_draft_flag(self):
+        sha = 'c' * 40
+
+        def handler(request):
+            path = request.url.path
+            if path.endswith('/access_tokens'):
+                return httpx.Response(201, json=read_token_response())
+            if path == '/app/installations/22':
+                return httpx.Response(200, json={'id': 22, 'app_id': 123})
+            if path == '/repositories/11':
+                return httpx.Response(200, json={'id': 11, 'full_name': 'acme/demo'})
+            if path == '/repos/acme/demo/pulls' and 'state=open' in str(request.url):
+                return httpx.Response(200, json=[])
+            if path == '/repos/acme/demo/pulls/42':
+                return httpx.Response(200, json={
+                    'number': 42, 'state': 'open', 'merged': False, 'mergeable': True,
+                    'draft': True, 'merge_commit_sha': None, 'user': {'login': 'author-login'},
+                    'head': {'sha': sha, 'ref': 'feature', 'repo': {'id': 11}},
+                    'base': {'ref': 'main', 'repo': {'id': 11}}})
+            if path.endswith('/check-runs'):
+                return httpx.Response(200, json={'check_runs': [], 'total_count': 0})
+            if path.endswith('/statuses'):
+                return httpx.Response(200, json=[])
+            if path == '/repos/acme/demo/releases':
+                return httpx.Response(200, json=[])
+            if path == '/repos/acme/demo/branches':
+                return httpx.Response(200, json=[])
+            raise AssertionError(path)
+        state = self.app(handler).repository_state(22, 11, 'acme/demo', pr_numbers=(42,))
+        self.assertIs(state['pull_requests'][0]['draft'], True)
 
 
 class MergeFixture:
@@ -584,6 +636,40 @@ class MergePrTests(MergeFixture, unittest.TestCase):
         self.assertEqual(result['state'], 'merged')
         self.assertEqual(result['merge_sha'], 'd' * 40)
         self.assertEqual(self.app.merges, [])
+
+    def test_draft_pr_blocks_preview_and_execute(self):
+        self.app.pr['draft'] = True
+        preview = self.merge(preview=True)
+        self.assertTrue(preview['blocked'])
+        self.assertTrue(any('draft' in reason for reason in preview['reasons']))
+        with self.assertRaises(Conflict) as caught:
+            self.merge()
+        self.assertIn('draft', str(caught.exception))
+        self.assertIn('ready for review', str(caught.exception))
+        self.assertEqual(self.app.merges, [])
+        self.assertEqual(self.merge_request_row()['state'], 'pending')
+        # A non-draft PR is unaffected, and a missing draft key (older state
+        # shapes) does not block either.
+        self.app.pr['draft'] = False
+        self.assertFalse(self.merge(preview=True)['blocked'])
+        del self.app.pr['draft']
+        self.assertEqual(self.merge()['state'], 'merged')
+
+    def test_merge_refusal_surfaces_status_and_github_message(self):
+        self.app.fail_merge = True
+        self.app.fail_error = GitHubError('GitHub refused the merge', status=405,
+                                          detail='Pull Request is still a draft')
+        with self.assertRaises(Conflict) as caught:
+            self.merge()
+        self.assertIn('405', str(caught.exception))
+        self.assertIn('Pull Request is still a draft', str(caught.exception))
+        self.assertEqual(self.merge_request_row()['state'], 'pending')
+        # Without diagnostics the message stays exactly as before.
+        self.app.fail_error = None
+        with self.assertRaises(Conflict) as caught:
+            self.merge()
+        self.assertIn('refused', str(caught.exception))
+        self.assertNotIn('HTTP', str(caught.exception))
 
     def test_put_refusal_blocks_but_concurrent_merge_recovers(self):
         self.app.fail_merge = True

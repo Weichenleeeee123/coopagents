@@ -80,6 +80,23 @@ class GitHubAppTests(unittest.TestCase):
         app=self.app(lambda r:httpx.Response(404,json={}))
         with self.assertRaises(AccessDenied): app.verify_installation(22)
 
+    def test_generic_error_carries_status_and_message_as_attributes_only(self):
+        app=self.app(lambda r:httpx.Response(502,json={'message':'Bad Gateway from provider'}))
+        with self.assertRaises(GitHubError) as caught: app.request('GET','/app','token')
+        self.assertTrue(caught.exception.retryable)
+        self.assertEqual(caught.exception.status,502)
+        self.assertEqual(caught.exception.detail,'Bad Gateway from provider')
+        self.assertNotIn('Bad Gateway',str(caught.exception))
+        app=self.app(lambda r:httpx.Response(405,json={'message':123}))
+        with self.assertRaises(GitHubError) as caught: app.request('GET','/app','token')
+        self.assertFalse(caught.exception.retryable)
+        self.assertEqual(caught.exception.status,405)
+        self.assertEqual(caught.exception.detail,'')
+        app=self.app(lambda r:httpx.Response(409,json={'message':'a\nb\x01c'+'x'*300}))
+        with self.assertRaises(GitHubError) as caught: app.request('GET','/app','token')
+        self.assertEqual(caught.exception.detail,'abc'+'x'*195)
+        self.assertEqual(caught.exception.status,409)
+
     def test_rest_reconciliation_checks_current_head_and_missing_fork_checks(self):
         seen=[]
         def handler(r):

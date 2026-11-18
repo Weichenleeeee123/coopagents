@@ -16,11 +16,17 @@ _operation = ContextVar('github_rest_operation',default=None)
 
 
 class GitHubError(Exception):
-    def __init__(self, message='GitHub request failed', *, retryable=False,retry_after=0,rate_limited=False):
+    def __init__(self, message='GitHub request failed', *, retryable=False,retry_after=0,rate_limited=False,status=None,detail=''):
         super().__init__(message)
         self.retryable = retryable
         self.retry_after = min(86400,max(0,math.ceil(retry_after)))
         self.rate_limited = rate_limited
+        # Diagnostics for non-2xx responses: the HTTP status and GitHub's
+        # message ride on attributes only, never in the message text, so the
+        # message stays free of provider content. Callers that must explain a
+        # refusal (the merge gate) read them explicitly.
+        self.status = status
+        self.detail = detail if isinstance(detail,str) else ''
 
 
 class GitHubAccessDenied(AccessDenied):
@@ -153,7 +159,11 @@ class GitHubApp:
                         raise GitHubAccessDenied(response.status_code)
                     if response.status_code in (401,404): raise GitHubAccessDenied(response.status_code)
                     if response.status_code<200 or response.status_code>=300:
-                        raise GitHubError(retryable=response.status_code>=500)
+                        detail=result.get('message','') if isinstance(result,dict) else ''
+                        if not isinstance(detail,str): detail=''
+                        detail=''.join(char for char in detail[:200] if ord(char)>=32)
+                        raise GitHubError(retryable=response.status_code>=500,
+                            status=response.status_code,detail=detail)
                     if not isinstance(result,(dict,list)): raise GitHubError('GitHub response is invalid')
                     return result
             finally:
@@ -409,7 +419,8 @@ class GitHubApp:
                                     {'sha':head_sha,'merge_method':'merge'})
             except GitHubError as error:
                 raise GitHubError('GitHub refused the merge',retryable=error.retryable,
-                                  retry_after=error.retry_after,rate_limited=error.rate_limited) from None
+                                  retry_after=error.retry_after,rate_limited=error.rate_limited,
+                                  status=error.status,detail=error.detail) from None
             if not isinstance(result,dict) or result.get('merged') is not True:
                 raise GitHubError('GitHub merge response is invalid')
             try: sha=complete_sha(result.get('sha',''))
@@ -580,7 +591,7 @@ class GitHubApp:
                 merged=pr['merged'] if detail else False
                 if type(merged) is not bool: raise GitHubError('GitHub PR merge state is invalid')
                 current=checks_at(sha) if detail else {'checks':[],'statuses':[], 'checks_truncated':False,'statuses_truncated':False}
-                return {'number':number,'state':pr['state'],'merged':merged,'head_sha':sha,
+                return {'number':number,'state':pr['state'],'merged':merged,'draft':pr.get('draft') is True,'head_sha':sha,
                     'head_repository_id':head_id,'head_branch':branch,'base_branch':base_branch,
                     'author':author,
                     'mergeable':mergeable,'merge_commit_sha':merge_commit_sha,**current,'checks_verified':detail}
