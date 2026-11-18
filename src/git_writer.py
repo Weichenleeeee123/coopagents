@@ -84,23 +84,26 @@ def _run(command, env):
 
 
 def _author_name(value):
-    # Git strips angle brackets from ident lines, so a name containing them
+    # Git strips angle brackets anywhere and crud (:,;"'\) at the edges of
+    # ident lines at commit time (probed against real Git), so such a name
     # would commit under a different identity than the one recorded for
     # delivery recovery; reject it before any commit happens.
     if (not isinstance(value, str) or not 1 <= len(value) <= 200
             or any(ord(char) < 32 or ord(char) == 127 for char in value)
             or '<' in value or '>' in value
+            or value[0] in ':,;"\'\\' or value[-1] in ':,;"\'\\'
             or value.startswith('-') or value != value.strip()):
         raise ValidationError('Expected a commit author name')
     return value
 
 
 def _author_email(value):
-    # Same Git ident stripping as author names: angle brackets would change
-    # the committed identity, so reject them up front.
+    # Same Git ident stripping as author names: angle brackets and edge
+    # crud would change the committed identity, so reject them up front.
     if (not isinstance(value, str) or not 3 <= len(value) <= 254
             or any(char.isspace() or ord(char) < 32 or ord(char) == 127 for char in value)
             or '<' in value or '>' in value
+            or value[0] in ':,;"\'\\' or value[-1] in ':,;"\'\\'
             or value.count('@') != 1 or value.startswith(('@', '-')) or value.endswith('@')):
         raise ValidationError('Expected a commit author email')
     local, domain = value.split('@')
@@ -199,19 +202,19 @@ class GitWriter:
         return [item.decode('utf-8', 'surrogateescape') for item in data.split(b'\0') if item]
 
     def head_identity(self):
-        """(author name, author email, subject, body) of HEAD, or None.
+        """(author name, author email, subject, body) of HEAD, or None if HEAD is absent.
 
-        Any failure to read HEAD — unborn, unreadable, malformed output —
-        returns None rather than raising: adoption is best-effort recovery,
-        and an unreadable HEAD simply means no adoption.
+        Absence is established by a bounded ref read (an unborn HEAD makes
+        rev-parse exit 1). Operational Git failures in the identity read
+        itself propagate: an inspection failure is not evidence that a
+        pending attempt is stale, and the caller must preserve the
+        recovery record. Malformed output from a successful read returns
+        None, since no identity could be established.
         """
-        try:
-            data, code = self._read('log', '-1', '--format=%an%x00%ae%x00%s%x00%B', 'HEAD',
-                                    allowed=(0, 1))
-        except ValidationError:
+        head, code = self._read('rev-parse', '--verify', '--quiet', 'HEAD', allowed=(0, 1))
+        if code != 0 or not head.strip():
             return None
-        if code != 0:
-            return None
+        data, _ = self._read('log', '-1', '--format=%an%x00%ae%x00%s%x00%B', 'HEAD')
         parts = data.decode('utf-8', 'surrogateescape').split('\0', 3)
         if len(parts) != 4:
             return None

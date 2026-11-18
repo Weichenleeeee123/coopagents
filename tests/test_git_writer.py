@@ -245,7 +245,15 @@ class GitWriterCommandTests(unittest.TestCase):
         with self.assertRaises(ValidationError):
             writer.stage_and_commit('main', ['a.py'], message, 'Team <A>', 'a@example.com')
         with self.assertRaises(ValidationError):
+            writer.stage_and_commit('main', ['a.py'], message, ':Team:', 'a@example.com')
+        with self.assertRaises(ValidationError):
+            writer.stage_and_commit('main', ['a.py'], message, 'Team;', 'a@example.com')
+        with self.assertRaises(ValidationError):
             writer.stage_and_commit('main', ['a.py'], message, 'A', 'a<b@example.com')
+        with self.assertRaises(ValidationError):
+            writer.stage_and_commit('main', ['a.py'], message, 'A', ':a@example.com')
+        with self.assertRaises(ValidationError):
+            writer.stage_and_commit('main', ['a.py'], message, 'A', 'a@example.com;')
         with self.assertRaises(ValidationError):
             writer.stage_and_commit('main', ['a.py'], message, 'A', 'not-an-email')
         with self.assertRaises(ValidationError):
@@ -309,7 +317,8 @@ class GitWriterRealGitTests(unittest.TestCase):
         with patch.object(GitWriter, '_read', return_value=(b'no separators here', 0)):
             self.assertIsNone(writer.head_identity())
         with patch.object(GitWriter, '_read', side_effect=ValidationError('boom')):
-            self.assertIsNone(writer.head_identity())
+            with self.assertRaises(ValidationError):
+                writer.head_identity()
 
     def test_create_branch_reuse_and_conflict(self):
         repo = make_repo(self.root)

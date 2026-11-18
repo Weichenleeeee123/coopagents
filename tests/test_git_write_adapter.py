@@ -668,11 +668,74 @@ class DeliverAdapterTests(unittest.TestCase):
     def test_deliver_rejects_author_name_git_would_normalize(self):
         self.stub()
         (self.repo / 'README.md').write_text('shipped\n', encoding='utf-8')
-        with patch.dict(os.environ, {'COOPAGENTS_GIT_AUTHOR_NAME': 'Team <A>'}):
+        for name in ('Team <A>', ':Team:', 'Team;', ';Team'):
+            with patch.dict(os.environ, {'COOPAGENTS_GIT_AUTHOR_NAME': name}):
+                with self.assertRaises(ValidationError):
+                    self.adapter.deliver(7, 'Ship the login', session_key='s1')
+            self.assertEqual(git(self.repo, 'rev-parse', 'HEAD').decode().strip(), self.head)
+            self.assertFalse(self.attempt_path().exists())
+
+    def _pending_attempt_after_failed_write(self):
+        from coopagents.git_adapter import LocalAdapter
+        (self.repo / 'README.md').write_text('shipped\n', encoding='utf-8')
+        original = LocalAdapter.__dict__['_write_attempt'].__func__
+        state = {'writes': 0}
+
+        def flaky(path, attempt):
+            state['writes'] += 1
+            if state['writes'] == 2:
+                raise OSError('disk full')
+            return original(path, attempt)
+
+        with patch.object(LocalAdapter, '_write_attempt', staticmethod(flaky)):
+            with self.assertRaises(OSError):
+                self.adapter.deliver(7, 'Ship the login', session_key='s1')
+        return self.attempt_path()
+
+    def test_identity_read_failure_preserves_pending_attempt(self):
+        from coopagents.git_writer import GitWriter
+        calls = self.stub()
+        path = self._pending_attempt_after_failed_write()
+        original_read = GitWriter._read
+
+        def failing_log(self, *args, **kwargs):
+            if args and args[0] == 'log':
+                raise ValidationError('Git inspection exceeded its time limit')
+            return original_read(self, *args, **kwargs)
+
+        with patch.object(GitWriter, '_read', failing_log):
             with self.assertRaises(ValidationError):
                 self.adapter.deliver(7, 'Ship the login', session_key='s1')
-        self.assertEqual(git(self.repo, 'rev-parse', 'HEAD').decode().strip(), self.head)
-        self.assertFalse(self.attempt_path().exists())
+        self.assertTrue(path.is_file())
+        self.assertEqual(self.paths_called(calls, '/api/git/deliveries'), [])
+        result = self.adapter.deliver(7, 'Ship the login', session_key='s1')
+        self.assertEqual(result['status'], 'pr_opened')
+        self.assertFalse(path.exists())
+
+    def test_identity_read_failure_preserves_pending_attempt_with_new_changes(self):
+        from coopagents.git_writer import GitWriter
+        calls = self.stub()
+        path = self._pending_attempt_after_failed_write()
+        head = git(self.repo, 'rev-parse', 'HEAD').decode().strip()
+        (self.repo / 'extra.py').write_text('x=1\n', encoding='utf-8')
+        git(self.repo, 'add', 'extra.py')
+        original_read = GitWriter._read
+
+        def failing_log(self, *args, **kwargs):
+            if args and args[0] == 'log':
+                raise ValidationError('Git inspection exceeded its time limit')
+            return original_read(self, *args, **kwargs)
+
+        with patch.object(GitWriter, '_read', failing_log):
+            with self.assertRaises(ValidationError):
+                self.adapter.deliver(7, 'Ship the extra', session_key='s1')
+        self.assertTrue(path.is_file())
+        self.assertEqual(git(self.repo, 'rev-parse', 'HEAD').decode().strip(), head)
+        self.assertEqual(self.paths_called(calls, '/api/git/deliveries'), [])
+        result = self.adapter.deliver(7, 'Ship the extra', session_key='s1')
+        self.assertEqual(result['status'], 'pr_opened')
+        self.assertEqual(len(self.paths_called(calls, '/api/git/deliveries')), 2)
+        self.assertFalse(path.exists())
 
     def test_deliver_preview_executes_no_writes(self):
         calls = self.stub()
