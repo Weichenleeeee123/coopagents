@@ -1,12 +1,16 @@
+import asyncio
 import base64
 import importlib.util
 import json
 from pathlib import Path
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 from uuid import uuid4
 
-from coopagents import invite_message, p2p
+import uvicorn
+
+from coopagents import invite_message, p2p, space_server
 from coopagents import space_runtime as runtime
 from coopagents.spaces import read_json
 
@@ -232,6 +236,85 @@ class FakeIroh:
         return 'endpoint-options'
 
 
+class FakeEndpoint:
+    async def online(self):
+        return None
+
+    async def close(self):
+        return None
+
+
+class FakeEndpointBinder:
+    def __init__(self, record):
+        self.record = record
+
+    async def bind(self, options):
+        self.record['bind_options'] = options
+        return FakeEndpoint()
+
+
+class FakeIrohWithEndpoint(FakeIroh):
+    def __init__(self):
+        super().__init__()
+        self.Endpoint = FakeEndpointBinder(self.record)
+
+
+class HostLinkBindRelayUrls(unittest.TestCase):
+    def bind_with(self, relay_urls):
+        fake = FakeIrohWithEndpoint()
+        link = p2p.HostLink.__new__(p2p.HostLink)
+        with patch.object(p2p, '_iroh', return_value=fake):
+            endpoint = asyncio.run(link._bind('00' * 32, False, 10, relay_urls))
+        return fake.record, endpoint, link
+
+    def test_configured_relay_urls_reach_options(self):
+        record, endpoint, link = self.bind_with([RELAY, LOOPBACK])
+        self.assertIsInstance(endpoint, FakeEndpoint)
+        self.assertTrue(link._online)
+        self.assertEqual(record['bind_options'], 'endpoint-options')
+        self.assertEqual(record['options']['relay_mode'], 'relay-mode')
+        self.assertEqual(record['relay_mode_urls'], [RELAY, LOOPBACK])
+
+    def test_unconfigured_bind_uses_default_options(self):
+        record, endpoint, link = self.bind_with(None)
+        self.assertIsInstance(endpoint, FakeEndpoint)
+        self.assertTrue(link._online)
+        self.assertEqual(record['options']['preset'], 'preset-n0')
+        self.assertNotIn('relay_mode', record['options'])
+        self.assertNotIn('relay_mode_urls', record)
+
+
+class MemberLinkStartRelayUrls(unittest.TestCase):
+    def start_with(self, relay_urls):
+        fake = FakeIrohWithEndpoint()
+        link = p2p.MemberLink.__new__(p2p.MemberLink)
+        link.port = 8765
+
+        async def fake_start_server(*args, **kwargs):
+            return 'local-server'
+
+        with patch.object(p2p, '_iroh', return_value=fake), \
+                patch.object(asyncio, 'start_server', fake_start_server):
+            server, endpoint = asyncio.run(link._start(False, relay_urls))
+        return fake.record, server, endpoint
+
+    def test_configured_relay_urls_reach_options(self):
+        record, server, endpoint = self.start_with([RELAY, LOOPBACK])
+        self.assertEqual(server, 'local-server')
+        self.assertIsInstance(endpoint, FakeEndpoint)
+        self.assertEqual(record['bind_options'], 'endpoint-options')
+        self.assertEqual(record['options']['relay_mode'], 'relay-mode')
+        self.assertEqual(record['relay_mode_urls'], [RELAY, LOOPBACK])
+
+    def test_unconfigured_start_uses_default_options(self):
+        record, server, endpoint = self.start_with(None)
+        self.assertEqual(server, 'local-server')
+        self.assertIsInstance(endpoint, FakeEndpoint)
+        self.assertEqual(record['options']['preset'], 'preset-n0')
+        self.assertNotIn('relay_mode', record['options'])
+        self.assertNotIn('relay_mode_urls', record)
+
+
 class OptionsWiring(unittest.TestCase):
     def options(self, **kwargs):
         fake = FakeIroh()
@@ -325,6 +408,7 @@ class InviteCodec(unittest.TestCase):
         labels = ['a' * 63, 'a' * 63, 'a' * 63, 'a' * 56]
         urls = ['https://' + '.'.join(labels)] * 4
         self.assertEqual(sum(len(url) for url in urls), p2p.MAX_RELAY_URLS_TOTAL_LENGTH)
+        urls = p2p.validate_relay_urls(urls)
         data = descriptor(p2p={'endpoint_id': 'a' * 64, 'relay_urls': urls})
         code = invite_message.encode(data)
         self.assertTrue(code.startswith(invite_message.CODE_PREFIX))
@@ -401,6 +485,83 @@ class RuntimeRelayUrls(unittest.TestCase):
     def test_member_link_passes_through_unchanged(self):
         link = {'endpoint_id': 'a' * 64, 'relay_urls': [RELAY]}
         self.assertEqual(runtime.space_link(self.directory / 'profile.json', {'p2p': link}), link)
+
+
+class ServeRelayUrls(unittest.TestCase):
+    def setUp(self):
+        self.directory = Path('.local/runtime-tests') / uuid4().hex
+        self.directory.mkdir(parents=True)
+        profile = dict(schema_version=1, origin='http://127.0.0.1:8765', room_id='room-1',
+                       member_id='member-1', web_token='web-token', agent_token='agent-token',
+                       control_origin='http://127.0.0.1:8766', control_token='control-token')
+        (self.directory / 'profile.json').write_text(json.dumps(profile))
+
+    def serve_with(self, host, host_link_fake):
+        (self.directory / 'host.json').write_text(json.dumps(host))
+        principal = SimpleNamespace(role='owner', room_id='room-1')
+
+        class FakeIdentity:
+            def authenticate(self, *args, **kwargs):
+                return principal
+
+        class FakeService:
+            def __init__(self, path):
+                self.identity = FakeIdentity()
+
+        class FakeConfig:
+            def __init__(self, application, **kwargs):
+                self.application = application
+                self.kwargs = kwargs
+
+        class FakeServer:
+            def __init__(self, config):
+                self.config = config
+                self.started = True
+                self.should_exit = False
+
+            def run(self):
+                return None
+
+        with patch.object(runtime, 'CoordinationService', FakeService), \
+                patch.object(p2p, 'HostLink', host_link_fake), \
+                patch.object(space_server, 'create_space_app', return_value='space-app'), \
+                patch.object(space_server, 'create_control_app', return_value='control-app'), \
+                patch.object(uvicorn, 'Config', FakeConfig), \
+                patch.object(uvicorn, 'Server', FakeServer):
+            runtime.serve(self.directory / 'profile.json')
+
+    def host(self, **overrides):
+        data = dict(schema_version=1, network='p2p', local_origin='http://127.0.0.1:8765',
+                    cloudflared=None, p2p_secret='00' * 32)
+        data.update(overrides)
+        return data
+
+    def test_configured_relay_urls_reach_host_link(self):
+        seen = {}
+
+        class RecordingHostLink:
+            def __init__(self, secret, port, **kwargs):
+                seen.update(secret=secret, port=port, kwargs=kwargs)
+
+            def close(self):
+                return None
+
+        self.serve_with(self.host(relay_urls=[RELAY, LOOPBACK]), RecordingHostLink)
+        self.assertEqual(seen, {'secret': '00' * 32, 'port': 8765,
+                                'kwargs': {'relay_urls': [RELAY, LOOPBACK]}})
+
+    def test_unconfigured_serve_constructs_host_link_without_relay_kwarg(self):
+        seen = {}
+
+        class StrictHostLink:
+            def __init__(self, secret, port):
+                seen.update(secret=secret, port=port)
+
+            def close(self):
+                return None
+
+        self.serve_with(self.host(), StrictHostLink)
+        self.assertEqual(seen, {'secret': '00' * 32, 'port': 8765})
 
 
 if __name__ == '__main__':

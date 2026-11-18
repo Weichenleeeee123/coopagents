@@ -6,8 +6,9 @@ binds the same loopback port number on its own computer, so HTTP Host and
 Origin are byte-identical to local access and the shared boundary checks,
 HTTP/MCP operations and WebSocket events stay unchanged.
 
-Only the endpoint id (a public key) is shared in invitations; addresses come
-from iroh discovery, with relay fallback when no direct path exists.
+Invitations share the endpoint id (a public key) and, when a space configures
+them, its relay URLs; addresses come from iroh discovery, with relay fallback
+when no direct path exists.
 """
 import asyncio
 from contextlib import nullcontext
