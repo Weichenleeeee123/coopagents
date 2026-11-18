@@ -302,6 +302,10 @@ class GitHubSync:
             conn = c.execute("SELECT * FROM github_connections WHERE room_id=? AND status='active'",
                              (principal.room_id,)).fetchone()
             connection = dict(conn) if conn else None
+            checked, fresh, conflicts = self.repositories.evaluate_gate(
+                c, principal.room_id, principal.member_id, task_id, task['ownership_epoch'])
+            display = [{**conflict, 'paths': self.repositories.compact_paths(conflict['paths'], 4000)}
+                       for conflict in conflicts]
         if preview:
             return {'preview': True, 'task_id': task_id, 'branch': branch, 'head_sha': head_sha,
                     'base_branch': base_branch, 'title': title,
@@ -309,7 +313,17 @@ class GitHubSync:
                                  'path': '/repos/' + (connection['full_name'] if connection else '<repository>') + '/pulls',
                                  'head': branch, 'base': base_branch, 'draft': True},
                     'connection': 'active' if connection else 'missing',
-                    'existing_state': existing['state'] if existing else None}
+                    'existing_state': existing['state'] if existing else None,
+                    'paths_checked': checked, 'fresh_checkpoint': fresh,
+                    'conflicts': display, 'blocked': bool(conflicts)}
+        if not fresh:
+            raise Conflict('A fresh checkpoint is required before delivery; call repo_checkpoint first')
+        if conflicts:
+            with self.db.connect(write=True) as c:
+                self.repositories.record_conflict_block(
+                    c, principal.room_id, principal.member_id, task_id, task['ownership_epoch'],
+                    'delivery', checked, conflicts)
+            raise Conflict(self.repositories.conflict_message(conflicts))
         self._enabled()
         if not connection:
             raise Conflict('GitHub repository is not authorized')
@@ -355,6 +369,8 @@ class GitHubSync:
             result = self._write_delivery(c, token, task_id, branch, head_sha, base_branch,
                                           request_key, session_key, ownership_epoch,
                                           'pr_opened', number, url, created)
+            self.repositories.clear_conflict_block(c, principal.room_id, task_id,
+                                                   task['ownership_epoch'], 'delivery')
         result['created'] = created
         return result
 

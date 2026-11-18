@@ -73,6 +73,19 @@ class RepositoryStore:
                 id INTEGER PRIMARY KEY AUTOINCREMENT, room_id TEXT NOT NULL,
                 member_id TEXT NOT NULL, action TEXT NOT NULL, scope_json TEXT NOT NULL,
                 created_at TEXT NOT NULL)''')
+            c.execute('''CREATE TABLE IF NOT EXISTS git_conflict_blocks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, room_id TEXT NOT NULL,
+                task_id INTEGER NOT NULL, ownership_epoch INTEGER NOT NULL,
+                gate TEXT NOT NULL, paths_json TEXT NOT NULL, conflicts_json TEXT NOT NULL,
+                blocked_by TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+                UNIQUE(room_id,task_id,ownership_epoch,gate),
+                FOREIGN KEY(task_id,room_id) REFERENCES tasks(id,room_id))''')
+            c.execute('''CREATE TABLE IF NOT EXISTS git_overlap_overrides (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, room_id TEXT NOT NULL,
+                task_id INTEGER NOT NULL, ownership_epoch INTEGER NOT NULL,
+                paths_json TEXT NOT NULL, reason TEXT NOT NULL, overridden_by TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY(task_id,room_id) REFERENCES tasks(id,room_id))''')
             c.execute('''CREATE TABLE IF NOT EXISTS git_observations (
                 id INTEGER PRIMARY KEY AUTOINCREMENT, room_id TEXT NOT NULL,
                 member_id TEXT NOT NULL, task_id INTEGER NOT NULL, workspace_id TEXT NOT NULL,
@@ -156,14 +169,30 @@ class RepositoryStore:
                 if existing['branch'] != branch or existing['base_sha'] != base_sha:
                     raise Conflict('Task branch already recorded from a different base')
                 return dict(existing)
+            checked, _, conflicts = self.evaluate_gate(
+                c, principal.room_id, principal.member_id, task_id, task['ownership_epoch'])
+            display = [{**conflict, 'paths': self.compact_paths(conflict['paths'], 4000)}
+                       for conflict in conflicts]
             if preview:
                 return {'task_id': task_id, 'branch': branch, 'base_sha': base_sha,
-                        'ownership_epoch': task['ownership_epoch'], 'preview': True}
-            row = c.execute('''INSERT INTO git_branches(room_id,task_id,branch,base_sha,ownership_epoch,
-                created_by,request_key,created_at) VALUES(?,?,?,?,?,?,?,?)''',
-                (principal.room_id, task_id, branch, base_sha, task['ownership_epoch'],
-                 principal.member_id, request_key, now().isoformat()))
-            return dict(c.execute('SELECT * FROM git_branches WHERE id=?', (row.lastrowid,)).fetchone())
+                        'ownership_epoch': task['ownership_epoch'], 'preview': True,
+                        'paths_checked': checked, 'conflicts': display, 'blocked': bool(conflicts)}
+            if conflicts:
+                blocked = (principal, task, checked, conflicts)
+            else:
+                row = c.execute('''INSERT INTO git_branches(room_id,task_id,branch,base_sha,ownership_epoch,
+                    created_by,request_key,created_at) VALUES(?,?,?,?,?,?,?,?)''',
+                    (principal.room_id, task_id, branch, base_sha, task['ownership_epoch'],
+                     principal.member_id, request_key, now().isoformat()))
+                self.clear_conflict_block(c, principal.room_id, task_id, task['ownership_epoch'], 'claim')
+                return dict(c.execute('SELECT * FROM git_branches WHERE id=?', (row.lastrowid,)).fetchone())
+        # Record the block in its own transaction: raising inside the write
+        # block above would roll the insert back with it.
+        principal, task, checked, conflicts = blocked
+        with self.db.connect(write=True) as c:
+            self.record_conflict_block(c, principal.room_id, principal.member_id, task_id,
+                                       task['ownership_epoch'], 'claim', checked, conflicts)
+        raise Conflict(self.conflict_message(conflicts))
 
     def get_branch(self, token, task_id, session_key=None, ownership_epoch=None):
         with self.db.connect() as c:
@@ -174,8 +203,13 @@ class RepositoryStore:
                 AND ownership_epoch=?''', (principal.room_id, task_id, task['ownership_epoch'])).fetchone()
             return dict(row) if row else None
 
-    def overlap_conflicts(self, connection, room_id, task_id, paths):
-        """Fresh cross-task path overlaps; stale observations never block (W3 read)."""
+    def overlap_conflicts(self, connection, room_id, task_id, paths, compact=True):
+        """Fresh cross-task path overlaps; stale observations never block (W3 read).
+
+        With compact=False the full hit lists are returned for gate decisions
+        (override subtraction needs exact paths); display callers keep the
+        compacted form.
+        """
         wanted = set(validate_relative_paths(paths))
         if not wanted:
             return []
@@ -184,7 +218,8 @@ class RepositoryStore:
             AND g.ownership_epoch=t.ownership_epoch AND g.task_id!=? AND NOT EXISTS
             (SELECT 1 FROM git_observations n WHERE n.room_id=g.room_id AND n.member_id=g.member_id
              AND n.workspace_id=g.workspace_id AND n.task_id=g.task_id AND n.ownership_epoch=g.ownership_epoch
-             AND (n.captured_at>g.captured_at OR (n.captured_at=g.captured_at AND n.id>g.id)))''',
+             AND (n.captured_at>g.captured_at OR (n.captured_at=g.captured_at AND n.id>g.id)))
+            ORDER BY g.id DESC LIMIT 50''',
             (room_id, task_id)).fetchall()
         conflicts = []
         for row in rows:
@@ -193,9 +228,108 @@ class RepositoryStore:
             hit = sorted(wanted.intersection(json.loads(row['paths_json'])))
             if hit:
                 conflicts.append({'task_id': row['task_id'], 'member_id': row['member_id'],
-                                  'paths': self.compact_paths(hit, 4000), 'path_count': len(hit),
+                                  'paths': self.compact_paths(hit, 4000) if compact else hit,
+                                  'path_count': len(hit),
                                   'captured_at': row['captured_at']})
         return conflicts
+
+    def _fresh_caller_paths(self, connection, room_id, member_id, task_id, ownership_epoch):
+        """Union of fresh latest-per-workspace observation paths for one execution."""
+        rows = connection.execute('''SELECT g.paths_json,g.captured_at FROM git_observations g
+            WHERE g.room_id=? AND g.member_id=? AND g.task_id=? AND g.ownership_epoch=? AND NOT EXISTS
+            (SELECT 1 FROM git_observations n WHERE n.room_id=g.room_id AND n.member_id=g.member_id
+             AND n.workspace_id=g.workspace_id AND n.task_id=g.task_id AND n.ownership_epoch=g.ownership_epoch
+             AND (n.captured_at>g.captured_at OR (n.captured_at=g.captured_at AND n.id>g.id)))''',
+            (room_id, member_id, task_id, ownership_epoch)).fetchall()
+        paths = set()
+        fresh = False
+        for row in rows:
+            if timestamp(row['captured_at']) >= now() - timedelta(minutes=5):
+                fresh = True
+                paths.update(json.loads(row['paths_json']))
+        return sorted(paths), fresh
+
+    def _overridden_paths(self, connection, room_id, task_id, ownership_epoch):
+        rows = connection.execute('''SELECT paths_json FROM git_overlap_overrides
+            WHERE room_id=? AND task_id=? AND ownership_epoch=?''',
+            (room_id, task_id, ownership_epoch)).fetchall()
+        paths = set()
+        for row in rows:
+            paths.update(json.loads(row['paths_json']))
+        return paths
+
+    @staticmethod
+    def _apply_overrides(conflicts, overridden):
+        kept = []
+        for conflict in conflicts:
+            remaining = [path for path in conflict['paths'] if path not in overridden]
+            if remaining:
+                kept.append({**conflict, 'paths': remaining, 'path_count': len(remaining)})
+        return kept
+
+    def evaluate_gate(self, connection, room_id, member_id, task_id, ownership_epoch, paths=None):
+        """Fresh caller paths + override-adjusted conflicts for a write gate.
+
+        With explicit paths those are checked; otherwise the caller's fresh
+        observation paths are used. Returns (paths_checked, fresh, conflicts).
+        """
+        if paths is None:
+            paths, fresh = self._fresh_caller_paths(connection, room_id, member_id, task_id, ownership_epoch)
+        else:
+            paths = validate_relative_paths(paths)
+            _, fresh = self._fresh_caller_paths(connection, room_id, member_id, task_id, ownership_epoch)
+        conflicts = self._apply_overrides(
+            self.overlap_conflicts(connection, room_id, task_id, paths, compact=False),
+            self._overridden_paths(connection, room_id, task_id, ownership_epoch))
+        return paths, fresh, conflicts
+
+    @staticmethod
+    def conflict_message(conflicts):
+        parts = []
+        for conflict in conflicts[:5]:
+            parts.append('task %d (member %s) also touches %s' % (
+                conflict['task_id'], conflict['member_id'], ', '.join(conflict['paths'][:5])))
+        return ('Overlap conflict: ' + '; '.join(parts)
+                + '. Wait for the owning task or ask a project manager to override.')
+
+    def record_conflict_block(self, connection, room_id, member_id, task_id, ownership_epoch,
+                              gate, paths, conflicts):
+        stamp = now().isoformat()
+        connection.execute('''INSERT INTO git_conflict_blocks(room_id,task_id,ownership_epoch,gate,
+            paths_json,conflicts_json,blocked_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)
+            ON CONFLICT(room_id,task_id,ownership_epoch,gate) DO UPDATE SET paths_json=excluded.paths_json,
+            conflicts_json=excluded.conflicts_json,blocked_by=excluded.blocked_by,updated_at=excluded.updated_at''',
+            (room_id, task_id, ownership_epoch, gate, json.dumps(paths), json.dumps(conflicts),
+             member_id, stamp, stamp))
+
+    def clear_conflict_block(self, connection, room_id, task_id, ownership_epoch, gate):
+        connection.execute('''DELETE FROM git_conflict_blocks WHERE room_id=? AND task_id=?
+            AND ownership_epoch=? AND gate=?''', (room_id, task_id, ownership_epoch, gate))
+
+    def check_overlap(self, token, task_id, paths=None, session_key=None, ownership_epoch=None, gate=None):
+        """Overlap read for a task execution; with a gate, a block is recorded.
+
+        Without paths, the caller's fresh observation paths are checked. The
+        read itself never blocks; callers enforcing a gate raise on `blocked`.
+        """
+        if gate is not None and gate not in ('claim', 'delivery'):
+            raise ValidationError('Expected an overlap gate')
+        if paths is not None:
+            paths = validate_relative_paths(paths)
+        with self.db.connect(write=True) as c:
+            principal = self.identity.resolve(c, token, required_kind='agent')
+            task = visible_task(c, principal, task_id, session_key=session_key, ownership_epoch=ownership_epoch)
+            checked, fresh, conflicts = self.evaluate_gate(
+                c, principal.room_id, principal.member_id, task_id, task['ownership_epoch'], paths)
+            blocked = bool(conflicts)
+            if blocked and gate is not None:
+                self.record_conflict_block(c, principal.room_id, principal.member_id, task_id,
+                                           task['ownership_epoch'], gate, checked, conflicts)
+            display = [{**conflict, 'paths': self.compact_paths(conflict['paths'], 4000)}
+                       for conflict in conflicts]
+            return {'task_id': task_id, 'ownership_epoch': task['ownership_epoch'],
+                    'paths_checked': checked, 'fresh_checkpoint': fresh, 'conflicts': display,
+                    'blocked': blocked}
 
     @staticmethod
     def validate_observation(observation):

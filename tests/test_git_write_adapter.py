@@ -71,7 +71,7 @@ class CreateBranchAdapterTests(unittest.TestCase):
         self.repository = self.adapter.workspace.inspect()['repository']
         self.tasks = [{'id': 7, 'title': 'Build Login', 'ownership_epoch': 1}]
 
-    def stub(self, enabled=True, tasks=None, fail_network=False):
+    def stub(self, enabled=True, tasks=None, fail_network=False, blocked=False):
         calls = []
 
         def request(path, data=None):
@@ -84,6 +84,10 @@ class CreateBranchAdapterTests(unittest.TestCase):
                 return {'repository': self.repository, 'git_write_enabled': enabled}
             if path == '/api/git/team':
                 return {'tasks': self.tasks if tasks is None else tasks}
+            if path == '/api/git/overlap-check':
+                return {'blocked': blocked, 'paths_checked': ['src/shared.py'],
+                        'conflicts': [{'task_id': 9, 'member_id': 'm2', 'paths': ['src/shared.py'],
+                                       'path_count': 1}] if blocked else []}
             if path == '/api/git/branches':
                 return {'id': 1, 'branch': data['branch'], 'base_sha': data['base_sha']}
             raise AssertionError('unexpected path ' + path)
@@ -171,6 +175,20 @@ class CreateBranchAdapterTests(unittest.TestCase):
         with self.assertRaises(ValidationError):
             self.adapter.create_branch(7, session_key='s1')
 
+    def test_conflict_precheck_returns_without_git_writes(self):
+        calls = self.stub(blocked=True)
+        result = self.adapter.create_branch(7, session_key='s1', ownership_epoch=1)
+        self.assertEqual(result['status'], 'conflict')
+        self.assertEqual(result['conflicts'][0]['task_id'], 9)
+        self.assertEqual(git(self.repo, 'branch', '--show-current').decode().strip(), 'main')
+        self.assertEqual(git(self.repo, 'branch', '--list', 'coopagents/*').decode(), '')
+        self.assertEqual(self.branch_calls(calls), [])
+        gate = [data for path, data in calls if path == '/api/git/overlap-check']
+        self.assertEqual(len(gate), 1)
+        self.assertEqual(gate[0]['gate'], 'claim')
+        self.assertEqual(gate[0]['task_id'], 7)
+        self.assertNotIn('paths', gate[0])
+
 
 if __name__ == '__main__':
     unittest.main()
@@ -196,7 +214,7 @@ class DeliverAdapterTests(unittest.TestCase):
         self.env.start()
         self.addCleanup(self.env.stop)
 
-    def stub(self, enabled=True, connection='default', fail_network=False):
+    def stub(self, enabled=True, connection='default', fail_network=False, blocked=False):
         calls = []
 
         def request(path, data=None):
@@ -213,6 +231,10 @@ class DeliverAdapterTests(unittest.TestCase):
                         'git': {'connection': self.connection if connection == 'default' else connection}}
             if path == '/api/git/checkpoint':
                 return {'observation': data['observation'], 'team': {}, 'inbox': []}
+            if path == '/api/git/overlap-check':
+                return {'blocked': blocked, 'paths_checked': data.get('paths', []),
+                        'conflicts': [{'task_id': 9, 'member_id': 'm2', 'paths': ['src/shared.py'],
+                                       'path_count': 1}] if blocked else []}
             if path == '/api/git/deliveries':
                 return {'state': 'pr_opened', 'pr_number': 42,
                         'pr_url': 'https://github.com/acme/demo/pull/42',
@@ -338,3 +360,17 @@ class DeliverAdapterTests(unittest.TestCase):
                 self.adapter.deliver(7, 'Ship it', session_key='s1')
         self.assertIn('COOPAGENTS_GIT_AUTHOR_EMAIL', str(caught.exception))
         self.assertEqual(git(self.repo, 'rev-parse', 'HEAD').decode().strip(), self.head)
+
+    def test_deliver_rechecks_overlap_before_git_add(self):
+        calls = self.stub(blocked=True)
+        (self.repo / 'README.md').write_text('shipped\n', encoding='utf-8')
+        result = self.adapter.deliver(7, 'Ship it', session_key='s1', ownership_epoch=1)
+        self.assertEqual(result['status'], 'conflict')
+        self.assertEqual(result['conflicts'][0]['task_id'], 9)
+        self.assertEqual(git(self.repo, 'rev-parse', 'HEAD').decode().strip(), self.head)
+        self.assertNotEqual(git(self.repo, 'status', '--porcelain').decode(), '')
+        self.assertEqual([path for path, _ in calls if path == '/api/git/deliveries'], [])
+        gate = [data for path, data in calls if path == '/api/git/overlap-check']
+        self.assertEqual(len(gate), 1)
+        self.assertEqual(gate[0]['gate'], 'delivery')
+        self.assertEqual(gate[0]['paths'], ['README.md'])

@@ -211,6 +211,12 @@ class GitHubSyncWriteTests(unittest.TestCase):
         self.branch = 'coopagents/task-%d-1-build-login' % self.task['id']
         self.repositories.record_branch(self.member['agent_token'], self.task['id'], self.branch,
                                         'a' * 40, 'branch-key', session_key='s1', ownership_epoch=1)
+        from coopagents.repositories import now
+        self.repositories.observe(self.member['agent_token'], self.task['id'], {
+            'request_key': 'k-' + str(uuid4()), 'workspace_id': 'workspace-deliver-1',
+            'repository': 'github.com/acme/demo', 'branch': self.branch, 'head': 'c' * 40,
+            'paths': ['src/login.py'], 'captured_at': now().isoformat()},
+            session_key='s1', ownership_epoch=1)
 
     def deliver(self, **overrides):
         args = {'token': self.member['agent_token'], 'task_id': self.task['id'], 'branch': self.branch,
@@ -362,6 +368,12 @@ class GitHubWriteHttpTests(unittest.TestCase):
         branch = 'coopagents/task-%d-1-build-login' % task['id']
         service.repositories.record_branch(member['agent_token'], task['id'], branch,
                                            'a' * 40, 'branch-key', session_key='s1', ownership_epoch=1)
+        from coopagents.repositories import now
+        service.repositories.observe(member['agent_token'], task['id'], {
+            'request_key': 'k-' + str(uuid4()), 'workspace_id': 'workspace-http-deliver',
+            'repository': 'github.com/acme/demo', 'branch': branch, 'head': 'c' * 40,
+            'paths': ['src/login.py'], 'captured_at': now().isoformat()},
+            session_key='s1', ownership_epoch=1)
         web = {'Authorization': 'Bearer ' + owner['web_token']}
         agent = {'Authorization': 'Bearer ' + member['agent_token']}
         with TestClient(app, base_url='http://127.0.0.1') as client:

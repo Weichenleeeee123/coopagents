@@ -423,4 +423,29 @@ class TeamWorkflowStore:
                         'ownership_epoch': use['ownership_epoch']},
                     'eligible': p.kind == 'agent' and use['owner_member_id'] == p.member_id,
                     'requires_human': False, 'authority': 'current_execution_owner'})
+        if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='git_conflict_blocks'").fetchone():
+            blocks = db.execute('''SELECT b.* FROM git_conflict_blocks b JOIN tasks t
+                ON t.id=b.task_id AND t.room_id=b.room_id WHERE b.room_id=? AND t.cancelled_at IS NULL
+                AND b.ownership_epoch=t.ownership_epoch ORDER BY b.id''', (p.room_id,)).fetchall()
+            for block in blocks:
+                if task_id is not None and block['task_id'] != task_id:
+                    continue
+                try:
+                    conflicts = json.loads(block['conflicts_json'])
+                except (TypeError, ValueError):
+                    conflicts = []
+                first = conflicts[0] if isinstance(conflicts, list) and conflicts else {}
+                paths = first.get('paths') if isinstance(first, dict) else None
+                summary = ('Task %d is blocked at the %s gate: task %s also touches %s. '
+                           'Wait for the owning task or override with a reason.'
+                           % (block['task_id'], block['gate'], first.get('task_id'),
+                              ', '.join(paths[:3]) if isinstance(paths, list) and paths else 'the same paths'))
+                cards.append({'kind': 'git_conflict', 'id': block['id'], 'task_id': block['task_id'],
+                    'title': 'Overlap block at the %s gate' % block['gate'], 'summary': summary,
+                    'blocking_task_id': first.get('task_id') if isinstance(first, dict) else None,
+                    'blocking_member_id': first.get('member_id') if isinstance(first, dict) else None,
+                    'ownership_epoch': block['ownership_epoch'], 'operation': 'override_overlap',
+                    'payload': {'block_id': block['id']}, 'required_input': ['reason'],
+                    'eligible': can_manage, 'requires_human': True,
+                    'authority': 'project_manager_web_user'})
         return agreements, cards
