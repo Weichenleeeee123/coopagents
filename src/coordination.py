@@ -86,7 +86,11 @@ class CoordinationService:
             'propose_contract': ('agent', self.contracts.propose, fields('contract_key expected_version title body', {'source_request_id': None, 'commit_ref': ''})),
             'decision': ('web', self.contracts.decide, fields('contract_id version decision')),
             'bind_repository': ('web', self.repositories.bind_repository, fields('repository')),
+            'set_git_write_enabled': ('web', self.repositories.set_git_write_enabled, {'enabled': (bool, True, None)}),
             'observe_repository': ('agent', self.repositories.observe, {'task_id': (int, True, None), 'observation': (dict, True, None)}),
+            'create_task_branch': ('agent', self.create_task_branch, {'task_id': (int, True, None),
+                'branch': (str, True, None), 'base_sha': (str, True, None), 'request_key': (str, True, None),
+                'session_key': (str, False, None), 'ownership_epoch': (int, False, None), 'preview': (bool, False, False)}),
             'repo_checkpoint': ('agent', self.repo_checkpoint, {'task_id': (int, True, None), 'observation': (dict, True, None)}),
             'read_git_team': ('agent', lambda token: self.snapshot(token, web=False), fields()),
             'link_delivery': ('any', self.github.associate, {'task_id': (int, True, None),
@@ -153,6 +157,9 @@ class CoordinationService:
         observed = self.repositories.observe(token, task_id, observation, session_key, ownership_epoch)
         return {'observation': observed, 'team': self.snapshot(token, web=False),
                 'inbox': self.messages.read_inbox(token)}
+
+    def create_task_branch(self, token, task_id, branch, base_sha, request_key, session_key=None, ownership_epoch=None, preview=False):
+        return self.repositories.record_branch(token, task_id, branch, base_sha, request_key, session_key, ownership_epoch, preview)
 
     def me(self, token):
         return {'me': asdict(self.identity.authenticate(token)), 'room': self.identity.room_info(token)}

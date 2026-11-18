@@ -10,6 +10,7 @@ import threading
 
 from .errors import AccessDenied, Conflict, NotFound, ValidationError
 from .github_app import GitHubError, positive_id, complete_sha
+from .git_workspace import branch_name  # noqa: F401  (re-exported; delivery and callers import it here)
 from .repositories import now, require_manager, timestamp, visible_task
 
 
@@ -24,15 +25,6 @@ def state_hash(state):
     if not isinstance(state,str) or not re.fullmatch(r'[A-Za-z0-9_-]{32,100}',state):
         raise AccessDenied('GitHub authorization state not accepted')
     return hashlib.sha256(state.encode()).hexdigest()
-
-
-def branch_name(branch):
-    if (not isinstance(branch,str) or len(branch)>250 or any(ord(x)<33 for x in branch)
-            or any(x in branch for x in ('..','@{','\\','~','^',':','?','*','['))
-            or branch.startswith(('/','-')) or branch.endswith(('/','.','.lock'))
-            or any(not x or x.startswith('.') for x in branch.split('/'))):
-        raise ValidationError('Expected a safe Git branch name')
-    return branch
 
 
 class GitHubSync:

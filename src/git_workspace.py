@@ -64,6 +64,39 @@ def normalize_repository(value):
     return host + '/' + '/'.join(components)
 
 
+def branch_name(branch):
+    """Validate a safe Git branch name; rejects traversal, wildcards, and option-like values."""
+    if (not isinstance(branch, str) or len(branch) > 250 or any(ord(x) < 33 for x in branch)
+            or any(x in branch for x in ('..', '@{', '\\', '~', '^', ':', '?', '*', '['))
+            or branch.startswith(('/', '-', '+')) or branch.endswith(('/', '.', '.lock'))
+            or any(not x or x.startswith('.') for x in branch.split('/'))):
+        raise ValidationError('Expected a safe Git branch name')
+    return branch
+
+
+def validate_relative_paths(paths):
+    """Validate repository-relative paths; no traversal, no .git, no absolute paths."""
+    if not isinstance(paths, list) or len(paths) > 1000:
+        raise ValidationError('Expected at most 1000 relative paths')
+    for path in paths:
+        if (not isinstance(path, str) or not path or len(path) > 500 or '\\' in path or ':' in path
+                or '\x00' in path or path.startswith('/') or any(p in ('', '..', '.git') for p in path.split('/'))):
+            raise ValidationError('Expected safe repository-relative paths')
+    return sorted(set(paths))
+
+
+def task_branch_name(task_id, ownership_epoch, title):
+    """Deterministic task branch: coopagents/task-<id>-<epoch>-<slug> (D7)."""
+    if type(task_id) is not int or not 0 < task_id < 2**63:
+        raise ValidationError('Expected a positive task identifier')
+    if type(ownership_epoch) is not int or not 0 <= ownership_epoch < 2**63:
+        raise ValidationError('Expected a task ownership epoch')
+    if not isinstance(title, str):
+        raise ValidationError('Expected a task title')
+    slug = re.sub(r'[^a-z0-9]+', '-', title.lower()).strip('-')[:40].strip('-')
+    return branch_name(f'coopagents/task-{task_id}-{ownership_epoch}-{slug or "task"}')
+
+
 def _remote_identity(remote):
     """Discard HTTPS authentication before producing any externally visible value."""
     if remote.lower().startswith('https://'):

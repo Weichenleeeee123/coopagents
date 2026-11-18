@@ -414,6 +414,8 @@ def create_app(database_path='.local/coopagents.sqlite3', *, base_url=None, publ
     routes.append(route('/api/git/binding',['GET'],read_name='git_binding'))
     routes.append(route('/api/git/observations/{observation_id:int}',['GET'],read_name='git_observation'))
     for path, operation in [('/api/git/binding', 'bind_repository'), ('/api/git/observations', 'observe_repository'),
+                            ('/api/git/write-enabled', 'set_git_write_enabled'),
+                            ('/api/git/branches', 'create_task_branch'),
                             ('/api/checkpoints', 'checkpoint'),
                             ('/api/diagnostics/start', 'diagnostic_start'),
                             ('/api/diagnostics/read', 'diagnostic_read'),
