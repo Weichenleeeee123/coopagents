@@ -210,6 +210,8 @@ class GitHubAppMergeTests(unittest.TestCase):
                 return httpx.Response(200, json=[])
             if path == '/repos/acme/demo/releases':
                 return httpx.Response(200, json=[])
+            if path == '/repos/acme/demo/branches':
+                return httpx.Response(200, json=[])
             raise AssertionError(path)
         state = self.app(handler).repository_state(22, 11, 'acme/demo', pr_numbers=(42,))
         pr = state['pull_requests'][0]
