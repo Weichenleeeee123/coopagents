@@ -105,13 +105,28 @@ class LocalAdapter:
 
     @staticmethod
     def _valid_attempt(attempt):
+        """Structural check for a delivery attempt record.
+
+        Only the fields a state actually uses are required. A complete
+        record resumes by exact recorded HEAD alone, so records written
+        before the parent, title/summary, and authorship fields existed
+        stay resumable. A pending record needs its parent, title, and
+        summary to rebuild the PR body; authorship evidence is validated
+        when present, but its absence only makes the record unadoptable,
+        never invalid — adoption refuses it and the record is discarded
+        as stale.
+        """
         if not isinstance(attempt, dict) or attempt.get('schema_version') != 1:
             return False
         if type(attempt.get('task_id')) is not int or type(attempt.get('ownership_epoch')) is not int:
             return False
         if not isinstance(attempt.get('branch'), str) or not attempt['branch']:
             return False
-        if not isinstance(attempt.get('parent_sha'), str):
+        paths = attempt.get('paths')
+        if not isinstance(paths, list) or not paths or not all(isinstance(item, str) and item for item in paths):
+            return False
+        if not all(isinstance(attempt.get(key), str) and attempt[key]
+                   for key in ('request_key', 'base_branch', 'title')):
             return False
         head_sha, body = attempt.get('head_sha'), attempt.get('body')
         # Exactly two states: pending (no head, no body, parent required) and
@@ -119,18 +134,14 @@ class LocalAdapter:
         if (head_sha is None) != (body is None):
             return False
         if head_sha is None:
-            if len(attempt['parent_sha']) != 40:
+            if (not isinstance(attempt.get('parent_sha'), str) or len(attempt['parent_sha']) != 40
+                    or not isinstance(attempt.get('task_title'), str)
+                    or not isinstance(attempt.get('summary'), str)):
                 return False
-        elif not isinstance(head_sha, str) or len(head_sha) != 40 or not isinstance(body, str) or not body:
-            return False
-        paths = attempt.get('paths')
-        if not isinstance(paths, list) or not paths or not all(isinstance(item, str) and item for item in paths):
-            return False
-        if not isinstance(attempt.get('task_title'), str) or not isinstance(attempt.get('summary'), str):
-            return False
-        return all(isinstance(attempt.get(key), str) and attempt[key]
-                   for key in ('request_key', 'base_branch', 'title',
-                               'author_name', 'author_email', 'subject'))
+            return all(key not in attempt or (isinstance(attempt[key], str) and attempt[key])
+                       for key in ('author_name', 'author_email', 'subject'))
+        return (isinstance(head_sha, str) and len(head_sha) == 40
+                and isinstance(body, str) and bool(body))
 
     def _read_attempt(self, path):
         if path is None:
@@ -346,7 +357,11 @@ class LocalAdapter:
             raise ValidationError('Commit author name is required: set COOPAGENTS_GIT_AUTHOR_NAME')
         if not email:
             raise ValidationError('Commit author email is required: set COOPAGENTS_GIT_AUTHOR_EMAIL in the agent process environment')
-        return name, email
+        # Validate here, before any gate call or attempt record: an identity
+        # Git would normalize (angle brackets) or reject must fail before
+        # the delivery records it, not after the commit step has started.
+        from .git_writer import _author_email, _author_name
+        return _author_name(name), _author_email(email)
 
     def deliver(self, task_id, summary, session_key=None, ownership_epoch=None, preview=False):
         """Commit + push the task branch, then open its draft PR via the service (W2).
@@ -506,8 +521,14 @@ class LocalAdapter:
         immediate child of the recorded parent, touches exactly the recorded
         paths, and carries the adapter's author identity, subject, and task
         trailer: shape alone cannot distinguish the adapter's commit from
-        one made with the agent's own tools. Any other state is not adopted.
+        one made with the agent's own tools. A record without recorded
+        authorship evidence (written before the evidence fields existed)
+        is never adopted: the evidence cannot be invented after the fact.
+        Any other state is not adopted.
         """
+        if not all(isinstance(attempt.get(key), str) and attempt[key]
+                   for key in ('author_name', 'author_email', 'subject')):
+            return None
         head = writer.head_sha()
         if not head or head == attempt['parent_sha']:
             return None

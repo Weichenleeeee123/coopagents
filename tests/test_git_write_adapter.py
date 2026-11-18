@@ -232,7 +232,8 @@ class DeliverAdapterTests(unittest.TestCase):
         self.env.start()
         self.addCleanup(self.env.stop)
 
-    def stub(self, enabled=True, connection='default', fail_network=False, blocked=False, fail_deliveries=0):
+    def stub(self, enabled=True, connection='default', fail_network=False, blocked=False, fail_deliveries=0,
+             blocked_paths=None):
         calls = []
         remaining_failures = [fail_deliveries]
 
@@ -251,9 +252,11 @@ class DeliverAdapterTests(unittest.TestCase):
             if path == '/api/git/checkpoint':
                 return {'observation': data['observation'], 'team': {}, 'inbox': []}
             if path == '/api/git/overlap-check':
-                return {'blocked': blocked, 'paths_checked': data.get('paths', []),
+                held = blocked or (blocked_paths is not None
+                                   and any(item in blocked_paths for item in data.get('paths', [])))
+                return {'blocked': held, 'paths_checked': data.get('paths', []),
                         'conflicts': [{'task_id': 9, 'member_id': 'm2', 'paths': ['src/shared.py'],
-                                       'path_count': 1}] if blocked else []}
+                                       'path_count': 1}] if held else []}
             if path == '/api/git/deliveries':
                 if remaining_failures[0] > 0:
                     remaining_failures[0] -= 1
@@ -526,29 +529,149 @@ class DeliverAdapterTests(unittest.TestCase):
         git(self.repo, 'add', 'extra.py')
         git(self.repo, 'commit', '-m', 'own tools')
         (self.repo / 'README.md').write_text('shipped v2\n', encoding='utf-8')
+        events = []
+        real_clear = self.adapter._clear_attempt
+        real_write = self.adapter._write_attempt
+
+        def clear(path):
+            events.append('clear')
+            return real_clear(path)
+
+        def write(path, attempt):
+            events.append('write')
+            return real_write(path, attempt)
+
+        self.adapter._clear_attempt = clear
+        self.adapter._write_attempt = write
         result = self.adapter.deliver(7, 'Ship the login', session_key='s1')
         self.assertEqual(result['status'], 'pr_opened')
+        self.assertEqual(events, ['clear', 'write', 'write', 'clear'])
         delivered = self.paths_called(calls, '/api/git/deliveries')
         self.assertEqual(len(delivered), 2)
         self.assertNotEqual(delivered[0]['request_key'], delivered[1]['request_key'])
         self.assertFalse(self.attempt_path().exists())
 
     def test_blocked_resume_stops_new_delivery_and_keeps_attempt(self):
+        import json
         calls = self.stub(fail_deliveries=1)
         (self.repo / 'README.md').write_text('shipped\n', encoding='utf-8')
         with self.assertRaises(OutboxError):
             self.adapter.deliver(7, 'Ship the login', session_key='s1')
+        first_key = json.loads(self.attempt_path().read_text(encoding='utf-8'))['request_key']
         first_head = git(self.repo, 'rev-parse', 'HEAD').decode().strip()
-        (self.repo / 'README.md').write_text('shipped v2\n', encoding='utf-8')
-        blocked_calls = self.stub(blocked=True)
+        (self.repo / 'extra.py').write_text('x=1\n', encoding='utf-8')
+        git(self.repo, 'add', 'extra.py')
+        blocked_calls = self.stub(blocked_paths={'README.md'})
         result = self.adapter.deliver(7, 'Ship the extra', session_key='s1')
         self.assertEqual(result['status'], 'conflict')
         self.assertEqual(git(self.repo, 'rev-parse', 'HEAD').decode().strip(), first_head)
         self.assertTrue(self.attempt_path().is_file())
         self.assertEqual(self.paths_called(blocked_calls, '/api/git/deliveries'), [])
-        self.stub()
+        calls = self.stub()
         result = self.adapter.deliver(7, 'Ship the extra', session_key='s1')
         self.assertEqual(result['status'], 'pr_opened')
+        delivered = self.paths_called(calls, '/api/git/deliveries')
+        self.assertEqual(len(delivered), 2)
+        self.assertEqual(delivered[0]['request_key'], first_key)
+        self.assertNotEqual(delivered[1]['request_key'], first_key)
+        self.assertFalse(self.attempt_path().exists())
+
+    def test_legacy_complete_attempt_resumes_on_empty_retry(self):
+        import json
+        calls = self.stub(fail_deliveries=1)
+        (self.repo / 'README.md').write_text('shipped\n', encoding='utf-8')
+        with self.assertRaises(OutboxError):
+            self.adapter.deliver(7, 'Ship the login', session_key='s1')
+        path = self.attempt_path()
+        record = json.loads(path.read_text(encoding='utf-8'))
+        for key in ('parent_sha', 'task_title', 'summary', 'author_name', 'author_email', 'subject'):
+            record.pop(key, None)
+        path.write_text(json.dumps(record), encoding='utf-8')
+        result = self.adapter.deliver(7, 'Ship the login', session_key='s1')
+        self.assertEqual(result['status'], 'pr_opened')
+        delivered = self.paths_called(calls, '/api/git/deliveries')
+        self.assertEqual([item['request_key'] for item in delivered], [record['request_key']] * 2)
+        self.assertFalse(path.exists())
+
+    def test_legacy_complete_attempt_resolves_first_with_new_changes(self):
+        import json
+        calls = self.stub(fail_deliveries=1)
+        (self.repo / 'README.md').write_text('shipped\n', encoding='utf-8')
+        with self.assertRaises(OutboxError):
+            self.adapter.deliver(7, 'Ship the login', session_key='s1')
+        path = self.attempt_path()
+        record = json.loads(path.read_text(encoding='utf-8'))
+        for key in ('parent_sha', 'task_title', 'summary', 'author_name', 'author_email', 'subject'):
+            record.pop(key, None)
+        path.write_text(json.dumps(record), encoding='utf-8')
+        (self.repo / 'README.md').write_text('shipped v2\n', encoding='utf-8')
+        result = self.adapter.deliver(7, 'Ship the login', session_key='s1')
+        self.assertEqual(result['status'], 'pr_opened')
+        delivered = self.paths_called(calls, '/api/git/deliveries')
+        self.assertEqual(len(delivered), 3)
+        self.assertEqual(delivered[0]['request_key'], record['request_key'])
+        self.assertEqual(delivered[1]['request_key'], record['request_key'])
+        self.assertNotEqual(delivered[2]['request_key'], record['request_key'])
+        self.assertFalse(path.exists())
+
+    def test_legacy_pending_attempt_is_never_adopted(self):
+        self.stub()
+        path = self.attempt_path()
+        self.adapter._write_attempt(path, {
+            'schema_version': 1, 'task_id': 7, 'ownership_epoch': 1,
+            'branch': self.branch, 'head_sha': None, 'parent_sha': self.head,
+            'paths': ['README.md'], 'request_key': 'k-legacy',
+            'base_branch': 'main', 'title': 'Task 7: Ship the login', 'body': None,
+            'task_title': 'Build Login', 'summary': 'Ship the login'})
+        (self.repo / 'README.md').write_text('shipped\n', encoding='utf-8')
+        git(self.repo, 'add', 'README.md')
+        git(self.repo, '-c', 'user.name=Wei Chen', '-c', 'user.email=wei@example.com',
+            'commit', '-m', 'Task 7: Ship the login\n\nCoopagents-task: 7')
+        with self.assertRaises(ValidationError) as caught:
+            self.adapter.deliver(7, 'Ship the login', session_key='s1')
+        self.assertIn('No changes to deliver', str(caught.exception))
+        self.assertFalse(path.exists())
+
+    def test_pending_attempt_adopted_before_new_delivery(self):
+        import json
+        from coopagents.git_adapter import LocalAdapter
+        calls = self.stub()
+        (self.repo / 'README.md').write_text('shipped\n', encoding='utf-8')
+        original = LocalAdapter.__dict__['_write_attempt'].__func__
+        state = {'writes': 0}
+
+        def flaky(path, attempt):
+            state['writes'] += 1
+            if state['writes'] == 2:
+                raise OSError('disk full')
+            return original(path, attempt)
+
+        with patch.object(LocalAdapter, '_write_attempt', staticmethod(flaky)):
+            with self.assertRaises(OSError):
+                self.adapter.deliver(7, 'Ship the login', session_key='s1')
+        pending = json.loads(self.attempt_path().read_text(encoding='utf-8'))
+        adopted_head = git(self.repo, 'rev-parse', 'HEAD').decode().strip()
+        (self.repo / 'extra.py').write_text('x=1\n', encoding='utf-8')
+        git(self.repo, 'add', 'extra.py')
+        result = self.adapter.deliver(7, 'Ship the extra', session_key='s1')
+        self.assertEqual(result['status'], 'pr_opened')
+        self.assertNotEqual(result['head_sha'], adopted_head)
+        self.assertEqual(git(self.repo, 'rev-list', '--count', 'HEAD').decode().strip(), '3')
+        delivered = self.paths_called(calls, '/api/git/deliveries')
+        self.assertEqual(len(delivered), 2)
+        self.assertEqual(delivered[0]['request_key'], pending['request_key'])
+        self.assertEqual(delivered[0]['head_sha'], adopted_head)
+        self.assertNotEqual(delivered[1]['request_key'], pending['request_key'])
+        self.assertEqual(delivered[1]['head_sha'], result['head_sha'])
+        self.assertFalse(self.attempt_path().exists())
+
+    def test_deliver_rejects_author_name_git_would_normalize(self):
+        self.stub()
+        (self.repo / 'README.md').write_text('shipped\n', encoding='utf-8')
+        with patch.dict(os.environ, {'COOPAGENTS_GIT_AUTHOR_NAME': 'Team <A>'}):
+            with self.assertRaises(ValidationError):
+                self.adapter.deliver(7, 'Ship the login', session_key='s1')
+        self.assertEqual(git(self.repo, 'rev-parse', 'HEAD').decode().strip(), self.head)
         self.assertFalse(self.attempt_path().exists())
 
     def test_deliver_preview_executes_no_writes(self):

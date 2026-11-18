@@ -243,6 +243,10 @@ class GitWriterCommandTests(unittest.TestCase):
         with self.assertRaises(ValidationError):
             writer.stage_and_commit('main', ['a.py'], message, 'Bad\nName', 'a@example.com')
         with self.assertRaises(ValidationError):
+            writer.stage_and_commit('main', ['a.py'], message, 'Team <A>', 'a@example.com')
+        with self.assertRaises(ValidationError):
+            writer.stage_and_commit('main', ['a.py'], message, 'A', 'a<b@example.com')
+        with self.assertRaises(ValidationError):
             writer.stage_and_commit('main', ['a.py'], message, 'A', 'not-an-email')
         with self.assertRaises(ValidationError):
             writer.stage_and_commit('main', ['a.py'], message, 'A', 'a@b')
@@ -288,6 +292,24 @@ class GitWriterRealGitTests(unittest.TestCase):
     def setUp(self):
         self.root = Path('.local/test-evidence') / str(uuid4())
         self.root.mkdir(parents=True)
+
+    def test_head_identity_unborn_detached_and_malformed(self):
+        import subprocess
+        from unittest.mock import patch
+        empty = self.root / 'empty'
+        empty.mkdir(parents=True)
+        subprocess.run(['git', 'init', str(empty)], check=True, capture_output=True)
+        self.assertIsNone(GitWriter(empty).head_identity())
+        repo = make_repo(self.root)
+        writer = GitWriter(repo)
+        git(repo, 'checkout', '--detach', 'HEAD')
+        name, email, subject, body = writer.head_identity()
+        self.assertEqual((name, email, subject), ('Test', 'test@example.com', 'initial'))
+        self.assertIn('initial', body)
+        with patch.object(GitWriter, '_read', return_value=(b'no separators here', 0)):
+            self.assertIsNone(writer.head_identity())
+        with patch.object(GitWriter, '_read', side_effect=ValidationError('boom')):
+            self.assertIsNone(writer.head_identity())
 
     def test_create_branch_reuse_and_conflict(self):
         repo = make_repo(self.root)
