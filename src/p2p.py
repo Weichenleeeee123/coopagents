@@ -11,6 +11,7 @@ from iroh discovery, with relay fallback when no direct path exists.
 """
 import asyncio
 from contextlib import nullcontext
+import ipaddress
 import json
 import logging
 import re
@@ -90,7 +91,32 @@ def validate_endpoint_id(value):
 
 MAX_RELAY_URLS = 4
 MAX_RELAY_URL_LENGTH = 2048
-LOOPBACK_HOSTS = ('127.0.0.1', 'localhost', '::1')
+# The v1 invitation code body is capped at 4096 base64 characters (~3072 JSON
+# bytes); the aggregate bound keeps every accepted relay list decodable with
+# headroom for the descriptor's other fields.
+MAX_RELAY_URLS_TOTAL_LENGTH = 1024
+_HOST_LABEL = re.compile(r'[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?')
+
+
+def _loopback_host(hostname):
+    if hostname == 'localhost':
+        return True
+    try:
+        return ipaddress.ip_address(hostname).is_loopback
+    except ValueError:
+        return False
+
+
+def _valid_hostname(hostname):
+    try:
+        ipaddress.ip_address(hostname)
+        return True
+    except ValueError:
+        pass
+    if not hostname or len(hostname) > 253:
+        return False
+    labels = hostname[:-1].split('.') if hostname.endswith('.') else hostname.split('.')
+    return all(_HOST_LABEL.fullmatch(label) and len(label) <= 63 for label in labels)
 
 
 def validate_relay_urls(value):
@@ -99,7 +125,9 @@ def validate_relay_urls(value):
     Plain HTTP is accepted only for loopback relays used in local development
     and tests; a relay on any other host must be HTTPS. Credentials, queries,
     fragments and paths below the root are rejected: the relay serves its own
-    fixed paths, so anything more is a misconfigured URL.
+    fixed paths, so anything more is a misconfigured URL. The authority is
+    validated up front — a host or port iroh cannot consume is rejected here,
+    not deferred to endpoint setup after the URL has been saved.
     """
     if not isinstance(value, (list, tuple)) or not 1 <= len(value) <= MAX_RELAY_URLS:
         raise ValueError('Relay URLs must be a list of 1 to 4 URLs')
@@ -108,16 +136,27 @@ def validate_relay_urls(value):
         if (not isinstance(url, str) or not url or len(url) > MAX_RELAY_URL_LENGTH
                 or any(char.isspace() for char in url)):
             raise ValueError('Invalid relay URL')
+        if '?' in url or '#' in url:
+            raise ValueError('Relay URL must not carry a query or a fragment')
         parts = urlsplit(url)
-        if parts.scheme not in ('http', 'https') or not parts.hostname:
+        if parts.scheme not in ('http', 'https'):
             raise ValueError('Relay URL must be an HTTP(S) URL with a host')
-        if parts.username is not None or parts.password is not None or parts.query or parts.fragment:
-            raise ValueError('Relay URL must not carry credentials, a query or a fragment')
+        try:
+            hostname = parts.hostname
+            port = parts.port
+        except ValueError:
+            raise ValueError('Invalid relay URL authority') from None
+        if not hostname or not _valid_hostname(hostname) or port == 0:
+            raise ValueError('Invalid relay URL authority')
+        if parts.username is not None or parts.password is not None:
+            raise ValueError('Relay URL must not carry credentials')
         if parts.path not in ('', '/'):
             raise ValueError('Relay URL must be a bare origin without a path')
-        if parts.scheme == 'http' and parts.hostname not in LOOPBACK_HOSTS:
+        if parts.scheme == 'http' and not _loopback_host(hostname):
             raise ValueError('A non-loopback relay URL must use HTTPS')
         urls.append(url)
+    if sum(len(url) for url in urls) > MAX_RELAY_URLS_TOTAL_LENGTH:
+        raise ValueError('Relay URLs exceed the total length an invitation code can carry')
     return urls
 
 

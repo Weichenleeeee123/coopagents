@@ -46,6 +46,44 @@ class ValidateRelayUrls(unittest.TestCase):
             with self.assertRaises(ValueError, msg=url):
                 p2p.validate_relay_urls([url])
 
+    def test_accepts_trailing_slash_default_ports_and_uppercase(self):
+        self.assertEqual(p2p.validate_relay_urls(['https://relay.example.com/']),
+                         ['https://relay.example.com/'])
+        self.assertEqual(p2p.validate_relay_urls(['https://relay.example.com:443', 'http://127.0.0.1:80']),
+                         ['https://relay.example.com:443', 'http://127.0.0.1:80'])
+        self.assertEqual(p2p.validate_relay_urls(['HTTPS://RELAY.EXAMPLE.COM']),
+                         ['HTTPS://RELAY.EXAMPLE.COM'])
+
+    def test_accepts_expanded_ipv6_loopback(self):
+        self.assertEqual(p2p.validate_relay_urls(['http://[0:0:0:0:0:0:0:1]:3340']),
+                         ['http://[0:0:0:0:0:0:0:1]:3340'])
+
+    def test_rejects_invalid_authorities(self):
+        bad = ['https://relay.example.com:notaport', 'https://relay.example.com:65536',
+               'https://relay.example.com:0', 'https://user%40relay.example.com',
+               'https://relay_host.example.com', 'https://[::1', 'https://[]',
+               'https://relay.example.com?', 'https://relay.example.com#']
+        for url in bad:
+            with self.assertRaises(ValueError, msg=url):
+                p2p.validate_relay_urls([url])
+
+    def test_rejects_relay_lists_over_the_total_length(self):
+        def long_host(length):
+            labels = []
+            while length > 63:
+                labels.append('a' * 63)
+                length -= 64
+            labels.append('a' * length)
+            return '.'.join(labels)
+
+        over = ['https://' + long_host(249)] * 4
+        self.assertGreater(sum(len(url) for url in over), p2p.MAX_RELAY_URLS_TOTAL_LENGTH)
+        with self.assertRaises(ValueError):
+            p2p.validate_relay_urls(over)
+        at = ['https://' + long_host(248)] * 4
+        self.assertEqual(sum(len(url) for url in at), p2p.MAX_RELAY_URLS_TOTAL_LENGTH)
+        self.assertEqual(p2p.validate_relay_urls(at), at)
+
     def test_rejects_wrong_shapes(self):
         for value in [None, RELAY, [], ['https://a.example'] * 5, [None], [123]]:
             with self.assertRaises(ValueError, msg=repr(value)):
@@ -181,6 +219,17 @@ class InviteCodec(unittest.TestCase):
         data = descriptor(p2p={'endpoint_id': 'a' * 64})
         code = invite_message.encode(data)
         self.assertTrue(code.startswith(invite_message.CODE_PREFIX_2))
+        self.assertEqual(invite_message.decode(code), data)
+
+    def test_largest_accepted_relay_list_round_trips_through_version_1(self):
+        labels = ['a' * 63, 'a' * 63, 'a' * 63, 'a' * 56]
+        urls = ['https://' + '.'.join(labels)] * 4
+        self.assertEqual(sum(len(url) for url in urls), p2p.MAX_RELAY_URLS_TOTAL_LENGTH)
+        data = descriptor(p2p={'endpoint_id': 'a' * 64, 'relay_urls': urls})
+        code = invite_message.encode(data)
+        self.assertTrue(code.startswith(invite_message.CODE_PREFIX))
+        body = code[len(invite_message.CODE_PREFIX):]
+        self.assertLessEqual(len(body), invite_message.MAX_CODE_LENGTH)
         self.assertEqual(invite_message.decode(code), data)
 
 
