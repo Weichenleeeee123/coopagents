@@ -103,16 +103,17 @@ _HOST_LABEL = re.compile(r'[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?')
 def _ipv4_number(part):
     """WHATWG IPv4 part value, or None if the part is not a valid number.
 
-    Hex (0x), octal (leading 0, digits 0-7 only), else decimal; an invalid
-    octal digit fails the part rather than falling back to decimal.
+    Hex (0x, an empty suffix means zero), octal (leading 0, digits 0-7
+    only), else decimal; an invalid octal digit fails the part rather
+    than falling back to decimal.
     """
     if not part:
         return None
     if part[:2].lower() == '0x':
         digits = part[2:]
-        if not digits or any(char not in '0123456789abcdefABCDEF' for char in digits):
+        if any(char not in '0123456789abcdefABCDEF' for char in digits):
             return None
-        return int(digits, 16)
+        return int(digits, 16) if digits else 0
     if len(part) > 1 and part[0] == '0':
         if any(char not in '01234567' for char in part):
             return None
@@ -120,6 +121,20 @@ def _ipv4_number(part):
     if any(char not in '0123456789' for char in part):
         return None
     return int(part, 10)
+
+
+def _ends_in_number(labels):
+    """WHATWG ends-in-a-number check: an all-ASCII-digits last label, or a
+    last label the IPv4-number parser accepts.
+
+    The two rules are separate: an all-digits label enters IPv4 parsing
+    even when it is invalid octal ('09'), and an empty hex suffix ('0x')
+    is a valid number with value zero.
+    """
+    last = labels[-1]
+    if last and all('0' <= char <= '9' for char in last):
+        return True
+    return _ipv4_number(last) is not None
 
 
 def _valid_whatwg_ipv4(labels):
@@ -137,6 +152,19 @@ def _valid_whatwg_ipv4(labels):
     return numbers[-1] < 256 ** (5 - len(numbers))
 
 
+def _valid_ace_label(label):
+    """An xn-- label must be a genuine ACE encoding: its punycode payload
+    decodes and re-encodes to the same label. 'xn--a' and friends pass a
+    label-shape check but are not valid IDNA and iroh rejects them."""
+    if not label.startswith('xn--'):
+        return True
+    try:
+        decoded = label[4:].encode('ascii').decode('punycode')
+        return decoded.encode('idna').decode('ascii') == label
+    except (UnicodeError, ValueError):
+        return False
+
+
 def _loopback_host(hostname):
     if hostname == 'localhost':
         return True
@@ -146,18 +174,40 @@ def _loopback_host(hostname):
         return False
 
 
-def _valid_hostname(hostname):
+def _valid_hostname(hostname, bracketed=False):
     """A host iroh's URL parser accepts: IP literal, WHATWG IPv4, or DNS/IDNA.
 
-    The optional root dot is removed before the length cap, so a maximum
-    253-character name stays valid with its trailing dot. Scoped IPv6
-    literals are rejected: ipaddress accepts them, iroh does not. A host
-    whose last label is numeric must be a valid WHATWG IPv4 address, or
-    iroh rejects it as a malformed number (999.1.1.1, example.123).
-    Non-ASCII names are checked through IDNA, then as ASCII labels.
+    Bracketed authorities hold IPv6 literals only: IPvFuture spellings
+    reach this check with their brackets stripped, so they are rejected
+    here rather than read as DNS names. Scoped literals are rejected:
+    ipaddress accepts them, iroh does not. Joiners (U+200C/U+200D) are
+    rejected outright: Python's IDNA codec drops them, iroh rejects the
+    original spelling. Non-ASCII names are IDNA-converted first and all
+    later checks run on the converted form, so a name that converts to a
+    numeric host (fullwidth digits, mapped separators, removed soft
+    hyphen) is classified as numeric. The optional root dot is removed
+    after conversion, before the length cap, so mapped Unicode root
+    separators stay valid. ACE labels must round-trip through punycode.
     """
-    name = hostname[:-1] if hostname.endswith('.') else hostname
-    if not name or len(name) > 253 or '%' in name:
+    if bracketed:
+        if '%' in hostname:
+            return False
+        try:
+            ipaddress.IPv6Address(hostname)
+            return True
+        except ValueError:
+            return False
+    if '%' in hostname or '\u200c' in hostname or '\u200d' in hostname:
+        return False
+    name = hostname
+    if any(ord(char) > 127 for char in name):
+        try:
+            name = name.encode('idna').decode('ascii')
+        except UnicodeError:
+            return False
+    if name.endswith('.'):
+        name = name[:-1]
+    if not name or len(name) > 253:
         return False
     try:
         ipaddress.ip_address(name)
@@ -165,15 +215,10 @@ def _valid_hostname(hostname):
     except ValueError:
         pass
     labels = name.split('.')
-    if _ipv4_number(labels[-1]) is not None:
+    if _ends_in_number(labels):
         return _valid_whatwg_ipv4(labels)
-    if any(ord(char) > 127 for char in name):
-        try:
-            name = name.encode('idna').decode('ascii')
-        except UnicodeError:
-            return False
-        labels = name.split('.')
-    return all(_HOST_LABEL.fullmatch(label) and len(label) <= 63 for label in labels)
+    return all(_HOST_LABEL.fullmatch(label) and len(label) <= 63 and _valid_ace_label(label)
+               for label in labels)
 
 
 def validate_relay_urls(value):
@@ -203,7 +248,8 @@ def validate_relay_urls(value):
             port = parts.port
         except ValueError:
             raise ValueError('Invalid relay URL authority') from None
-        if not hostname or not _valid_hostname(hostname) or port == 0:
+        bracketed = parts.netloc.rsplit('@', 1)[-1].startswith('[')
+        if not hostname or not _valid_hostname(hostname, bracketed) or port == 0:
             raise ValueError('Invalid relay URL authority')
         if parts.username is not None or parts.password is not None:
             raise ValueError('Relay URL must not carry credentials')

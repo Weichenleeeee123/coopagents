@@ -107,6 +107,39 @@ class ValidateRelayUrls(unittest.TestCase):
             with self.assertRaises(ValueError, msg=repr(url)):
                 p2p.validate_relay_urls([url])
 
+    def test_rejects_invalid_octal_and_empty_hex_final_labels(self):
+        bad = ['https://09', 'https://08', 'https://018', 'https://0009', 'https://1.2.3.09',
+               'https://example.09', 'https://1.2.3.09.', 'https://example.0x', 'https://example.0X',
+               'https://example.0x.']
+        for url in bad:
+            with self.assertRaises(ValueError, msg=url):
+                p2p.validate_relay_urls([url])
+
+    def test_accepts_empty_hex_ipv4_components(self):
+        for url in ['https://0x.1', 'https://127.0x.0x.1', 'https://0x7f.0x.0x.1', 'https://1.0x.2.3',
+                    'https://1.2.0x.3', 'https://0X.1', 'https://0x.0x.0x.1', 'https://0x']:
+            self.assertEqual(p2p.validate_relay_urls([url]), [url])
+
+    def test_rejects_hosts_that_convert_to_numeric(self):
+        bad = ['https://example.１２３', 'https://example。123', 'https://example．123',
+               'https://example｡123', 'https://example.０８', 'https://１.２.３.９９９',
+               'https://999。1。1。1', 'https://example.1' + chr(0xAD) + '23']
+        for url in bad:
+            with self.assertRaises(ValueError, msg=repr(url)):
+                p2p.validate_relay_urls([url])
+
+    def test_rejects_joiners_invalid_ace_and_bracketed_non_ipv6(self):
+        bad = ['https://foo' + chr(0x200D) + 'bar.example', 'https://foo' + chr(0x200C) + 'bar.example',
+               'https://xn--a.example', 'https://xn--abc.example', 'https://xn--0.example',
+               'https://[v1.relay]', 'https://[vF.relay.example]', 'https://[1.2.3.4]']
+        for url in bad:
+            with self.assertRaises(ValueError, msg=repr(url)):
+                p2p.validate_relay_urls([url])
+
+    def test_accepts_mapped_unicode_root_separators(self):
+        for url in ['https://例子.测试。', 'https://例子.测试．', 'https://例子.测试｡']:
+            self.assertEqual(p2p.validate_relay_urls([url]), [url])
+
     def test_rejects_wrong_shapes(self):
         for value in [None, RELAY, [], ['https://a.example'] * 5, [None], [123]]:
             with self.assertRaises(ValueError, msg=repr(value)):
