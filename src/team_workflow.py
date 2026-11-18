@@ -423,4 +423,49 @@ class TeamWorkflowStore:
                         'ownership_epoch': use['ownership_epoch']},
                     'eligible': p.kind == 'agent' and use['owner_member_id'] == p.member_id,
                     'requires_human': False, 'authority': 'current_execution_owner'})
+        if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='git_conflict_blocks'").fetchone():
+            blocks = db.execute('''SELECT b.* FROM git_conflict_blocks b JOIN tasks t
+                ON t.id=b.task_id AND t.room_id=b.room_id WHERE b.room_id=? AND t.cancelled_at IS NULL
+                AND b.ownership_epoch=t.ownership_epoch ORDER BY b.id''', (p.room_id,)).fetchall()
+            for block in blocks:
+                if task_id is not None and block['task_id'] != task_id:
+                    continue
+                try:
+                    conflicts = json.loads(block['conflicts_json'])
+                except (TypeError, ValueError):
+                    conflicts = []
+                first = conflicts[0] if isinstance(conflicts, list) and conflicts else {}
+                paths = first.get('paths') if isinstance(first, dict) else None
+                summary = ('Task %d is blocked at the %s gate: task %s also touches %s. '
+                           'Wait for the owning task or override with a reason.'
+                           % (block['task_id'], block['gate'], first.get('task_id'),
+                              ', '.join(paths[:3]) if isinstance(paths, list) and paths else 'the same paths'))
+                cards.append({'kind': 'git_conflict', 'id': block['id'], 'task_id': block['task_id'],
+                    'title': 'Overlap block at the %s gate' % block['gate'], 'summary': summary,
+                    'blocking_task_id': first.get('task_id') if isinstance(first, dict) else None,
+                    'blocking_member_id': first.get('member_id') if isinstance(first, dict) else None,
+                    'ownership_epoch': block['ownership_epoch'], 'operation': 'override_overlap',
+                    'payload': {'block_id': block['id']}, 'required_input': ['reason'],
+                    'eligible': can_manage, 'requires_human': True,
+                    'authority': 'project_manager_web_user'})
+        if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='git_merge_requests'").fetchone():
+            merges = db.execute('''SELECT m.* FROM git_merge_requests m JOIN tasks t
+                ON t.id=m.task_id AND t.room_id=m.room_id WHERE m.room_id=? AND m.state='pending'
+                AND t.cancelled_at IS NULL AND m.ownership_epoch=t.ownership_epoch ORDER BY m.id''',
+                (p.room_id,)).fetchall()
+            for merge in merges:
+                if task_id is not None and merge['task_id'] != task_id:
+                    continue
+                cards.append({'kind': 'git_merge', 'id': merge['id'], 'task_id': merge['task_id'],
+                    'title': 'Merge request for PR #%d' % merge['pr_number'],
+                    'summary': 'Task %d asks a project manager to merge PR #%d (%s into %s). Merging records delivery; it never accepts the task.'
+                               % (merge['task_id'], merge['pr_number'], merge['branch'], merge['base_branch']),
+                    'pr_number': merge['pr_number'], 'pr_url': merge['pr_url'],
+                    'branch': merge['branch'], 'head_sha': merge['head_sha'],
+                    'ownership_epoch': merge['ownership_epoch'], 'operation': 'merge_pr',
+                    'payload': {'merge_request_id': merge['id'], 'expected_revision': merge['revision'],
+                                'expected_head_sha': merge['head_sha'],
+                                'expected_base_branch': merge['base_branch']},
+                    'eligible': can_manage, 'requires_human': True,
+                    'authority': 'project_manager_web_user'})
         return agreements, cards

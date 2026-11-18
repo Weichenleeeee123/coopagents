@@ -216,7 +216,8 @@ def serve(profile_path):
                 link = HostLink(host['p2p_secret'], urlsplit(host['local_origin']).port, **kwargs)
             app = create_space_app(service, room_id=profile['room_id'], origin=profile['origin'])
             control = create_control_app(profile['control_origin'], profile['control_token'], stop, profile['room_id'], ready,
-                                         service=service, source_token=profile['agent_token'], p2p=link)
+                                         service=service, source_token=profile['agent_token'], p2p=link,
+                                         network=host['network'])
             for application, origin in ((app, host['local_origin']), (control, profile['control_origin'])):
                 config = uvicorn.Config(application, host='127.0.0.1', port=urlsplit(origin).port,
                                         log_level='warning', access_log=False, proxy_headers=False,

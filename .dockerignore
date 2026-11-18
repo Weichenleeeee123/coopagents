@@ -7,5 +7,8 @@
 !src/**
 !deploy/
 !deploy/constraints.txt
+!docs/
+!docs/agent-first-setup.md
+!docs/agent-first-setup.zh-CN.md
 src/**/__pycache__
 src/**/*.pyc

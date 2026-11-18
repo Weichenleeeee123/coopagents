@@ -145,6 +145,8 @@ class Transport(unittest.TestCase):
         self.assertEqual(status['members'], 0)
         self.assertIsNone(status['relay_url'])
         self.assertIsInstance(status['direct_addresses'], list)
+        self.assertEqual(status['reason'], 'network_mode_local')
+        self.assertIn('remote members', status['next'])
 
     def test_member_reconnects_after_host_restart(self):
         target, secret = start_echo(), p2p.new_secret()

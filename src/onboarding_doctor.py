@@ -20,7 +20,7 @@ from .spaces import checked_path, read_profile
 
 STATUSES = frozenset(('pass', 'fail', 'needs_user', 'unknown', 'skipped'))
 REQUIRED_CHECKS = frozenset((
-    'python_runtime', 'native_tool', 'mcp_configuration', 'skill_installation',
+    'python_runtime', 'native_tool', 'native_agent', 'mcp_configuration', 'skill_installation',
     'project_context', 'runtime_reachability', 'challenge_round_trip',
 ))
 _SECRET_KEY = re.compile(r'(?:token|secret|password|credential|profile)', re.I)
@@ -169,6 +169,51 @@ def tool_check(tool=None, project_dir=None, cli=None):
             continue
     return make_check('native_tool', 'needs_user', 'The native CLI version could not be verified.',
                       'Select a working CLI with --cli and rerun doctor.', {'tool': selected})
+
+
+def native_agent_check(tool, cli=None):
+    """Check native login state without starting a model turn."""
+    selected, candidates, error = _tool_and_cli(tool, cli)
+    if error or not selected:
+        return make_check('native_agent', 'unknown',
+                          'Native login state could not be checked.',
+                          'Log in to the native agent, then rerun doctor.')
+    command_name = 'auth' if selected == 'claude' else 'login'
+    for executable in candidates:
+        try:
+            result = space_connect._run(executable + [command_name, 'status'], timeout=10)
+        except space_connect.ConnectError:
+            continue
+        logged_in = None
+        if selected == 'claude':
+            try:
+                document = json.loads(result.stdout)
+                if isinstance(document, dict) and isinstance(document.get('loggedIn'), bool):
+                    logged_in = document['loggedIn']
+            except ValueError:
+                pass
+        else:
+            text = (result.stdout + result.stderr).strip().lower()
+            if 'not logged in' in text:
+                logged_in = False
+            elif result.returncode == 0 and text.startswith('logged in using '):
+                logged_in = True
+        evidence = {'tool': selected, 'backend_reachability': 'unimplemented', 'model_turn': 'not_run'}
+        if logged_in is False:
+            return make_check('native_agent', 'needs_user',
+                              'The native agent is not logged in.',
+                              'Log in to the native agent and complete one model turn, then rerun doctor.',
+                              evidence | {'login_state': 'not_authenticated'})
+        if logged_in is True and result.returncode == 0:
+            return make_check('native_agent', 'unknown',
+                              'Native login is configured; backend access and a model turn are unverified.',
+                              'Complete one native model turn only with permission to use quota; '
+                              'no provider-aware backend probe is implemented.',
+                              evidence | {'login_state': 'authenticated'})
+    return make_check('native_agent', 'unknown',
+                      'Native login status could not be verified with this CLI.',
+                      'Confirm login and backend access, then complete one model turn; doctor cannot verify that turn.',
+                      {'tool': selected, 'login_state': 'unavailable'})
 
 
 def skill_root(tool, root=None):
@@ -323,6 +368,8 @@ def local_checks(*, tool=None, profile_path=None, project_dir=None, cli=None, sk
     native = tool_check(tool, project_dir, cli)
     selected = native['evidence'].get('tool')
     checks = [python_runtime_check(), native]
+    checks.append(native_agent_check(selected, cli) if selected else
+                  make_check('native_agent', 'skipped', 'Select the current native agent to inspect login status.'))
     connections = []
     if profile_path:
         checks.append(mcp_check(selected, profile_path, cli=cli, name=name))
@@ -397,6 +444,131 @@ def _verified_link(profile):
     raise last_error
 
 
+def owner_p2p_check(profile):
+    """Observe the host endpoint separately from its authenticated loopback path."""
+    from .p2p import offline_diagnostic
+    from .space_runtime import request
+    try:
+        health = request(profile['control_origin'], '/status', token=profile['control_token'])
+        if health['room_id'] != profile['room_id']:
+            raise ValueError('Unexpected host identity')
+        p2p = health.get('p2p') or {}
+        if p2p.get('online') is True:
+            return make_check('p2p_endpoint', 'pass', 'The host has a home relay; remote access is not tested.',
+                              evidence={'online': True})
+        reason = p2p.get('reason')
+        if reason in ('starting', 'relay_unavailable', 'udp_send_denied', 'network_mode_local'):
+            diagnostic = offline_diagnostic(reason)
+            status = 'skipped' if reason == 'network_mode_local' else 'fail' if reason == 'udp_send_denied' else 'unknown'
+            return make_check('p2p_endpoint', status, diagnostic['summary'], diagnostic['next'],
+                              {'online': False, 'reason': reason})
+    except (OSError, ValueError, KeyError, RuntimeError):
+        pass
+    return make_check('p2p_endpoint', 'unknown', 'The host P2P endpoint status is unavailable.',
+                      'Run status with the owner profile; loopback access alone does not prove P2P reachability.')
+
+
+def repository_binding_check(profile):
+    try:
+        git = _request_profile(profile, '/api/git')
+        binding = git['binding']
+        if binding:
+            return make_check('repository_binding', 'pass', 'The space has a repository binding.',
+                              evidence={'bound': True})
+        return make_check('repository_binding', 'needs_user', 'The space is not bound to a repository.',
+                          'Ask the project manager to bind the repository with bind_repository; '
+                          'creating a space inside a repository does not bind it.', {'bound': False})
+    except Exception:
+        return make_check('repository_binding', 'unknown', 'Repository binding could not be checked.',
+                          'Inspect the space repository settings; doctor did not change them.')
+
+
+# The App manifest deliberately requests no Administration permission
+# (experiments/agent-integration/github_app_registration.py,
+# docs/git-github-setup.md), so no installation token can read branch
+# protection: a 404 from that endpoint cannot distinguish "unprotected"
+# from "not permitted". Doctor reports unknown and never guesses.
+BRANCH_PROTECTION_REPORT = {
+    'status': 'unknown',
+    'reason': 'The GitHub App does not request branch-protection read permission, so protection state cannot be verified.',
+    'suggestion': 'Enable branch protection on GitHub (require pull requests, block force pushes) as a human decision; doctor never changes repository settings.',
+}
+
+
+def git_write_ready_check(profile_path, project_dir=None):
+    """Report git write-path readiness; never enables anything.
+
+    Local facts (git binary, local repository identity) come from this
+    machine; binding, flag, connection, and write-scope verification come
+    from the service snapshot. An unreadable service state reports unknown.
+    """
+    if not project_dir:
+        return make_check('git_write_ready', 'skipped',
+                          'No project directory was selected for the git write check.',
+                          evidence={'branch_protection': dict(BRANCH_PROTECTION_REPORT)})
+    if shutil.which('git') is None:
+        return make_check('git_write_ready', 'fail', 'The git binary was not found on PATH.',
+                          'Install git, then rerun doctor.',
+                          {'branch_protection': dict(BRANCH_PROTECTION_REPORT)})
+    try:
+        profile = read_profile(checked_path(profile_path).resolve())
+    except Exception:
+        return make_check('git_write_ready', 'unknown',
+                          'The private profile is invalid or unavailable.',
+                          evidence={'branch_protection': dict(BRANCH_PROTECTION_REPORT)})
+    try:
+        from .git_workspace import GitWorkspace
+        local_repository = GitWorkspace(Path(project_dir)).inspect()['repository']
+    except Exception:
+        local_repository = None
+    try:
+        snapshot = _request_profile(profile, '/api/git')
+    except Exception:
+        return make_check('git_write_ready', 'unknown',
+                          'The service snapshot was unavailable; git write readiness is unknown.',
+                          'Rerun doctor when the space is reachable.',
+                          {'local_repository': local_repository,
+                           'branch_protection': dict(BRANCH_PROTECTION_REPORT)})
+    if not isinstance(snapshot, dict):
+        return make_check('git_write_ready', 'unknown', 'The service snapshot was invalid.',
+                          evidence={'branch_protection': dict(BRANCH_PROTECTION_REPORT)})
+    binding = snapshot.get('binding')
+    connection = snapshot.get('connection')
+    enabled = bool(snapshot.get('git_write_enabled'))
+    evidence = {'local_repository': local_repository,
+                'bound_repository': binding.get('repository') if isinstance(binding, dict) else None,
+                'git_write_enabled': enabled,
+                'github_connection': connection.get('status') if isinstance(connection, dict) else None,
+                'branch_protection': dict(BRANCH_PROTECTION_REPORT),
+                'write_scope_verified': (bool(connection.get('write_scope_verified'))
+                                         if isinstance(connection, dict) and 'write_scope_verified' in connection
+                                         else None)}
+    if not binding:
+        return make_check('git_write_ready', 'needs_user', 'No repository is bound to this space.',
+                          'Bind the repository from the web workbench, then rerun doctor.', evidence)
+    if local_repository and binding.get('repository') != local_repository:
+        return make_check('git_write_ready', 'fail',
+                          'The local repository does not match the space binding.',
+                          'Open the bound repository directory, then rerun doctor.', evidence)
+    if not enabled:
+        return make_check('git_write_ready', 'needs_user',
+                          'The git write path is not enabled for this space.',
+                          'A project manager enables it from the web workbench; doctor never enables it.', evidence)
+    if not isinstance(connection, dict) or connection.get('status') != 'active':
+        return make_check('git_write_ready', 'needs_user', 'GitHub is not authorized for this space.',
+                          'Authorize the GitHub App from the web workbench, then rerun doctor.', evidence)
+    if evidence['write_scope_verified'] is None:
+        return make_check('git_write_ready', 'unknown',
+                          'The git write path is enabled, but App write-scope verification is unknown.',
+                          'Open a draft PR once to verify the write scope.', evidence)
+    if not evidence['write_scope_verified']:
+        return make_check('git_write_ready', 'needs_user',
+                          'The git write path is enabled, but the App write scope is not yet verified.',
+                          'Open a draft PR once to verify the write scope.', evidence)
+    return make_check('git_write_ready', 'pass',
+                      'The git write path is enabled and the App write scope is verified.', '', evidence)
+
+
 def profile_checks(profile_path, *, tool=None, project_dir=None, cli=None, skills=None):
     """Verify a private profile, its target identity and its diagnostic challenge."""
     try:
@@ -435,6 +607,8 @@ def profile_checks(profile_path, *, tool=None, project_dir=None, cli=None, skill
                     checks.append(make_check('transport_path', path_status,
                                              'The P2P transport reported its current path.' if path_status != 'fail'
                                              else 'The P2P transport is disconnected.',
+                                             'Check the host and outbound UDP/relay access, then rerun doctor.'
+                                             if path_status == 'fail' else '',
                                              evidence={'state': state, 'rtt_ms': path_info.get('rtt_ms')},
                                              secrets=secrets_to_hide))
                 except Exception:
@@ -447,6 +621,10 @@ def profile_checks(profile_path, *, tool=None, project_dir=None, cli=None, skill
                 checks.append(make_check('transport_path', 'pass',
                                          'The profile uses its configured service origin.',
                                          evidence={'state': state}))
+
+            if profile.get('control_token'):
+                checks.append(owner_p2p_check(profile))
+            checks.append(repository_binding_check(profile))
 
             try:
                 challenge = secrets.token_urlsafe(24)
@@ -508,6 +686,10 @@ def profile_checks(profile_path, *, tool=None, project_dir=None, cli=None, skill
             checks.append(make_check('transport_path', 'unknown', 'The transport path is unknown.'))
             checks.append(make_check('challenge_round_trip', 'skipped', 'Identity verification must pass before the challenge.'))
 
+    try:
+        checks.append(git_write_ready_check(profile_path, project_dir))
+    except Exception:
+        checks.append(make_check('git_write_ready', 'unknown', 'The git write check did not complete.'))
     checks.extend([
         make_check('session_reload', 'needs_user', 'The native configuration may require a new agent session.',
                     'Start a new session and call whoami, then read_team to verify the loaded MCP connection.'),
@@ -709,7 +891,7 @@ def render_text(result):
     lines = ['Overall: ' + str(result.get('overall', 'unknown'))]
     for item in result.get('checks', []):
         lines.append('%s: %s — %s' % (item['id'], item['status'], item['summary']))
-        if item.get('next') and item['status'] in ('fail', 'needs_user'):
+        if item.get('next') and item['status'] in ('fail', 'needs_user', 'unknown'):
             lines.append('Next: ' + item['next'])
     for connection in result.get('connections', []):
         lines.append('Registered connection: ' + json.dumps(connection, ensure_ascii=True))

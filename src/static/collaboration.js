@@ -102,12 +102,12 @@
     }
     if(changes.length)agreements.append(element('p','阅读新版本不会自动批准或采用；当前任务执行者需要明确记录所用版本。','muted'));
 
-    const decisionLabels={contract:'约定审核',handoff:'责任交接',delivery:'交付关联建议',unassigned_task:'待认领任务',agreement_review:'约定版本复核'};
+    const decisionLabels={contract:'约定审核',handoff:'责任交接',delivery:'交付关联建议',unassigned_task:'待认领任务',agreement_review:'约定版本复核',git_merge:'PR 合并请求',git_conflict:'Git 冲突拦截'};
     const decisions=list(workflow.decisions).filter(item=>Object.hasOwn(decisionLabels,item.kind)),pending=workflowSection(root,'workflow-decisions','需要确认的事项');
-    const authority={contract:'需要人工网页身份处理；当前身份不能执行此决定。',handoff:'仅拟接收成员可在网页确认；当前身份不符合。',delivery:'仅项目管理员可在网页确认；当前身份不符合。',unassigned_task:'由自己的 agent 认领；网页只显示任务入口。',agreement_review:'由当前任务执行者在 agent 中明确记录；网页只显示约定与任务入口。'};
+    const authority={contract:'需要人工网页身份处理；当前身份不能执行此决定。',handoff:'仅拟接收成员可在网页确认；当前身份不符合。',delivery:'仅项目管理员可在网页确认；当前身份不符合。',unassigned_task:'由自己的 agent 认领；网页只显示任务入口。',agreement_review:'由当前任务执行者在 agent 中明确记录；网页只显示约定与任务入口。',git_merge:'仅项目管理员可在网页确认；当前身份不符合。',git_conflict:'仅项目管理员可在网页确认；当前身份不符合。'};
     if(!decisions.length)pending.append(element('p','本页暂无待确认事项。','muted'));
     for(const card of decisions.slice(0,visibleLimit)){
-      const payload=card.payload||{},human=['contract','handoff','delivery'].includes(card.kind);
+      const payload=card.payload||{},human=['contract','handoff','delivery','git_merge','git_conflict'].includes(card.kind);
       const row=add(element('article','','record workflow-decision'),element('h4',decisionLabels[card.kind]+' · '+excerpt(card.title||card.summary||'#'+card.id)),
         element('p',human?'需要人工决定':'需要个人 agent 操作','meta'));
       if(identifier(card.id))row.id='workflow-decision-'+card.kind+'-'+card.id+(identifier(card.task_id)?'-'+card.task_id:'');
@@ -115,12 +115,15 @@
       if(card.kind==='contract')row.append(element('p','约定 #'+card.id+' · 待审 v'+payload.version,'meta'));
       if(card.kind==='handoff')row.append(element('p','任务 #'+payload.task_id+' · 当前修订 r'+payload.expected_revision,'meta'));
       if(card.kind==='delivery')row.append(element('p','建议 #'+card.id+' · '+excerpt(card.object_key),'meta'));
+      if(card.kind==='git_merge')row.append(element('p','PR #'+card.pr_number+' · '+card.branch+' → '+card.base_branch,'meta'));
+      if(card.kind==='git_conflict')row.append(element('p','任务 #'+card.task_id+' · 阻塞任务 #'+card.blocking_task_id,'meta'));
       row.append(element('p',human&&card.eligible===true?'当前网页身份可前往已有详情处理。':authority[card.kind],'muted'));
       if(['contract','agreement_review'].includes(card.kind)&&identifier(card.id))navigation(row,'查看约定 #'+card.id,{kind:'contract',id:card.id},context,renderEpoch);
       if(card.kind==='handoff')taskNavigation(row,payload.task_id,context,renderEpoch);
       if(card.kind==='unassigned_task')taskNavigation(row,card.id,context,renderEpoch);
       if(card.kind==='agreement_review')taskNavigation(row,card.task_id,context,renderEpoch);
       if(card.kind==='delivery')navigation(row,'查看交付建议 #'+card.id,{kind:'delivery'},context,renderEpoch);
+      if(['git_merge','git_conflict'].includes(card.kind))taskNavigation(row,card.task_id,context,renderEpoch);
       pending.append(row);
     }
 

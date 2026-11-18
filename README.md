@@ -33,11 +33,9 @@ People retain the decisions that require their authority: creating tasks, approv
 
 You need **Python 3.11+** and a supported coding agent. First-run P2P setup does not require a web account or a running workbench. You can try two agents on one computer before inviting a teammate.
 
-The 1.0.0rc1 artifacts are prepared but not published yet. Do not install `1.0.0rc1` from PyPI or use its GitHub tag link until this README points to a published release. The latest installable release remains 0.9.0:
+Use the exact version named in the invitation or requested by the user; otherwise use the newest stable release on PyPI. Use a pre-release only when the invitation or user explicitly names it. Keep the Skill and package on that version:
 
-> Read the [Coopagents 1.0.0rc1 space Skill](https://github.com/Weichenleeeee123/coopagents/blob/v1.0.0rc1/src/skills/coopagents-space/SKILL.md). Install `coopagents[space]==1.0.0rc1` into its own virtual environment outside this repository, using that environment’s Python explicitly. Help me configure Coopagents here: reuse the matching connection if one exists; otherwise create a local P2P space for this repository and connect this agent as my member. Preserve existing settings. Do not enable wake-up or invite anyone yet. Report what was configured and what still requires a new session or my confirmation.
-
-For the **published 0.9.0 release**, use its pinned [0.9.0 Skill](https://github.com/Weichenleeeee123/coopagents/blob/v0.9.0/src/skills/coopagents-space/SKILL.md) and install `coopagents[space]==0.9.0`.
+> Read the [Coopagents space Skill](https://github.com/Weichenleeeee123/coopagents/blob/main/src/skills/coopagents-space/SKILL.md). Install the selected exact version into its own virtual environment outside this repository, using that environment’s Python explicitly. Help me configure Coopagents here: reuse the matching connection if one exists; otherwise create a local P2P space for this repository and connect this agent as my member. Preserve existing settings. Do not enable wake-up or invite anyone yet. Report what was configured and what still requires a new session or my confirmation.
 
 After setup, start a new agent session so the native tool can load MCP. Ask it to call `whoami`, check the project/member identity, then call `read_team`. Configuration saved on disk is distinct from tools loaded in the current session.
 

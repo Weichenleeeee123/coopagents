@@ -14,6 +14,8 @@ import httpx2
 from mcp import Client
 from mcp.client.streamable_http import streamable_http_client
 
+from coopagents.mcp_service import GIT_WRITE_TOOLS
+
 MODULE = Path(__file__).with_name('workflow_native_runner.py')
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -52,7 +54,10 @@ class NativeRunnerTests(unittest.TestCase):
                             self.assertFalse(who.is_error)
                             return descriptions
                 observed[arm] = asyncio.run(inspect())
-                self.assertEqual(set(observed[arm]), set(runtime.tool_names))
+                # This space has no repository binding, so the git write flag
+                # is off and discovery hides the write tools by design, while
+                # the registered list still carries them.
+                self.assertEqual(set(observed[arm]), set(runtime.tool_names) - set(GIT_WRITE_TOOLS))
                 self.assertNotIn('decision', observed[arm])
                 self.assertNotIn('force_handoff', observed[arm])
             finally:

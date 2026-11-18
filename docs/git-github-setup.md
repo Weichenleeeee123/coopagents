@@ -4,9 +4,11 @@ G2 使用独立 GitHub App 读取已授权仓库。现有 GitHub 账号登录继
 
 ## App 与运行配置
 
-在 GitHub 注册 App，给 Repository permissions 中的 Contents、Pull requests、Checks、Commit statuses **Read-only** 权限；Metadata 为必需的只读权限。只安装到操作者选择的仓库。显式订阅 Push、Pull request、Check run、Check suite、Status、Release 六类事件；Installation 与 Installation repositories 是自动投递的安装生命周期事件，不应写入 Manifest 的 `default_events`，GitHub 注册页面会拒绝这两个显式订阅。Release webhook 只触发重新读取，不使用事件正文作为交付证据。设置 webhook secret，Webhook URL 为 `https://你的服务域名/api/git/github/webhook`，用户授权 Callback URL 为 `https://你的服务域名/api/git/github/callback`。这是用户授权回调，不是安装完成后的 setup URL。
+在 GitHub 注册 App，给 Repository permissions 中的 Contents、Pull requests **Read and write** 权限，Checks、Commit statuses **Read-only** 权限；Metadata 为必需的只读权限。只安装到操作者选择的仓库。写权限只在项目管理者启用 Git 写入路径后才被请求：未启用的项目继续使用只读安装 token；启用的项目请求且仅请求 contents:write + pull_requests:write + checks/statuses 只读，并校验 provider 返回的权限集合精确一致，超出者拒绝使用。显式订阅 Push、Pull request、Check run、Check suite、Status、Release 六类事件；Installation 与 Installation repositories 是自动投递的安装生命周期事件，不应写入 Manifest 的 `default_events`，GitHub 注册页面会拒绝这两个显式订阅。Release webhook 只触发重新读取，不使用事件正文作为交付证据。设置 webhook secret，Webhook URL 为 `https://你的服务域名/api/git/github/webhook`，用户授权 Callback URL 为 `https://你的服务域名/api/git/github/callback`。这是用户授权回调，不是安装完成后的 setup URL。
 
 服务配置如下。真实值和私钥文件放在部署机配置或 secret mount，不放进版本库、命令行参数或网页。
+
+App 不申请 Administration 权限，因此安装 token 读不到分支保护状态：doctor 的 `git_write_ready` 检查把分支保护报为 unknown，并说明原因，不猜测。是否开启分支保护（要求 PR、禁止 force-push）由人在 GitHub 上决定，doctor 只报状态、绝不改配置。
 
 | 环境变量 | 内容 |
 | --- | --- |
@@ -31,6 +33,10 @@ state 最长 10 分钟且只能完成一次；回调验证用户确实能读取�
 
 成员调用 `POST /api/git/github/refresh`，请求体 `{}`，重新读取当前仓库、分支、PR、明确关联提交，以及各自 SHA 上的 checks/statuses。分支仅有 push、尚未创建 PR 时也会读取检查。路径和 JSON 字段严格校验；不接受凭据、provider URL 或调用方声称的合并结果。
 
+## Git 写入路径（可选，默认关闭）
+
+项目管理者在网页启用 Git 写入后，agent 认领任务时创建任务分支，交付时提交、推送并打开草稿 PR；PR 一律以草稿打开，创建前先按分支查找已开放的 PR，同一分支不会重复建 PR。合并始终由人工执行：agent 只能用 `request_merge` 生成合并决策卡，项目管理者在网页确认后才执行合并；合并前读取分支保护、检查与评审状态——HEAD 已移动、检查失败或截断、分支保护要求未满足时拒绝合并，合并方式固定为 merge commit 并带预期 HEAD SHA。关联 PR 合并只提供交付证据，不修改任务人工验收结果。重叠拦截只由项目管理者覆写，覆写需写理由并记入审计。写范围首次成功创建 PR 后，连接标记 `write_scope_verified`；doctor 的 `git_write_ready` 检查据此报告就绪状态，从不启用写入。
+
 ## 队列与同步语义
 
 webhook 对最多 65536 字节的原始请求体使用 HMAC SHA256 和常量时间比较；重复 signature/delivery/event headers 拒绝。SQLite 先持久化 delivery ID、原始负载 hash、event、installation/repository ID，再返回接受结果；不保存 webhook 正文。相同 delivery 与相同负载幂等；相同 ID 不同负载返回冲突。未支持的签名合法事件忽略。
@@ -39,7 +45,7 @@ webhook 对最多 65536 字节的原始请求体使用 HMAC SHA256 和常量时�
 
 `process_pending(limit=20, should_stop=None)` 与 `reconcile_all(should_stop=None)` 接受停止回调。worker 关闭时在每个事件和项目之间停止；一个安装事件若只处理了部分项目，其 inbox 状态仍为 queued/retry，重启后继续核对，不提前标记完成。当前已开始的仓库请求受操作与响应读取预算约束。
 
-REST origin 固定为 `https://api.github.com`，API 版本为 `2026-03-10`；用户 code 仅向 `https://github.com/login/oauth/access_token` 交换。禁止所有重定向；每个请求超时最多 15 秒，每个 JSON 响应最多 2000000 字节。每次仓库核对最多 150 个请求，并使用 60 秒操作截止时间，后续请求超时受剩余时间约束，读取响应块时也检查截止时间。授权范围查询可分页，最多 100 页、每页 100 个对象；交付核对不扫描全部历史 PR。安装 token 明确限制到单个稳定 repository ID 和所需只读权限，并校验 provider 返回的 repositories/permissions；缺少范围信息、额外仓库或写权限均拒绝使用。超出界限的同步会失败，不把不完整内容当成完整的验证结果。
+REST origin 固定为 `https://api.github.com`，API 版本为 `2026-03-10`；用户 code 仅向 `https://github.com/login/oauth/access_token` 交换。禁止所有重定向；每个请求超时最多 15 秒，每个 JSON 响应最多 2000000 字节。每次仓库核对最多 150 个请求，并使用 60 秒操作截止时间，后续请求超时受剩余时间约束，读取响应块时也检查截止时间。授权范围查询可分页，最多 100 页、每页 100 个对象；交付核对不扫描全部历史 PR。安装 token 明确限制到单个稳定 repository ID 和所需权限，并校验 provider 返回的 repositories/permissions；缺少范围信息、额外仓库或超出请求集合的权限均拒绝使用。只读 token 仍拒绝任何写权限；写 token 只请求且仅接受 contents:write + pull_requests:write + checks/statuses 只读。超出界限的同步会失败，不把不完整内容当成完整的验证结果。
 
 未关联 PR 发现只读取最近更新的最多 50 个**开放** PR 摘要；Release 发现读取最近最多 20 条。两者都不继续翻页；`github_discovery` 返回各自的 limit/truncated 信息，满页表示可能还有未扫描对象。明确关联的 PR（包括已关闭或已合并的 PR）及 Release 单独读取当前详情。与已关联 base 分支及当前 SHA 相符的开放 PR 会核对详情；此前已匹配的 PR 也会再次读取以确认关闭/合并，不沿用旧状态。一个项目最多保存 100 个分支、PR、提交和 Release 关联，重复已有关系保持幂等。
 
@@ -55,6 +61,6 @@ REST origin 固定为 `https://api.github.com`，API 版本为 `2026-03-10`；�
 
 `test_github_app.py` 使用离线 HTTP transport 检查真实 REST adapter；`test_github_sync.py` 使用明确标识的离线 provider 检查真实 SQLite 领域状态；`test_git_routes.py` 使用 ASGI HTTP 请求检查路由。覆盖签名伪造、重复 delivery hash 冲突、签名正确但形状错误的 JSON、重启重试、正文次级限流、错项目、管理员降权、授权状态重放/到期、fork 分支、旧 HEAD 检查、分支当前提交检查、多个不可变提交关联、对象缺失与仓库撤销的区别、PR number 与令牌授权范围不匹配、关闭未合并、权限撤销、重新授权隐藏旧证据、并发响应顺序，以及扫描/检查/请求/时间/关联数量/快照大小预算。
 
-**尚未完成真实 GitHub App 部署验收。** 当前环境没有 App 凭据，离线协议与状态机测试不能证明真实 App 安装、组织权限批准、公网回调、GitHub 事件投递或线上配额行为已验证。部署验收需要使用操作者的 App 与独立测试仓库，分别记录授权、push、PR、检查、force push、安装移除及恢复后的实际事件，不把模拟数据当成线上证据。
+**尚未完成真实 GitHub App 部署验收。** 当前环境没有 App 凭据，离线协议与状态机测试不能证明真实 App 安装、组织权限批准、公网回调、GitHub 事件投递或线上配额行为已验证。写范围（草稿 PR 创建、合并执行、分支保护读取）同样只有离线测试，没有真实 App 验收证据。部署验收需要使用操作者的 App 与独立测试仓库，分别记录授权、push、PR、检查、force push、安装移除及恢复后的实际事件，不把模拟数据当成线上证据。
 
 官方依据：[App 用户授权及访问交集](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/authenticating-with-a-github-app-on-behalf-of-a-user)、[App 安装 REST API](https://docs.github.com/en/rest/apps/installations?apiVersion=2026-03-10)、[RS256 JWT](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/generating-a-json-web-token-jwt-for-a-github-app)、[当前 Git reference 的检查](https://docs.github.com/en/rest/checks/runs?apiVersion=2026-03-10)、[webhook 最佳实践](https://docs.github.com/en/webhooks/using-webhooks/best-practices-for-using-webhooks)。

@@ -1399,6 +1399,9 @@ dialog > p {
 .git-evidence p {
   margin: 6px 0;
 }
+.git-evidence.git-direct {
+  border-left-style: dashed;
+}
 .git-evidence a,
 .git-authorization a {
   color: #5e5e5e;
