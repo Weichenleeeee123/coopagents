@@ -118,6 +118,22 @@ class ProjectActivityTests(unittest.TestCase):
              'source': 'direct', 'sync_at': '2026-01-05T00:00:00Z', 'stale': False}]}})
         self.assertEqual([item['id'] for item in resynced['items']], [direct['id']])
 
+    def test_long_branch_names_get_distinct_stable_ids(self):
+        first = 'x' * 100 + 'a'
+        second = 'x' * 100 + 'b'
+        feed = project_activity({'git': {'github_unattributed': [
+            {'kind': 'unattributed_branch', 'branch': first, 'head_sha': 'a'*40,
+             'sync_at': '2026-01-01T00:00:00Z', 'stale': False},
+            {'kind': 'unattributed_branch', 'branch': second, 'head_sha': 'b'*40,
+             'sync_at': '2026-01-01T00:00:00Z', 'stale': False}]}})
+        by_branch = {item['reference']['branch']: item for item in feed['items']}
+        self.assertEqual(set(by_branch), {first, second})
+        self.assertNotEqual(by_branch[first]['id'], by_branch[second]['id'])
+        resynced = project_activity({'git': {'github_unattributed': [
+            {'kind': 'unattributed_branch', 'branch': first, 'head_sha': 'c'*40,
+             'sync_at': '2026-01-02T00:00:00Z', 'stale': False}]}})
+        self.assertEqual([item['id'] for item in resynced['items']], [by_branch[first]['id']])
+
 
 if __name__ == '__main__':
     unittest.main()

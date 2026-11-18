@@ -1,4 +1,5 @@
 """Bounded activity projection from structured project state; never project agent transcripts."""
+import hashlib
 from datetime import datetime, timezone
 from urllib.parse import urlsplit
 
@@ -188,19 +189,23 @@ def project_activity(snapshot, limit=MAX_ITEMS):
                 kind = row.get('kind')
                 if not branch:
                     continue
+                digest = hashlib.sha256(branch.encode('utf-8')).hexdigest()
                 if kind == 'direct_branch':
-                    event_type, item_id = 'github_direct_branch', 'github-direct:'+branch
+                    event_type, item_id = 'github_direct_branch', 'github-direct-branch:'+digest
                     summary, task_id = 'Direct push to task branch '+branch, row.get('task_id')
                 elif kind == 'unattributed_branch':
-                    event_type, item_id = 'github_unattributed_branch', 'github-direct:'+branch
+                    event_type, item_id = 'github_unattributed_branch', 'github-unattributed-branch:'+digest
                     summary, task_id = 'Branch '+branch+' is not associated with any task', None
                 elif kind == 'default_branch_direct_push':
-                    event_type, item_id = 'github_default_branch_direct_push', 'github-direct-default:'+branch
+                    event_type, item_id = 'github_default_branch_direct_push', 'github-default-branch:'+digest
                     summary, task_id = 'Default branch '+branch+' head has no matching governed evidence', None
                 else:
                     continue
-                # The id is branch-stable: a new push to the same branch does
-                # not add another item; the item disappears when the branch does.
+                # The id is a digest of the full branch name: branch-stable
+                # (a new push does not add another item; the item disappears
+                # when the branch does) and unique even for long names that
+                # share a prefix past the 100-character id cap. The complete
+                # bounded name stays in the reference.
                 items.append(_item(item_id, event_type, row.get('sync_at'), 'github_verified',
                     summary, None, task_id,
                     {'branch': branch, 'head_sha': _text(row.get('head_sha'), 64)}))
