@@ -82,7 +82,7 @@ class BranchNamingTests(unittest.TestCase):
 
     def test_parse_task_branch_name_round_trips_and_rejects_foreign_names(self):
         for task_id, epoch, title in [(3, 2, 'Build Login Page!'), (1, 0, 'x'), (1, 1, '你好世界'),
-                                      (7, 12, 'a' * 100)]:
+                                      (7, 12, 'a' * 100), (2**63 - 1, 2**63 - 1, 'build')]:
             name = task_branch_name(task_id, epoch, title)
             self.assertEqual(parse_task_branch_name(name), {'task_id': task_id, 'ownership_epoch': epoch})
         for foreign in ['main', 'feature/login', 'coopagents/task-3-2-', 'coopagents/task-0-2-build',
@@ -93,6 +93,9 @@ class BranchNamingTests(unittest.TestCase):
                         'xcoopagents/task-3-2-build', '', None, 42]:
             self.assertIsNone(parse_task_branch_name(foreign), foreign)
         self.assertIsNone(parse_task_branch_name('coopagents/task-%d-0-build' % 2**63))
+        # Huge numeric groups return None instead of raising on int conversion.
+        self.assertIsNone(parse_task_branch_name('coopagents/task-' + '9' * 5000 + '-0-build'))
+        self.assertIsNone(parse_task_branch_name('coopagents/task-3-' + '9' * 5000 + '-build'))
 
     def test_branch_name_rejects_injection_and_option_like_values(self):
         for bad in ('', 'main --force', '+main', '-x', 'a..b', 'a@{b}', 'a b', 'a/b/.c', 'a.lock', 'a/', '/a',

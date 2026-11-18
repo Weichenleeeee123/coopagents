@@ -108,6 +108,11 @@ def parse_task_branch_name(branch):
     """
     if not isinstance(branch, str):
         return None
+    # Longest name the constructor can produce: 16 (prefix) + 19 (id) + 1
+    # + 19 (epoch) + 1 + 40 (slug). Rejecting longer names first keeps the
+    # int() conversions below Python's digit limit for any input.
+    if len(branch) > 96:
+        return None
     match = _TASK_BRANCH.fullmatch(branch)
     if not match or len(match.group(3)) > 40:
         return None
