@@ -89,6 +89,7 @@ class GitHubAppTests(unittest.TestCase):
             if path.endswith('/access_tokens'): return httpx.Response(201,json=self.token_response())
             if path=='/repositories/11': return httpx.Response(200,json={'id':11,'full_name':'acme/demo'})
             if path=='/repos/acme/demo/releases': return httpx.Response(200,json=[])
+            if path=='/repos/acme/demo/branches': return httpx.Response(200,json=[])
             if path=='/repos/acme/demo/git/ref/heads/feature': return httpx.Response(200,json={'object':{'sha':'a'*40}})
             if path=='/repos/acme/demo/pulls': return httpx.Response(200,json=[self.pr_summary()])
             if path=='/repos/acme/demo/pulls/7': return httpx.Response(200,json={
@@ -111,6 +112,7 @@ class GitHubAppTests(unittest.TestCase):
         if path=='/repositories/11': return httpx.Response(200,json={'id':11,'full_name':'acme/demo'})
         if path=='/repos/acme/demo/releases': return httpx.Response(200,json=[])
         if path=='/repos/acme/demo/pulls': return httpx.Response(200,json=[])
+        if path=='/repos/acme/demo/branches': return httpx.Response(200,json=[])
         if path=='/repos/acme/demo/pulls/999': return httpx.Response(404,json={})
         if path=='/repos/acme/demo/git/ref/heads/feature': return httpx.Response(200,json={'object':{'sha':'a'*40}})
         if path=='/repos/acme/demo/commits/'+'a'*40: return httpx.Response(200,json={'sha':'a'*40})
@@ -195,7 +197,82 @@ class GitHubAppTests(unittest.TestCase):
         self.assertEqual(len(state['pull_requests']),50)
         self.assertTrue(state['discovery']['truncated'])
         self.assertFalse(any('/pulls/' in path or '/check-runs' in path for path in seen))
-        self.assertLessEqual(len(seen),6)
+        self.assertLessEqual(len(seen),7)  # install + token + repo + branches + pulls + releases, plus one token mint
+
+    def test_branch_discovery_returns_names_and_shas_without_detail_fetches(self):
+        seen=[]
+        def handler(r):
+            seen.append(r.url.path)
+            if r.url.path=='/repos/acme/demo/branches':
+                self.assertEqual(r.url.params['per_page'],'50')
+                self.assertEqual(r.url.params['page'],'1')
+                return httpx.Response(200,json=[{'name':'feature','commit':{'sha':'a'*40}},
+                                                {'name':'other','commit':{'sha':'c'*40}}])
+            return self.reconciliation_handler(r)
+        state=self.app(handler).repository_state(22,11,'acme/demo')
+        self.assertEqual(state['discovered_branches'],[{'branch':'feature','head_sha':'a'*40},
+                                                       {'branch':'other','head_sha':'c'*40}])
+        self.assertEqual(state['branch_discovery'],{'limit':50,'truncated':False})
+        self.assertFalse(any('/check-runs' in path or '/statuses' in path for path in seen))
+
+    def test_branch_discovery_at_limit_reports_truncated(self):
+        def handler(r):
+            if r.url.path=='/repos/acme/demo/branches':
+                return httpx.Response(200,json=[{'name':'branch-'+str(i),'commit':{'sha':'a'*40}} for i in range(50)])
+            return self.reconciliation_handler(r)
+        state=self.app(handler).repository_state(22,11,'acme/demo')
+        self.assertEqual(len(state['discovered_branches']),50)
+        self.assertTrue(state['branch_discovery']['truncated'])
+
+    def test_malformed_branch_discovery_is_terminal_safe_error(self):
+        def handler(r):
+            if r.url.path=='/repos/acme/demo/branches':
+                return httpx.Response(200,json=[{'name':'feature'}])
+            return self.reconciliation_handler(r)
+        with self.assertRaises(GitHubError) as caught: self.app(handler).repository_state(22,11,'acme/demo')
+        self.assertFalse(caught.exception.retryable)
+
+    def test_default_branch_head_comes_from_discovery_without_extra_fetch(self):
+        seen=[]
+        def handler(r):
+            seen.append(r.url.path)
+            if r.url.path=='/repositories/11':
+                return httpx.Response(200,json={'id':11,'full_name':'acme/demo','default_branch':'main'})
+            if r.url.path=='/repos/acme/demo/branches':
+                return httpx.Response(200,json=[{'name':'main','commit':{'sha':'d'*40}}])
+            return self.reconciliation_handler(r)
+        state=self.app(handler).repository_state(22,11,'acme/demo')
+        self.assertEqual(state['default_branch'],'main')
+        self.assertEqual(state['default_branch_head_sha'],'d'*40)
+        self.assertNotIn('/repos/acme/demo/git/ref/heads/main',seen)
+
+    def test_default_branch_head_falls_back_to_ref_lookup(self):
+        def handler(r):
+            if r.url.path=='/repositories/11':
+                return httpx.Response(200,json={'id':11,'full_name':'acme/demo','default_branch':'main'})
+            if r.url.path=='/repos/acme/demo/branches': return httpx.Response(200,json=[])
+            if r.url.path=='/repos/acme/demo/git/ref/heads/main':
+                return httpx.Response(200,json={'object':{'sha':'e'*40}})
+            return self.reconciliation_handler(r)
+        state=self.app(handler).repository_state(22,11,'acme/demo')
+        self.assertEqual(state['default_branch_head_sha'],'e'*40)
+
+    def test_missing_default_branch_head_is_absent_not_error(self):
+        def handler(r):
+            if r.url.path=='/repositories/11':
+                return httpx.Response(200,json={'id':11,'full_name':'acme/demo','default_branch':'main'})
+            if r.url.path=='/repos/acme/demo/branches': return httpx.Response(200,json=[])
+            if r.url.path=='/repos/acme/demo/git/ref/heads/main': return httpx.Response(404,json={})
+            return self.reconciliation_handler(r)
+        state=self.app(handler).repository_state(22,11,'acme/demo')
+        self.assertEqual(state['default_branch'],'main')
+        self.assertIsNone(state['default_branch_head_sha'])
+
+    def test_repository_without_default_branch_skips_head_check(self):
+        state=self.app(self.reconciliation_handler).repository_state(22,11,'acme/demo')
+        self.assertIsNone(state['default_branch'])
+        self.assertIsNone(state['default_branch_head_sha'])
+        self.assertEqual(state['discovered_branches'],[])
 
     def test_release_discovery_is_bounded_and_returns_safe_metadata(self):
         seen=[]

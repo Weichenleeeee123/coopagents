@@ -522,6 +522,30 @@ class GitHubApp:
             if not isinstance(commit,dict) or commit.get('sha')!=sha:
                 raise GitHubError('GitHub commit identity changed')
             checks_at(sha)
+        default_branch=repo.get('default_branch')
+        if default_branch is not None:
+            try: branch_name(default_branch)
+            except ValidationError: raise GitHubError('GitHub repository default branch is invalid') from None
+        discovered,branches_truncated=self.bounded_page(path+'/branches',token,limit=self.DISCOVERY_LIMIT)
+        discovered_branches=[]
+        for item in discovered:
+            try:
+                if not isinstance(item,dict): raise GitHubError('GitHub branch discovery is invalid')
+                name=branch_name(item['name'])
+                sha=complete_sha((item.get('commit') or {})['sha'])
+            except (KeyError,TypeError,ValidationError): raise GitHubError('GitHub branch discovery is invalid') from None
+            discovered_branches.append({'branch':name,'head_sha':sha})
+        default_head=None
+        if default_branch is not None:
+            by_name={entry['branch']:entry['head_sha'] for entry in discovered_branches}
+            default_head=refs.get(default_branch) or by_name.get(default_branch)
+            if default_head is None:
+                try:
+                    ref=self.request('GET',path+'/git/ref/heads/'+quote(default_branch,safe=''),token)
+                    default_head=complete_sha(ref['object']['sha'])
+                except GitHubAccessDenied as error:
+                    if error.status!=404: raise
+                except (KeyError,TypeError,ValidationError): raise GitHubError('GitHub reference is invalid') from None
         summaries,truncated=self.bounded_page(path+'/pulls?state=open&sort=updated&direction=desc',token,limit=self.DISCOVERY_LIMIT)
         pulls={};details=set(pr_numbers)
         def normalize(pr,number,detail):
@@ -590,6 +614,9 @@ class GitHubApp:
         return {'repository_id':repository_id,'full_name':repo['full_name'],'branches':refs,'pull_requests':list(pulls.values()),
                 'commits':commits,'unavailable_pr_numbers':unavailable_prs,'unavailable_commit_shas':unavailable_commits,
                 'discovery':{'limit':self.DISCOVERY_LIMIT,'truncated':truncated,'state':'open'},
+                'discovered_branches':discovered_branches,
+                'branch_discovery':{'limit':self.DISCOVERY_LIMIT,'truncated':branches_truncated},
+                'default_branch':default_branch,'default_branch_head_sha':default_head,
                 'releases':sorted(releases.values(),key=lambda release:(release['published_at'] or release['created_at'] or '',release['release_id']),reverse=True),
                 'unavailable_release_ids':unavailable_release_ids,
                 'release_discovery':{'limit':self.RELEASE_DISCOVERY_LIMIT,'truncated':releases_truncated}}
