@@ -7,7 +7,7 @@
 ## 设计
 
 - `create --relay-url <URL>`（可重复，最多 4 个），仅 p2p 模式接受；写入私有 `host.json` 的 `relay_urls`，`serve()` 传给 `HostLink`，`space_link()` 写进邀请链接，成员侧 `member_link()` 传给 `MemberLink`。JSON 描述文件原样携带；短邀请码（v2 编码只接受 `endpoint_id` 一个键）遇到带中继的邀请时回落到 v1 长码。
-- 校验（`validate_relay_urls`）：只接受裸 origin，不带 userinfo、query、fragment、path；非回环地址必须 HTTPS，HTTP 只允许回环（`127.0.0.1`、`[::1]`、`localhost`）。
+- 校验（`validate_relay_urls`）：只接受裸 origin，不带 userinfo、query、fragment、path；非回环地址必须 HTTPS，HTTP 只允许回环（`localhost` 与 IP 回环地址，含 `::1` 的展开写法）；主机名与端口在保存前就校验（非法端口、超范围端口、百分号编码混淆的主机名都会被拒）；单条 ≤2048 字符，合计 ≤1024 字符，保证邀请码可解码。
 - iroh 映射：`RelayMode.custom_from_urls(urls)` + `preset_n0`。`RelayMode.relay_map(m)` 在 iroh 1.1.0 会段错误（exit 139），永不使用（代码中有注释）。
 - 未配置中继时，`HostLink` / `MemberLink` 的构造调用与原来逐字节相同：`relay_urls` 只在配置了才传参，避免破坏已有 fake 与子类。
 - iroh 上报的 `addr().relay_url()` 带尾部斜杠（`http://127.0.0.1:3340/`），与配置字符串比较时需先去掉斜杠。
@@ -40,7 +40,7 @@
 
 ## 边界
 
-- 成员侧配置的作用：拨号只看目标地址里的中继 URL；成员自己的 home relay 配置影响的是它自身的可达性与发现发布。正式邀请总把 `relay_urls` 带给成员，所以 shipped 流程两侧都配。
+- 成员侧配置的作用：拨号只看目标地址里的中继 URL；成员自己的 home relay 配置影响的是它自身的可达性与发现发布。配置了中继时，邀请携带 `relay_urls`，成员侧用同一组 URL；未配置时邀请只有 `endpoint_id`，两侧走默认 n0 中继。
 - 验证时主机与成员在同一台机器上，中继在回环；跨 NAT 的中继承载未在此重测。强制中继的拨号（`addresses=[]`）+ `path()` 断言隔离了中继路径，但真实跨 NAT 部署仍需在目标网络复测。
 - 生产中继需要 HTTPS（校验强制）；ACME 与配置文件细节以 iroh 官方文档为准，本次只验证了 `--dev` 形态。
 - 无常驻部署：验证用的临时中继已拆除，何时为生产部署中继是后续决策。
