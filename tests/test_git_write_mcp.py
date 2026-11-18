@@ -63,6 +63,43 @@ class GitWriteMCPTests(unittest.TestCase):
                                          self.member['web_token'], {'enabled': True})
         self.assertNotEqual(status, 200)
 
+    def test_deliver_tool_listed_only_when_flag_enabled(self):
+        status, _, _ = self.live.request('POST', '/api/git/binding', self.owner['web_token'],
+                                         {'repository': 'github.com/acme/demo'})
+        self.assertEqual(status, 200)
+        task = self.live.request('POST', '/api/tasks', self.owner['web_token'],
+                                 {'intent_key': 't', 'title': 'Build Login', 'scope': 'src'})[1]
+        status, _, _ = self.live.request('POST', f"/api/tasks/{task['id']}/claim",
+                                         self.member['agent_token'], {'session_key': 's1'})
+        self.assertEqual(status, 200)
+        arguments = {'task_id': task['id'], 'branch': 'coopagents/task-%d-1-build-login' % task['id'],
+                     'head_sha': 'c' * 40, 'base_branch': 'main', 'title': 'Task 1: Build it',
+                     'body': '', 'request_key': 'k1', 'session_key': 's1', 'ownership_epoch': 1}
+
+        async def flag_off():
+            async with self.client(self.member['agent_token']) as client:
+                names = {tool.name for tool in (await client.list_tools()).tools}
+                self.assertNotIn('deliver_task', names)
+                result = await client.call_tool('deliver_task', arguments)
+                self.assertTrue(result.is_error)
+                self.assertIn('not enabled', result.content[0].text)
+        asyncio.run(flag_off())
+
+        status, body, _ = self.live.request('POST', '/api/git/write-enabled',
+                                            self.owner['web_token'], {'enabled': True})
+        self.assertEqual(status, 200, body)
+
+        async def flag_on():
+            async with self.client(self.member['agent_token']) as client:
+                names = {tool.name for tool in (await client.list_tools()).tools}
+                self.assertIn('deliver_task', names)
+                # No branch recorded and no App configured: the call reaches the
+                # operation and fails on the recorded-branch precondition.
+                result = await client.call_tool('deliver_task', arguments)
+                self.assertTrue(result.is_error)
+                self.assertIn('not recorded', result.content[0].text)
+        asyncio.run(flag_on())
+
 
 if __name__ == '__main__':
     unittest.main()

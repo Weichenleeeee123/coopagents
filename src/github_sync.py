@@ -73,6 +73,17 @@ class GitHubSync:
                 c.execute("ALTER TABLE github_evidence ADD COLUMN discovery_json TEXT NOT NULL DEFAULT '{}' ")
             if 'releases_json' not in {r['name'] for r in c.execute('PRAGMA table_info(github_evidence)')}:
                 c.execute("ALTER TABLE github_evidence ADD COLUMN releases_json TEXT NOT NULL DEFAULT '[]'")
+            c.execute('''CREATE TABLE IF NOT EXISTS git_deliveries (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, room_id TEXT NOT NULL,
+                task_id INTEGER NOT NULL, ownership_epoch INTEGER NOT NULL,
+                request_key TEXT NOT NULL, branch TEXT NOT NULL, head_sha TEXT NOT NULL,
+                base_branch TEXT NOT NULL, pr_number INTEGER, pr_url TEXT NOT NULL DEFAULT '',
+                state TEXT NOT NULL, delivered_by TEXT NOT NULL,
+                created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+                UNIQUE(room_id,task_id,request_key),
+                FOREIGN KEY(task_id,room_id) REFERENCES tasks(id,room_id))''')
+            if 'write_scope_verified' not in {r['name'] for r in c.execute('PRAGMA table_info(github_connections)')}:
+                c.execute('ALTER TABLE github_connections ADD COLUMN write_scope_verified INTEGER NOT NULL DEFAULT 0')
             c.execute('''CREATE TABLE IF NOT EXISTS github_inbox (
                 delivery_id TEXT PRIMARY KEY, payload_hash TEXT NOT NULL, event TEXT NOT NULL,
                 installation_id INTEGER NOT NULL, repository_id INTEGER,
@@ -218,6 +229,134 @@ class GitHubSync:
         c.execute('UPDATE github_connections SET revision=revision+1 WHERE room_id=?',(principal.room_id,))
         return dict(c.execute('SELECT * FROM github_refs WHERE room_id=? AND task_id=? AND branch=? AND pr_number=?',
             (principal.room_id,task_id,branch,pr_number or 0)).fetchone())
+
+    def _write_delivery(self, c, token, task_id, branch, head_sha, base_branch, request_key,
+                        session_key, ownership_epoch, state, pr_number, pr_url, mark_write_scope):
+        """Persist one delivery attempt: refs, delivery row, pushed branch state."""
+        principal = self.identity.resolve(c, token, required_kind='agent')
+        task = visible_task(c, principal, task_id, session_key=session_key, ownership_epoch=ownership_epoch)
+        self._associate_in_transaction(c, token, task_id, branch=branch,
+                                       session_key=session_key, ownership_epoch=ownership_epoch)
+        if pr_number is not None:
+            self._associate_in_transaction(c, token, task_id, pr_number=pr_number,
+                                           session_key=session_key, ownership_epoch=ownership_epoch)
+        stamp = now().isoformat()
+        c.execute('''INSERT INTO git_deliveries(room_id,task_id,ownership_epoch,request_key,branch,head_sha,
+            base_branch,pr_number,pr_url,state,delivered_by,created_at,updated_at)
+            VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ON CONFLICT(room_id,task_id,request_key) DO UPDATE SET head_sha=excluded.head_sha,
+            base_branch=excluded.base_branch,pr_number=excluded.pr_number,pr_url=excluded.pr_url,
+            state=excluded.state,updated_at=excluded.updated_at''',
+            (principal.room_id, task_id, task['ownership_epoch'], request_key, branch, head_sha,
+             base_branch, pr_number, pr_url, state, principal.member_id, stamp, stamp))
+        c.execute('''UPDATE git_branches SET pushed_sha=?,pushed_at=? WHERE room_id=? AND task_id=?
+            AND ownership_epoch=?''', (head_sha, stamp, principal.room_id, task_id, task['ownership_epoch']))
+        if mark_write_scope:
+            c.execute('UPDATE github_connections SET write_scope_verified=1 WHERE room_id=?', (principal.room_id,))
+        return dict(c.execute('''SELECT * FROM git_deliveries WHERE room_id=? AND task_id=?
+            AND request_key=?''', (principal.room_id, task_id, request_key)).fetchone())
+
+    def open_pr(self, token, task_id, branch, head_sha, base_branch, title, body='', request_key=None,
+                session_key=None, ownership_epoch=None, preview=False):
+        """Record a pushed delivery and open its draft PR (W2).
+
+        Lookup-before-create: an existing open PR for the head branch is reused,
+        so retries and re-deliveries never open duplicates. A PR creation
+        failure after a successful push records state 'pushed' and raises, so a
+        retry with the same request_key resumes from lookup. Preview runs every
+        local precondition and describes the API call without minting a token,
+        calling GitHub, or writing anything.
+        """
+        branch_name(branch); branch_name(base_branch)
+        if branch == base_branch:
+            raise ValidationError('PR head and base must differ')
+        complete_sha(head_sha)
+        if (not isinstance(title, str) or not 1 <= len(title) <= 250 or title != title.strip()
+                or any(ord(char) < 32 for char in title)):
+            raise ValidationError('PR title is invalid')
+        if (not isinstance(body, str) or len(body) > 10000
+                or any(ord(char) < 32 and char not in '\n\t' for char in body)):
+            raise ValidationError('PR body is invalid')
+        if not isinstance(request_key, str) or not request_key or len(request_key) > 200:
+            raise ValidationError('Invalid request key')
+        if type(preview) is not bool:
+            raise ValidationError('Expected a preview flag')
+        with self.db.connect() as c:
+            principal = self.identity.resolve(c, token, required_kind='agent')
+            task = visible_task(c, principal, task_id, session_key=session_key, ownership_epoch=ownership_epoch)
+            binding = c.execute('SELECT * FROM repo_bindings WHERE room_id=?', (principal.room_id,)).fetchone()
+            if not binding:
+                raise Conflict('Project repository is not bound')
+            if not binding['git_write_enabled']:
+                raise Conflict('Git write path is not enabled for this space')
+            recorded = c.execute('''SELECT * FROM git_branches WHERE room_id=? AND task_id=?
+                AND ownership_epoch=?''', (principal.room_id, task_id, task['ownership_epoch'])).fetchone()
+            if not recorded or recorded['branch'] != branch:
+                raise Conflict('Task branch is not recorded for the current execution')
+            existing = c.execute('''SELECT * FROM git_deliveries WHERE room_id=? AND task_id=?
+                AND request_key=?''', (principal.room_id, task_id, request_key)).fetchone()
+            if existing and existing['state'] == 'pr_opened':
+                result = dict(existing)
+                result['created'] = False
+                return result
+            conn = c.execute("SELECT * FROM github_connections WHERE room_id=? AND status='active'",
+                             (principal.room_id,)).fetchone()
+            connection = dict(conn) if conn else None
+        if preview:
+            return {'preview': True, 'task_id': task_id, 'branch': branch, 'head_sha': head_sha,
+                    'base_branch': base_branch, 'title': title,
+                    'api_call': {'method': 'POST',
+                                 'path': '/repos/' + (connection['full_name'] if connection else '<repository>') + '/pulls',
+                                 'head': branch, 'base': base_branch, 'draft': True},
+                    'connection': 'active' if connection else 'missing',
+                    'existing_state': existing['state'] if existing else None}
+        self._enabled()
+        if not connection:
+            raise Conflict('GitHub repository is not authorized')
+        found = self.app.find_open_pr(connection['installation_id'], connection['repository_id'],
+                                      connection['full_name'], branch)
+        created = False
+        if found is not None:
+            pr = found
+        else:
+            try:
+                pr = self.app.create_pull_request(connection['installation_id'], connection['repository_id'],
+                                                  connection['full_name'], branch, base_branch, title, body)
+                created = True
+            except GitHubError as failure:
+                # The branch is already pushed; a create that raced another
+                # delivery surfaces through lookup instead of erroring.
+                try:
+                    found = self.app.find_open_pr(connection['installation_id'], connection['repository_id'],
+                                                  connection['full_name'], branch)
+                except GitHubError:
+                    found = None
+                if found is not None:
+                    pr = found
+                else:
+                    try:
+                        with self.db.connect(write=True) as c:
+                            self._write_delivery(c, token, task_id, branch, head_sha, base_branch,
+                                                 request_key, session_key, ownership_epoch,
+                                                 'pushed', None, '', False)
+                    except Exception:
+                        pass  # Best-effort evidence; the original failure is the report.
+                    raise
+        if not isinstance(pr, dict):
+            raise GitHubError('GitHub PR response is invalid')
+        try:
+            number = positive_id(pr['number'])
+            url = pr['url']
+            if not isinstance(url, str) or not url.startswith('https://github.com/') or len(url) > 500:
+                raise GitHubError('GitHub PR response is invalid')
+        except (KeyError, TypeError, ValidationError):
+            raise GitHubError('GitHub PR response is invalid') from None
+        with self.db.connect(write=True) as c:
+            result = self._write_delivery(c, token, task_id, branch, head_sha, base_branch,
+                                          request_key, session_key, ownership_epoch,
+                                          'pr_opened', number, url, created)
+        result['created'] = created
+        return result
 
     def refresh(self,token):
         self._enabled()

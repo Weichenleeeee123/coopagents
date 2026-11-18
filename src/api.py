@@ -416,6 +416,7 @@ def create_app(database_path='.local/coopagents.sqlite3', *, base_url=None, publ
     for path, operation in [('/api/git/binding', 'bind_repository'), ('/api/git/observations', 'observe_repository'),
                             ('/api/git/write-enabled', 'set_git_write_enabled'),
                             ('/api/git/branches', 'create_task_branch'),
+                            ('/api/git/deliveries', 'deliver_task'),
                             ('/api/checkpoints', 'checkpoint'),
                             ('/api/diagnostics/start', 'diagnostic_start'),
                             ('/api/diagnostics/read', 'diagnostic_read'),

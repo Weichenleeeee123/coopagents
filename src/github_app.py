@@ -9,6 +9,7 @@ import time
 from urllib.parse import quote, urlencode, urlsplit
 
 from .errors import AccessDenied, ValidationError
+from .git_workspace import branch_name
 
 
 _operation = ContextVar('github_rest_operation',default=None)
@@ -226,10 +227,13 @@ class GitHubApp:
                     return {'installation_id':identifier,'repository_id':repo['id'],'full_name':repo['full_name']}
         raise AccessDenied('GitHub repository access not accepted')
 
-    def installation_token(self,installation_id,repository_id):
+    def installation_token(self,installation_id,repository_id,write=False):
+        if type(write) is not bool: raise ValidationError('Expected a write-scope flag')
         positive_id(installation_id);positive_id(repository_id)
+        requested={'contents':'write' if write else 'read','pull_requests':'write' if write else 'read',
+                   'checks':'read','statuses':'read'}
         result=self.request('POST',f'/app/installations/{installation_id}/access_tokens',self.jwt(),{
-            'repository_ids':[repository_id],'permissions':{'contents':'read','pull_requests':'read','checks':'read','statuses':'read'}})
+            'repository_ids':[repository_id],'permissions':requested})
         token=result.get('token') if isinstance(result,dict) else None
         if not isinstance(token,str) or not 1<=len(token)<=4096 or any(ord(x)<32 for x in token):
             raise GitHubError('GitHub installation token is invalid')
@@ -239,9 +243,77 @@ class GitHubApp:
         if (not isinstance(repositories,list) or len(repositories)!=1 or not isinstance(repositories[0],dict)
                 or type(repositories[0].get('id')) is not int or repositories[0]['id']!=repository_id
                 or not isinstance(permissions,dict) or not required.issubset(permissions)
-                or set(permissions)-required-{'metadata'} or any(level!='read' for level in permissions.values())):
+                or set(permissions)-required-{'metadata'}
+                or any(permissions[key]!=requested[key] for key in required)
+                or (permissions.get('metadata') is not None and permissions['metadata']!='read')):
             raise GitHubError('GitHub installation token grants exceed requested scope')
         return token
+
+    def _run_bounded(self,func,*args,**kwargs):
+        context=_operation.set({'requests':0,'deadline':time.monotonic()+self.OPERATION_SECONDS})
+        try: return func(*args,**kwargs)
+        finally: _operation.reset(context)
+
+    @staticmethod
+    def _repository_path(full_name):
+        if not isinstance(full_name,str) or not re.fullmatch(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+',full_name):
+            raise ValidationError('A GitHub repository full name is required')
+        return '/repos/'+quote(full_name,safe='/')
+
+    def find_open_pr(self,installation_id,repository_id,full_name,head):
+        """Lookup-before-create: the open same-repo PR for a head branch, or None.
+
+        Uses a read-only token; creation is the only call that mints write scope.
+        """
+        branch_name(head)
+        path=self._repository_path(full_name)
+        def lookup():
+            token=self.installation_token(installation_id,repository_id)
+            owner=full_name.split('/')[0]
+            items,_=self.bounded_page(path+'/pulls?'+urlencode({'state':'open','head':owner+':'+head}),token,limit=10)
+            for item in items:
+                if not isinstance(item,dict) or type(item.get('number')) is not int:
+                    raise GitHubError('GitHub PR response is invalid')
+                number=positive_id(item['number'])
+                head_ref=item.get('head') or {}
+                head_repo=head_ref.get('repo') or {}
+                if (item.get('state')!='open' or head_ref.get('ref')!=head
+                        or head_repo.get('id')!=repository_id):
+                    continue
+                try: sha=complete_sha(head_ref.get('sha',''))
+                except ValidationError: raise GitHubError('GitHub PR response is invalid') from None
+                return {'number':number,'state':'open','head_sha':sha,'head_branch':head,
+                        'url':f'https://github.com/{full_name}/pull/{number}'}
+            return None
+        return self._run_bounded(lookup)
+
+    def create_pull_request(self,installation_id,repository_id,full_name,head,base,title,body):
+        """Open a PR as a draft (D8); always draft, never ready. Mints write scope."""
+        branch_name(head);branch_name(base)
+        if head==base: raise ValidationError('PR head and base must differ')
+        if (not isinstance(title,str) or not 1<=len(title)<=250 or title!=title.strip()
+                or any(ord(char)<32 for char in title)):
+            raise ValidationError('PR title is invalid')
+        if (not isinstance(body,str) or len(body)>10000
+                or any(ord(char)<32 and char not in '\n\t' for char in body)):
+            raise ValidationError('PR body is invalid')
+        path=self._repository_path(full_name)
+        def create():
+            token=self.installation_token(installation_id,repository_id,write=True)
+            result=self.request('POST',path+'/pulls',token,{
+                'title':title,'head':head,'base':base,'body':body,'draft':True})
+            if not isinstance(result,dict): raise GitHubError('GitHub PR response is invalid')
+            try:
+                number=result['number'];positive_id(number)
+                if result['state']!='open' or result['base']['repo']['id']!=repository_id:
+                    raise GitHubError('GitHub PR identity is invalid')
+                sha=complete_sha(result['head']['sha'])
+                if result['head']['ref']!=head: raise GitHubError('GitHub PR identity is invalid')
+            except (KeyError,TypeError,ValidationError): raise GitHubError('GitHub PR response is invalid') from None
+            return {'number':number,'state':'open','head_sha':sha,'head_branch':head,
+                    'draft':result.get('draft') is True,
+                    'url':f'https://github.com/{full_name}/pull/{number}'}
+        return self._run_bounded(create)
 
     def verify_repository(self,installation_id,repository_id,full_name):
         self.verify_installation(installation_id)

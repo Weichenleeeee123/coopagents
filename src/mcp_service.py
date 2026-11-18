@@ -101,6 +101,10 @@ TOOL_DESCRIPTIONS = {
     'create_task_branch': ('Record the local task branch created for a claimed task. Only listed in spaces with the git '
                            'write path enabled; the branch itself is created on the member machine by the local Git '
                            'adapter and never publishes. Pass the current session_key and ownership_epoch.'),
+    'deliver_task': ('Record a pushed delivery and open its draft pull request. Only listed in spaces with the git '
+                     'write path enabled. The commit and push happen on the member machine through the local Git '
+                     'adapter; this records the pushed head SHA, reuses an existing open PR for the branch, and '
+                     'otherwise opens a draft PR. Pass the current session_key and ownership_epoch.'),
     'register_session': ('Record which tool, repository and branch this session works in. With a current task execution, '
                          'native_session_id can bind its logical session_key/ownership_epoch to the actual native '
                          'conversation for targeted pending work. Dispatch needs a current watcher lease; missing, '
@@ -119,7 +123,7 @@ def create_mcp_app(service, *, origin=None):
     """Return (SDK lifespan application, authenticated ASGI application)."""
     names = ('read_deliveries', 'suggest_delivery', 'read_capabilities', 'read_context', 'read_task_history', 'release_task', 'propose_handoff', 'claim_task', 'register_session', 'report_progress', 'send_request', 'read_inbox',
              'acknowledge', 'reply', 'resolve_request', 'propose_contract', 'repo_checkpoint', 'link_delivery',
-             'create_task_branch',
+             'create_task_branch', 'deliver_task',
              'checkpoint', 'diagnostic_start', 'diagnostic_read', 'diagnostic_complete')
     names += ('lookup_owner', 'create_dependency', 'read_dependency', 'reply_dependency', 'resolve_dependency', 'cancel_dependency')
     names += ('ask_owner', 'read_replies', 'record_agreement_use', 'work_brief', 'read_workflow')
