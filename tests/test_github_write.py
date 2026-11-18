@@ -35,6 +35,15 @@ def read_token_response(**overrides):
     return response
 
 
+def protection_token_response(**overrides):
+    response = {'token': 'protection-token', 'repositories': [{'id': 11}],
+                'permissions': {'contents': 'read', 'pull_requests': 'read',
+                                'checks': 'read', 'statuses': 'read', 'administration': 'read',
+                                'metadata': 'read'}}
+    response.update(overrides)
+    return response
+
+
 class GitHubAppWriteTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -84,6 +93,66 @@ class GitHubAppWriteTests(unittest.TestCase):
             app.installation_token(22, 11)
         app = self.app(lambda r: httpx.Response(201, json=read_token_response()))
         self.assertEqual(app.installation_token(22, 11), 'read-token')
+
+    def test_default_token_request_is_unchanged_without_administration(self):
+        seen = []
+
+        def handler(request):
+            if request.url.path.endswith('/access_tokens'):
+                seen.append(json.loads(request.content)['permissions'])
+                return httpx.Response(201, json=read_token_response())
+            raise AssertionError(request.url.path)
+        app = self.app(handler)
+        self.assertEqual(app.installation_token(22, 11), 'read-token')
+        self.assertEqual(seen, [{'contents': 'read', 'pull_requests': 'read',
+                                 'checks': 'read', 'statuses': 'read'}])
+
+    def test_administration_token_requests_exact_read_set_with_administration(self):
+        seen = []
+
+        def handler(request):
+            if request.url.path.endswith('/access_tokens'):
+                seen.append(json.loads(request.content)['permissions'])
+                return httpx.Response(201, json=protection_token_response())
+            raise AssertionError(request.url.path)
+        app = self.app(handler)
+        self.assertEqual(app.installation_token(22, 11, administration=True), 'protection-token')
+        self.assertEqual(seen, [{'contents': 'read', 'pull_requests': 'read',
+                                 'checks': 'read', 'statuses': 'read', 'administration': 'read'}])
+
+    def test_administration_token_rejects_grants_beyond_request(self):
+        base = {'contents': 'read', 'pull_requests': 'read', 'checks': 'read', 'statuses': 'read'}
+        variants = [
+            dict(base, administration='read', issues='read'),
+            dict(base, administration='write'),
+            dict(base),
+            dict(base, administration='read', contents='write'),
+            dict(base, administration='read', metadata='write'),
+        ]
+        for permissions in variants:
+            with self.subTest(permissions=permissions):
+                app = self.app(lambda r: httpx.Response(
+                    201, json=protection_token_response(permissions=permissions)))
+                with self.assertRaises(GitHubError):
+                    app.installation_token(22, 11, administration=True)
+
+    def test_default_and_write_tokens_reject_administration_grants(self):
+        granted = {'contents': 'read', 'pull_requests': 'read', 'checks': 'read', 'statuses': 'read',
+                   'administration': 'read'}
+        app = self.app(lambda r: httpx.Response(201, json=read_token_response(permissions=granted)))
+        with self.assertRaises(GitHubError):
+            app.installation_token(22, 11)
+        write_granted = dict(granted, contents='write', pull_requests='write')
+        app = self.app(lambda r: httpx.Response(201, json=write_token_response(permissions=write_granted)))
+        with self.assertRaises(GitHubError):
+            app.installation_token(22, 11, write=True)
+
+    def test_write_and_administration_scopes_cannot_combine(self):
+        app = self.app(lambda r: httpx.Response(201, json=protection_token_response()))
+        with self.assertRaises(ValidationError):
+            app.installation_token(22, 11, write=True, administration=True)
+        with self.assertRaises(ValidationError):
+            app.installation_token(22, 11, administration='read')
 
     def test_create_pull_request_posts_draft_and_builds_safe_url(self):
         seen = []

@@ -228,11 +228,14 @@ class GitHubApp:
                     return {'installation_id':identifier,'repository_id':repo['id'],'full_name':repo['full_name']}
         raise AccessDenied('GitHub repository access not accepted')
 
-    def installation_token(self,installation_id,repository_id,write=False):
+    def installation_token(self,installation_id,repository_id,write=False,administration=False):
         if type(write) is not bool: raise ValidationError('Expected a write-scope flag')
+        if type(administration) is not bool: raise ValidationError('Expected an administration-scope flag')
+        if write and administration: raise ValidationError('Administration scope is read-only')
         positive_id(installation_id);positive_id(repository_id)
         requested={'contents':'write' if write else 'read','pull_requests':'write' if write else 'read',
                    'checks':'read','statuses':'read'}
+        if administration: requested['administration']='read'
         result=self.request('POST',f'/app/installations/{installation_id}/access_tokens',self.jwt(),{
             'repository_ids':[repository_id],'permissions':requested})
         token=result.get('token') if isinstance(result,dict) else None
@@ -240,7 +243,7 @@ class GitHubApp:
             raise GitHubError('GitHub installation token is invalid')
         repositories=result.get('repositories')
         permissions=result.get('permissions')
-        required={'contents','pull_requests','checks','statuses'}
+        required=set(requested)
         if (not isinstance(repositories,list) or len(repositories)!=1 or not isinstance(repositories[0],dict)
                 or type(repositories[0].get('id')) is not int or repositories[0]['id']!=repository_id
                 or not isinstance(permissions,dict) or not required.issubset(permissions)
@@ -319,13 +322,15 @@ class GitHubApp:
     def read_branch_protection(self,installation_id,repository_id,full_name,branch):
         """Branch protection for one branch, or None when unprotected (404).
 
-        Uses a read-only token. Only the sections the merge gate reads are
-        normalized: required status checks, required reviews, restrictions.
+        Uses a read-only token requesting administration:read, the only scope
+        that can read branch protection; no other path requests it. Only the
+        sections the merge gate reads are normalized: required status checks,
+        required reviews, restrictions.
         """
         branch_name(branch)
         path=self._repository_path(full_name)
         def read():
-            token=self.installation_token(installation_id,repository_id)
+            token=self.installation_token(installation_id,repository_id,administration=True)
             try:
                 result=self.request('GET',path+'/branches/'+quote(branch,safe='')+'/protection',token)
             except GitHubAccessDenied as error:

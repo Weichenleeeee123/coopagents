@@ -23,7 +23,8 @@ from coopagents.github_sync import GitHubSync
 from coopagents.identity import IdentityStore
 from coopagents.repositories import RepositoryStore, now
 from coopagents.tasks import TaskStore
-from test_github_write import WriteFakeProvider, read_token_response, write_token_response
+from test_github_write import (WriteFakeProvider, protection_token_response,
+                             read_token_response, write_token_response)
 
 
 def fresh():
@@ -112,7 +113,7 @@ class GitHubAppMergeTests(unittest.TestCase):
     def test_read_branch_protection_normalizes_sections(self):
         def handler(request):
             if request.url.path.endswith('/access_tokens'):
-                return httpx.Response(201, json=read_token_response())
+                return httpx.Response(201, json=protection_token_response())
             payload = {'required_status_checks': {'contexts': ['ci'], 'strict': True},
                        'required_pull_request_reviews': {'required_approving_review_count': 2},
                        'restrictions': {'users': [{'login': 'octo'}], 'teams': [], 'apps': []},
@@ -127,9 +128,22 @@ class GitHubAppMergeTests(unittest.TestCase):
     def test_read_branch_protection_missing_branch_is_unprotected(self):
         def handler(request):
             if request.url.path.endswith('/access_tokens'):
-                return httpx.Response(201, json=read_token_response())
+                return httpx.Response(201, json=protection_token_response())
             return httpx.Response(404, json={'message': 'Not Found'})
         self.assertIsNone(self.app(handler).read_branch_protection(22, 11, 'acme/demo', 'main'))
+
+    def test_read_branch_protection_requests_administration_read_token(self):
+        seen = []
+
+        def handler(request):
+            if request.url.path.endswith('/access_tokens'):
+                seen.append(json.loads(request.content)['permissions'])
+                return httpx.Response(201, json=protection_token_response())
+            self.assertEqual(request.headers['authorization'], 'Bearer protection-token')
+            return httpx.Response(404, json={'message': 'Not Found'})
+        self.assertIsNone(self.app(handler).read_branch_protection(22, 11, 'acme/demo', 'main'))
+        self.assertEqual(seen, [{'contents': 'read', 'pull_requests': 'read',
+                                 'checks': 'read', 'statuses': 'read', 'administration': 'read'}])
 
     def test_read_pull_reviews_preserves_order_and_flags_truncation(self):
         reviews = [{'user': {'login': 'a'}, 'state': 'APPROVED'},
