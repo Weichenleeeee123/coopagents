@@ -107,7 +107,7 @@ class ProjectActivityTests(unittest.TestCase):
                           'github_default_branch_direct_push'])
         direct = feed['items'][0]
         self.assertEqual(direct['task_id'], 3)
-        self.assertEqual(direct['summary'], 'Direct push to task branch coopagents/task-3-1-build')
+        self.assertEqual(direct['summary'], 'Task branch coopagents/task-3-1-build has no matching governed delivery record')
         self.assertEqual(direct['reference']['branch'], 'coopagents/task-3-1-build')
         self.assertIn('not associated', feed['items'][1]['summary'])
         self.assertIsNone(feed['items'][1]['task_id'])

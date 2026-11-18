@@ -192,7 +192,7 @@ def project_activity(snapshot, limit=MAX_ITEMS):
                 digest = hashlib.sha256(branch.encode('utf-8')).hexdigest()
                 if kind == 'direct_branch':
                     event_type, item_id = 'github_direct_branch', 'github-direct-branch:'+digest
-                    summary, task_id = 'Direct push to task branch '+branch, row.get('task_id')
+                    summary, task_id = 'Task branch '+branch+' has no matching governed delivery record', row.get('task_id')
                 elif kind == 'unattributed_branch':
                     event_type, item_id = 'github_unattributed_branch', 'github-unattributed-branch:'+digest
                     summary, task_id = 'Branch '+branch+' is not associated with any task', None

@@ -110,7 +110,7 @@ global.document={createElement:tag=>new Element(tag),activeElement:null};
   assert.ok(toggle);
   await toggle.listeners.click();
   assert.deepEqual(toggleCall,{path:'/api/git/write-enabled',payload:{enabled:true}});
-  // Direct pushes render as distinct evidence on the owning task only.
+  // Task-named branches without a governed record render as distinct evidence on the owning task only.
   const directDetail=new Element('div');
   Git.renderDetails(directDetail,task,{github_unattributed:[
     {kind:'direct_branch',task_id:1,branch:'coopagents/task-1-1-build',head_sha:'d'.repeat(40),sync_at:'2026-01-01T00:00:00Z',stale:false},
@@ -118,7 +118,8 @@ global.document={createElement:tag=>new Element(tag),activeElement:null};
     {kind:'unattributed_branch',branch:'wip',head_sha:'f'.repeat(40),sync_at:'2026-01-01T00:00:00Z',stale:false}]},
     {...context,me:{member_id:'other'},memberName:()=>'Member'});
   const directText=descendants(directDetail).map(n=>n.textContent).join(' ');
-  assert.match(directText,/直接推送 coopagents\/task-1-1-build · 未走 adapter/);
+  assert.match(directText,/发现任务分支 coopagents\/task-1-1-build · 无对应治理记录/);
+  assert.doesNotMatch(directText,/未走 adapter/);
   assert.doesNotMatch(directText,/task-2-1-other/);
   assert.doesNotMatch(directText,/wip/);
   assert.ok(descendants(directDetail).some(n=>n.className==='git-evidence git-direct'));

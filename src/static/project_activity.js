@@ -6,7 +6,7 @@
     request_read:'读取协作请求',request_processed:'确认处理请求',request_resolved:'解决协作请求',reply_sent:'发送协作回复',
     contract_proposed:'提出约定',contract_approved:'批准约定',contract_rejected:'拒绝约定',git_observed:'本地 Git 检查点',
     github_delivery_verified:'GitHub 交付核验',release_verified:'GitHub Release 核验',
-    github_direct_branch:'任务分支直接推送',github_unattributed_branch:'未归属分支',
+    github_direct_branch:'任务分支无治理记录',github_unattributed_branch:'未归属分支',
     github_default_branch_direct_push:'默认分支 HEAD 无治理记录'};
   const sources={task:'任务',agent_report:'Agent 自述',task_lifecycle:'任务记录',session_registry:'会话登记',
     collaboration_request:'协作请求',collaboration_reply:'协作回复',contract_event:'公共约定',local_git:'本地 Git',github_verified:'GitHub 验证'};

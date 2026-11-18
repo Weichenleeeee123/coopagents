@@ -65,7 +65,7 @@
     const events=(git?.events||[]).filter(e=>e.task_id===task.id).sort((a,b)=>Date.parse(b.captured_at)-Date.parse(a.captured_at)||b.id-a.id).slice(0,12);
     const direct=(git?.github_unattributed||[]).filter(d=>d.kind==='direct_branch'&&d.task_id===task.id);
     direct.forEach(d=>append(container,append(element('article','','git-evidence git-direct'),
-      element('p','直接推送 '+(d.branch||'分支')+' · 未走 adapter'),
+      element('p','发现任务分支 '+(d.branch||'分支')+' · 无对应治理记录'),
       element('p','HEAD '+(d.head_sha||'').slice(0,12)+' · '+when(d.sync_at)+(d.stale?' · 同步过期':'')+(!connected(git)?' · 仓库授权不可用':''),'meta'))));
     const branchRow=(git?.branches||[]).find(b=>b.task_id===task.id&&(task.ownership_epoch===undefined||b.ownership_epoch===task.ownership_epoch));
     if(branchRow)append(container,append(element('article','','git-evidence'),

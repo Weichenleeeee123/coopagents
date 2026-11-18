@@ -758,9 +758,13 @@ class GitHubSync:
 
         Presentation only: nothing here creates refs, associates tasks, or
         blocks. A branch matching a task branch name is attributed to that
-        task with source 'direct'; snapshot() later drops entries whose task
-        is cancelled or whose epoch no longer matches. The default branch is
-        reported only through its own entry, never duplicated below.
+        task with source 'direct', which means only that the branch sits
+        outside the governed-ref set: the push route is NOT verified, and
+        an adapter push whose registration was lost classifies the same
+        way. Presentation wording must not claim a direct push. Snapshot()
+        later drops entries whose task is cancelled or whose epoch no
+        longer matches. The default branch is reported only through its
+        own entry, never duplicated below.
         """
         discovered=state.get('discovered_branches',[])
         if not isinstance(discovered,list) or len(discovered)>50:
