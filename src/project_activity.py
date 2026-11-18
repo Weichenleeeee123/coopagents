@@ -1,4 +1,5 @@
 """Bounded activity projection from structured project state; never project agent transcripts."""
+import hashlib
 from datetime import datetime, timezone
 from urllib.parse import urlsplit
 
@@ -179,6 +180,36 @@ def project_activity(snapshot, limit=MAX_ITEMS):
                     reference['url'] = row['url']
                 items.append(_item('github:'+str(row.get('ref_id', row.get('release_id', ''))), kind,
                     row.get('sync_at'), 'github_verified', summary, None, row.get('task_id'), reference))
+        unattributed = git.get('github_unattributed', [])
+        if isinstance(unattributed, list):
+            for row in unattributed[:MAX_SOURCE_ITEMS]:
+                if not isinstance(row, dict):
+                    continue
+                branch = _text(row.get('branch'), 250)
+                kind = row.get('kind')
+                if not branch:
+                    continue
+                digest = hashlib.sha256(branch.encode('utf-8')).hexdigest()
+                if kind == 'direct_branch':
+                    event_type, item_id = 'github_direct_branch', 'github-direct-branch:'+digest
+                    summary, task_id = 'Task branch '+branch+' has no matching governed delivery record', row.get('task_id')
+                elif kind == 'unattributed_branch':
+                    event_type, item_id = 'github_unattributed_branch', 'github-unattributed-branch:'+digest
+                    summary, task_id = 'Branch '+branch+' is not associated with any task', None
+                elif kind == 'default_branch_direct_push':
+                    event_type, item_id = 'github_default_branch_direct_push', 'github-default-branch:'+digest
+                    summary, task_id = 'Default branch '+branch+' head has no matching governed evidence', None
+                else:
+                    continue
+                # The id is a digest of the full branch name: branch-stable
+                # (a new push does not add another item; the item disappears
+                # when the branch does) and unique even for long names that
+                # share a prefix past the 100-character id cap. The complete
+                # bounded name stays in the reference.
+                items.append(_item(item_id, event_type, row.get('sync_at'), 'github_verified',
+                    summary, None, task_id,
+                    {'branch': branch, 'head_sha': _text(row.get('head_sha'), 64),
+                     'stale': bool(row.get('stale'))}))
         graph = git.get('delivery_graph', {})
         for row in graph.get('items', [])[:MAX_SOURCE_ITEMS] if isinstance(graph, dict) else []:
             for association in row.get('associations', [])[:MAX_SOURCE_ITEMS] if isinstance(row, dict) else []:

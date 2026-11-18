@@ -89,6 +89,61 @@ class ProjectActivityTests(unittest.TestCase):
         self.assertTrue(any(item['task_id'] == task['id'] and item['summary'] == 'Release metadata verified'
                             for item in snapshot['activity']['items']))
 
+    def test_direct_branches_project_one_stable_item_each(self):
+        snapshot = {'git': {'github_unattributed': [
+            {'kind': 'direct_branch', 'task_id': 3, 'ownership_epoch': 1,
+             'branch': 'coopagents/task-3-1-build', 'head_sha': 'a'*40,
+             'source': 'direct', 'sync_at': '2026-01-03T00:00:00Z', 'stale': False},
+            {'kind': 'unattributed_branch', 'branch': 'wip', 'head_sha': 'b'*40,
+             'source': 'direct', 'sync_at': '2026-01-02T00:00:00Z', 'stale': False},
+            {'kind': 'default_branch_direct_push', 'branch': 'main', 'head_sha': 'c'*40,
+             'source': 'direct', 'sync_at': '2026-01-01T00:00:00Z', 'stale': False},
+            {'kind': 'unknown_kind', 'branch': 'nope', 'head_sha': 'd'*40,
+             'sync_at': '2026-01-04T00:00:00Z'},
+            'not-a-row']}}
+        feed = project_activity(snapshot)
+        self.assertEqual([item['type'] for item in feed['items']],
+                         ['github_direct_branch', 'github_unattributed_branch',
+                          'github_default_branch_direct_push'])
+        direct = feed['items'][0]
+        self.assertEqual(direct['task_id'], 3)
+        self.assertEqual(direct['summary'], 'Task branch coopagents/task-3-1-build has no matching governed delivery record')
+        self.assertEqual(direct['reference']['branch'], 'coopagents/task-3-1-build')
+        self.assertIn('not associated', feed['items'][1]['summary'])
+        self.assertIsNone(feed['items'][1]['task_id'])
+        self.assertIn('no matching governed evidence', feed['items'][2]['summary'])
+        resynced = project_activity({'git': {'github_unattributed': [
+            {'kind': 'direct_branch', 'task_id': 3, 'ownership_epoch': 1,
+             'branch': 'coopagents/task-3-1-build', 'head_sha': 'e'*40,
+             'source': 'direct', 'sync_at': '2026-01-05T00:00:00Z', 'stale': False}]}})
+        self.assertEqual([item['id'] for item in resynced['items']], [direct['id']])
+
+    def test_stale_flag_reaches_activity_references(self):
+        feed = project_activity({'git': {'github_unattributed': [
+            {'kind': 'default_branch_direct_push', 'branch': 'main', 'head_sha': 'c'*40,
+             'sync_at': '2026-01-01T00:00:00Z', 'stale': True},
+            {'kind': 'unattributed_branch', 'branch': 'wip', 'head_sha': 'b'*40,
+             'sync_at': '2026-01-01T00:00:00Z', 'stale': False}]}})
+        by_type = {item['type']: item for item in feed['items']}
+        self.assertIs(by_type['github_default_branch_direct_push']['reference']['stale'], True)
+        self.assertIs(by_type['github_unattributed_branch']['reference']['stale'], False)
+
+    def test_long_branch_names_get_distinct_stable_ids(self):
+        first = 'x' * 100 + 'a'
+        second = 'x' * 100 + 'b'
+        feed = project_activity({'git': {'github_unattributed': [
+            {'kind': 'unattributed_branch', 'branch': first, 'head_sha': 'a'*40,
+             'sync_at': '2026-01-01T00:00:00Z', 'stale': False},
+            {'kind': 'unattributed_branch', 'branch': second, 'head_sha': 'b'*40,
+             'sync_at': '2026-01-01T00:00:00Z', 'stale': False}]}})
+        by_branch = {item['reference']['branch']: item for item in feed['items']}
+        self.assertEqual(set(by_branch), {first, second})
+        self.assertNotEqual(by_branch[first]['id'], by_branch[second]['id'])
+        resynced = project_activity({'git': {'github_unattributed': [
+            {'kind': 'unattributed_branch', 'branch': first, 'head_sha': 'c'*40,
+             'sync_at': '2026-01-02T00:00:00Z', 'stale': False}]}})
+        self.assertEqual([item['id'] for item in resynced['items']], [by_branch[first]['id']])
+
 
 if __name__ == '__main__':
     unittest.main()

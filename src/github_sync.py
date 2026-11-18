@@ -10,6 +10,7 @@ import threading
 
 from .errors import AccessDenied, Conflict, NotFound, ValidationError
 from .github_app import GitHubError, positive_id, complete_sha
+from .git_workspace import branch_name, parse_task_branch_name  # noqa: F401  (re-exported; delivery and callers import it here)
 from .repositories import now, require_manager, timestamp, visible_task
 
 
@@ -24,15 +25,6 @@ def state_hash(state):
     if not isinstance(state,str) or not re.fullmatch(r'[A-Za-z0-9_-]{32,100}',state):
         raise AccessDenied('GitHub authorization state not accepted')
     return hashlib.sha256(state.encode()).hexdigest()
-
-
-def branch_name(branch):
-    if (not isinstance(branch,str) or len(branch)>250 or any(ord(x)<33 for x in branch)
-            or any(x in branch for x in ('..','@{','\\','~','^',':','?','*','['))
-            or branch.startswith(('/','-')) or branch.endswith(('/','.','.lock'))
-            or any(not x or x.startswith('.') for x in branch.split('/'))):
-        raise ValidationError('Expected a safe Git branch name')
-    return branch
 
 
 class GitHubSync:
@@ -81,6 +73,32 @@ class GitHubSync:
                 c.execute("ALTER TABLE github_evidence ADD COLUMN discovery_json TEXT NOT NULL DEFAULT '{}' ")
             if 'releases_json' not in {r['name'] for r in c.execute('PRAGMA table_info(github_evidence)')}:
                 c.execute("ALTER TABLE github_evidence ADD COLUMN releases_json TEXT NOT NULL DEFAULT '[]'")
+            if 'unattributed_json' not in {r['name'] for r in c.execute('PRAGMA table_info(github_evidence)')}:
+                c.execute("ALTER TABLE github_evidence ADD COLUMN unattributed_json TEXT NOT NULL DEFAULT '[]'")
+            c.execute('''CREATE TABLE IF NOT EXISTS git_deliveries (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, room_id TEXT NOT NULL,
+                task_id INTEGER NOT NULL, ownership_epoch INTEGER NOT NULL,
+                request_key TEXT NOT NULL, branch TEXT NOT NULL, head_sha TEXT NOT NULL,
+                base_branch TEXT NOT NULL, pr_number INTEGER, pr_url TEXT NOT NULL DEFAULT '',
+                state TEXT NOT NULL, delivered_by TEXT NOT NULL,
+                created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+                UNIQUE(room_id,task_id,request_key),
+                FOREIGN KEY(task_id,room_id) REFERENCES tasks(id,room_id))''')
+            c.execute('''CREATE TABLE IF NOT EXISTS git_merge_requests (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, room_id TEXT NOT NULL,
+                task_id INTEGER NOT NULL, ownership_epoch INTEGER NOT NULL,
+                pr_number INTEGER NOT NULL, pr_url TEXT NOT NULL DEFAULT '',
+                branch TEXT NOT NULL, head_sha TEXT NOT NULL, base_branch TEXT NOT NULL,
+                state TEXT NOT NULL, request_key TEXT NOT NULL, requested_by TEXT NOT NULL,
+                revision INTEGER NOT NULL DEFAULT 1,
+                merge_sha TEXT NOT NULL DEFAULT '', merged_by TEXT NOT NULL DEFAULT '',
+                merged_at TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+                UNIQUE(room_id,task_id,ownership_epoch),
+                FOREIGN KEY(task_id,room_id) REFERENCES tasks(id,room_id))''')
+            if 'revision' not in {r['name'] for r in c.execute('PRAGMA table_info(git_merge_requests)')}:
+                c.execute('ALTER TABLE git_merge_requests ADD COLUMN revision INTEGER NOT NULL DEFAULT 1')
+            if 'write_scope_verified' not in {r['name'] for r in c.execute('PRAGMA table_info(github_connections)')}:
+                c.execute('ALTER TABLE github_connections ADD COLUMN write_scope_verified INTEGER NOT NULL DEFAULT 0')
             c.execute('''CREATE TABLE IF NOT EXISTS github_inbox (
                 delivery_id TEXT PRIMARY KEY, payload_hash TEXT NOT NULL, event TEXT NOT NULL,
                 installation_id INTEGER NOT NULL, repository_id INTEGER,
@@ -226,6 +244,403 @@ class GitHubSync:
         c.execute('UPDATE github_connections SET revision=revision+1 WHERE room_id=?',(principal.room_id,))
         return dict(c.execute('SELECT * FROM github_refs WHERE room_id=? AND task_id=? AND branch=? AND pr_number=?',
             (principal.room_id,task_id,branch,pr_number or 0)).fetchone())
+
+    def _write_delivery(self, c, token, task_id, branch, head_sha, base_branch, request_key,
+                        session_key, ownership_epoch, state, pr_number, pr_url, mark_write_scope):
+        """Persist one delivery attempt: refs, delivery row, pushed branch state."""
+        principal = self.identity.resolve(c, token, required_kind='agent')
+        task = visible_task(c, principal, task_id, session_key=session_key, ownership_epoch=ownership_epoch)
+        self._associate_in_transaction(c, token, task_id, branch=branch,
+                                       session_key=session_key, ownership_epoch=ownership_epoch)
+        if pr_number is not None:
+            self._associate_in_transaction(c, token, task_id, pr_number=pr_number,
+                                           session_key=session_key, ownership_epoch=ownership_epoch)
+        stamp = now().isoformat()
+        c.execute('''INSERT INTO git_deliveries(room_id,task_id,ownership_epoch,request_key,branch,head_sha,
+            base_branch,pr_number,pr_url,state,delivered_by,created_at,updated_at)
+            VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ON CONFLICT(room_id,task_id,request_key) DO UPDATE SET head_sha=excluded.head_sha,
+            base_branch=excluded.base_branch,pr_number=excluded.pr_number,pr_url=excluded.pr_url,
+            state=excluded.state,updated_at=excluded.updated_at''',
+            (principal.room_id, task_id, task['ownership_epoch'], request_key, branch, head_sha,
+             base_branch, pr_number, pr_url, state, principal.member_id, stamp, stamp))
+        c.execute('''UPDATE git_branches SET pushed_sha=?,pushed_at=? WHERE room_id=? AND task_id=?
+            AND ownership_epoch=?''', (head_sha, stamp, principal.room_id, task_id, task['ownership_epoch']))
+        if mark_write_scope:
+            c.execute('UPDATE github_connections SET write_scope_verified=1 WHERE room_id=?', (principal.room_id,))
+        return dict(c.execute('''SELECT * FROM git_deliveries WHERE room_id=? AND task_id=?
+            AND request_key=?''', (principal.room_id, task_id, request_key)).fetchone())
+
+    def open_pr(self, token, task_id, branch, head_sha, base_branch, title, body='', request_key=None,
+                session_key=None, ownership_epoch=None, preview=False):
+        """Record a pushed delivery and open its draft PR (W2).
+
+        Lookup-before-create: an existing open PR for the head branch is reused,
+        so retries and re-deliveries never open duplicates. A PR creation
+        failure after a successful push records state 'pushed' and raises, so a
+        retry with the same request_key resumes from lookup. Preview runs every
+        local precondition and describes the API call without minting a token,
+        calling GitHub, or writing anything.
+        """
+        branch_name(branch); branch_name(base_branch)
+        if branch == base_branch:
+            raise ValidationError('PR head and base must differ')
+        complete_sha(head_sha)
+        if (not isinstance(title, str) or not 1 <= len(title) <= 250 or title != title.strip()
+                or any(ord(char) < 32 for char in title)):
+            raise ValidationError('PR title is invalid')
+        if (not isinstance(body, str) or len(body) > 10000
+                or any(ord(char) < 32 and char not in '\n\t' for char in body)):
+            raise ValidationError('PR body is invalid')
+        if not isinstance(request_key, str) or not request_key or len(request_key) > 200:
+            raise ValidationError('Invalid request key')
+        if type(preview) is not bool:
+            raise ValidationError('Expected a preview flag')
+        with self.db.connect() as c:
+            principal = self.identity.resolve(c, token, required_kind='agent')
+            task = visible_task(c, principal, task_id, session_key=session_key, ownership_epoch=ownership_epoch)
+            binding = c.execute('SELECT * FROM repo_bindings WHERE room_id=?', (principal.room_id,)).fetchone()
+            if not binding:
+                raise Conflict('Project repository is not bound')
+            if not binding['git_write_enabled']:
+                raise Conflict('Git write path is not enabled for this space')
+            recorded = c.execute('''SELECT * FROM git_branches WHERE room_id=? AND task_id=?
+                AND ownership_epoch=?''', (principal.room_id, task_id, task['ownership_epoch'])).fetchone()
+            if not recorded or recorded['branch'] != branch:
+                raise Conflict('Task branch is not recorded for the current execution')
+            existing = c.execute('''SELECT * FROM git_deliveries WHERE room_id=? AND task_id=?
+                AND request_key=?''', (principal.room_id, task_id, request_key)).fetchone()
+            if existing and existing['state'] == 'pr_opened':
+                result = dict(existing)
+                result['created'] = False
+                return result
+            conn = c.execute("SELECT * FROM github_connections WHERE room_id=? AND status='active'",
+                             (principal.room_id,)).fetchone()
+            connection = dict(conn) if conn else None
+            checked, fresh, conflicts = self.repositories.evaluate_gate(
+                c, principal.room_id, principal.member_id, task_id, task['ownership_epoch'])
+            display = [{**conflict, 'paths': self.repositories.compact_paths(conflict['paths'], 4000)}
+                       for conflict in conflicts]
+        if preview:
+            return {'preview': True, 'task_id': task_id, 'branch': branch, 'head_sha': head_sha,
+                    'base_branch': base_branch, 'title': title,
+                    'api_call': {'method': 'POST',
+                                 'path': '/repos/' + (connection['full_name'] if connection else '<repository>') + '/pulls',
+                                 'head': branch, 'base': base_branch, 'draft': True},
+                    'connection': 'active' if connection else 'missing',
+                    'existing_state': existing['state'] if existing else None,
+                    'paths_checked': checked, 'fresh_checkpoint': fresh,
+                    'conflicts': display, 'blocked': bool(conflicts)}
+        if not fresh:
+            raise Conflict('A fresh checkpoint is required before delivery; call repo_checkpoint first')
+        if conflicts:
+            with self.db.connect(write=True) as c:
+                self.repositories.record_conflict_block(
+                    c, principal.room_id, principal.member_id, task_id, task['ownership_epoch'],
+                    'delivery', checked, conflicts)
+            raise Conflict(self.repositories.conflict_message(conflicts))
+        self._enabled()
+        if not connection:
+            raise Conflict('GitHub repository is not authorized')
+        found = self.app.find_open_pr(connection['installation_id'], connection['repository_id'],
+                                      connection['full_name'], branch)
+        created = False
+        if found is not None:
+            pr = found
+        else:
+            try:
+                pr = self.app.create_pull_request(connection['installation_id'], connection['repository_id'],
+                                                  connection['full_name'], branch, base_branch, title, body)
+                created = True
+            except GitHubError as failure:
+                # The branch is already pushed; a create that raced another
+                # delivery surfaces through lookup instead of erroring.
+                try:
+                    found = self.app.find_open_pr(connection['installation_id'], connection['repository_id'],
+                                                  connection['full_name'], branch)
+                except GitHubError:
+                    found = None
+                if found is not None:
+                    pr = found
+                else:
+                    try:
+                        with self.db.connect(write=True) as c:
+                            self._write_delivery(c, token, task_id, branch, head_sha, base_branch,
+                                                 request_key, session_key, ownership_epoch,
+                                                 'pushed', None, '', False)
+                    except Exception:
+                        pass  # Best-effort evidence; the original failure is the report.
+                    raise
+        if not isinstance(pr, dict):
+            raise GitHubError('GitHub PR response is invalid')
+        try:
+            number = positive_id(pr['number'])
+            url = pr['url']
+            if not isinstance(url, str) or not url.startswith('https://github.com/') or len(url) > 500:
+                raise GitHubError('GitHub PR response is invalid')
+        except (KeyError, TypeError, ValidationError):
+            raise GitHubError('GitHub PR response is invalid') from None
+        with self.db.connect(write=True) as c:
+            result = self._write_delivery(c, token, task_id, branch, head_sha, base_branch,
+                                          request_key, session_key, ownership_epoch,
+                                          'pr_opened', number, url, created)
+            self.repositories.clear_conflict_block(c, principal.room_id, task_id,
+                                                   task['ownership_epoch'], 'delivery')
+        result['created'] = created
+        return result
+
+    def request_merge(self, token, task_id, pr_number, request_key, session_key=None,
+                      ownership_epoch=None, preview=False):
+        """Record a human merge request for the task's opened PR (W4).
+
+        Creates a decision card; performs no merge. Re-requesting refreshes
+        the recorded head SHA from the latest delivery, so a head that moved
+        after a re-delivery can be merged without a stale request wedging it.
+        """
+        positive_id(pr_number)
+        if not isinstance(request_key, str) or not request_key or len(request_key) > 200:
+            raise ValidationError('Invalid request key')
+        if type(preview) is not bool:
+            raise ValidationError('Expected a preview flag')
+        with self.db.connect(write=True) as c:
+            principal = self.identity.resolve(c, token, required_kind='agent')
+            task = visible_task(c, principal, task_id, session_key=session_key, ownership_epoch=ownership_epoch)
+            binding = c.execute('SELECT * FROM repo_bindings WHERE room_id=?', (principal.room_id,)).fetchone()
+            if not binding:
+                raise Conflict('Project repository is not bound')
+            if not binding['git_write_enabled']:
+                raise Conflict('Git write path is not enabled for this space')
+            delivery = c.execute('''SELECT * FROM git_deliveries WHERE room_id=? AND task_id=?
+                AND ownership_epoch=? AND state='pr_opened' ORDER BY id DESC LIMIT 1''',
+                (principal.room_id, task_id, task['ownership_epoch'])).fetchone()
+            if not delivery or delivery['pr_number'] != pr_number:
+                raise Conflict('No opened delivery matches this merge request')
+            existing = c.execute('''SELECT * FROM git_merge_requests WHERE room_id=? AND task_id=?
+                AND ownership_epoch=?''', (principal.room_id, task_id, task['ownership_epoch'])).fetchone()
+            if existing:
+                if existing['pr_number'] != pr_number:
+                    raise Conflict('A merge request already exists for a different PR')
+                if existing['state'] == 'pending' and (existing['head_sha'] != delivery['head_sha']
+                                                       or existing['branch'] != delivery['branch']
+                                                       or existing['base_branch'] != delivery['base_branch']):
+                    if not preview:
+                        c.execute('''UPDATE git_merge_requests SET head_sha=?, branch=?, base_branch=?,
+                            revision=revision+1, updated_at=? WHERE id=?''',
+                            (delivery['head_sha'], delivery['branch'], delivery['base_branch'],
+                             now().isoformat(), existing['id']))
+                        return dict(c.execute('SELECT * FROM git_merge_requests WHERE id=?', (existing['id'],)).fetchone())
+                return dict(existing)
+            if preview:
+                return {'preview': True, 'task_id': task_id, 'pr_number': pr_number,
+                        'pr_url': delivery['pr_url'], 'branch': delivery['branch'],
+                        'head_sha': delivery['head_sha'], 'base_branch': delivery['base_branch'],
+                        'ownership_epoch': task['ownership_epoch']}
+            row = c.execute('''INSERT INTO git_merge_requests(room_id,task_id,ownership_epoch,pr_number,
+                pr_url,branch,head_sha,base_branch,state,request_key,requested_by,created_at,updated_at)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)''',
+                (principal.room_id, task_id, task['ownership_epoch'], pr_number, delivery['pr_url'],
+                 delivery['branch'], delivery['head_sha'], delivery['base_branch'], 'pending',
+                 request_key, principal.member_id, now().isoformat(), now().isoformat()))
+            return dict(c.execute('SELECT * FROM git_merge_requests WHERE id=?', (row.lastrowid,)).fetchone())
+
+    @staticmethod
+    def _approvals(reviews, author=None):
+        """Latest review per reviewer wins; only a standing approval counts.
+
+        The PR author's own approval never counts: GitHub's required-approval
+        rules disregard it. When the author is unknown (None), no review is
+        excluded and GitHub remains the final enforcer at merge time.
+        """
+        latest = {}
+        for review in reviews:
+            latest[review['reviewer']] = review['state']
+        return sum(1 for reviewer, state in latest.items()
+                   if state == 'APPROVED' and reviewer != author)
+
+    @staticmethod
+    def _merge_block_reasons(pr, expected_sha, protection, review_payload):
+        """Merge preconditions (W4): open state, draft state, head SHA, checks, truncation, protection."""
+        reasons = []
+        if pr['state'] != 'open':
+            return ['PR is not open']
+        if pr.get('draft') is True:
+            # D8 opens every PR as a draft; GitHub refuses to merge drafts.
+            # The human marks the PR ready outside the code (D1) and re-runs
+            # the merge — the gate reports the draft instead of attempting a
+            # PUT that is certain to fail.
+            reasons.append('PR is still a draft; mark it ready for review on GitHub, then re-run the merge')
+        if pr['head_sha'] != expected_sha:
+            reasons.append('PR head moved; re-request the merge for the current head')
+        if pr.get('mergeable') is False:
+            reasons.append('PR has merge conflicts; resolve them on GitHub')
+        if pr.get('checks_truncated') or pr.get('statuses_truncated'):
+            reasons.append('check results are truncated; cannot verify all checks')
+        failing = sorted({check['name'] for check in pr.get('checks', [])
+                          if check.get('conclusion') in ('failure', 'cancelled', 'timed_out', 'action_required')})
+        failing += sorted({status['context'] for status in pr.get('statuses', [])
+                           if status.get('state') in ('failure', 'error')})
+        if failing:
+            reasons.append('failing checks: ' + ', '.join(failing[:10]))
+        if protection:
+            restrictions = protection.get('restrictions') or {}
+            if any(restrictions.get(key) for key in ('users', 'teams', 'apps')):
+                reasons.append('branch restrictions may exclude the App; merge on GitHub')
+            required = ((protection.get('required_status_checks') or {}).get('contexts') or [])
+            passing = {check['name'] for check in pr.get('checks', []) if check.get('conclusion') == 'success'}
+            passing |= {status['context'] for status in pr.get('statuses', []) if status.get('state') == 'success'}
+            missing = [context for context in required if context not in passing]
+            if missing:
+                reasons.append('required checks not passing: ' + ', '.join(missing[:10]))
+            count = ((protection.get('required_pull_request_reviews') or {})
+                     .get('required_approving_review_count') or 0)
+            if count:
+                if review_payload.get('truncated'):
+                    reasons.append('review list is truncated; cannot verify approvals')
+                elif pr.get('author') is None:
+                    reasons.append('cannot verify the PR author; merge on GitHub')
+                else:
+                    approvals = GitHubSync._approvals(review_payload.get('reviews', []), pr.get('author'))
+                    if approvals < count:
+                        reasons.append('requires %d approving review(s); %d recorded' % (count, approvals))
+        return reasons
+
+    def _mark_merged(self, connection, request, merge_sha, merged_by):
+        stamp = now().isoformat()
+        connection.execute('''UPDATE git_merge_requests SET state='merged', merge_sha=?, merged_by=?,
+            merged_at=?, updated_at=? WHERE id=? AND state='pending' ''',
+            (merge_sha, merged_by, stamp, stamp, request['id']))
+        connection.execute('''UPDATE git_deliveries SET state='merged', updated_at=? WHERE room_id=?
+            AND task_id=? AND ownership_epoch=? AND pr_number=? AND state='pr_opened' ''',
+            (stamp, request['room_id'], request['task_id'], request['ownership_epoch'], request['pr_number']))
+        return dict(connection.execute('SELECT * FROM git_merge_requests WHERE id=?', (request['id'],)).fetchone())
+
+    def merge_pr(self, token, merge_request_id, preview=False, *, expected_head_sha, expected_base_branch,
+                 expected_revision):
+        """Execute a human-approved merge (W4, D1: web-only, manager-only).
+
+        Verifies preconditions against live GitHub state, then merges with a
+        merge commit guarded by the expected head SHA. A merged PR never
+        accepts the task (D6); acceptance stays a separate human act. Preview
+        runs the live precondition reads and describes the PUT without merging,
+        and never writes — including when the PR is already merged.
+
+        The decision is bound to the exact card the human saw: the caller
+        supplies the revision, head SHA, and base branch that were displayed,
+        and any drift since — a redelivery mutating the request in place, or
+        the PR itself retargeted on GitHub — blocks the merge until the human
+        reviews the current state.
+        """
+        positive_id(merge_request_id)
+        if type(preview) is not bool:
+            raise ValidationError('Expected a preview flag')
+        expected_head_sha = complete_sha(expected_head_sha)
+        expected_base_branch = branch_name(expected_base_branch)
+        if type(expected_revision) is not int or expected_revision < 1:
+            raise ValidationError('Expected a positive merge request revision')
+        with self.db.connect() as c:
+            principal = self.identity.resolve(c, token, required_kind='web')
+            require_manager(self.identity, c, principal)
+            request = c.execute('''SELECT * FROM git_merge_requests WHERE id=? AND room_id=?''',
+                                (merge_request_id, principal.room_id)).fetchone()
+            if not request:
+                raise NotFound('Merge request not found')
+            request = dict(request)
+            binding = c.execute('SELECT * FROM repo_bindings WHERE room_id=?', (principal.room_id,)).fetchone()
+            if not binding or not binding['git_write_enabled']:
+                raise Conflict('Git write path is not enabled for this space')
+            conn = c.execute("SELECT * FROM github_connections WHERE room_id=? AND status='active'",
+                             (principal.room_id,)).fetchone()
+            if not conn:
+                raise Conflict('GitHub repository is not authorized')
+            connection = dict(conn)
+        if request['state'] == 'merged':
+            return request
+        if (request['revision'] != expected_revision or request['head_sha'] != expected_head_sha
+                or request['base_branch'] != expected_base_branch):
+            raise Conflict('Merge request changed since it was displayed; refresh and review the current head and target')
+        self._enabled()
+        state = self.app.repository_state(connection['installation_id'], connection['repository_id'],
+                                          connection['full_name'], pr_numbers=(request['pr_number'],))
+        prs = state.get('pull_requests') if isinstance(state, dict) else None
+        pr = next((item for item in prs if isinstance(item, dict) and item.get('number') == request['pr_number']),
+                  None) if isinstance(prs, list) else None
+        if pr is None:
+            raise Conflict('PR is no longer visible to the App; re-check it on GitHub')
+        # The statuses list is the full per-context history, newest first;
+        # the preflight must judge only the latest entry per context, using
+        # the same normalizer as the evidence path. Check runs arrive
+        # deduplicated (?filter=latest), so only the SHA filter applies.
+        checks, statuses = self._checks_at(pr['head_sha'], pr)
+        pr = {**pr, 'checks': checks, 'statuses': statuses}
+        if pr.get('merged'):
+            if preview:
+                return {'preview': True, 'merge_request_id': request['id'], 'task_id': request['task_id'],
+                        'pr_number': request['pr_number'], 'pr_url': request['pr_url'],
+                        'head_sha': request['head_sha'], 'base_branch': pr.get('base_branch') or request['base_branch'],
+                        'already_merged': True, 'merge_commit_sha': pr.get('merge_commit_sha') or '',
+                        'api_call': None, 'checks': pr.get('checks', []), 'statuses': pr.get('statuses', []),
+                        'protection': None, 'blocked': False, 'reasons': []}
+            with self.db.connect(write=True) as c:
+                return self._mark_merged(c, request, pr.get('merge_commit_sha') or '', principal.member_id)
+        base = pr.get('base_branch') or request['base_branch']
+        protection = self.app.read_branch_protection(connection['installation_id'], connection['repository_id'],
+                                                     connection['full_name'], base)
+        count = ((protection or {}).get('required_pull_request_reviews') or {}).get('required_approving_review_count') or 0
+        review_payload = self.app.read_pull_reviews(connection['installation_id'], connection['repository_id'],
+                                                    connection['full_name'], request['pr_number']) if count else {'reviews': [], 'truncated': False}
+        reasons = self._merge_block_reasons(pr, request['head_sha'], protection, review_payload)
+        if pr.get('base_branch') and pr['base_branch'] != request['base_branch']:
+            reasons.insert(0, 'PR target changed from %s to %s; re-request the merge for the current target'
+                           % (request['base_branch'], pr['base_branch']))
+        if pr.get('head_branch') and pr['head_branch'] != request['branch']:
+            reasons.insert(0, 'PR head branch changed from %s to %s; re-request the merge for the current head'
+                           % (request['branch'], pr['head_branch']))
+        if preview:
+            return {'preview': True, 'merge_request_id': request['id'], 'task_id': request['task_id'],
+                    'pr_number': request['pr_number'], 'pr_url': request['pr_url'],
+                    'head_sha': request['head_sha'], 'base_branch': base,
+                    'api_call': {'method': 'PUT',
+                                 'path': '/repos/' + connection['full_name'] + '/pulls/%d/merge' % request['pr_number'],
+                                 'sha': request['head_sha'], 'merge_method': 'merge'},
+                    'checks': pr.get('checks', []), 'statuses': pr.get('statuses', []),
+                    'protection': protection, 'blocked': bool(reasons), 'reasons': reasons}
+        if reasons:
+            raise Conflict('Merge blocked: ' + '; '.join(reasons))
+        try:
+            result = self.app.merge_pull_request(connection['installation_id'], connection['repository_id'],
+                                                 connection['full_name'], request['pr_number'], request['head_sha'])
+        except GitHubError as error:
+            # A concurrent merge may have completed between the read and the PUT.
+            # Capture the refusal diagnostics before the recheck: the Conflict
+            # below must carry the HTTP status and GitHub's message when the
+            # refusal came from the merge PUT.
+            status, detail = error.status, error.detail
+            try:
+                state = self.app.repository_state(connection['installation_id'], connection['repository_id'],
+                                                  connection['full_name'], pr_numbers=(request['pr_number'],))
+            except GitHubError:
+                # The recovery read failed: fall back to the captured refusal
+                # diagnostics instead of letting the read's generic error
+                # replace them. GitHubAccessDenied is not a GitHubError, so a
+                # revoked-access read still propagates as before.
+                state = None
+            prs = state.get('pull_requests') if isinstance(state, dict) else None
+            pr = next((item for item in prs if isinstance(item, dict) and item.get('number') == request['pr_number']),
+                      None) if isinstance(prs, list) else None
+            if pr is not None and pr.get('merged'):
+                with self.db.connect(write=True) as c:
+                    return self._mark_merged(c, request, pr.get('merge_commit_sha') or '', principal.member_id)
+            message = 'GitHub refused the merge; the PR may conflict or branch protection may block it'
+            if status is not None:
+                message += ' (HTTP %s%s)' % (status, ': ' + detail if detail else '')
+            raise Conflict(message) from None
+        with self.db.connect(write=True) as c:
+            merged = self._mark_merged(c, request, result['sha'], principal.member_id)
+        try:
+            self._reconcile(principal.room_id, token)
+        except Exception:
+            pass  # Best-effort evidence refresh; the merge record above stands.
+        return merged
 
     def refresh(self,token):
         self._enabled()
@@ -377,7 +792,65 @@ class GitHubSync:
                 or ('limit' in discovery and (type(discovery['limit']) is not int or not 1<=discovery['limit']<=20))
                 or ('truncated' in discovery and type(discovery['truncated']) is not bool)):
             raise GitHubError('GitHub release discovery bounds are invalid')
-        return deliveries,[p for p in normalized if p['number'] not in associated],list(normalized_releases.values()),discovery
+        unattributed=GitHubSync._classify_discovered(state,refs,branches,commits,normalized,sync_at)
+        return deliveries,[p for p in normalized if p['number'] not in associated],list(normalized_releases.values()),discovery,unattributed
+
+    @staticmethod
+    def _classify_discovered(state,refs,branches,commits,normalized,sync_at):
+        """Classify discovered branches: governed, task-named direct, or unattributed.
+
+        Presentation only: nothing here creates refs, associates tasks, or
+        blocks. A branch matching a task branch name is attributed to that
+        task with source 'direct', which means only that the branch sits
+        outside the governed-ref set: the push route is NOT verified, and
+        an adapter push whose registration was lost classifies the same
+        way. Presentation wording must not claim a direct push. Snapshot()
+        later drops entries whose task is cancelled or whose epoch no
+        longer matches. The default branch is reported only through its
+        own entry, never duplicated below.
+        """
+        discovered=state.get('discovered_branches',[])
+        if not isinstance(discovered,list) or len(discovered)>50:
+            raise GitHubError('GitHub branch discovery is invalid')
+        default_branch=state.get('default_branch')
+        if default_branch is not None and not isinstance(default_branch,str):
+            raise GitHubError('GitHub default branch is invalid')
+        governed={ref['branch'] for ref in refs if ref.get('branch')}
+        known={sha for sha in branches.values() if isinstance(sha,str) and SHA.fullmatch(sha)}
+        known.update(sha for sha in commits if isinstance(sha,str) and SHA.fullmatch(sha))
+        for pr in normalized:
+            known.add(pr['head_sha'])
+        for pr in state.get('pull_requests',[]):
+            merge_sha=pr.get('merge_commit_sha') if isinstance(pr,dict) else None
+            if isinstance(merge_sha,str) and SHA.fullmatch(merge_sha):
+                known.add(merge_sha)
+        unattributed=[]
+        for item in discovered:
+            if not isinstance(item,dict):
+                raise GitHubError('GitHub branch discovery is invalid')
+            name,sha=item.get('branch'),item.get('head_sha')
+            try: branch_name(name)
+            except ValidationError: raise GitHubError('GitHub branch discovery is invalid') from None
+            if not isinstance(sha,str) or not SHA.fullmatch(sha):
+                raise GitHubError('GitHub branch discovery is invalid')
+            if name in governed or name==default_branch:
+                continue
+            parsed=parse_task_branch_name(name)
+            if parsed:
+                unattributed.append({'kind':'direct_branch','task_id':parsed['task_id'],
+                    'ownership_epoch':parsed['ownership_epoch'],'branch':name,'head_sha':sha,
+                    'source':'direct','sync_at':sync_at,'stale':False})
+            else:
+                unattributed.append({'kind':'unattributed_branch','branch':name,'head_sha':sha,
+                    'source':'direct','sync_at':sync_at,'stale':False})
+        default_head=state.get('default_branch_head_sha')
+        if default_branch and default_head:
+            if not isinstance(default_head,str) or not SHA.fullmatch(default_head):
+                raise GitHubError('GitHub default branch head is invalid')
+            if default_head not in known:
+                unattributed.append({'kind':'default_branch_direct_push','branch':default_branch,
+                    'head_sha':default_head,'source':'direct','sync_at':sync_at,'stale':False})
+        return unattributed
 
     def _reconcile(self,room_id,token=None):
         with self.db.connect(write=True) as c:
@@ -408,14 +881,20 @@ class GitHubSync:
             state=self.app.repository_state(conn['installation_id'],conn['repository_id'],conn['full_name'],
                 branches=sorted({r['branch'] for r in refs if r['branch']}),pr_numbers=sorted(explicit.union(prior_candidates)),
                 commit_shas=sorted({r['commit_sha'] for r in refs if r.get('commit_sha')}),release_ids=explicit_releases)
-            sync_at=now().isoformat();deliveries,pending,releases,release_discovery=self._evidence(state,refs,conn,sync_at)
+            sync_at=now().isoformat();deliveries,pending,releases,release_discovery,unattributed=self._evidence(state,refs,conn,sync_at)
             discovery=state.get('discovery',{})
             if (not isinstance(discovery,dict) or set(discovery)-{'limit','truncated','state'}
                     or ('limit' in discovery and (type(discovery['limit']) is not int or not 1<=discovery['limit']<=50))):
                 raise GitHubError('GitHub discovery bounds are invalid')
+            branch_discovery=state.get('branch_discovery',{'limit':50,'truncated':False})
+            if (not isinstance(branch_discovery,dict) or set(branch_discovery)-{'limit','truncated'}
+                    or ('limit' in branch_discovery and (type(branch_discovery['limit']) is not int or not 1<=branch_discovery['limit']<=50))
+                    or ('truncated' in branch_discovery and type(branch_discovery['truncated']) is not bool)):
+                raise GitHubError('GitHub branch discovery bounds are invalid')
             discovery['releases']=release_discovery
-            deliveries_json=json.dumps(deliveries);pending_json=json.dumps(pending);discovery_json=json.dumps(discovery);releases_json=json.dumps(releases)
-            if len((deliveries_json+pending_json+discovery_json+releases_json).encode())>MAX_EVIDENCE_BYTES:
+            discovery['branches']=branch_discovery
+            deliveries_json=json.dumps(deliveries);pending_json=json.dumps(pending);discovery_json=json.dumps(discovery);releases_json=json.dumps(releases);unattributed_json=json.dumps(unattributed)
+            if len((deliveries_json+pending_json+discovery_json+releases_json+unattributed_json).encode())>MAX_EVIDENCE_BYTES:
                 raise GitHubError('GitHub evidence exceeds output budget')
         except AccessDenied:
             self._revoke(room_id,conn['revision'])
@@ -431,12 +910,12 @@ class GitHubSync:
             if token: self.identity.resolve(c,token)
             current=c.execute('SELECT revision,status FROM github_connections WHERE room_id=?',(room_id,)).fetchone()
             if not current or current['revision']!=conn['revision'] or current['status']!='active': return False
-            c.execute('''INSERT INTO github_evidence(room_id,revision,deliveries_json,pending_json,sync_at,discovery_json,releases_json)
-                VALUES(?,?,?,?,?,?,?) ON CONFLICT(room_id) DO UPDATE SET
+            c.execute('''INSERT INTO github_evidence(room_id,revision,deliveries_json,pending_json,sync_at,discovery_json,releases_json,unattributed_json)
+                VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(room_id) DO UPDATE SET
                 revision=excluded.revision,deliveries_json=excluded.deliveries_json,
                 pending_json=excluded.pending_json,sync_at=excluded.sync_at,discovery_json=excluded.discovery_json,
-                releases_json=excluded.releases_json''',
-                (room_id,conn['revision'],deliveries_json,pending_json,sync_at,discovery_json,releases_json))
+                releases_json=excluded.releases_json,unattributed_json=excluded.unattributed_json''',
+                (room_id,conn['revision'],deliveries_json,pending_json,sync_at,discovery_json,releases_json,unattributed_json))
             c.execute('UPDATE github_connections SET sync_at=? WHERE room_id=?',(sync_at,room_id))
         return True
 
@@ -445,7 +924,7 @@ class GitHubSync:
             principal=self.identity.resolve(c,token)
             conn=c.execute('SELECT * FROM github_connections WHERE room_id=?',(principal.room_id,)).fetchone()
             evidence=c.execute('SELECT * FROM github_evidence WHERE room_id=?',(principal.room_id,)).fetchone()
-            deliveries=[];pending=[];events=[];discovery={};releases=[]
+            deliveries=[];pending=[];events=[];discovery={};releases=[];unattributed=[]
             if conn:
                 events=[dict(r) for r in c.execute('''SELECT delivery_id,event,status,received_at,completed_at,attempts
                     FROM github_inbox WHERE installation_id=? AND (repository_id=? OR repository_id IS NULL)
@@ -454,7 +933,8 @@ class GitHubSync:
                     deliveries=json.loads(evidence['deliveries_json']);pending=json.loads(evidence['pending_json'])
                     discovery=json.loads(evidence['discovery_json'])
                     releases=json.loads(evidence['releases_json'])
-                    for row in deliveries+pending+releases:
+                    unattributed=json.loads(evidence['unattributed_json'])
+                    for row in deliveries+pending+releases+unattributed:
                         row['stale']=timestamp(evidence['sync_at'])<now()-timedelta(minutes=15)
             active_refs = {r['id']:(r['task_id'],r['ownership_epoch'],r['linked_at']) for r in c.execute('SELECT * FROM github_refs WHERE room_id=?',(principal.room_id,))}
             active_refs.update({'commit:'+str(r['id']):(r['task_id'],r['ownership_epoch'],r['linked_at']) for r in c.execute('SELECT * FROM github_commit_refs WHERE room_id=?',(principal.room_id,))})
@@ -464,8 +944,11 @@ class GitHubSync:
                 and r['task_id'] in tasks and not tasks[r['task_id']]['cancelled_at']
                 and r.get('ownership_epoch',0)==tasks[r['task_id']]['ownership_epoch']==active_refs[r['ref_id']][1]
                 and r['sync_at'] >= active_refs[r['ref_id']][2]]
+            unattributed = [r for r in unattributed if r.get('task_id') is None
+                or (r['task_id'] in tasks and not tasks[r['task_id']]['cancelled_at']
+                    and r.get('ownership_epoch',0)==tasks[r['task_id']]['ownership_epoch'])]
             snapshot={'connection':dict(conn) if conn else None,'deliveries':deliveries,'releases':releases,'github_events':events,
-                      'github_pending':pending,'github_discovery':discovery}
+                      'github_pending':pending,'github_discovery':discovery,'github_unattributed':unattributed}
             if len(json.dumps(snapshot).encode())>MAX_SNAPSHOT_BYTES: raise GitHubError('GitHub snapshot exceeds output budget')
             return snapshot
 

@@ -45,6 +45,9 @@ class EventStore:
             'github_connections': ('git', 'room_id'), 'github_refs': ('git', 'id'),
             'github_commit_refs': ('git', 'id'), 'github_release_refs': ('git', 'id'),
             'github_evidence': ('git', 'room_id'), 'delivery_suggestions': ('git','id'),
+            'git_branches': ('git', 'id'), 'git_deliveries': ('git', 'id'),
+            'git_conflict_blocks': ('git', 'id'), 'git_overlap_overrides': ('git', 'id'),
+            'git_merge_requests': ('git', 'id'), 'git_write_audit': ('git', 'id'),
             'project_members': ('identity', 'member_id'),
         }
         with self.db.connect(write=True) as c:

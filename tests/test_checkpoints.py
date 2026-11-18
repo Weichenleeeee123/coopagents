@@ -213,6 +213,36 @@ class CheckpointTests(unittest.TestCase):
             self.assertIsNone(db.execute('SELECT resolved_at FROM message_requests').fetchone()[0])
             self.assertEqual(db.execute('SELECT COUNT(*) FROM message_replies').fetchone()[0], 1)
 
+    def test_brief_includes_own_git_branches_and_delivery_state_within_budget(self):
+        from coopagents.checkpoints import BRIEF_BYTES
+        task = self.service.tasks.create_task(self.owner['web_token'], 'g', 'Git task', 'src')
+        self.service.tasks.claim_task(self.owner['agent_token'], task['id'])
+        branch = 'coopagents/task-%d-1-git-task' % task['id']
+        base_sha = 'a' * 40
+        with self.service.identity.db.connect(write=True) as db:
+            db.execute('''INSERT INTO git_branches
+                (room_id, task_id, branch, base_sha, ownership_epoch, created_by, request_key, created_at)
+                VALUES (?, ?, ?, ?, 1, ?, ?, ?)''',
+                (self.owner['room_id'], task['id'], branch, base_sha, self.owner['member_id'],
+                 'branch-key', '2026-11-18T00:00:00+00:00'))
+        brief = self.checkpoint(task_id=task['id'])['brief']
+        self.assertEqual(brief['git'], [{'task_id': task['id'], 'branch': branch, 'base_sha': base_sha,
+            'ownership_epoch': 1, 'delivery_state': 'branched', 'pr_number': None, 'pr_url': ''}])
+        with self.service.identity.db.connect(write=True) as db:
+            db.execute('''INSERT INTO git_deliveries
+                (room_id, task_id, ownership_epoch, request_key, branch, head_sha, base_branch,
+                 pr_number, pr_url, state, delivered_by, created_at, updated_at)
+                VALUES (?, ?, 1, ?, ?, ?, ?, 7, ?, 'pr_opened', ?, ?, ?)''',
+                (self.owner['room_id'], task['id'], 'delivery-key', branch, 'b' * 40, 'main',
+                 'https://github.com/acme/demo/pull/7', self.owner['member_id'],
+                 '2026-11-18T00:00:00+00:00', '2026-11-18T00:00:00+00:00'))
+        brief = self.checkpoint(task_id=task['id'])['brief']
+        self.assertEqual(brief['git'][0]['delivery_state'], 'pr_opened')
+        self.assertEqual(brief['git'][0]['pr_number'], 7)
+        self.assertEqual(brief['git'][0]['pr_url'], 'https://github.com/acme/demo/pull/7')
+        self.assertLessEqual(len(json.dumps(brief, ensure_ascii=False).encode('utf-8')), BRIEF_BYTES)
+        self.assertEqual(self.checkpoint(self.peer)['brief']['git'], [])
+
 
 if __name__ == '__main__':
     unittest.main()

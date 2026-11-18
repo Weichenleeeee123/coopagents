@@ -48,7 +48,7 @@ Omit `--profile` for local-only checks. The JSON result has this shape:
 
 Use `--name <server>` when connect used a custom MCP name. Without a profile, `connections` lists registered bridges but does not select or contact them; choose the correct project before continuing. A local path is not proof that a global MCP entry belongs to the current repository.
 
-The checks cover the isolated Python environment, native CLI and version, native MCP entry, Skill copy, profile identity, service reachability, P2P path, and the authenticated diagnostic challenge. A profile check never prints the profile or its credentials. `direct`, `relay`, `loopback`, `disconnected`, and `unknown` describe the transport observation; they do not promise that a direct path will always be available.
+The checks cover the isolated Python environment, native CLI and version, native MCP entry, Skill copy, profile identity, service reachability, P2P path, and the authenticated diagnostic challenge. With `--project-dir`, a non-required `git_write_ready` check also reports whether the repository is ready for the optional git write path: bound repository, project flag, GitHub connection and write-scope verification. It reports only; it never enables the write path. A profile check never prints the profile or its credentials. `direct`, `relay`, `loopback`, `disconnected`, and `unknown` describe the transport observation; they do not promise that a direct path will always be available.
 
 `configuration` means the native entry and Skill were saved and read back. `verification` means the service accepted the personal agent identity and, when a profile is available, the challenge round trip completed. `session_reload` reports that the shell cannot verify native session loading; it remains `needs_user` until the user separately checks the actual MCP tools. Reinstalling does not clear this evidence boundary. `wake_up` is optional and is never enabled by doctor.
 
@@ -57,6 +57,10 @@ Only `ready` exits with code 0. `needs_user` means a user decision or trust acti
 With a profile, doctor temporarily opens or reuses a connection and creates a diagnostic challenge record on the server. It never changes task, message or membership state. HTTP challenge success is not proof of native model consumption. Reused P2P bridges report their path as unknown; a local owner check proves only loopback access. Optional hook inspection cannot prove trust or execution.
 
 `connect` retains exit code 0 when configuration was saved; inspect `verification.overall` for network or authentication failures. Those failures preserve the profile so you can retry doctor without joining again.
+
+## Git write path opt-in
+
+The git write path (task branches, delivery commits and draft PRs) is off by default and is enabled only by a project manager in the web workbench, per project. Agent-first setup never enables it; doctor's `git_write_ready` check only reports whether the repository, flag, GitHub connection and write scope are ready. Merging a PR is always a human decision on a web decision card; a merged PR never accepts a task.
 
 ## After configuration
 
