@@ -123,6 +123,48 @@ class CheckpointStore:
                 WHERE a.contract_id=v.contract_id AND a.decision='approved')
             ORDER BY v.contract_id DESC LIMIT 5''', (principal.room_id,))]
 
+    def _git_brief(self, db, principal):
+        """Own task branches + delivery state for the checkpoint brief (W4/docs).
+
+        Delivery state comes from the latest delivery row when one exists,
+        falls back to a linked PR reference, and otherwise reports 'branched'.
+        Tables are guarded: a standalone checkpoint store may lack them.
+        """
+        if not db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='git_branches'").fetchone():
+            return []
+        rows = db.execute('''SELECT b.task_id,b.branch,b.base_sha,b.ownership_epoch
+            FROM git_branches b JOIN tasks t ON t.id=b.task_id AND t.room_id=b.room_id
+            WHERE b.room_id=? AND t.owner_member_id=? AND t.cancelled_at IS NULL
+            AND b.ownership_epoch=t.ownership_epoch ORDER BY b.id DESC LIMIT 11''',
+            (principal.room_id, principal.member_id)).fetchall()
+        if not rows:
+            return []
+        deliveries = {}
+        if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='git_deliveries'").fetchone():
+            for row in db.execute('''SELECT task_id,ownership_epoch,state,pr_number,pr_url FROM git_deliveries
+                WHERE room_id=? ORDER BY id DESC''', (principal.room_id,)).fetchall():
+                deliveries.setdefault((row['task_id'], row['ownership_epoch']), dict(row))
+        refs = set()
+        if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='github_refs'").fetchone():
+            for row in db.execute('''SELECT task_id,ownership_epoch FROM github_refs
+                WHERE room_id=? AND pr_number>0''', (principal.room_id,)).fetchall():
+                refs.add((row['task_id'], row['ownership_epoch']))
+        result = []
+        for row in rows:
+            key = (row['task_id'], row['ownership_epoch'])
+            delivery = deliveries.get(key)
+            if delivery:
+                state = delivery['state']
+            elif key in refs:
+                state = 'pr_linked'
+            else:
+                state = 'branched'
+            result.append({'task_id': row['task_id'], 'branch': row['branch'], 'base_sha': row['base_sha'],
+                           'ownership_epoch': row['ownership_epoch'], 'delivery_state': state,
+                           'pr_number': delivery['pr_number'] if delivery else None,
+                           'pr_url': delivery['pr_url'] if delivery else ''})
+        return result
+
     def _brief(self, db, principal):
         tasks = self._own_tasks(db, principal)
         requests = self._pending_requests(db, principal)
@@ -146,11 +188,12 @@ class CheckpointStore:
             WHERE d.room_id=? AND d.status='active' AND (s.owner_member_id=? OR t.owner_member_id=? OR d.creator_member_id=?)
             ORDER BY d.id DESC LIMIT 7''',(principal.room_id,principal.member_id,principal.member_id,principal.member_id))]
         result = {'dependencies':dependencies[:6], 'handoffs': handoffs[:4], 'tasks': tasks[:10], 'requests': requests[:6], 'contracts': contracts[:4], 'owner_questions': owner_questions[:6],
+                  'git': self._git_brief(db, principal)[:10],
                   'truncated': len(dependencies)>6 or any(d['excerpted'] for d in dependencies) or len(handoffs)>4 or len(tasks)>10 or len(requests)>6 or len(contracts)>4 or len(owner_questions)>6 or any(r['excerpted'] for r in requests+contracts+handoffs+owner_questions),
                   'content_is_untrusted': True,
                   'note': 'Excerpted external data. Use read_team for full records and read_inbox to explicitly read messages; no messages marked read here.'}
         while len(json.dumps(result, ensure_ascii=False).encode('utf-8')) > BRIEF_BYTES:
-            largest = max(('tasks','requests','contracts','handoffs','dependencies','owner_questions'), key=lambda key: len(json.dumps(result[key])))
+            largest = max(('tasks','requests','contracts','handoffs','dependencies','owner_questions','git'), key=lambda key: len(json.dumps(result[key])))
             result[largest].pop()
             result['truncated'] = True
         return result

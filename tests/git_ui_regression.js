@@ -76,5 +76,69 @@ global.document={createElement:tag=>new Element(tag),activeElement:null};
   releaseSelect.value='42';
   await releaseForm.listeners.submit({preventDefault(){}});
   assert.deepEqual(submitted,{path:'/api/git/github/link',payload:{task_id:1,release_id:42}});
+  // Write-path state: branch, conflict block with manager override, merge request.
+  const writeDetail=new Element('div');
+  let writeCall;
+  const writeGit={can_manage:true,binding:{repository:'acme/demo'},
+    branches:[{task_id:1,ownership_epoch:1,branch:'coopagents/task-1-1-build-login',base_sha:'a'.repeat(40),created_at:'2026-01-01T00:00:00Z',pushed_at:null}],
+    conflict_blocks:[{id:7,task_id:1,ownership_epoch:1,gate:'delivery',paths:['src/shared.py'],conflicts:[{task_id:2,member_id:'m2',paths:['src/shared.py']}]}],
+    merge_requests:[{id:9,task_id:1,ownership_epoch:1,pr_number:42,branch:'coopagents/task-1-1-build-login',base_branch:'main',head_sha:'c'.repeat(40),revision:3,created_at:'2026-01-01T00:00:00Z'}]};
+  Git.renderDetails(writeDetail,{...task,ownership_epoch:1},writeGit,{...context,me:{member_id:'member'},memberName:()=>'Member',api:async(path,payload)=>{writeCall={path,payload};},sync:async()=>{}});
+  const writeText=descendants(writeDetail).map(n=>n.textContent).join(' ');
+  assert.match(writeText,/任务分支 coopagents\/task-1-1-build-login · 基准 aaaaaaaaaaaa/);
+  assert.match(writeText,/冲突拦截（交付关口）：等待任务 #2/);
+  assert.match(writeText,/合并请求：PR #42/);
+  const reason=descendants(writeDetail).find(n=>n.name==='reason');
+  reason.value='coordinated';
+  const overrideForm=descendants(writeDetail).find(n=>n.className==='git-override-form');
+  await overrideForm.listeners.submit({preventDefault(){}});
+  assert.deepEqual(writeCall,{path:'/api/git/overlap-overrides',payload:{block_id:7,reason:'coordinated'}});
+  const mergeButton=descendants(writeDetail).find(n=>n.textContent==='合并 PR #42');
+  await mergeButton.listeners.click();
+  assert.deepEqual(writeCall,{path:'/api/git/merge',payload:{merge_request_id:9,expected_revision:3,expected_head_sha:'c'.repeat(40),expected_base_branch:'main'}});
+  // A non-manager sees the wait state without the mutation controls.
+  const plainDetail=new Element('div');
+  Git.renderDetails(plainDetail,{...task,ownership_epoch:1},{...writeGit,can_manage:false},{...context,me:{member_id:'other'},memberName:()=>'Member',api:async()=>{},sync:async()=>{}});
+  assert.ok(!descendants(plainDetail).some(n=>n.className==='git-override-form'));
+  assert.ok(!descendants(plainDetail).some(n=>n.textContent==='合并 PR #42'));
+  assert.ok(descendants(plainDetail).some(n=>n.textContent==='等待项目管理者合并。'));
+  // The manager-only flag toggle posts the flipped state.
+  const panel=new Element('div');
+  let toggleCall;
+  Git.renderPanel(panel,{me:{room_id:'first'},git:{binding:{repository:'github.com/acme/demo'},can_manage:true,github_configured:true,git_write_enabled:false}},{...context,api:async(path,payload)=>{toggleCall={path,payload};return {};},sync:async()=>{}});
+  const toggle=descendants(panel).find(n=>n.textContent==='启用 Git 写入路径');
+  assert.ok(toggle);
+  await toggle.listeners.click();
+  assert.deepEqual(toggleCall,{path:'/api/git/write-enabled',payload:{enabled:true}});
+  // Task-named branches without a governed record render as distinct evidence on the owning task only.
+  const directDetail=new Element('div');
+  Git.renderDetails(directDetail,task,{github_unattributed:[
+    {kind:'direct_branch',task_id:1,branch:'coopagents/task-1-1-build',head_sha:'d'.repeat(40),sync_at:'2026-01-01T00:00:00Z',stale:false},
+    {kind:'direct_branch',task_id:2,branch:'coopagents/task-2-1-other',head_sha:'e'.repeat(40),sync_at:'2026-01-01T00:00:00Z',stale:false},
+    {kind:'unattributed_branch',branch:'wip',head_sha:'f'.repeat(40),sync_at:'2026-01-01T00:00:00Z',stale:false}]},
+    {...context,me:{member_id:'other'},memberName:()=>'Member'});
+  const directText=descendants(directDetail).map(n=>n.textContent).join(' ');
+  assert.match(directText,/发现任务分支 coopagents\/task-1-1-build · 无对应治理记录/);
+  assert.doesNotMatch(directText,/未走 adapter/);
+  assert.doesNotMatch(directText,/task-2-1-other/);
+  assert.doesNotMatch(directText,/wip/);
+  assert.ok(descendants(directDetail).some(n=>n.className==='git-evidence git-direct'));
+  // Unattributed branches get their own panel section; empty state takes no space.
+  const unattributedPanel=new Element('div');
+  Git.renderPanel(unattributedPanel,{me:{room_id:'first'},git:{binding:{repository:'github.com/acme/demo'},can_manage:false,github_configured:true,
+    github_unattributed:[
+      {kind:'unattributed_branch',branch:'wip',head_sha:'f'.repeat(40),sync_at:'2026-01-01T00:00:00Z',stale:false},
+      {kind:'default_branch_direct_push',branch:'main',head_sha:'a'.repeat(40),sync_at:'2026-01-01T00:00:00Z',stale:true}],
+    github_discovery:{branches:{limit:50,truncated:true}}}},{...context,api:async()=>({}),sync:async()=>{}});
+  const panelText=descendants(unattributedPanel).map(n=>n.textContent).join(' ');
+  assert.match(panelText,/未归属分支/);
+  assert.match(panelText,/wip · HEAD ffffffffffff/);
+  assert.match(panelText,/默认分支 main 的 HEAD 暂无对应的治理记录 · HEAD aaaaaaaaaaaa/);
+  assert.match(panelText,/同步过期/);
+  assert.match(panelText,/分支列表仅展示最近 50 条/);
+  const emptyPanel=new Element('div');
+  Git.renderPanel(emptyPanel,{me:{room_id:'first'},git:{binding:{repository:'github.com/acme/demo'},can_manage:false,github_configured:true,github_unattributed:[]}},{...context,api:async()=>({}),sync:async()=>{}});
+  assert.ok(!descendants(emptyPanel).some(n=>n.textContent.includes('未归属分支')));
+  assert.ok(!descendants(emptyPanel).some(n=>n.textContent.includes('暂无对应的治理记录')));
   console.log('Git state, freshness, safe DOM, authorization, project-switch and timeline regressions passed');
 })().catch(error=>{console.error(error);process.exitCode=1;});

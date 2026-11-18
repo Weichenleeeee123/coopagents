@@ -105,7 +105,7 @@ Windsurf was renamed Devin Desktop on 2026-06-02 (Cognition) and the Cascade age
 
 ## Lifecycle checkpoint coverage (code contracts)
 
-The common `policy_for_event` function in `src/collaboration_policy.py` produces the same version, phase, required action identifiers and rendered guidance for service checkpoints and local hook/plugin adapters. A checkpoint retains `checkpoint` and `brief` and adds `policy`; its `policy.version`, `policy.phase`, `policy.required_actions` and `policy.instructions` are workflow context, not execution authority. The current version remains `2026-11-16.1`.
+The common `policy_for_event` function in `src/collaboration_policy.py` produces the same version, phase, required action identifiers and rendered guidance for service checkpoints and local hook/plugin adapters. A checkpoint retains `checkpoint` and `brief` and adds `policy`; its `policy.version`, `policy.phase`, `policy.required_actions` and `policy.instructions` are workflow context, not execution authority. The current version remains `2026-11-18.1`.
 
 | Harness | Generated lifecycle mapping | Deliberate boundary |
 | --- | --- | --- |

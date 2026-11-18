@@ -702,5 +702,145 @@ class DeepseekMcpCheckTests(DoctorTestCase):
         self.assertIn(check['status'], ('skipped', 'needs_user', 'pass', 'unknown'))
 
 
+class GitWriteReadyCheckTests(DoctorTestCase):
+    def repo(self, directory):
+        import subprocess
+        repo = Path(directory) / 'repo'
+        repo.mkdir()
+        env = {key: value for key, value in os.environ.items() if not key.upper().startswith('GIT_')}
+        env.update(GIT_CONFIG_NOSYSTEM='1', GIT_CONFIG_GLOBAL=os.devnull, GIT_TERMINAL_PROMPT='0')
+        subprocess.run(['git', 'init', str(repo)], check=True, capture_output=True, env=env)
+        subprocess.run(['git', '-C', str(repo), 'config', 'user.name', 'Test'], check=True, env=env)
+        subprocess.run(['git', '-C', str(repo), 'config', 'user.email', 'test@example.com'],
+                       check=True, env=env)
+        subprocess.run(['git', '-C', str(repo), 'config', 'commit.gpgsign', 'false'],
+                       check=True, env=env)
+        (repo / 'README.md').write_text('hello\n', encoding='utf-8')
+        subprocess.run(['git', '-C', str(repo), 'add', 'README.md'], check=True, env=env)
+        subprocess.run(['git', '-C', str(repo), 'commit', '-m', 'initial'], check=True,
+                       capture_output=True, env=env)
+        subprocess.run(['git', '-C', str(repo), 'remote', 'add', 'origin',
+                        'https://github.com/acme/demo.git'], check=True, env=env)
+        return repo
+
+    def profile(self, directory):
+        from coopagents.spaces import private_write
+        path = Path(directory) / 'profile.json'
+        private_write(path, {'schema_version': 1, 'origin': 'http://127.0.0.1:8765',
+                             'room_id': 'room-1', 'member_id': 'member-1',
+                             'agent_token': 'agent-secret-value'})
+        return path
+
+    def snapshot(self, **overrides):
+        result = {'binding': {'repository': 'github.com/acme/demo', 'git_write_enabled': 1},
+                  'git_write_enabled': True,
+                  'connection': {'status': 'active', 'write_scope_verified': 1}}
+        result.update(overrides)
+        return result
+
+    def check(self, directory, snapshot, repo=None):
+        def request(origin, path, **kwargs):
+            return snapshot
+        with patch('coopagents.space_runtime.request', side_effect=request):
+            return onboarding_doctor.git_write_ready_check(
+                self.profile(directory), repo or self.repo(directory))
+
+    def test_skipped_without_project_dir(self):
+        with retained_directory() as directory:
+            result = onboarding_doctor.git_write_ready_check(self.profile(directory))
+        self.assertEqual(result['status'], 'skipped')
+
+    def test_pass_when_enabled_verified_and_matching(self):
+        with retained_directory() as directory:
+            result = self.check(directory, self.snapshot())
+        self.assertEqual(result['status'], 'pass')
+        self.assertEqual(result['evidence']['bound_repository'], 'github.com/acme/demo')
+        self.assertTrue(result['evidence']['write_scope_verified'])
+
+    def test_flag_off_reports_needs_user_without_enabling(self):
+        with retained_directory() as directory:
+            result = self.check(directory, self.snapshot(git_write_enabled=False,
+                                 binding={'repository': 'github.com/acme/demo', 'git_write_enabled': 0}))
+        self.assertEqual(result['status'], 'needs_user')
+        self.assertIn('never enables', result['next'])
+
+    def test_missing_binding_and_mismatch(self):
+        with retained_directory() as directory:
+            result = self.check(directory, self.snapshot(binding=None, git_write_enabled=False,
+                                                         connection=None))
+        self.assertEqual(result['status'], 'needs_user')
+        with retained_directory() as directory:
+            result = self.check(directory, self.snapshot(
+                binding={'repository': 'github.com/acme/other', 'git_write_enabled': 1}))
+        self.assertEqual(result['status'], 'fail')
+
+    def test_unverified_scope_and_unreachable_service(self):
+        with retained_directory() as directory:
+            result = self.check(directory, self.snapshot(
+                connection={'status': 'active', 'write_scope_verified': 0}))
+        self.assertEqual(result['status'], 'needs_user')
+        with retained_directory() as directory:
+            def failing(origin, path, **kwargs):
+                raise OSError('unreachable')
+            with patch('coopagents.space_runtime.request', side_effect=failing):
+                result = onboarding_doctor.git_write_ready_check(
+                    self.profile(directory), self.repo(directory))
+        self.assertEqual(result['status'], 'unknown')
+
+    def test_branch_protection_reports_unknown_without_administration_permission(self):
+        with retained_directory() as directory:
+            result = self.check(directory, self.snapshot())
+        protection = result['evidence']['branch_protection']
+        self.assertEqual(protection['status'], 'unknown')
+        self.assertIn('branch-protection', protection['reason'])
+        self.assertIn('human decision', protection['suggestion'])
+        with retained_directory() as directory:
+            def failing(origin, path, **kwargs):
+                raise OSError('unreachable')
+            with patch('coopagents.space_runtime.request', side_effect=failing):
+                result = onboarding_doctor.git_write_ready_check(
+                    self.profile(directory), self.repo(directory))
+        self.assertEqual(result['status'], 'unknown')
+        self.assertEqual(result['evidence']['branch_protection']['status'], 'unknown')
+
+    def test_branch_protection_evidence_present_on_all_early_returns(self):
+        cases = {}
+
+        def skipped(directory):
+            return onboarding_doctor.git_write_ready_check(self.profile(directory))
+
+        def git_missing(directory):
+            with patch('coopagents.onboarding_doctor.shutil.which', return_value=None):
+                return onboarding_doctor.git_write_ready_check(
+                    self.profile(directory), self.repo(directory))
+
+        def invalid_profile(directory):
+            bad = Path(directory) / 'bad-profile.json'
+            bad.write_text('{invalid', encoding='utf-8')
+            return onboarding_doctor.git_write_ready_check(bad, self.repo(directory))
+
+        def invalid_snapshot(directory):
+            return self.check(directory, ['not', 'a', 'dict'])
+
+        cases['skipped'] = (skipped, 'skipped')
+        cases['git_missing'] = (git_missing, 'fail')
+        cases['invalid_profile'] = (invalid_profile, 'unknown')
+        cases['invalid_snapshot'] = (invalid_snapshot, 'unknown')
+        for name, (run, status) in cases.items():
+            with self.subTest(case=name), retained_directory() as directory:
+                result = run(directory)
+            self.assertEqual(result['status'], status)
+            protection = result['evidence']['branch_protection']
+            self.assertEqual(protection['status'], 'unknown')
+            self.assertIn('branch-protection', protection['reason'])
+
+    def test_missing_git_binary_fails(self):
+        with retained_directory() as directory:
+            with patch('coopagents.onboarding_doctor.shutil.which', return_value=None):
+                result = onboarding_doctor.git_write_ready_check(
+                    self.profile(directory), self.repo(directory))
+        self.assertEqual(result['status'], 'fail')
+
+
 if __name__ == '__main__':
     unittest.main()

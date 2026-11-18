@@ -103,10 +103,25 @@ def git_routes(service,sync):
         signature=single_header(request,'x-hub-signature-256')
         return await run_in_threadpool(sync.receive_webhook,delivery,event,signature,body)
 
+    async def merge(request):
+        token=bearer(request)
+        data=await body_object(request,{'merge_request_id':(int,True,None),'preview':(bool,False,False),
+                                        'expected_head_sha':(str,True,None),'expected_base_branch':(str,True,None),
+                                        'expected_revision':(int,True,None)})
+        return await run_in_threadpool(sync.merge_pr,token,**data)
+
+    async def overlap_override(request):
+        token=bearer(request)
+        data=await body_object(request,{'block_id':(int,True,None),'reason':(str,True,None)})
+        return await run_in_threadpool(service.repositories.override_overlap,token,**data)
+
     def endpoint(operation):
         async def handler(request): return await guarded(request,operation)
         return handler
 
-    return [Route('/api/git/github/'+name,endpoint(handler),methods=methods) for name,handler,methods in [
+    routes=[Route('/api/git/github/'+name,endpoint(handler),methods=methods) for name,handler,methods in [
         ('authorize',authorize,['POST']),('finish',finish,['POST']),('callback',callback,['GET']),
         ('link',link,['POST']),('refresh',refresh,['POST']),('webhook',webhook,['POST'])]]
+    routes.extend([Route('/api/git/merge',endpoint(merge),methods=['POST']),
+                   Route('/api/git/overlap-overrides',endpoint(overlap_override),methods=['POST'])])
+    return routes

@@ -5,6 +5,7 @@ import hashlib
 import hmac
 import json
 import unittest
+from unittest.mock import patch
 from uuid import uuid4
 from datetime import timedelta
 
@@ -14,6 +15,7 @@ from coopagents.tasks import TaskStore
 from coopagents.errors import AccessDenied, Conflict, NotFound, ValidationError
 from coopagents.github_app import GitHubError
 from coopagents.github_sync import GitHubSync
+from coopagents.git_workspace import task_branch_name
 from coopagents.repositories import now,timestamp
 
 
@@ -378,6 +380,105 @@ class GitHubSyncTests(unittest.TestCase):
         self.assertEqual(self.sync.reconcile_all(should_stop=lambda:bool(calls)),1)
         self.assertEqual(len(calls),1)
         self.assertEqual(self.sync.process_pending(should_stop=lambda:True),0)
+
+    def task_epoch(self):
+        with self.identity.db.connect() as c:
+            return c.execute('SELECT ownership_epoch FROM tasks WHERE id=?',(self.task['id'],)).fetchone()[0]
+
+    def test_direct_branches_are_classified_without_guessing(self):
+        self.connect()
+        self.sync.associate(self.member['agent_token'],self.task['id'],branch='feature')
+        task_name=task_branch_name(self.task['id'],self.task_epoch(),'Build login')
+        self.app.current['discovered_branches']=[
+            {'branch':'feature','head_sha':'a'*40},
+            {'branch':task_name,'head_sha':'d'*40},
+            {'branch':'wip-experiment','head_sha':'e'*40}]
+        self.sync.refresh(self.owner['web_token'])
+        unattributed=self.sync.snapshot(self.owner['web_token'])['github_unattributed']
+        self.assertEqual([entry['branch'] for entry in unattributed],[task_name,'wip-experiment'])
+        direct=unattributed[0]
+        self.assertEqual(direct['kind'],'direct_branch')
+        self.assertEqual(direct['task_id'],self.task['id'])
+        self.assertEqual(direct['ownership_epoch'],self.task_epoch())
+        self.assertEqual(direct['source'],'direct')
+        self.assertNotIn('author',direct)
+        other=unattributed[1]
+        self.assertEqual(other['kind'],'unattributed_branch')
+        self.assertNotIn('task_id',other)
+        self.assertNotIn('author',other)
+        self.assertEqual(other['head_sha'],'e'*40)
+
+    def test_direct_branch_hidden_for_superseded_epoch_and_cancelled_task(self):
+        self.connect()
+        stale=task_branch_name(self.task['id'],self.task_epoch()+9,'Build login')
+        self.app.current['discovered_branches']=[{'branch':stale,'head_sha':'d'*40}]
+        self.sync.refresh(self.owner['web_token'])
+        self.assertEqual(self.sync.snapshot(self.owner['web_token'])['github_unattributed'],[])
+        current=task_branch_name(self.task['id'],self.task_epoch(),'Build login')
+        self.app.current['discovered_branches']=[{'branch':current,'head_sha':'d'*40}]
+        self.sync.refresh(self.owner['web_token'])
+        self.assertEqual(len(self.sync.snapshot(self.owner['web_token'])['github_unattributed']),1)
+        with self.identity.db.connect(write=True) as c:
+            c.execute('UPDATE tasks SET cancelled_at=? WHERE id=?',(now().isoformat(),self.task['id']))
+        self.assertEqual(self.sync.snapshot(self.owner['web_token'])['github_unattributed'],[])
+
+    def test_default_branch_direct_push_surfaces_only_unknown_heads(self):
+        self.connect()
+        self.app.current['default_branch']='main'
+        self.app.current['default_branch_head_sha']='f'*40
+        self.app.current['discovered_branches']=[{'branch':'main','head_sha':'f'*40}]
+        self.sync.refresh(self.owner['web_token'])
+        unattributed=self.sync.snapshot(self.owner['web_token'])['github_unattributed']
+        self.assertEqual(len(unattributed),1)
+        self.assertEqual(unattributed[0]['kind'],'default_branch_direct_push')
+        self.assertEqual(unattributed[0]['branch'],'main')
+        self.assertEqual(unattributed[0]['head_sha'],'f'*40)
+        self.app.current['branches']['feature']='f'*40
+        self.sync.associate(self.member['agent_token'],self.task['id'],branch='feature')
+        self.sync.refresh(self.owner['web_token'])
+        self.assertEqual(self.sync.snapshot(self.owner['web_token'])['github_unattributed'],[])
+        self.app.current['branches']['feature']='a'*40
+        self.app.current['pull_requests'][0]['head_sha']='f'*40
+        self.sync.refresh(self.owner['web_token'])
+        self.assertEqual(self.sync.snapshot(self.owner['web_token'])['github_unattributed'],[])
+        self.app.current['pull_requests'][0]['head_sha']='b'*40
+        self.app.current['pull_requests'][0]['merge_commit_sha']='f'*40
+        self.sync.refresh(self.owner['web_token'])
+        self.assertEqual(self.sync.snapshot(self.owner['web_token'])['github_unattributed'],[])
+
+    def test_branch_discovery_truncation_is_visible_in_snapshot(self):
+        self.connect()
+        self.app.current['branch_discovery']={'limit':50,'truncated':True}
+        self.sync.refresh(self.owner['web_token'])
+        snapshot=self.sync.snapshot(self.owner['web_token'])
+        self.assertTrue(snapshot['github_discovery']['branches']['truncated'])
+        self.assertEqual(snapshot['github_discovery']['branches']['limit'],50)
+        self.assertEqual(snapshot['github_unattributed'],[])
+
+    def test_malformed_discovery_never_replaces_valid_evidence(self):
+        self.connect()
+        self.app.current['discovered_branches']=[{'branch':'wip','head_sha':'e'*40}]
+        self.sync.refresh(self.owner['web_token'])
+        self.assertEqual(len(self.sync.snapshot(self.owner['web_token'])['github_unattributed']),1)
+        self.app.current['discovered_branches']=[{'branch':'wip','head_sha':'not-a-sha'}]
+        with self.assertRaises(GitHubError): self.sync.refresh(self.owner['web_token'])
+        self.app.current['discovered_branches']=[{'branch':'wip','head_sha':'e'*40}]
+        self.app.current['branch_discovery']={'limit':51,'truncated':False}
+        with self.assertRaises(GitHubError): self.sync.refresh(self.owner['web_token'])
+        self.assertEqual(len(self.sync.snapshot(self.owner['web_token'])['github_unattributed']),1)
+
+    def test_unattributed_evidence_shares_the_output_budget(self):
+        self.connect()
+        self.app.current['discovered_branches']=[{'branch':'wip','head_sha':'e'*40}]
+        self.sync.refresh(self.owner['web_token'])
+        with self.identity.db.connect() as c:
+            row=c.execute('SELECT * FROM github_evidence WHERE room_id=?',(self.owner['room_id'],)).fetchone()
+        base=len((row['deliveries_json']+row['pending_json']+row['discovery_json']+row['releases_json']).encode())
+        total=base+len(row['unattributed_json'].encode())
+        self.assertGreater(total,base)
+        with patch('coopagents.github_sync.MAX_EVIDENCE_BYTES',base+(total-base)//2):
+            with self.assertRaises(GitHubError): self.sync.refresh(self.owner['web_token'])
+        self.assertEqual(len(self.sync.snapshot(self.owner['web_token'])['github_unattributed']),1)
 
 
 if __name__ == '__main__': unittest.main()

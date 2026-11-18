@@ -14,7 +14,7 @@ def binding_page(state, *, app_name='Coopagents', slug=None, settings=None, acti
     titles = {'ready': '连接 GitHub 仓库', 'registered': 'App 已创建，继续选择仓库',
               'error': '连接暂未完成', 'verified': 'GitHub 访问已验证'}
     descriptions = {
-        'ready': '为项目接入只读的 GitHub 交付信息，让队友与 agent 看见同一份进展。',
+        'ready': '为项目接入 GitHub 交付信息，让队友与 agent 看见同一份进展。写入能力只在项目管理者启用后才可用。',
         'registered': '接下来前往 GitHub，为这个 App 选择需要接入的测试仓库。',
         'error': '这次授权未能完成。请返回接入流程重新发起，再到 GitHub 确认。',
         'verified': '请回到项目工作台，确认并完成本次仓库连接。'}
@@ -78,8 +78,8 @@ p{margin:0}a,button{-webkit-tap-highlight-color:transparent}p.description{color:
 <h1 id="page-title">''' + titles[state] + '''</h1><p class="description">''' + descriptions[state] + '''</p>''' + detail + '''
 <div class="status">''' + status + '''</div><div class="details"><div class="row"><div class="label">GitHub App</div><div class="value">''' + escape(app_name) + '''</div></div>
 ''' + repository_row + '''
-<div class="row"><div class="label">访问范围</div><div class="value">仅你选择的仓库 · 只读权限<p class="scope">读取代码、PR 与检查状态，不修改仓库内容。</p>
-<div class="permissions"><span>代码</span><span>Pull requests</span><span>Checks / Statuses</span></div></div></div></div>
+<div class="row"><div class="label">访问范围</div><div class="value">仅你选择的仓库 · 读权限 + 受控写入<p class="scope">读取代码、PR 与检查状态。写入（打开草稿 PR、合并 PR）只在项目管理者启用 Git 写入路径后才可用；合并始终由人工确认，任务验收不受合并影响。</p>
+<div class="permissions"><span>代码</span><span>Pull requests</span><span>Checks / Statuses</span><span>写入 · 需项目启用</span></div></div></div></div>
 <p class="hint">''' + hint + '''</p>''' + button + '''<p class="footnote">''' + ('安装后还需回到项目完成连接。' if state == 'registered' else '回到原项目后，连接状态以工作台显示为准。' if state == 'verified'
         else '授权范围由你在 GitHub 上确认。') + '''</p></section>
 <footer class="footer">与你的队友，保持同一份交付上下文。</footer></main></body></html>'''
