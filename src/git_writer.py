@@ -118,18 +118,21 @@ def commit_message(task_id, summary):
 
 
 def find_secret_paths(paths):
-    """Path-name-only secret scan; contents are never read (draft section 7a)."""
+    """Path-name-only secret scan; contents are never read (draft section 7a).
+
+    All comparisons are case-insensitive: filesystems and tools differ in
+    case handling, and a guard that `.ENV` slips past is no guard.
+    """
     offenders = []
     for path in paths:
-        parts = path.split('/')
+        parts = [part.lower() for part in path.split('/')]
         name = parts[-1]
-        lowered = name.lower()
         if (parts[0] in ('.coopagents', '.ssh')
                 or name == '.env' or name.startswith('.env.')
-                or lowered.endswith(('.pem', '.key'))
-                or lowered.startswith('credentials')
+                or name.endswith(('.pem', '.key'))
+                or name.startswith('credentials')
                 or name.startswith('id_rsa')
-                or any('secret' in part.lower() for part in parts)):
+                or any('secret' in part for part in parts)):
             offenders.append(path)
     return offenders
 

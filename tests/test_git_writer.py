@@ -111,6 +111,13 @@ class BranchNamingTests(unittest.TestCase):
         self.assertEqual(len(flagged), 10)
         self.assertEqual(find_secret_paths(['src/app.py', 'docs/env.md', 'config.envx']), [])
 
+    def test_secret_path_scan_is_case_insensitive(self):
+        flagged = find_secret_paths(['.ENV', '.Env.production', 'a/.ENV.local', 'keys/ID_RSA',
+                                     'KEYS/Id_Rsa.Pub', 'CREDENTIALS.json', 'CERT.PEM', 'CERT.Key',
+                                     '.COOPAGENTS/token', '.SSH/id_ed25519', 'My-Secret-Plan.md'])
+        self.assertEqual(len(flagged), 11)
+        self.assertEqual(find_secret_paths(['src/app.py', 'docs/ENV.md', 'config.ENVX']), [])
+
 
 class GitWriterCommandTests(unittest.TestCase):
     def setUp(self):
