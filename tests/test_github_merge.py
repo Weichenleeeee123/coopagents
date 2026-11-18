@@ -48,11 +48,15 @@ class MergeFakeProvider(WriteFakeProvider):
         self.fail_merge = False
         self.fail_error = None
         self.flip_on_fail = False
+        self.recovery_error = None
 
     def repository_state(self, installation_id, repository_id, full_name, branches=(),
                          pr_numbers=(), commit_shas=(), release_ids=()):
         if self.fail:
             raise GitHubError('GitHub unavailable', retryable=True)
+        if self.recovery_error is not None and self.merges:
+            # Fail only reads after a merge attempt: the recovery recheck.
+            raise self.recovery_error
         self.verify_repository(installation_id, repository_id, full_name)
         return {'repository_id': 11, 'full_name': 'acme/demo', 'branches': {},
                 'pull_requests': [deepcopy(self.pr)], 'commits': {},
@@ -300,6 +304,38 @@ class GitHubAppMergeTests(unittest.TestCase):
             raise AssertionError(path)
         state = self.app(handler).repository_state(22, 11, 'acme/demo', pr_numbers=(42,))
         self.assertIs(state['pull_requests'][0]['draft'], True)
+
+    def test_repository_state_summary_carries_draft_flag(self):
+        sha = 'c' * 40
+        for draft, expected in ((True, True), (False, False), (None, False)):
+            with self.subTest(draft=draft):
+                summary = {
+                    'number': 42, 'state': 'open', 'merged': False, 'mergeable': True,
+                    'merge_commit_sha': None, 'user': {'login': 'author-login'},
+                    'head': {'sha': sha, 'ref': 'feature', 'repo': {'id': 11}},
+                    'base': {'ref': 'main', 'repo': {'id': 11}}}
+                if draft is not None:
+                    summary['draft'] = draft
+
+                def handler(request, summary=summary):
+                    path = request.url.path
+                    if path.endswith('/access_tokens'):
+                        return httpx.Response(201, json=read_token_response())
+                    if path == '/app/installations/22':
+                        return httpx.Response(200, json={'id': 22, 'app_id': 123})
+                    if path == '/repositories/11':
+                        return httpx.Response(200, json={'id': 11, 'full_name': 'acme/demo'})
+                    if path == '/repos/acme/demo/pulls' and 'state=open' in str(request.url):
+                        return httpx.Response(200, json=[summary])
+                    if path == '/repos/acme/demo/releases':
+                        return httpx.Response(200, json=[])
+                    if path == '/repos/acme/demo/branches':
+                        return httpx.Response(200, json=[])
+                    # Any detail read would prove the summary was promoted.
+                    raise AssertionError(path)
+                state = self.app(handler).repository_state(22, 11, 'acme/demo')
+                self.assertEqual(len(state['pull_requests']), 1)
+                self.assertIs(state['pull_requests'][0]['draft'], expected)
 
 
 class MergeFixture:
@@ -670,6 +706,25 @@ class MergePrTests(MergeFixture, unittest.TestCase):
             self.merge()
         self.assertIn('refused', str(caught.exception))
         self.assertNotIn('HTTP', str(caught.exception))
+
+    def test_merge_refusal_diagnostics_survive_failing_recovery_read(self):
+        self.app.fail_merge = True
+        self.app.fail_error = GitHubError('GitHub refused the merge', status=405,
+                                          detail='Pull Request is still a draft')
+        self.app.recovery_error = GitHubError('GitHub temporarily unavailable', retryable=True)
+        with self.assertRaises(Conflict) as caught:
+            self.merge()
+        self.assertIn('405', str(caught.exception))
+        self.assertIn('Pull Request is still a draft', str(caught.exception))
+        self.assertNotIn('temporarily unavailable', str(caught.exception))
+        self.assertEqual(self.merge_request_row()['state'], 'pending')
+
+    def test_recovery_read_access_denied_still_propagates(self):
+        self.app.fail_merge = True
+        self.app.recovery_error = GitHubAccessDenied(403)
+        with self.assertRaises(GitHubAccessDenied):
+            self.merge()
+        self.assertEqual(self.merge_request_row()['state'], 'pending')
 
     def test_put_refusal_blocks_but_concurrent_merge_recovers(self):
         self.app.fail_merge = True

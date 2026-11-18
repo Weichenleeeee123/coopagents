@@ -615,8 +615,15 @@ class GitHubSync:
             # below must carry the HTTP status and GitHub's message when the
             # refusal came from the merge PUT.
             status, detail = error.status, error.detail
-            state = self.app.repository_state(connection['installation_id'], connection['repository_id'],
-                                              connection['full_name'], pr_numbers=(request['pr_number'],))
+            try:
+                state = self.app.repository_state(connection['installation_id'], connection['repository_id'],
+                                                  connection['full_name'], pr_numbers=(request['pr_number'],))
+            except GitHubError:
+                # The recovery read failed: fall back to the captured refusal
+                # diagnostics instead of letting the read's generic error
+                # replace them. GitHubAccessDenied is not a GitHubError, so a
+                # revoked-access read still propagates as before.
+                state = None
             prs = state.get('pull_requests') if isinstance(state, dict) else None
             pr = next((item for item in prs if isinstance(item, dict) and item.get('number') == request['pr_number']),
                       None) if isinstance(prs, list) else None

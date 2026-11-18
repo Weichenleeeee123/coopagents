@@ -96,6 +96,10 @@ class GitHubAppTests(unittest.TestCase):
         with self.assertRaises(GitHubError) as caught: app.request('GET','/app','token')
         self.assertEqual(caught.exception.detail,'abc'+'x'*195)
         self.assertEqual(caught.exception.status,409)
+        app=self.app(lambda r:httpx.Response(405,json={'message':'a\nb\x00c\td\re\x7ff\x85g\x9bh'}))
+        with self.assertRaises(GitHubError) as caught: app.request('GET','/app','token')
+        self.assertEqual(caught.exception.detail,'abcdefgh')
+        self.assertEqual(caught.exception.status,405)
 
     def test_rest_reconciliation_checks_current_head_and_missing_fork_checks(self):
         seen=[]

@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import re
 import time
+import unicodedata
 from urllib.parse import quote, urlencode, urlsplit
 
 from .errors import AccessDenied, ValidationError
@@ -161,7 +162,7 @@ class GitHubApp:
                     if response.status_code<200 or response.status_code>=300:
                         detail=result.get('message','') if isinstance(result,dict) else ''
                         if not isinstance(detail,str): detail=''
-                        detail=''.join(char for char in detail[:200] if ord(char)>=32)
+                        detail=''.join(char for char in detail[:200] if unicodedata.category(char)!='Cc')
                         raise GitHubError(retryable=response.status_code>=500,
                             status=response.status_code,detail=detail)
                     if not isinstance(result,(dict,list)): raise GitHubError('GitHub response is invalid')
