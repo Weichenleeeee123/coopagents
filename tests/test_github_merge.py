@@ -349,6 +349,21 @@ class MergePrTests(MergeFixture, unittest.TestCase):
         self.assertEqual(again['state'], 'merged')
         self.assertEqual(len(self.app.merges), 1)
 
+    def test_preview_of_already_merged_pr_writes_nothing(self):
+        self.app.pr['merged'] = True
+        self.app.pr['state'] = 'closed'
+        self.app.pr['merge_commit_sha'] = 'd' * 40
+        before_request = self.merge_request_row()
+        before_delivery = self.delivery_row()
+        preview = self.merge(preview=True)
+        self.assertTrue(preview['preview'])
+        self.assertTrue(preview['already_merged'])
+        self.assertEqual(preview['merge_commit_sha'], 'd' * 40)
+        self.assertIsNone(preview['api_call'])
+        self.assertEqual(self.app.merges, [])
+        self.assertEqual(self.merge_request_row(), before_request)
+        self.assertEqual(self.delivery_row(), before_delivery)
+
     def test_merge_requires_manager_web_token(self):
         with self.assertRaises(AccessDenied):
             self.merge(token=self.member['agent_token'])

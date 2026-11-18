@@ -501,7 +501,8 @@ class GitHubSync:
         Verifies preconditions against live GitHub state, then merges with a
         merge commit guarded by the expected head SHA. A merged PR never
         accepts the task (D6); acceptance stays a separate human act. Preview
-        runs the live precondition reads and describes the PUT without merging.
+        runs the live precondition reads and describes the PUT without merging,
+        and never writes — including when the PR is already merged.
         """
         positive_id(merge_request_id)
         if type(preview) is not bool:
@@ -533,6 +534,13 @@ class GitHubSync:
         if pr is None:
             raise Conflict('PR is no longer visible to the App; re-check it on GitHub')
         if pr.get('merged'):
+            if preview:
+                return {'preview': True, 'merge_request_id': request['id'], 'task_id': request['task_id'],
+                        'pr_number': request['pr_number'], 'pr_url': request['pr_url'],
+                        'head_sha': request['head_sha'], 'base_branch': pr.get('base_branch') or request['base_branch'],
+                        'already_merged': True, 'merge_commit_sha': pr.get('merge_commit_sha') or '',
+                        'api_call': None, 'checks': pr.get('checks', []), 'statuses': pr.get('statuses', []),
+                        'protection': None, 'blocked': False, 'reasons': []}
             with self.db.connect(write=True) as c:
                 return self._mark_merged(c, request, pr.get('merge_commit_sha') or '', principal.member_id)
         base = pr.get('base_branch') or request['base_branch']
