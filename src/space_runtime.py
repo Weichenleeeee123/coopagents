@@ -447,6 +447,7 @@ def main(argv=None):
     sub = commands.add_parser('connect', help='Register this profile with Claude Code or Codex, install the skill and verify')
     sub.add_argument('--tool', required=True, choices=['claude', 'codex', 'codex-desktop'])
     sub.add_argument('--profile', required=True)
+    sub.add_argument('--workflow-tools', action='store_true', help='Connect with the full task and delivery tool set')
     sub.add_argument('--name', help='MCP server name (default coopagents_<room>)')
     sub.add_argument('--cli', help='Full path of the claude or codex command when PATH has none or a broken one')
     sub.add_argument('--wake', action='store_true', help='Also install wake-up hooks for the repository folder')
@@ -502,7 +503,7 @@ def main(argv=None):
                 from .space_connect import connect, resolve_tool
                 resolve_tool(args['tool'])
                 connected = connect(args['tool'], args['profile'], name=args['name'], cli=args['cli'],
-                                    wake=args['wake'], project_dir=args['project_dir'])
+                                    wake=args['wake'], project_dir=args['project_dir'], workflow_tools=args['workflow_tools'])
                 print(json.dumps(connected))
                 return 0
             if command == 'join' and args.pop('invitation_code_stdin'):

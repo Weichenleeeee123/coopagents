@@ -41,7 +41,8 @@ class Connect(unittest.TestCase):
                 self.assertEqual((result['config'], result['verified']), ('added', True))
                 self.assertEqual(result['server'], 'coopagents_e12dd599')
                 registered = json.loads(self.state.read_text())['coopagents_e12dd599']
-                self.assertEqual(registered, [sys.executable, '-m', 'coopagents.space_bridge', '--profile', str(self.profile)])
+                self.assertEqual(registered, [sys.executable, '-m', 'coopagents.space_bridge', '--messages-only', '--profile', str(self.profile)])
+                self.assertEqual(result['tool_scope'], 'messages')
                 self.assertIn('new %s session' % ('Claude Code' if tool == 'claude' else 'Codex'), result['next'])
                 skill = Path(result['skill_path'])
                 self.assertTrue((skill / 'SKILL.md').read_text(encoding='utf-8').startswith('---'))
@@ -50,6 +51,12 @@ class Connect(unittest.TestCase):
                 if tool == 'codex':
                     self.assertEqual(result['discovery']['startup_timeout_sec'], 120)
                     self.assertIs(result['discovery']['required'], True)
+
+    def test_existing_full_connection_is_reused_on_default_connect(self):
+        full = self.run_connect('codex', workflow_tools=True)
+        self.assertEqual(full['tool_scope'], 'workflow')
+        reused = self.run_connect('codex')
+        self.assertEqual((reused['config'], reused['tool_scope']), ('already_configured', 'workflow'))
 
     def test_codex_desktop_alias_resolves_and_connects_as_codex(self):
         self.assertEqual(space_connect.normalize_tool('codex-desktop'), 'codex')
@@ -60,7 +67,7 @@ class Connect(unittest.TestCase):
             self.assertEqual(space_connect.resolve_tool('codex-desktop'), 'codex')
         with patch.dict(os.environ, {'CODEX_THREAD_ID': 'x', 'CLAUDECODE': ''}):
             self.assertEqual(space_connect.resolve_tool('codex-desktop'), 'codex')
-        with patch.dict(os.environ, {'CLAUDECODE': '1'}):
+        with patch.dict(os.environ, {'CLAUDECODE': '1', 'CODEX_THREAD_ID': '', 'CODEX_SESSION_ID': ''}):
             with self.assertRaises(ConnectError):
                 space_connect.resolve_tool('codex-desktop')
         self.assertEqual(space_connect.skills_root('codex-desktop'), space_connect.skills_root('codex'))

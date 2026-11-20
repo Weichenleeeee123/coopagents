@@ -19,6 +19,7 @@ from mcp.client.stdio import StdioServerParameters
 import httpx2
 from mcp.client.streamable_http import streamable_http_client
 
+from coopagents.space_connect import bridge_command
 from coopagents.spaces import private_write
 from coopagents.errors import AccessDenied
 from coopagents.space_bridge import EventCache, Bridge, agent_tool, human_operation, install_wake
@@ -34,6 +35,38 @@ class SpaceBridgeTests(unittest.TestCase):
         self.owner, self.member = self.live.bootstrap()
         self.path = Path('.local/test-evidence') / uuid4().hex / 'profile.json'
         private_write(self.path, dict(schema_version=1, origin=self.live.url, **self.owner))
+
+    def test_new_native_registrations_can_exchange_messages_without_a_board(self):
+        member_profile = self.path.parent / 'teammate' / 'profile.json'
+        private_write(member_profile, dict(schema_version=1, origin=self.live.url, **self.member))
+
+        def client(profile):
+            python, *args = bridge_command(profile.resolve())
+            return Client(StdioServerParameters(command=python, args=args), cache=None)
+
+        async def call(agent, tool, **arguments):
+            result = await agent.call_tool(tool, arguments)
+            self.assertFalse(result.is_error, result.content)
+            return result.structured_content
+
+        async def run():
+            async with client(self.path) as first, client(member_profile) as second:
+                offered = {tool.name for tool in (await first.list_tools()).tools}
+                self.assertEqual(offered, {'whoami', 'list_members', 'send_request', 'read_inbox',
+                                           'reply', 'read_replies', 'read_changes', 'install_wake'})
+                peers = (await call(first, 'list_members'))['members']
+                peer, = [p for p in peers if p['display_name'] == 'Member']
+                sent = await call(first, 'send_request', receiver_member_id=peer['member_id'],
+                                  request_key='home', body='Where is the shared homepage?')
+                incoming, = (await call(second, 'read_inbox'))['requests']
+                self.assertEqual(incoming['id'], sent['id'])
+                self.assertIsNone(incoming['task_id'])
+                await call(second, 'reply', request_id=incoming['id'], context_version=incoming['context_version'],
+                           request_key='home-answer', body='Use /app/home.')
+                answer, = (await call(first, 'read_replies'))['replies']
+                self.assertEqual((answer['request_id'], answer['body']), (sent['id'], 'Use /app/home.'))
+
+        asyncio.run(run())
 
     def test_cache_bounded_durable_and_reset(self):
         self.assertIsNone(bridge_cursor(self.path))

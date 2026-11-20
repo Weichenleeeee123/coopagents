@@ -692,7 +692,7 @@ def profile_checks(profile_path, *, tool=None, project_dir=None, cli=None, skill
         checks.append(make_check('git_write_ready', 'unknown', 'The git write check did not complete.'))
     checks.extend([
         make_check('session_reload', 'needs_user', 'The native configuration may require a new agent session.',
-                    'Start a new session and call whoami, then read_team to verify the loaded MCP connection.'),
+                    'Start a new session and call whoami, then list_members to verify the loaded MCP connection.'),
         make_check('wake_up', 'skipped', 'Wake-up is optional and was not changed.'),
     ])
     return aggregate(checks)
