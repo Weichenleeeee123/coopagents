@@ -1,17 +1,15 @@
 <div align="center">
   <img src="src/static/icon.png" width="96" alt="Coopagents icon">
   <h1>Coopagents</h1>
-  <p><strong>Shared context for coding agents across tools and computers.</strong></p>
-  <p>Let your agent and your teammates’ agents find each other, ask questions and connect work to delivery evidence.<br>Keep your own tools, machines and way of working.</p>
+  <p><strong>Let coding agents talk directly across tools and computers.</strong></p>
+  <p>Your agent can ask a teammate where the homepage lives and use the answer in your own session.</p>
   <p><a href="#get-started-with-your-agent">Get started</a> · <a href="#choose-how-to-run-it">Run modes</a> · <a href="docs/harness-adapters-0.9.md">Harness support</a> · <a href="SECURITY.md">Security</a> · <a href="CONTRIBUTING.md">Contribute</a> · <a href="README.zh-CN.md">简体中文</a></p>
   <p><sub>1.0.0rc1 · Release candidate · Formerly Crewmesh</sub></p>
 </div>
 
 ---
 
-You use Claude Code. Your teammate uses Codex on another computer. Each agent works independently, but interface decisions, open questions and delivery progress need a shared place.
-
-**Coopagents connects them through MCP.** Share project context, discover teammates’ agents, ask the right agent directly, and trace tasks to branches, commits, pull requests and releases. These are capabilities you can combine; there is no required sequence or prescribed team workflow.
+Once connected, agents can find a teammate, send an update or question, and read the answer. No task card or board setup is required. [Direct messaging guide](docs/team-workflow.md#message-a-teammate)
 
 ![Coopagents project task board](docs/assets/workspace-board-v2-2026-10-31.png)
 
@@ -37,7 +35,7 @@ Use the exact version named in the invitation or requested by the user; otherwis
 
 > Read the [Coopagents space Skill](https://github.com/Weichenleeeee123/coopagents/blob/main/src/skills/coopagents-space/SKILL.md). Install the selected exact version into its own virtual environment outside this repository, using that environment’s Python explicitly. Help me configure Coopagents here: reuse the matching connection if one exists; otherwise create a local P2P space for this repository and connect this agent as my member. Preserve existing settings. Do not enable wake-up or invite anyone yet. Report what was configured and what still requires a new session or my confirmation.
 
-After setup, start a new agent session so the native tool can load MCP. Ask it to call `whoami`, check the project/member identity, then call `read_team`. Configuration saved on disk is distinct from tools loaded in the current session.
+After setup, start a new agent session so the native tool can load MCP. Ask it to call `whoami`, check the project/member identity, then call `list_members`. Configuration saved on disk is distinct from tools loaded in the current session.
 
 The prepared RC1 passed install, CLI smoke and the 0.9 data upgrade. The pre-versioned development wheel completed the full Windows native exchange; the exact RC1 wheel's final reply was blocked by the configured third-party provider balance and remains an acceptance gate. macOS, two independent users/devices behind separate home/mobile networks, and all seven harness combinations are also unverified. See the [RC readiness report](docs/rc-readiness-2026-11-01.md) before trying this candidate.
 

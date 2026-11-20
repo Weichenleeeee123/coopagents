@@ -68,7 +68,7 @@ The git write path (task branches, delivery commits and draft PRs) is off by def
 
 ## After configuration
 
-Native tools load new MCP entries in a new session. After `connect`, start a new Claude Code or Codex session and call `whoami`, compare the project and member identity, then call `read_team`. A successful CLI write is not evidence that the old session has loaded the server. For Codex, review and trust a new hook in `/hooks` before using it. Ask explicitly before enabling wake-up; Claude and Codex have different wake behavior.
+Native tools load new MCP entries in a new session. After `connect`, start a new Claude Code or Codex session and call `whoami`, compare the project and member identity, then call `list_members`. A successful CLI write is not evidence that the old session has loaded the server. For Codex, review and trust a new hook in `/hooks` before using it. Ask explicitly before enabling wake-up; Claude and Codex have different wake behavior.
 
 ## Network recovery
 

@@ -1,17 +1,15 @@
 <div align="center">
   <img src="src/static/icon.png" width="96" alt="Coopagents 图标">
   <h1>Coopagents · 同频</h1>
-  <p><strong>让不同工具、不同电脑里的 coding agent 共享上下文。</strong></p>
-  <p>你的 agent 和队友的 agent 能找到彼此、直接提问，把工作关联到交付证据。<br>每个人保留自己的工具、电脑和工作方式。</p>
+  <p><strong>让不同电脑、不同工具里的 agent 直接传话。</strong></p>
+  <p>你的 agent 可以直接问队友首页写在哪里，拿到答复后接着做。</p>
   <p><a href="#让-agent-帮你开始">开始使用</a> · <a href="#选择运行方式">运行方式</a> · <a href="docs/harness-adapters-0.9.md">Harness 支持</a> · <a href="SECURITY.md">安全</a> · <a href="docs/CONTRIBUTING.zh-CN.md">贡献指南</a> · <a href="README.md">English</a></p>
   <p><sub>1.0.0rc1 · Release Candidate · 原名 Crewmesh</sub></p>
 </div>
 
 ---
 
-你用 Claude Code，队友在另一台电脑上用 Codex。每个 agent 都能独立干活，但接口决策、待答问题和交付进度需要一个共享的地方。
-
-**Coopagents 通过 MCP 把它们连起来。** 共享项目上下文、发现队友的 agent、直接向合适的 agent 提问，并从任务追溯到分支、提交、PR 和 Release。这些能力可以自由组合，不要求团队按固定顺序或流程协作。
+接入后，agent 可以查找队友、发送消息并读取答复，无需先建任务卡或配置看板。[直接传话指南](docs/team-workflow.md#message-a-teammate)
 
 ![Coopagents 项目任务看板](docs/assets/workspace-board-v2-2026-10-31.png)
 
@@ -37,7 +35,7 @@
 
 > 阅读 [Coopagents space Skill](https://github.com/Weichenleeeee123/coopagents/blob/main/src/skills/coopagents-space/SKILL.md)。把选定的精确版本安装到仓库外独立的虚拟环境，显式使用该环境的 Python。帮我为当前仓库配置 Coopagents：已有匹配连接就复用，否则为这个仓库创建本机 P2P 空间，并把当前 agent 作为我的成员接入。保留现有配置，暂不开启唤醒，也不邀请别人。分别说明配置了什么，以及哪些步骤仍需要新会话或我的确认。
 
-配置后新开一个 agent 会话，让原生工具加载 MCP。请 agent 调用 `whoami` 核对项目与成员身份，再调用 `read_team`。磁盘上写好了配置，不等于当前会话已经加载工具。
+配置后新开一个 agent 会话，让原生工具加载 MCP。请 agent 调用 `whoami` 核对项目与成员身份，再调用 `list_members`。磁盘上写好了配置，不等于当前会话已经加载工具。
 
 准备好的 RC1 已通过安装、CLI smoke 和 0.9 数据升级。预版本开发 wheel 完成了 Windows 原生双向流程；精确 RC1 wheel 的最终回复被第三方模型余额不足阻断，仍属验收门槛。macOS、两位独立用户/设备及双方家庭/移动 NAT、全部七种 Harness 也未验证。试用该候选前请阅读 [RC 验收报告](docs/rc-readiness-2026-11-01.md)。
 

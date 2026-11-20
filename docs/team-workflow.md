@@ -4,7 +4,20 @@ This guide describes the unreleased team-workflow additions. Each teammate keeps
 
 Start with [agent-first setup](agent-first-setup.md) or the [P2P runtime](agent-hosted-runtime.md). The [workflow acceptance record](team-workflow-acceptance.md) separates automated coverage from native and independent-user validation. For existing domain details, see [dependencies](dependencies.md), [task lifecycle](task-lifecycle.md) and [delivery relationships](git-local-setup.md).
 
-## First useful collaboration
+## Message a teammate
+
+Once both agents are connected, either can share an update or ask a question directly. For example, one member can tell the other which homepage is already under construction before either introduces a duplicate.
+
+1. Call `list_members()` and select the intended teammate by their project member ID.
+2. Call `send_request` with `receiver_member_id`, `request_key` and `body`. Use the same key and payload for a retry. The default context version is 1.
+3. The teammate reads `read_inbox()` and can `reply` with the request ID, its context version, a fresh retry key and the answer.
+4. The sender reads the answer with `read_replies()`. Both agents can continue independent work between reads. Idle delivery to a model depends on the native harness and optional wake configuration.
+
+New native space connections expose identity, member lookup, send/inbox/reply tools, bridge changes and optional wake setup. To expose task tools, use `space_runtime connect --workflow-tools` with the profile and tool options. Use a separate `--name` when a messaging connection already exists. Earlier full registrations keep their existing tools.
+
+Tasks, ownership bindings and checkpoints are optional for this exchange. Use the workflow below when a team wants tracked responsibilities.
+
+## Collaboration on tracked tasks
 
 1. Two people join the same project using their own identities, connect their own native agents and verify the identity returned by the actual native connection. A configured endpoint or successful direct HTTP request establishes less than a successful native tool call. Keep personal credentials and local configuration private.
 2. In the permitted human interface, create a frontend task scoped to `src/ui` and a backend task scoped to `src/api`. Each person's agent claims its own task with a fresh execution `session_key` and retains the returned `ownership_epoch` and task `revision`.
@@ -13,7 +26,7 @@ Start with [agent-first setup](agent-first-setup.md) or the [P2P runtime](agent-
 5. The frontend agent explicitly reads the sent-question reply, uses the answer in its work, then separately reads and resolves the dependency when the answer is sufficient. A receipt establishes a read operation; inspect the resulting implementation to establish actual use.
 6. Inspect the collaboration panel or `read_workflow`. Identity, session/checkpoint observations, addressed delivery, recipient read, reply and requester reply-read are different facts. A completed two-member exchange still does not prove model comprehension or independent-user acceptance.
 
-The daily collaboration policy is shared by the HTTP MCP, P2P bridge and local Git entry points. It calls for startup, blocker and completion checkpoints, current responsibility checks, explicit reply reading, independent work while waiting and human authority for human decisions. Existing transport notes still apply. Registering a session, receiving an invalidation or installing configuration does not prove an idle model will wake. Optional wake hooks remain subject to the [harness support and quota limits](agent-wake.md).
+The daily collaboration policy is shared by the HTTP MCP, P2P bridge and local Git entry points. Direct messages use the member directory, inbox and replies. Task-bound checkpoints add responsibility, dependency and delivery guidance. Existing transport notes still apply. Registering a session, receiving an invalidation or installing configuration does not prove an idle model will wake. Optional wake hooks remain subject to the [harness support and quota limits](agent-wake.md).
 
 ## API conventions
 
