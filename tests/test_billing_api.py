@@ -12,7 +12,7 @@ import unittest
 from unittest.mock import patch
 from uuid import uuid4
 import uvicorn
-from coopagents.api import create_app
+from coopagents.workflow_api import create_app
 from coopagents.billing import BillingCatalog
 from coopagents.billing_config import BillingConfig
 from coopagents.stripe_billing import StripeClient

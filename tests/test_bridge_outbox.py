@@ -116,7 +116,7 @@ class BridgeOutboxTests(unittest.TestCase):
         bridge, remote = self.bridge()
         bridge.messages_only = True
         offered = ['whoami', 'list_members', 'read_team', 'send_request', 'reply', 'read_replies',
-                   'read_inbox', 'claim_task', 'work_brief']
+                   'read_inbox', 'claim_task', 'work_brief', 'find_related', 'share_work', 'remember_choice']
         schemas = [Tool(name=name, input_schema={}) for name in offered]
         remote.list_tools = AsyncMock(return_value=SimpleNamespace(tools=schemas, next_cursor=None))
         server = self.server(bridge)

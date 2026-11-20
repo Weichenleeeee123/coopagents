@@ -53,7 +53,8 @@ class SpaceBridgeTests(unittest.TestCase):
             async with client(self.path) as first, client(member_profile) as second:
                 offered = {tool.name for tool in (await first.list_tools()).tools}
                 self.assertEqual(offered, {'whoami', 'list_members', 'send_request', 'read_inbox',
-                                           'reply', 'read_replies', 'read_changes', 'install_wake'})
+                                           'reply', 'read_replies', 'read_changes', 'install_wake',
+                                           'share_work', 'find_related', 'remember_choice'})
                 peers = (await call(first, 'list_members'))['members']
                 peer, = [p for p in peers if p['display_name'] == 'Member']
                 sent = await call(first, 'send_request', receiver_member_id=peer['member_id'],

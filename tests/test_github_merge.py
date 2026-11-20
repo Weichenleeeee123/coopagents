@@ -15,7 +15,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from starlette.testclient import TestClient
 
-from coopagents.api import create_app
+from coopagents.workflow_api import create_app
 from coopagents.coordination import CoordinationService
 from coopagents.errors import AccessDenied, Conflict, NotFound, ValidationError
 from coopagents.github_app import GitHubAccessDenied, GitHubApp, GitHubError

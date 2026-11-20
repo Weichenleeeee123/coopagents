@@ -10,7 +10,7 @@ from urllib.request import Request, urlopen
 from uuid import uuid4
 
 import uvicorn
-from coopagents.api import create_app
+from coopagents.workflow_api import create_app
 
 
 class LiveService:

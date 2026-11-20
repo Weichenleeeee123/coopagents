@@ -158,7 +158,7 @@ class RealtimeTests(unittest.TestCase):
                         pass
 
     def test_hosted_route_before_mcp_and_public_origin(self):
-        from coopagents.api import create_app
+        from coopagents.workflow_api import create_app
         app = create_app(Path('.local/realtime-tests') / (str(uuid4()) + '.sqlite3'), base_url='http://localhost:8000')
         room = app.state.service.identity.create_room('hosted', 'owner')
         with TestClient(app, base_url='http://localhost:8000') as client:

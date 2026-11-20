@@ -41,8 +41,8 @@ class Connect(unittest.TestCase):
                 self.assertEqual((result['config'], result['verified']), ('added', True))
                 self.assertEqual(result['server'], 'coopagents_e12dd599')
                 registered = json.loads(self.state.read_text())['coopagents_e12dd599']
-                self.assertEqual(registered, [sys.executable, '-m', 'coopagents.space_bridge', '--messages-only', '--profile', str(self.profile)])
-                self.assertEqual(result['tool_scope'], 'messages')
+                self.assertEqual(registered, [sys.executable, '-m', 'coopagents.space_bridge', '--collaboration', '--profile', str(self.profile)])
+                self.assertEqual(result['tool_scope'], 'collaboration')
                 self.assertIn('new %s session' % ('Claude Code' if tool == 'claude' else 'Codex'), result['next'])
                 skill = Path(result['skill_path'])
                 self.assertTrue((skill / 'SKILL.md').read_text(encoding='utf-8').startswith('---'))
@@ -51,6 +51,12 @@ class Connect(unittest.TestCase):
                 if tool == 'codex':
                     self.assertEqual(result['discovery']['startup_timeout_sec'], 120)
                     self.assertIs(result['discovery']['required'], True)
+
+    def test_previous_messages_flag_still_matches_the_same_profile(self):
+        command = space_connect.bridge_command(self.profile)
+        legacy = [part if part != '--collaboration' else '--messages-only' for part in command]
+        self.assertTrue(space_connect._matches(legacy, command))
+        self.assertFalse(space_connect._matches(legacy, command[:-1] + ['another-profile']))
 
     def test_existing_full_connection_is_reused_on_default_connect(self):
         full = self.run_connect('codex', workflow_tools=True)
