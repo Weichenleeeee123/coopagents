@@ -274,7 +274,7 @@ def local_diagnostics(profile_path, transport_status=None, *, observed_at=None, 
     if hook_paths is None:
         hook_paths = []
         if tool:
-            from .space_wake import TOOLS, normalize_tool, settings_path
+            from .wake_hook_settings import TOOLS, normalize_tool, settings_path
             try:
                 normalized = normalize_tool({'codex-cli': 'codex', 'claude-code': 'claude'}.get(tool, tool))
                 for scope in ('project', 'user') if normalized in TOOLS else ():

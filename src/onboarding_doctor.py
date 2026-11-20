@@ -710,8 +710,10 @@ def _read_hook_settings(path):
 
 def wake_check(tool, profile_path, project_dir=None):
     """Inspect hook files only; never initialize wake state or grant native trust."""
-    from .space_wake import (TOOLS as WAKE_TOOLS, _command_is_ours, _ours, hook_command,
-                             hook_process, normalize_tool as normalize_wake_tool, settings_path)
+    from .wake_hook_settings import (
+        TOOLS as WAKE_TOOLS, hook_command, hook_process, managed_hook_command,
+        managed_hook_group, normalize_tool as normalize_wake_tool, settings_path,
+    )
     tool = normalize_wake_tool(tool) if isinstance(tool, str) else tool
     if tool not in WAKE_TOOLS or not profile_path:
         return make_check('wake_up', 'skipped', 'Wake-up is optional; no profile and tool were selected.')
@@ -730,7 +732,7 @@ def wake_check(tool, profile_path, project_dir=None):
             for group in groups:
                 if not isinstance(group, dict):
                     continue
-                found = found or _ours(group)
+                found = found or managed_hook_group(group)
                 if any(isinstance(hook, dict) and hook.get('command') == expected
                        and hook.get('type') == 'command'
                        and (not require_async or hook.get('asyncRewake') is True)
@@ -753,7 +755,7 @@ def wake_check(tool, profile_path, project_dir=None):
                 if not isinstance(definition, dict):
                     continue
                 command = definition.get('command', '')
-                found = found or _command_is_ours(command)
+                found = found or managed_hook_command(command)
                 if command == expected:
                     matched.add(event)
         return found, matched
@@ -777,7 +779,7 @@ def wake_check(tool, profile_path, project_dir=None):
             for group in groups:
                 if not isinstance(group, dict):
                     continue
-                found = found or _ours(group)
+                found = found or managed_hook_group(group)
                 if any(isinstance(hook, dict) and hook.get('command') == expected_command
                        and hook.get('args') == expected_args
                        for hook in group.get('hooks', [])):
