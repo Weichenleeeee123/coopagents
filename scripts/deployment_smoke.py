@@ -67,7 +67,7 @@ def main():
         bootstrap = secrets.token_urlsafe(32)
         environment = evidence / 'app.env'
         environment.write_text('\n'.join((
-            'COOPAGENTS_MODE=self-hosted', 'COOPAGENTS_HOST=0.0.0.0', 'COOPAGENTS_PUBLIC_URL=' + origin,
+            'COOPAGENTS_MODE=workflow', 'COOPAGENTS_HOST=0.0.0.0', 'COOPAGENTS_PUBLIC_URL=' + origin,
             'COOPAGENTS_TRUSTED_PROXIES=' + proxy_ip, 'COOPAGENTS_BOOTSTRAP_SECRET=' + bootstrap)) + '\n', encoding='utf-8')
         docker('run', '-d', '--name', app, '--network', identifier, '--network-alias', 'app',
                '--read-only', '--tmpfs', '/tmp', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges:true',

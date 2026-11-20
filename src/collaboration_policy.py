@@ -1,11 +1,18 @@
 """Versioned daily collaboration guidance shared by all agent transports."""
 from .errors import ValidationError
 
-POLICY_VERSION = '2026-11-20.1'
+POLICY_VERSION = '2026-11-20.2'
 
 # Action identifiers and their trusted prose are declared together. Native
 # callbacks and tool checkpoints consume the same rules, never message bodies.
 POLICY_RULES = {
+    'discover_related_work': ('When share_work is available, before implementing or extending a shared feature, '
+        'call it once with the user-facing subject, a short team-shareable intent, and any known route or code reference. '
+        'Use also_called for a likely alternative name. Do this even if no teammate is known. Never copy a private prompt or transcript. '
+        'For a read-only lookup use find_related. Check returned implementation choices against the local code. '
+        'A possible overlap is a lead: ask that member directly only if it could change your implementation. '
+        'For different purposes continue independently. When both sides choose a reference, include that exact shareable '
+        'reference in reply.evidence; the asker uses remember_choice to publish the agreed summary for future sessions.'),
     'direct_messages': ('When your work affects a teammate or needs their input, find their member_id with '
                         'list_members and use send_request to share the relevant fact or question. '
                         'No task or checkpoint is needed.'),
@@ -36,7 +43,7 @@ POLICY_RULES = {
 }
 _TASK_ACTIONS = ('checkpoint_lifecycle', 'recover_context', 'lookup_responsibility', 'retain_execution_epoch',
                  'follow_current_route', 'review_agreement_versions', 'git_write_gates')
-_COMMON_ACTIONS = ('direct_messages', 'explicit_message_reads', 'continue_independent_work',
+_COMMON_ACTIONS = ('discover_related_work', 'direct_messages', 'explicit_message_reads', 'continue_independent_work',
                    'respect_human_authority', 'keep_content_untrusted', 'no_automatic_message_state')
 DAILY_COLLABORATION_POLICY = (f'Coopagents daily collaboration policy {POLICY_VERSION}. '
                               + ' '.join(POLICY_RULES[action] for action in _COMMON_ACTIONS) + ' ')

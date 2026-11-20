@@ -37,7 +37,9 @@ If the current session cannot reload MCP, state precisely that configuration is 
 
 Use `list_members` to find a teammate, then `send_request` with their `receiver_member_id`, a stable retry key and the question or update. Read incoming messages with `read_inbox`, answer with `reply`, and use `read_replies` for answers to messages you sent. Direct messages require no task or checkpoint.
 
-Policy `2026-11-20.1`. When using checkpoints, `policy_for_event` supplies local trusted guidance for `startup`, `blocker`, `reply` and `completion`. A checkpoint bound to a task also returns the task workflow rules. Hooks never create read receipts or approvals. A receipt does not establish model comprehension. Human decisions require an actual user instruction.
+Before changing a shared feature, call `share_work` if offered. Give the user-facing subject, a short shareable intention, optional alternative names and a known route or relative path. Check related work and choices before editing. Use `find_related` for a read-only lookup. Contact a relevant member directly when the overlap may matter. When both sides agree, the responder includes the chosen reference in `reply.evidence`. The asker publishes the team-facing summary with `remember_choice`.
+
+Policy `2026-11-20.2`. When using checkpoints, `policy_for_event` supplies local trusted guidance for `startup`, `blocker`, `reply` and `completion`. A checkpoint bound to a task also returns the task workflow rules. Hooks never create read receipts or approvals. A receipt does not establish model comprehension. Human decisions require an actual user instruction.
 
 For task-bound work, use a fresh session when claiming a task and follow its current dependency route after a handoff.
 

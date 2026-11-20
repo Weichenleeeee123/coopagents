@@ -1,5 +1,4 @@
 """Shared collaboration service independent of transport and account hosting."""
-from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -10,10 +9,10 @@ from .messages import MessageStore
 from .contracts import ContractStore
 from .context import ContextStore, QUERY_SCHEMA
 from .capabilities import CapabilityStore
-from .protocol import SEND_REQUEST_SCHEMA, fields, validate
+from .protocol import SEND_REQUEST_SCHEMA, fields, ServiceOperations
 
 
-class CoordinationService:
+class CoordinationService(ServiceOperations):
     def __init__(self, database_path, github_app=None):
         path = Path(database_path)
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -117,6 +116,10 @@ class CoordinationService:
                 'release_id': (int, False, None)}),
             'read_context': ('any', self.read_context, QUERY_SCHEMA),
         }
+        from .awareness import AwarenessStore, OPERATIONS
+        self.awareness = AwarenessStore(self.identity)
+        for name, schema in OPERATIONS.items():
+            self.operations[name] = ('agent', getattr(self.awareness, name), schema)
         for name, schema in dependency_schemas(fields).items():
             self.operations[name] = ('any', getattr(self.dependencies, name), schema)
         for name, schema in workflow_schemas().items():
@@ -183,9 +186,6 @@ class CoordinationService:
     def create_task_branch(self, token, task_id, branch, base_sha, request_key, session_key=None, ownership_epoch=None, preview=False):
         return self.repositories.record_branch(token, task_id, branch, base_sha, request_key, session_key, ownership_epoch, preview)
 
-    def me(self, token):
-        return {'me': asdict(self.identity.authenticate(token)), 'room': self.identity.room_info(token)}
-
     def _base_snapshot(self, token, *, web=True):
         self.identity.authenticate(token, required_kind='web' if web else 'agent')
         result = self.me(token)
@@ -209,10 +209,3 @@ class CoordinationService:
         result['workflow'] = self.team_workflow.read_workflow(token)
         result['server_time'] = datetime.now(timezone.utc).isoformat()
         return result
-
-    def call(self, operation, token, data):
-        kind, method, schema = self.operations[operation]
-        if kind:
-            self.identity.authenticate(token, required_kind=None if kind == 'any' else kind)
-        data = validate(dict(data) if isinstance(data, dict) else data, schema)
-        return method(token, **data) if kind else method(**data)

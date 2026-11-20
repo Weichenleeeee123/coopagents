@@ -1,4 +1,7 @@
 """Shared collaboration operation schemas and strict payload validation."""
+from dataclasses import asdict
+from datetime import datetime, timezone
+
 from .errors import ValidationError
 
 
@@ -34,3 +37,25 @@ SEND_REQUEST_SCHEMA = {
     **fields('request_key body', {'receiver_member_id': None, 'task_id': None}),
     'context_version': (int, False, 1),
 }
+
+
+def _text(value, field, maximum):
+    if not isinstance(value, str) or not 1 <= len(value.strip()) <= maximum:
+        raise ValidationError(f"{field} must contain 1 to {maximum} characters")
+    return value.strip()
+
+
+def _utc_now():
+    return datetime.now(timezone.utc).isoformat()
+
+
+class ServiceOperations:
+    def me(self, token):
+        return {'me': asdict(self.identity.authenticate(token)), 'room': self.identity.room_info(token)}
+
+    def call(self, operation, token, data):
+        kind, method, schema = self.operations[operation]
+        if kind:
+            self.identity.authenticate(token, required_kind=None if kind == 'any' else kind)
+        data = validate(dict(data) if isinstance(data, dict) else data, schema)
+        return method(token, **data) if kind else method(**data)

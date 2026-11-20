@@ -659,7 +659,8 @@ class LocalAdapter:
         if name=='suggest_delivery': return self.request('/api/operations/suggest_delivery',arguments)
         if name=='read_capabilities': return self.request('/api/capabilities')
         if name=='read_context': return self.request('/api/operations/read_context',arguments)
-        if name in ('list_members', 'ask_owner', 'read_replies', 'record_agreement_use', 'work_brief', 'read_workflow', 'request_merge'):
+        from .awareness import OPERATIONS
+        if name in OPERATIONS or name in ('list_members', 'ask_owner', 'read_replies', 'record_agreement_use', 'work_brief', 'read_workflow', 'request_merge'):
             return self.request('/api/operations/'+name, arguments)
         if name not in paths: raise ValidationError('Unsupported coordination tool')
         body = dict(arguments); path = paths[name]
@@ -709,6 +710,8 @@ def create_local_mcp(adapter):
     # Tools that execute local git before calling the service; never forwarded.
     local_tools = {'create_task_branch', 'deliver_task'}
     from .dependencies import schemas as dependency_schemas
+    from .awareness import OPERATIONS
+    schemas.update(OPERATIONS)
     schemas.update(dependency_schemas(fields))
     from .workflow import schemas as workflow_schemas
     from .agreement_usage import SCHEMA as AGREEMENT_USE_SCHEMA

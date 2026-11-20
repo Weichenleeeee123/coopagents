@@ -52,8 +52,8 @@ def _expired(expires_at, now):
 
 
 class IdentityStore:
-    def __init__(self, path):
-        self.db = Database(path)
+    def __init__(self, path, *, workflow=True):
+        self.db = Database(path, workflow=workflow)
 
     def create_room(self, name, owner_name, repository=''):
         name, owner_name = _name(name), _name(owner_name)

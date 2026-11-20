@@ -97,7 +97,7 @@ def local_diagnostics(profile_path, **kwargs):
 
 # Native team workflows remain available through an explicitly full connection.
 MESSAGE_TOOLS = frozenset(('whoami', 'list_members', 'send_request', 'read_inbox', 'reply', 'read_replies',
-                           'read_changes', 'install_wake'))
+                           'read_changes', 'install_wake', 'share_work', 'find_related', 'remember_choice'))
 
 
 class Bridge:
@@ -455,7 +455,7 @@ class Bridge:
                 if (self.messages_only and params.name not in MESSAGE_TOOLS
                         and not (params.name == 'read_team' and self._legacy_directory)):
                     return CallToolResult(is_error=True, content=[TextContent(type='text', text=
-                        'This connection is for messaging. Task tools require a full workflow connection.')])
+                        'This connection exposes collaboration tools. Task tools require a workflow runtime and connection.')])
                 if params.name == 'read_changes':
                     data = params.arguments or {}
                     result = self.local_changes(data)
@@ -685,7 +685,8 @@ def _human_operation(profile, operation, payload_path):
 def main(argv=None):
     parser = argparse.ArgumentParser(description='Private stdio MCP space bridge')
     parser.add_argument('--profile', required=True)
-    parser.add_argument('--messages-only', action='store_true', help='Expose the teammate messaging tools')
+    parser.add_argument('--collaboration', '--messages-only', dest='collaboration', action='store_true',
+                        help='Expose work discovery, implementation choices and direct messages')
     parser.add_argument('--human-operation', choices=sorted(HUMAN_OPERATIONS))
     parser.add_argument('--payload-file')
     args = parser.parse_args(argv)
@@ -700,7 +701,7 @@ def main(argv=None):
         else:
             if args.payload_file:
                 raise ValueError('Payload file requires human operation')
-            asyncio.run(Bridge(args.profile, messages_only=args.messages_only).run())
+            asyncio.run(Bridge(args.profile, messages_only=args.collaboration).run())
         return 0
     except Exception as error:
         print(explain(error) or 'Space bridge failed; verify private profile and runtime health.', file=sys.stderr)

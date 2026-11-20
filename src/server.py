@@ -10,16 +10,13 @@ def main():
     parser.add_argument('--port', type=int, default=os.environ.get('COOPAGENTS_PORT', '8787'))
     parser.add_argument('--database', default=os.environ.get('COOPAGENTS_DATABASE', '.local/coopagents.sqlite3'))
     parser.add_argument('--public-url', default=os.environ.get('COOPAGENTS_PUBLIC_URL'))
-    parser.add_argument('--mode', choices=('self-hosted', 'cloud'), default=os.environ.get('COOPAGENTS_MODE', 'self-hosted'))
+    parser.add_argument('--mode', choices=('self-hosted', 'workflow', 'cloud'), default=os.environ.get('COOPAGENTS_MODE', 'self-hosted'))
     parser.add_argument('--trusted-proxies', default=os.environ.get('COOPAGENTS_TRUSTED_PROXIES', ''))
     args = parser.parse_args()
     if not 1 <= args.port <= 65535:
         parser.error('port must be between 1 and 65535')
     import uvicorn
-    from .api import create_app
-    from .billing_config import load_billing_config
-    from .config import bootstrap_from_env, trusted_proxies, github_oauth_from_env
-    from .github_app import GitHubApp
+    from .config import bootstrap_from_env, trusted_proxies
     from .errors import ValidationError
     try:
         try:
@@ -29,14 +26,19 @@ def main():
         if not local_bind and not args.public_url:
             raise ValueError('Non-loopback binding requires an explicit HTTPS public URL and bootstrap secret')
         proxies = trusted_proxies(args.trusted_proxies)
-        account_config = github_oauth_from_env()
-        billing_config = load_billing_config(args.mode)
-        if billing_config.enabled:
-            account_config['billing_config'] = billing_config
+        from .api import create_app
+        settings = {}
         if args.mode != 'self-hosted':
-            account_config['mode'] = args.mode
-        app = create_app(args.database, public_url=args.public_url, bootstrap_secret=bootstrap_from_env(),
-                         github_app=GitHubApp.from_env(args.public_url), **account_config)
+            from .billing_config import load_billing_config
+            from .config import github_oauth_from_env
+            from .github_app import GitHubApp
+            settings = github_oauth_from_env()
+            settings['mode'] = args.mode
+            settings['github_app'] = GitHubApp.from_env(args.public_url)
+            billing = load_billing_config('cloud' if args.mode == 'cloud' else 'self-hosted')
+            if billing.enabled:
+                settings['billing_config'] = billing
+        app = create_app(args.database, public_url=args.public_url, bootstrap_secret=bootstrap_from_env(), **settings)
     except (ValueError, ValidationError) as error:
         parser.error(str(error))
     uvicorn.run(app, host=args.host, port=args.port, access_log=False,

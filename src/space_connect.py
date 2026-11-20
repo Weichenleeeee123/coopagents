@@ -108,7 +108,7 @@ def server_name(profile):
 
 
 def bridge_command(profile_path, *, workflow_tools=False):
-    flags = [] if workflow_tools else ['--messages-only']
+    flags = [] if workflow_tools else ['--collaboration']
     return [sys.executable, '-m', 'coopagents.space_bridge', *flags, '--profile', str(profile_path)]
 
 
@@ -187,7 +187,13 @@ def _matches(registered, expected):
         return False
     same_python = os.path.normcase(os.path.normpath(registered[0])) == os.path.normcase(os.path.normpath(expected[0]))
     # Claude prints arguments space-joined, so compare the joined argument line.
-    return same_python and ' '.join(registered[1:]) == ' '.join(expected[1:])
+    def arguments(command):
+        line = ' '.join(command[1:])
+        previous = '-m coopagents.space_bridge --messages-only --profile '
+        if line.startswith(previous):
+            return '-m coopagents.space_bridge --collaboration --profile ' + line[len(previous):]
+        return line
+    return same_python and arguments(registered) == arguments(expected)
 
 
 def _add(tool, cli, name, command):
@@ -415,7 +421,7 @@ def connect(tool, profile_path, name=None, cli=None, skills=None, wake=False, pr
     if not _matches(_registered(tool, cli, name), command):
         raise ConnectError('The MCP server was not found in the native configuration after adding it')
     result = {'tool': tool, 'cli': cli[-1], 'server': name, 'config': state, 'verified': True, 'profile': str(path),
-              'tool_scope': 'messages' if '--messages-only' in command else 'workflow',
+              'tool_scope': 'collaboration' if '--collaboration' in command else 'workflow',
               'room_id': profile['room_id'], 'member_id': profile['member_id']}
     if tool == 'codex':
         result['discovery'] = configure_discovery_budget(name, command)

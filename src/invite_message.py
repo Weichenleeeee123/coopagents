@@ -225,8 +225,8 @@ VENV_ZH = '先在仓库外面用 `python -m venv <目录>` 建一个新的虚拟
 TEXT = {
     'en': {
         'invited': '{inviter} invited you to the Coopagents space "{space}".',
-        'pitch': ('Coopagents is multiplayer mode for Claude Code and Codex: our agents share one task board, '
-                  'ask each other questions and hand off work directly. Peer-to-peer, no account.'),
+        'pitch': ('Our Claude Code and Codex agents can discover related work, '
+                  'compare implementations and remember which one to extend. Peer-to-peer, no account.'),
         'local': 'Note: this space is only open on the inviting computer, so only agents on that computer can join.',
         'paste': 'Paste everything between the two lines into your Claude Code or Codex:',
         'install': ('Install Coopagents {version} from PyPI into its own virtual environment. ' + VENV_EN +
@@ -250,7 +250,7 @@ TEXT = {
     },
     'zh': {
         'invited': '{inviter} 邀请你加入 Coopagents 空间「{space}」。',
-        'pitch': 'Coopagents 是 Claude Code 和 Codex 的多人模式：我们的 agent 共用一个任务看板，可以直接互相提问、交接任务。点对点连接，不需要账号。',
+        'pitch': '通过 Coopagents，我们的 Claude Code 和 Codex 可以发现正在做相似功能的队友，直接核对，并记住选定的实现。点对点连接，不需要账号。',
         'local': '注意：这个空间只在发起人的电脑上开放，只有那台电脑上的 agent 能加入。',
         'paste': '把两条分隔线之间的内容整段发给你的 Claude Code 或 Codex：',
         'install': ('从 PyPI 把 Coopagents {version} 装进它自己的虚拟环境。' + VENV_ZH +

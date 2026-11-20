@@ -15,7 +15,7 @@ import urllib.request
 from urllib.parse import urlsplit
 from uuid import uuid4
 
-from .coordination import CoordinationService
+from .collaboration_core import CollaborationService
 from .p2p import member_link, validate_link
 from .spaces import (checked_path, default_state_dir, explain, private_directory, private_write, read_json,
                      read_profile, safe_profile, validate_origin)
@@ -73,6 +73,8 @@ def status(profile_path):
             with member_link(profile) as link:
                 me = request(profile['origin'], '/api/me', token=profile['agent_token'])
                 health = {'room_id': me['me']['room_id'], 'status': 'reachable'}
+                if 'runtime' in me:
+                    health['runtime'] = me['runtime']
                 if link is not None:
                     health['p2p'] = link.path()
         if health['room_id'] != profile['room_id']:
@@ -81,6 +83,8 @@ def status(profile_path):
         # waits. Return the current profile once readiness is authenticated.
         result = safe_profile(read_profile(profile_path), profile_path)
         result['status'] = health['status']
+        if 'runtime' in health:
+            result['runtime'] = health['runtime']
         if 'p2p' in health:
             result['p2p'] = health['p2p']
     except (OSError, ValueError, KeyError, RuntimeError):
@@ -88,11 +92,17 @@ def status(profile_path):
     return result
 
 
-def start(profile_path):
+def start(profile_path, runtime=None):
     from .space_host import owner_lock, set_intent
     if not read_profile(profile_path).get('control_token'):
         raise ValueError('Owner host profile required')
     with owner_lock(profile_path):
+        if runtime is not None:
+            if runtime not in ('collaboration', 'workflow') or status(profile_path)['status'] != 'unreachable' or not runtime_unlocked(profile_path):
+                raise ValueError('Select a runtime only on a stopped space')
+            _, host_path = runtime_paths(profile_path)
+            host = read_json(host_path)
+            private_write(host_path, dict(host, runtime=runtime), update=True)
         set_intent(profile_path, True)
         return _start(profile_path)
 
@@ -127,7 +137,16 @@ def _start(profile_path):
     raise RuntimeError('Runtime did not become ready')
 
 
-def create(name, owner, state_dir, network='p2p', public_url=None, cloudflared=None, relay_urls=None):
+def space_service(path, runtime):
+    if runtime == 'collaboration':
+        return CollaborationService(path)
+    if runtime == 'workflow':
+        from .coordination import CoordinationService
+        return CoordinationService(path)
+    raise ValueError('Unknown space runtime')
+
+
+def create(name, owner, state_dir, network='p2p', public_url=None, cloudflared=None, relay_urls=None, runtime='collaboration'):
     state = private_directory(state_dir)
     profile_path, host_path = runtime_paths(state / 'profile.json')
     if profile_path.exists() or host_path.exists() or (state / 'space.sqlite3').exists():
@@ -151,7 +170,7 @@ def create(name, owner, state_dir, network='p2p', public_url=None, cloudflared=N
     while control_port == port:
         control_port = available_port()
     local = 'http://127.0.0.1:' + str(port)
-    service = CoordinationService(state / 'space.sqlite3')
+    service = space_service(state / 'space.sqlite3', runtime)
     identity = service.identity.create_room(name, owner)
     profile = dict(schema_version=1, origin=public_url or local,
                    room_id=identity['room_id'], member_id=identity['member_id'],
@@ -159,7 +178,7 @@ def create(name, owner, state_dir, network='p2p', public_url=None, cloudflared=N
                    control_origin='http://127.0.0.1:' + str(control_port),
                    control_token=secrets.token_urlsafe(32))
     private_write(profile_path, profile)
-    host = dict(schema_version=1, network=network, local_origin=local,
+    host = dict(schema_version=1, runtime=runtime, network=network, local_origin=local,
                 cloudflared=str(checked_path(cloudflared)) if cloudflared else None)
     if network == 'p2p':
         from .p2p import new_secret
@@ -177,7 +196,7 @@ def serve(profile_path):
     from .tunnels import QuickTunnel
     profile_path, host_path = runtime_paths(profile_path)
     profile, host = read_profile(profile_path), read_json(host_path)
-    service = CoordinationService(profile_path.parent / 'space.sqlite3')
+    service = space_service(profile_path.parent / 'space.sqlite3', host.get('runtime', 'collaboration'))
     principal = service.identity.authenticate(web_credential(profile), required_kind='web')
     if principal.role != 'owner' or principal.room_id != profile['room_id']:
         raise ValueError('Host profile identity does not match')
@@ -400,6 +419,9 @@ def board(profile_path):
     profile = read_profile(profile_path)
     if not profile.get('control_token'):
         raise ValueError('Only the host owner can open its local board')
+    host_path = runtime_paths(profile_path)[1]
+    if host_path.exists() and read_json(host_path).get('runtime', 'collaboration') != 'workflow':
+        raise ValueError('The board is available in the optional workflow runtime')
     return request(profile['control_origin'], '/board/open', token=profile['control_token'], data={})
 
 
@@ -421,12 +443,15 @@ def main(argv=None):
     create_parser.add_argument('--relay-url', dest='relay_urls', action='append', metavar='URL',
                                help='Self-hosted relay URL for peer-to-peer mode; repeatable, up to 4 '
                                     '(default: the public n0 relays)')
+    create_parser.add_argument('--runtime', choices=['collaboration', 'workflow'], default='collaboration')
     create_parser.add_argument('--public-url')
     create_parser.add_argument('--cloudflared')
     connect_options(create_parser)
     for command in ('start', 'status', 'stop', 'board', 'invite', '_serve', 'revoke-invitation', 'revoke-member'):
         sub = commands.add_parser(command)
         sub.add_argument('--profile', required=True)
+        if command == 'start':
+            sub.add_argument('--runtime', choices=['collaboration', 'workflow'])
         if command == 'invite':
             sub.add_argument('--share', action='store_true')
             sub.add_argument('--message', choices=['en', 'zh'],

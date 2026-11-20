@@ -67,12 +67,15 @@ def make_check(identifier, status, summary, next_step='', evidence=None, *, secr
 
 def aggregate(checks):
     checks = [dict(item) for item in checks]
-    required = [item for item in checks if item.get('id') in REQUIRED_CHECKS]
+    required_ids = REQUIRED_CHECKS
+    if any(c['id'] == 'collaboration_lookup' for c in checks):
+        required_ids = (required_ids - {'challenge_round_trip'}) | {'collaboration_lookup'}
+    required = [item for item in checks if item.get('id') in required_ids]
     if any(item.get('status') == 'fail' for item in checks):
         overall = 'blocked'
     elif any(item.get('status') == 'needs_user' for item in checks):
         overall = 'needs_user'
-    elif {item.get('id') for item in required} != REQUIRED_CHECKS or any(item.get('status') != 'pass' for item in required):
+    elif {item.get('id') for item in required} != required_ids or any(item.get('status') != 'pass' for item in required):
         overall = 'unknown'
     else:
         overall = 'ready'
@@ -438,7 +441,7 @@ def _verified_link(profile):
                     link_cm.__exit__(None, None, None)
                     last_error = ValueError('The authenticated identity does not match the private profile')
                 else:
-                    return link_cm, link, me
+                    return link_cm, link, {**me, 'runtime': identity.get('runtime')}
         if attempt == 0:
             time.sleep(2)
     raise last_error
@@ -591,6 +594,7 @@ def profile_checks(profile_path, *, tool=None, project_dir=None, cli=None, skill
                          evidence={'room_id': profile['room_id'], 'member_id': profile['member_id']},
                          secrets=secrets_to_hide)]
     identity_verified = False
+    lightweight = False
     try:
         link_cm, link, me = _verified_link(profile)
         try:
@@ -624,30 +628,42 @@ def profile_checks(profile_path, *, tool=None, project_dir=None, cli=None, skill
 
             if profile.get('control_token'):
                 checks.append(owner_p2p_check(profile))
-            checks.append(repository_binding_check(profile))
+            lightweight = me.get('runtime') == 'collaboration'
+            if lightweight:
+                try:
+                    result = _request_profile(profile, '/api/operations/find_related',
+                                              data={'subject': secrets.token_hex(16)})
+                    if not all(isinstance(result.get(k), list) for k in ('related_work', 'choices')):
+                        raise ValueError('Invalid discovery response')
+                    checks.append(make_check('collaboration_lookup', 'pass', 'Authenticated work discovery responded.'))
+                except Exception:
+                    checks.append(make_check('collaboration_lookup', 'fail', 'The work discovery operation failed.',
+                                             'Verify the host version and personal access.'))
+            else:
+                checks.append(repository_binding_check(profile))
 
-            try:
-                challenge = secrets.token_urlsafe(24)
-                started = _request_profile(profile, '/api/diagnostics/start', data={'challenge': challenge})
-                diagnostic_id = started.get('diagnostic_id') if isinstance(started, dict) else None
-                if not isinstance(diagnostic_id, str) or not diagnostic_id or len(diagnostic_id) > 128:
-                    raise ValueError('Invalid diagnostic id')
-                read = _request_profile(profile, '/api/diagnostics/read', data={'diagnostic_id': diagnostic_id})
-                if (read.get('diagnostic_id') != diagnostic_id or read.get('challenge') != challenge
-                        or not isinstance(read.get('proof'), str) or not 1 <= len(read['proof']) <= 128):
-                    raise ValueError('The diagnostic challenge readback did not match')
-                completed = _request_profile(
-                    profile, '/api/diagnostics/complete',
-                    data={'diagnostic_id': diagnostic_id, 'proof': read.get('proof')})
-                if completed.get('status') != 'completed' or completed.get('diagnostic_id') != diagnostic_id:
-                    raise ValueError('The diagnostic challenge did not complete')
-                checks.append(make_check('challenge_round_trip', 'pass', 'The authenticated diagnostic challenge completed.',
-                                         evidence={'status': 'completed'},
-                                         secrets=secrets_to_hide + (challenge, read.get('proof'))))
-            except Exception:
-                checks.append(make_check('challenge_round_trip', 'fail', 'The diagnostic challenge did not complete.',
-                                         'Retry doctor after the agent identity is reachable; no credential was changed.',
-                                         secrets=secrets_to_hide))
+                try:
+                    challenge = secrets.token_urlsafe(24)
+                    started = _request_profile(profile, '/api/diagnostics/start', data={'challenge': challenge})
+                    diagnostic_id = started.get('diagnostic_id') if isinstance(started, dict) else None
+                    if not isinstance(diagnostic_id, str) or not diagnostic_id or len(diagnostic_id) > 128:
+                        raise ValueError('Invalid diagnostic id')
+                    read = _request_profile(profile, '/api/diagnostics/read', data={'diagnostic_id': diagnostic_id})
+                    if (read.get('diagnostic_id') != diagnostic_id or read.get('challenge') != challenge
+                            or not isinstance(read.get('proof'), str) or not 1 <= len(read['proof']) <= 128):
+                        raise ValueError('The diagnostic challenge readback did not match')
+                    completed = _request_profile(
+                        profile, '/api/diagnostics/complete',
+                        data={'diagnostic_id': diagnostic_id, 'proof': read.get('proof')})
+                    if completed.get('status') != 'completed' or completed.get('diagnostic_id') != diagnostic_id:
+                        raise ValueError('The diagnostic challenge did not complete')
+                    checks.append(make_check('challenge_round_trip', 'pass', 'The authenticated diagnostic challenge completed.',
+                                             evidence={'status': 'completed'},
+                                             secrets=secrets_to_hide + (challenge, read.get('proof'))))
+                except Exception:
+                    checks.append(make_check('challenge_round_trip', 'fail', 'The diagnostic challenge did not complete.',
+                                             'Retry doctor after the agent identity is reachable; no credential was changed.',
+                                             secrets=secrets_to_hide))
         finally:
             link_cm.__exit__(None, None, None)
     except Exception as error:
@@ -686,10 +702,11 @@ def profile_checks(profile_path, *, tool=None, project_dir=None, cli=None, skill
             checks.append(make_check('transport_path', 'unknown', 'The transport path is unknown.'))
             checks.append(make_check('challenge_round_trip', 'skipped', 'Identity verification must pass before the challenge.'))
 
-    try:
-        checks.append(git_write_ready_check(profile_path, project_dir))
-    except Exception:
-        checks.append(make_check('git_write_ready', 'unknown', 'The git write check did not complete.'))
+    if not lightweight:
+        try:
+            checks.append(git_write_ready_check(profile_path, project_dir))
+        except Exception:
+            checks.append(make_check('git_write_ready', 'unknown', 'The git write check did not complete.'))
     checks.extend([
         make_check('session_reload', 'needs_user', 'The native configuration may require a new agent session.',
                     'Start a new session and call whoami, then list_members to verify the loaded MCP connection.'),

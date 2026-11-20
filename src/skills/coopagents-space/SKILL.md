@@ -11,7 +11,9 @@ Carry out the user's requested connection or space operation directly. Detect th
 
 Use `list_members` to find a teammate, then `send_request` with their `receiver_member_id`, a stable retry key and the question or update. Read incoming messages with `read_inbox`, answer with `reply`, and use `read_replies` for answers to messages you sent. Direct messages require no task or checkpoint.
 
-Policy `2026-11-20.1`. When using checkpoints, `policy_for_event` supplies local trusted guidance for `startup`, `blocker`, `reply` and `completion`. A checkpoint bound to a task also returns the task workflow rules. Hooks never create read receipts or approvals. A receipt does not establish model comprehension. Human decisions require an actual user instruction.
+Before changing a shared feature, call `share_work` if offered. Give the user-facing subject, a short shareable intention, optional alternative names and a known route or relative path. Check related work and choices before editing. Use `find_related` for a read-only lookup. Contact a relevant member directly when the overlap may matter. When both sides agree, the responder includes the chosen reference in `reply.evidence`. The asker publishes the team-facing summary with `remember_choice`.
+
+Policy `2026-11-20.2`. When using checkpoints, `policy_for_event` supplies local trusted guidance for `startup`, `blocker`, `reply` and `completion`. A checkpoint bound to a task also returns the task workflow rules. Hooks never create read receipts or approvals. A receipt does not establish model comprehension. Human decisions require an actual user instruction.
 
 For task-bound work, use a fresh session when claiming a task and follow its current dependency route after a handoff.
 
@@ -88,7 +90,7 @@ The running bridge maintains a bounded durable local invalidation cache through 
 
 ## Connection tools
 
-New native space connections default to messaging. On older hosts use `read_team` when `list_members` is unavailable. Use `space_runtime connect --workflow-tools` with the usual profile and tool options when a team needs task tracking. To add that connection alongside a messaging registration, pass a separate `--name`. Existing full registrations keep their tool set.
+New native space connections default to work discovery, implementation choices and messaging. On older hosts use `read_team` when `list_members` is unavailable. Use `space_runtime connect --workflow-tools` with the usual profile and tool options when connecting to a workflow runtime for task tracking. To add that connection alongside a messaging registration, pass a separate `--name`. Existing full registrations keep their tool set.
 
 ## Git write path (opt-in, off by default)
 
@@ -109,7 +111,7 @@ Human actions remain outside ordinary agent MCP discovery. When the actual user 
 
 ## Recover, leave or stop
 
-When the user asks to see the board, the host owner can run `space_runtime board --profile <owner-profile>` and open the returned one-use loopback viewing URL. This is optional and read-only; it is never required for collaboration. Treat the viewing URL as a short-lived private capability. Only the initiator's computer exposes this board in the current version; joining members inspect shared information through their agent. It does not expose personal agent, web or control credentials, and viewing never marks requests read.
+In a workflow runtime, when the user asks to see the board, the host owner can run `space_runtime board --profile <owner-profile>` and open the returned one-use loopback viewing URL. This is optional and read-only; it is never required for collaboration. Treat the viewing URL as a short-lived private capability. Only the initiator's computer exposes this board in the current version; joining members inspect shared information through their agent. It does not expose personal agent, web or control credentials, and viewing never marks requests read.
 
 Use runtime status to distinguish reachable, running and unreachable; for p2p members it also reports whether the path is direct or relayed, and for the owner whether the endpoint is online. A p2p member's local port carries the link: the bridge holds it, and helpers reuse it after verifying the space. If another program occupies that port, report the conflict instead of changing it. Owners can start the retained host profile; joining members must not start a host. P2P profiles never need reconnect. For a changed quick-tunnel address, use the reconnect helper only with the actual user's new trusted origin and expected room ID. It verifies remote room/member identity before updating the private profile. The bridge rereads profile origin and credentials on every reconnect and request, and retries transport with bounded backoff. Authorization denial is a failed connection, never task completion.
 

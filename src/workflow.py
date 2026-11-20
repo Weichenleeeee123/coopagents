@@ -43,6 +43,11 @@ def initialize(db):
         PRIMARY KEY(room_id,member_id,reply_id),
         FOREIGN KEY(member_id,room_id) REFERENCES members(id,room_id),
         FOREIGN KEY(reply_id) REFERENCES message_replies(id))''')
+    if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='message_reply_reads'").fetchone():
+        db.execute("""INSERT OR IGNORE INTO workflow_reply_reads
+            SELECT r.room_id,r.sender_member_id,w.reply_id,w.read_at FROM message_reply_reads w
+            JOIN message_replies y ON y.id=w.reply_id JOIN message_requests r ON r.id=y.request_id
+            WHERE r.task_id IS NULL""")
     for question in db.execute('SELECT * FROM workflow_questions WHERE dependency_id IS NULL').fetchall():
         if question['request_id'] and not db.execute('SELECT 1 FROM workflow_owner_routes WHERE request_id=?',
                                                    (question['request_id'],)).fetchone():

@@ -32,13 +32,14 @@ def report(profile_path):
             result['pending'] = remote_digest(profile_path)['counts']
         except Exception as error:
             result['pending'] = 'unavailable: ' + type(error).__name__
-        team = request(profile['origin'], '/api/operations/read_git_team', token=profile['agent_token'], data={})
+        team = request(profile['origin'], '/api/agent-snapshot', token=profile['agent_token'])
     names = {m['member_id']: m['display_name'] for m in team.get('members', []) if isinstance(m, dict) and 'member_id' in m}
     result['members'] = names
     result['requests'] = [{'id': r['id'], 'from': names.get(r['sender_member_id'], r['sender_member_id']),
                            'to': names.get(r['receiver_member_id'], r['receiver_member_id']), 'created_at': r['created_at'],
                            'read_at': r['read_at'], 'replies': [{'at': y['created_at'], 'body': y['body'][:200]} for y in r['replies']]}
-                          for r in team['requests']]
+                          for r in team.get('requests', [])]
+    result['request_history_in_snapshot'] = 'requests' in team
     return result
 
 

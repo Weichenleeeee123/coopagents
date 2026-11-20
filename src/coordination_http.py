@@ -75,7 +75,9 @@ def coordination_routes(service, *, base_url=None, public_url=None, include_name
                 else:
                     result = await run_in_threadpool(service.reads[read], token)
             else:
-                if operation not in service.operations or service.operations[operation][0] is None:
+                if operation not in service.operations:
+                    raise NotFound('Operation not available in this runtime')
+                if service.operations[operation][0] is None:
                     raise AccessDenied('Bootstrap operations are not available through this adapter')
                 if principal.kind == 'web':
                     expected = origin or str(request.base_url).rstrip('/')
@@ -102,6 +104,10 @@ def coordination_routes(service, *, base_url=None, public_url=None, include_name
                         if key in data and data[key] != value:
                             raise ValidationError('Path and payload differ')
                         data[key] = value
+                # Pre-refactor outboxes may have serialized an explicit null task.
+                if (getattr(service, 'lightweight', False) and operation == 'send_request'
+                        and 'task_id' in data and data['task_id'] is None):
+                    data.pop('task_id')
                 result = await run_in_threadpool(service.call, operation, token, data)
             return JSONResponse(result, headers={'Cache-Control': 'no-store'})
         except (AccessDenied, Conflict, NotFound, ValidationError) as error:
@@ -121,6 +127,15 @@ def coordination_routes(service, *, base_url=None, public_url=None, include_name
             request.scope['coordination_read'] = read
             return await endpoint(request)
         return Route(path, handle, methods=[method])
+
+    if getattr(service, 'lightweight', False):
+        routes = [route('/api/operations/{operation}', 'POST'),
+                  route('/api/me','GET',read='me'), route('/api/snapshot','GET',read='snapshot'),
+                  route('/api/agent-snapshot','GET',read='agent_snapshot'), route('/api/inbox','GET',read='inbox'),
+                  route('/api/members','GET',read='members')]
+        routes.extend(route(path,'POST',operation=name) for path,name in OPERATION_PATHS.items()
+                      if name in service.operations)
+        return routes
 
     routes = [route('/api/operations/{operation}', 'POST'),
               route('/api/agent-snapshot', 'GET', read='agent_snapshot'),
