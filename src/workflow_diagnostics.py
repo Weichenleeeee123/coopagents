@@ -9,6 +9,7 @@ from pathlib import Path
 import re
 import sqlite3
 
+from .bridge_event_cache import EVENT_CACHE_FILENAME
 from .identity import _expired
 from .session_routing import _binding_active, _credential_active, _lease
 from .spaces import read_profile
@@ -268,7 +269,7 @@ def local_diagnostics(profile_path, transport_status=None, *, observed_at=None, 
         cards.append(_card('host_policy', status, {k: host[k] for k in ('desired_running', 'blocked')}, action))
     except (OSError, ValueError, TypeError):
         cards.append(_card('host_policy', 'unknown', {'policy_observed': False}, 'inspect_existing_host'))
-    cards.append(_cache_card(Path(event_cache_path) if event_cache_path else path.with_name('bridge-events.sqlite3'), profile))
+    cards.append(_cache_card(Path(event_cache_path) if event_cache_path else path.with_name(EVENT_CACHE_FILENAME), profile))
     cards.append(_watcher_card(Path(wake_state_path) if wake_state_path else path.with_name('wake-state.sqlite3')))
     if hook_paths is None:
         hook_paths = []

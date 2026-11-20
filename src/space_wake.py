@@ -36,6 +36,7 @@ import time
 from urllib.error import HTTPError
 from uuid import uuid4
 
+from .bridge_event_cache import bridge_cursor
 from .spaces import checked_path, private_directory, protect, read_profile
 
 TOOLS = ('claude', 'codex', 'zcode', 'cursor', 'kimi-code')
@@ -238,22 +239,6 @@ class _Closing:
 
     def __exit__(self, *_):
         self.connection.close()
-
-
-def bridge_cursor(profile_path):
-    """High-water cursor of the bridge's event cache, or None when unavailable."""
-    path = checked_path(profile_path).with_name('bridge-events.sqlite3')
-    if not path.exists():
-        return None
-    try:
-        connection = sqlite3.connect(path.as_uri() + '?mode=ro', uri=True, timeout=1)
-        try:
-            row = connection.execute('SELECT cursor FROM state').fetchone()
-            return row[0] if row else None
-        finally:
-            connection.close()
-    except sqlite3.Error:
-        return None
 
 
 class AuthDenied(Exception):
