@@ -372,7 +372,9 @@ class PolicyGateTests(unittest.TestCase):
         self.assertIn('overlap', rule)
         self.assertIn('human', rule)
         self.assertIn(POLICY_VERSION, DAILY_COLLABORATION_POLICY)
-        self.assertIn('overlap', DAILY_COLLABORATION_POLICY)
+        from coopagents.collaboration_policy import policy_for_event
+        self.assertIn(rule, policy_for_event('completion', task_bound=True)['instructions'])
+        self.assertNotIn(rule, DAILY_COLLABORATION_POLICY)
 
 
 if __name__ == '__main__':

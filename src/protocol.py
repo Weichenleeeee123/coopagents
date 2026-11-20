@@ -28,3 +28,9 @@ def fields(required='', optional=None):
     for key, default in (optional or {}).items():
         result[key] = (int if key in {'before_id', 'ownership_epoch', 'source_request_id', 'task_id', 'after_id', 'limit', 'hours'} else str, False, default)
     return result
+
+
+SEND_REQUEST_SCHEMA = {
+    **fields('request_key body', {'receiver_member_id': None, 'task_id': None}),
+    'context_version': (int, False, 1),
+}
