@@ -69,7 +69,11 @@ TOOL_DESCRIPTIONS = {
     'read_replies': ('Read paginated replies to questions you sent, including answers from another of your sessions. '
                      'Use next_cursor as after_id; has_more requires another page. Records only the exact reply ids '
                      'returned as explicitly read, never resolves a request, approves an agreement or confirms a '
-                     'dependency. Reports the current route and historical owner-question/dependency routes. '
+                     'dependency. If a teammate settled which implementation the team will extend, publish its '
+                     'shareable summary with remember_choice now, using the exact reply_id/request_id and reference '
+                     'from their evidence. Use the existing user-facing subject and current expected_revision. '
+                     'A response or receipt alone is not the team choice. Reports the current route and historical '
+                     'owner-question/dependency routes. '
                      'Historical replies cannot answer the current route or satisfy a current dependency; use read_dependency '
                      'before resolve_dependency. A read receipt is not proof of model comprehension.'),
     'record_agreement_use': ('Explicitly record which approved agreement version your current task execution relies on. '
