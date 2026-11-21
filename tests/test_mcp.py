@@ -29,13 +29,38 @@ class MCPTests(unittest.TestCase):
         self.assertIsNotNone(result.structured_content)
         return result.structured_content
 
+    def test_two_agents_exchange_a_page_location_without_tasks(self):
+        async def run():
+            async with self.client(self.owner['agent_token']) as first, self.client(self.member['agent_token']) as second:
+                directory = await self.call(first, 'list_members', {})
+                self.assertEqual(set(directory), {'members'})
+                recipients = [row['member_id'] for row in directory['members'] if row['display_name'] == 'Member']
+                self.assertEqual(recipients, [self.member['member_id']])
+                question = {'receiver_member_id': recipients[0], 'request_key': 'home-location',
+                            'body': 'Where is the homepage you are building?'}
+                sent = await self.call(first, 'send_request', question)
+                self.assertEqual(sent['context_version'], 1)
+                self.assertIsNone(sent['task_id'])
+                retried = await self.call(first, 'send_request', {**question, 'context_version': 1})
+                self.assertEqual(retried['id'], sent['id'])
+                inbox = await self.call(second, 'read_inbox', {})
+                message, = inbox['requests']
+                self.assertEqual(message['body'], question['body'])
+                await self.call(second, 'reply', {'request_id': message['id'], 'request_key': 'home-answer',
+                                'context_version': message['context_version'], 'body': 'Use /app/home.'})
+                answers = await self.call(first, 'read_replies', {})
+                answer, = answers['replies']
+                self.assertEqual((answer['request_id'], answer['body']), (sent['id'], 'Use /app/home.'))
+                self.assertEqual((await self.call(first, 'read_team', {}))['tasks'], [])
+        asyncio.run(run())
+
     def test_two_client_workflow(self):
         task = self.live.request('POST', '/api/tasks', self.owner['web_token'], {'intent_key': 't', 'title': 'Build', 'scope': 'src'})[1]
         async def run():
             async with self.client(self.owner['agent_token']) as owner, self.client(self.member['agent_token']) as member:
                 tools = (await owner.list_tools()).tools
                 names = {tool.name for tool in tools}
-                self.assertEqual(names, {'lookup_owner', 'create_dependency', 'read_dependency', 'reply_dependency', 'resolve_dependency', 'cancel_dependency', 'whoami', 'read_team', 'read_capabilities', 'read_context', 'read_deliveries', 'suggest_delivery', 'list_assets', 'read_asset', 'read_task_history', 'release_task', 'propose_handoff', 'claim_task', 'register_session', 'report_progress', 'send_request', 'read_inbox', 'acknowledge', 'reply', 'resolve_request', 'propose_contract', 'repo_checkpoint', 'link_delivery', 'checkpoint', 'diagnostic_start', 'diagnostic_read', 'diagnostic_complete', 'ask_owner', 'read_replies', 'record_agreement_use', 'work_brief', 'read_workflow'})
+                self.assertEqual(names, {'lookup_owner', 'create_dependency', 'read_dependency', 'reply_dependency', 'resolve_dependency', 'cancel_dependency', 'whoami', 'list_members', 'read_team', 'read_capabilities', 'read_context', 'read_deliveries', 'suggest_delivery', 'list_assets', 'read_asset', 'read_task_history', 'release_task', 'propose_handoff', 'claim_task', 'register_session', 'report_progress', 'send_request', 'read_inbox', 'acknowledge', 'reply', 'resolve_request', 'propose_contract', 'repo_checkpoint', 'link_delivery', 'checkpoint', 'diagnostic_start', 'diagnostic_read', 'diagnostic_complete', 'ask_owner', 'read_replies', 'record_agreement_use', 'work_brief', 'read_workflow', 'share_work', 'find_related', 'remember_choice'})
                 for tool in tools:
                     props = tool.input_schema.get('properties', {})
                     self.assertNotIn('author', props)
@@ -69,10 +94,10 @@ class MCPTests(unittest.TestCase):
             async with self.client(self.owner['agent_token']) as owner:
                 tools = {tool.name: tool.description for tool in (await owner.list_tools()).tools}
                 self.assertIn('receiver_member_id', tools['send_request'])
-                self.assertIn('delivered to nobody', tools['send_request'])
+                self.assertIn('unassigned', tools['send_request'])
                 self.assertIn('member_id', tools['read_team'])
-                self.assertIn('does not list replies', tools['read_inbox'])
-                self.assertIn('requests[].replies', tools['send_request'])
+                self.assertIn('read_replies', tools['read_inbox'])
+                self.assertIn('read_replies', tools['send_request'])
                 self.assertNotIn('Authenticated room operation', tools['send_request'] + tools['read_team'])
                 addressed = await self.call(owner, 'send_request', {'request_key': 'a', 'receiver_member_id': self.member['member_id'],
                                                                     'context_version': 1, 'body': 'Q'})
@@ -140,6 +165,8 @@ class MCPTests(unittest.TestCase):
             async with self.client(self.owner['agent_token']) as owner, self.client(other['agent_token']) as outsider:
                 await self.call(owner, 'claim_task', {'task_id': task['id']})
                 first, second = await asyncio.gather(self.call(owner, 'read_team', {}), self.call(outsider, 'read_team', {}))
+                directory = await self.call(outsider, 'list_members', {})
+                self.assertEqual([row['member_id'] for row in directory['members']], [other['member_id']])
                 self.assertEqual(first['room']['id'], self.owner['room_id'])
                 self.assertEqual(second['room']['id'], other['room_id'])
                 self.assertEqual(second['me']['member_id'], other['member_id'])

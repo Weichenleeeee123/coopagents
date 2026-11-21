@@ -260,7 +260,7 @@ class Runtime(unittest.TestCase):
             runtime.stop(self.profile_path)
 
     def test_real_supervisor_personal_join_http_websocket_restart(self):
-        created = runtime.create('Test space', 'Owner', self.profile_path.parent, network='local')
+        created = runtime.create('Test space', 'Owner', self.profile_path.parent, network='local', runtime='workflow')
         self.assertEqual(created['p2p']['reason'], 'network_mode_local')
         owner = read_profile(self.profile_path)
         self.assertNotIn(owner['web_token'], json.dumps(created))

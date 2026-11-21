@@ -1,19 +1,9 @@
 """Room-scoped tasks with transactional, exclusive agent ownership."""
-from datetime import datetime, timezone
 import json
 
 from .errors import Conflict, NotFound, ValidationError
 from .task_lifecycle import project_task, task_row, ownership_changed, archive_claim
-
-
-def _text(value, field, maximum):
-    if not isinstance(value, str) or not 1 <= len(value.strip()) <= maximum:
-        raise ValidationError(f"{field} must contain 1 to {maximum} characters")
-    return value.strip()
-
-
-def _utc_now():
-    return datetime.now(timezone.utc).isoformat()
+from .protocol import _text, _utc_now
 
 
 class TaskStore:

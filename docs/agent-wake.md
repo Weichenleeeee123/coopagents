@@ -54,9 +54,14 @@ python -m coopagents.space_wake disable --tool claude|codex --project-dir <repo>
 - **状态文件 `wake-state.sqlite3` 存在 profile 旁边**，不含凭据。`status` 会把已被杀掉的监听标为 `gone`。
 - **hook 命令只含 Python 路径、模块名和 profile 路径**：可执行文件用 Windows 短路径，profile 保留原路径，含空格时加引号。已验证 cmd、PowerShell、Git Bash 都能正确执行。
 
+## 维护入口
+
+维护时，五种工具的 hook 生成、合并和配置备份集中在 `src/wake_hook_settings.py`。接入诊断通过这个模块识别已安装的 hook。`src/space_wake.py` 负责监听、限频和命令行入口。`src/bridge_event_cache.py` 管理桥接事件缓存，监听器通过其中的只读接口检查游标。首次检查时若缓存尚未创建，接口返回 `None`。
+
 ## 验证
 
-`tests/test_space_wake.py` 共 24 项，覆盖：
+`tests/test_space_wake.py` 覆盖以下行为。
+
 - **digest 语义**：不含正文、不写已读、依赖与交接、拒绝网页凭据
 - **唤醒规则**：只唤醒一次、并发认领、限频、合并、启动基线、接管、孤儿与无界面
 - **hook 输出**：Claude 退出码 2 与 stderr，Codex 的 block JSON

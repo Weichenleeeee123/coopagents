@@ -15,7 +15,7 @@ from urllib.error import HTTPError
 from uuid import uuid4
 
 import uvicorn
-from coopagents.api import create_app
+from coopagents.workflow_api import create_app
 
 
 class DeploymentTests(unittest.TestCase):
@@ -82,7 +82,7 @@ class DeploymentTests(unittest.TestCase):
         with patch.dict(os.environ, env, clear=True), patch('sys.argv', ['coopagents']), patch('coopagents.api.create_app', return_value='app') as create, patch('uvicorn.run') as run:
             main()
             config=dict(create.call_args.kwargs)
-            self.assertFalse(config.pop('github_app').enabled)
+            self.assertNotIn('github_app', config)
             self.assertEqual(config, {'public_url': 'https://team.example', 'bootstrap_secret': secret})
             self.assertEqual(run.call_args.kwargs['host'], '0.0.0.0')
             self.assertEqual(run.call_args.kwargs['port'], 9090)

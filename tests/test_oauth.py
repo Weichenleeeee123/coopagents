@@ -52,7 +52,7 @@ class OAuthTests(unittest.TestCase):
                 GitHubOAuth.configured(self.accounts, mode, origin, cid, secret)
     def test_callback_http_redirect_replay_and_failure(self):
         from starlette.testclient import TestClient
-        from coopagents.api import create_app
+        from coopagents.workflow_api import create_app
         from urllib.parse import urlsplit, parse_qs
         app = create_app(Path('.local/c1-tests') / (str(uuid4()) + '.sqlite3'), public_url='https://example.com', mode='cloud', github_client_id='client', github_client_secret='secret')
         with TestClient(app, base_url='https://example.com', follow_redirects=False) as client:
@@ -119,7 +119,7 @@ class OAuthTests(unittest.TestCase):
         import threading
         from concurrent.futures import ThreadPoolExecutor
         from starlette.testclient import TestClient
-        from coopagents.api import create_app
+        from coopagents.workflow_api import create_app
         entered=threading.Barrier(3)
         release=threading.Event()
         def blocked(*args,**kwargs):

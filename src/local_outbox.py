@@ -13,7 +13,7 @@ import time
 from urllib.error import HTTPError, URLError
 
 from .errors import AccessDenied, Conflict, ValidationError
-from .protocol import fields, validate
+from .protocol import SEND_REQUEST_SCHEMA, fields, validate
 from .spaces import checked_path, private_directory, protect
 
 OPERATIONS = frozenset(('ask_owner', 'send_request', 'reply', 'reply_dependency', 'create_dependency'))
@@ -76,7 +76,7 @@ def _payload(operation, arguments):
     from .workflow import schemas as workflow_schemas
     from .dependencies import schemas as dependency_schemas
     schemas = {**workflow_schemas(), **dependency_schemas(fields),
-        'send_request': fields('request_key context_version body', {'receiver_member_id': None, 'task_id': None}),
+        'send_request': SEND_REQUEST_SCHEMA,
         'reply': fields('request_id request_key context_version body', {'evidence': ''})}
     validate(dict(arguments), schemas[operation])  # Validate a copy; never inject defaults into the intent.
     request_key = arguments.get('request_key')

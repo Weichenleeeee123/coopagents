@@ -107,8 +107,9 @@ def server_name(profile):
     return 'coopagents_' + profile['room_id'].replace('-', '')[:8]
 
 
-def bridge_command(profile_path):
-    return [sys.executable, '-m', 'coopagents.space_bridge', '--profile', str(profile_path)]
+def bridge_command(profile_path, *, workflow_tools=False):
+    flags = [] if workflow_tools else ['--collaboration']
+    return [sys.executable, '-m', 'coopagents.space_bridge', *flags, '--profile', str(profile_path)]
 
 
 def _running_paths(name):
@@ -186,7 +187,13 @@ def _matches(registered, expected):
         return False
     same_python = os.path.normcase(os.path.normpath(registered[0])) == os.path.normcase(os.path.normpath(expected[0]))
     # Claude prints arguments space-joined, so compare the joined argument line.
-    return same_python and ' '.join(registered[1:]) == ' '.join(expected[1:])
+    def arguments(command):
+        line = ' '.join(command[1:])
+        previous = '-m coopagents.space_bridge --messages-only --profile '
+        if line.startswith(previous):
+            return '-m coopagents.space_bridge --collaboration --profile ' + line[len(previous):]
+        return line
+    return same_python and arguments(registered) == arguments(expected)
 
 
 def _add(tool, cli, name, command):
@@ -305,7 +312,7 @@ def inspect_configuration(tool, profile_path, name=None, cli=None, skills=None):
         raise failure or ConnectError('No usable native CLI was found')
     if registered is None:
         config = 'missing'
-    elif _matches(registered, command):
+    elif _matches(registered, command) or _matches(registered, bridge_command(path, workflow_tools=True)):
         config = 'matching'
     else:
         config = 'conflict'
@@ -370,7 +377,7 @@ def check_own_environment():
             'outside Windows) without activating it, and run connect with that Python.' % sys.executable)
 
 
-def connect(tool, profile_path, name=None, cli=None, skills=None, wake=False, project_dir=None):
+def connect(tool, profile_path, name=None, cli=None, skills=None, wake=False, project_dir=None, workflow_tools=False):
     tool = normalize_tool(tool)
     if tool not in TOOLS:
         raise ConnectError('Tool must be claude or codex')
@@ -380,7 +387,7 @@ def connect(tool, profile_path, name=None, cli=None, skills=None, wake=False, pr
     name = name or server_name(profile)
     if not NAME_PATTERN.match(name):
         raise ConnectError('Server names may only contain letters, digits, - and _')
-    command = bridge_command(path)
+    command = bridge_command(path, workflow_tools=workflow_tools)
     if tool == 'codex':
         # Codex refuses to read its configuration when CODEX_HOME does not
         # exist yet; create it so the probe below reads an empty config
@@ -400,6 +407,9 @@ def connect(tool, profile_path, name=None, cli=None, skills=None, wake=False, pr
             failure = error
     else:
         raise failure or ConnectError('No usable native CLI was found')
+    if not workflow_tools and _matches(registered, bridge_command(path, workflow_tools=True)):
+        # Reuse pre-existing full registrations without changing their discovery surface.
+        command = bridge_command(path, workflow_tools=True)
     if registered is None:
         _add(tool, cli, name, command)
         state = 'added'
@@ -411,6 +421,7 @@ def connect(tool, profile_path, name=None, cli=None, skills=None, wake=False, pr
     if not _matches(_registered(tool, cli, name), command):
         raise ConnectError('The MCP server was not found in the native configuration after adding it')
     result = {'tool': tool, 'cli': cli[-1], 'server': name, 'config': state, 'verified': True, 'profile': str(path),
+              'tool_scope': 'collaboration' if '--collaboration' in command else 'workflow',
               'room_id': profile['room_id'], 'member_id': profile['member_id']}
     if tool == 'codex':
         result['discovery'] = configure_discovery_budget(name, command)

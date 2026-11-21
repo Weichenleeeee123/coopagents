@@ -1,10 +1,12 @@
 # Agent-hosted space runtime
 
-The runtime hosts the existing Coopagents collaboration core without an account
-service. Every person receives a separate web credential and agent credential.
-MCP exposes the same agent operations as the hosted service. Web management uses
-the person's web credential and an exact Origin header; domain roles continue
-to decide which person may perform each operation.
+New spaces use the lightweight collaboration runtime. The task and board sections below apply to spaces explicitly running `--runtime workflow`. [Discovery, persistence and upgrade](lightweight-collaboration.zh-CN.md).
+
+The default runtime hosts room-scoped work discovery, direct messages and
+implementation choices. Every person receives personal web and agent
+credentials. Choose `--runtime workflow` when a room needs the task lifecycle,
+web board, dependencies or Git delivery tools. Both choices preserve existing
+identity and message data.
 
 From the repository's installed Python environment:
 
@@ -20,6 +22,12 @@ python -m coopagents.space_runtime start --profile <profile from the create outp
 To connect a profile to Claude Code or Codex, run `python -m coopagents.space_runtime connect --tool claude|codex --profile <profile>`.
 It registers the stdio bridge with the native `mcp add` command, reads the entry back to verify it, installs the
 skill and prints JSON with `verified`. A new session of that tool then loads the tools.
+
+New hosts and connections use collaboration tools by default. For an existing
+room that needs task workflows, first restart its owner profile with
+`start --runtime workflow`, then connect each agent with
+`connect --workflow-tools`. Changing the runtime requires a stopped host and applies to
+all members of that room.
 
 For local/P2P owners, successful `connect` also registers private native host
 recovery. On Windows, a command sandbox may terminate the background host when

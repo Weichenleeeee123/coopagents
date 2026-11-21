@@ -220,7 +220,7 @@ class WorkflowDiagnosticTests(unittest.TestCase):
 
     def test_unknown_harness_does_not_inspect_or_claim_codex_hook_configuration(self):
         profile = self.write_profile()
-        with patch('coopagents.space_wake.settings_path', side_effect=AssertionError('Do not guess another host')):
+        with patch('coopagents.wake_hook_settings.settings_path', side_effect=AssertionError('Do not guess another host')):
             result = self.module.local_diagnostics(profile, tool='unknown-native', project_dir=profile.parent)
         hooks = next(d for d in result['diagnostics'] if d['component'] == 'hooks_configuration')
         self.assertEqual(hooks['status'], 'unknown')

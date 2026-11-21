@@ -1,5 +1,7 @@
 # 自托管团队服务
 
+本页的账号工作台使用 `COOPAGENTS_MODE=workflow`。普通空间默认运行轻量协作服务。[默认运行时与升级](lightweight-collaboration.zh-CN.md)
+
 本文是原 README 中账号服务部分的完整保留（2026-10-14 首页改版时迁出）。首页现在只介绍 agent 承载空间；需要团队账号、多项目、网页工作台、Git/GitHub 交付证据或 Docker 部署时看这里。可选的官方云订阅（C2）目前冻结，不再在首页宣传。
 
 ## 启动账号服务

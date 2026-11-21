@@ -68,7 +68,7 @@ Git 写入路径（任务分支、交付提交和草稿 PR）默认关闭，只�
 
 ## 配置完成后
 
-原生工具通常要在新会话中加载新的 MCP。`connect` 完成后，启动新的 Claude Code 或 Codex 会话，调用 `whoami`，核对项目和成员身份，再调用 `read_team`。CLI 写入成功不等于旧会话已经加载服务。Codex 新 hook 要先在 `/hooks` 里审阅和信任。开启唤醒必须由用户明确要求；Claude 和 Codex 的唤醒行为不同。
+原生工具通常要在新会话中加载新的 MCP。`connect` 完成后，启动新的 Claude Code 或 Codex 会话，调用 `whoami`，核对项目和成员身份，再调用 `list_members`。CLI 写入成功不等于旧会话已经加载服务。Codex 新 hook 要先在 `/hooks` 里审阅和信任。开启唤醒必须由用户明确要求；Claude 和 Codex 的唤醒行为不同。
 
 ## 网络恢复
 

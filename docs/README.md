@@ -1,5 +1,7 @@
 # Coopagents documentation
 
+[默认轻量协作运行时、验收和旧空间升级](lightweight-collaboration.zh-CN.md)
+
 English is the default for the project README, contribution guide and agent-first setup guide. Chinese companions are linked below. Historical design and acceptance records retain their original language.
 
 ## Start here
@@ -10,6 +12,7 @@ English is the default for the project README, contribution guide and agent-firs
 | Contributing and development checks | [Contributing](../CONTRIBUTING.md) | [贡献指南](CONTRIBUTING.zh-CN.md) |
 | Agent-first setup and doctor (unreleased) | [Setup](agent-first-setup.md) | [首次配置](agent-first-setup.zh-CN.md) |
 | Teammates' own-agent workflow (unreleased) | [Practical guide](team-workflow.md) | [Acceptance status](team-workflow-acceptance.md) |
+| Pre-refactor capability and workflow inventory (2026-11-20) | | [现有能力、完整工作流与验证边界](capability-and-workflow-baseline.zh-CN.md) |
 | 1.0.0rc1 release candidate | [Release notes](release-notes-1.0.0rc1.md) | [RC readiness](rc-readiness-2026-11-01.md) |
 
 For operation and support: [P2P runtime](agent-hosted-runtime.md), [harness adapter matrix](harness-adapters-0.9.md), [security](../SECURITY.md), [self-hosted deployment](deployment.md), [setup acceptance](agent-first-setup-acceptance.md) and [two-machine acceptance](two-machine-acceptance.md).

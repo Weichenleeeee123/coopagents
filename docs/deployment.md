@@ -1,10 +1,14 @@
 # 自托管部署与运维
 
+基础 Compose 默认部署轻量协作服务。使用下文的网页工作台、任务或账号验收时，设置 `COOPAGENTS_MODE=workflow`。[部署模式与升级](lightweight-collaboration.zh-CN.md)
+
+
 发行版支持单实例服务、SQLite 持久卷和 Caddy HTTPS。实际公网部署目标尚未提供；当前 0.4.0rc1 C2 代码与测试候选版验收见 [C2 报告](commercial-c2-report.md)，历史容器与原生验收事实见 [P4 报告](p4-release-report.md)。需要 Docker Engine / Compose、能解析到服务器的域名及可用的 TCP 80/443 端口。不要直接暴露应用的 8787 端口。
 
+本页的账号工作台部署选择 `COOPAGENTS_MODE=workflow`。新部署默认使用轻量 MCP 协作服务，通过邀请码和各自的 agent 身份加入，不提供网页账号工作台。[默认运行时与模式切换](lightweight-collaboration.zh-CN.md)
 ## 首次部署
 
-1. 下载发行版或克隆仓库。复制 `.env.example` 为 `.env`，把 `COOPAGENTS_DOMAIN` 改成真实域名（仅域名，不带协议或路径）。配置 DNS A / AAAA，确认对应服务器可达。仅配置实际可用的 IPv6 地址。
+1. 下载发行版或克隆仓库。复制 `.env.example` 为 `.env`，把 `COOPAGENTS_MODE` 设为 `workflow`，把 `COOPAGENTS_DOMAIN` 改成真实域名（仅域名，不带协议或路径）。配置 DNS A / AAAA，确认对应服务器可达。仅配置实际可用的 IPv6 地址。
 2. 生成首次账号初始化 / 旧版建房密钥，保存在未提交的 `.local/`。以下 Python 命令在 Windows / Linux 均可执行，使用独占创建，已有文件会拒绝覆盖：
 
 ```bash
@@ -30,7 +34,7 @@ Caddy 自动申请并续期证书。首次签发依赖真实 DNS 和公网端口
 
 | 配置 | 用途 |
 | --- | --- |
-| `COOPAGENTS_MODE` | 默认 `self-hosted`，本地认证不需要官方网络；`cloud` 仅在明确配置 GitHub OAuth 时启用 |
+| `COOPAGENTS_MODE` | 默认 `self-hosted` 启动轻量协作服务；账号工作台和任务管理使用 `workflow`，`cloud` 用于已配置的 GitHub OAuth |
 | `COOPAGENTS_HOST` / `COOPAGENTS_PORT` | 默认 `127.0.0.1:8787`；非回环地址必须同时配置公网模式 |
 | `COOPAGENTS_PUBLIC_URL` | 严格 HTTPS origin，例如 `https://coopagents.example.com`；不接受路径、查询或用户信息 |
 | `COOPAGENTS_BOOTSTRAP_SECRET_FILE` | 公网建房密钥文件；也可配置 `COOPAGENTS_BOOTSTRAP_SECRET`，二者不能同时设置 |

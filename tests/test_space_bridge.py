@@ -19,10 +19,11 @@ from mcp.client.stdio import StdioServerParameters
 import httpx2
 from mcp.client.streamable_http import streamable_http_client
 
+from coopagents.space_connect import bridge_command
 from coopagents.spaces import private_write
 from coopagents.errors import AccessDenied
 from coopagents.space_bridge import EventCache, Bridge, agent_tool, human_operation, install_wake
-from coopagents.space_wake import WakeSetupError
+from coopagents.space_wake import WakeSetupError, bridge_cursor
 from mcp.types import Implementation
 from transport_support import LiveService
 
@@ -35,15 +36,52 @@ class SpaceBridgeTests(unittest.TestCase):
         self.path = Path('.local/test-evidence') / uuid4().hex / 'profile.json'
         private_write(self.path, dict(schema_version=1, origin=self.live.url, **self.owner))
 
+    def test_new_native_registrations_can_exchange_messages_without_a_board(self):
+        member_profile = self.path.parent / 'teammate' / 'profile.json'
+        private_write(member_profile, dict(schema_version=1, origin=self.live.url, **self.member))
+
+        def client(profile):
+            python, *args = bridge_command(profile.resolve())
+            return Client(StdioServerParameters(command=python, args=args), cache=None)
+
+        async def call(agent, tool, **arguments):
+            result = await agent.call_tool(tool, arguments)
+            self.assertFalse(result.is_error, result.content)
+            return result.structured_content
+
+        async def run():
+            async with client(self.path) as first, client(member_profile) as second:
+                offered = {tool.name for tool in (await first.list_tools()).tools}
+                self.assertEqual(offered, {'whoami', 'list_members', 'send_request', 'read_inbox',
+                                           'reply', 'read_replies', 'read_changes', 'install_wake',
+                                           'share_work', 'find_related', 'remember_choice'})
+                peers = (await call(first, 'list_members'))['members']
+                peer, = [p for p in peers if p['display_name'] == 'Member']
+                sent = await call(first, 'send_request', receiver_member_id=peer['member_id'],
+                                  request_key='home', body='Where is the shared homepage?')
+                incoming, = (await call(second, 'read_inbox'))['requests']
+                self.assertEqual(incoming['id'], sent['id'])
+                self.assertIsNone(incoming['task_id'])
+                await call(second, 'reply', request_id=incoming['id'], context_version=incoming['context_version'],
+                           request_key='home-answer', body='Use /app/home.')
+                answer, = (await call(first, 'read_replies'))['replies']
+                self.assertEqual((answer['request_id'], answer['body']), (sent['id'], 'Use /app/home.'))
+
+        asyncio.run(run())
+
     def test_cache_bounded_durable_and_reset(self):
+        self.assertIsNone(bridge_cursor(self.path))
+        self.assertFalse(self.path.with_name('bridge-events.sqlite3').exists())
         cache = EventCache(self.path, self.owner['room_id'], self.owner['member_id'], capacity=3)
         for n in range(1, 6):
             cache.receive({'type': 'events', 'cursor': n, 'events': [dict(id=n, room_id=self.owner['room_id'], topic='tasks', entity_id='1', action='insert', created_at='now')]})
         reopened = EventCache(self.path, self.owner['room_id'], self.owner['member_id'], capacity=3)
         self.assertEqual(reopened.cursor, 5)
+        self.assertEqual(bridge_cursor(self.path), 5)
         self.assertEqual(reopened.read(0, 100)['reset'], 'local_cache_expired')
         self.assertEqual([e['id'] for e in reopened.read(2, 100)['events']], [3, 4, 5])
         reopened.receive({'type':'reset','cursor':8,'reason':'expired_cursor'})
+        self.assertEqual(bridge_cursor(self.path), 8)
         self.assertEqual(reopened.read(5, 100)['reset'], 'expired_cursor')
         self.assertEqual(reopened.read(8, 100)['events'], [])
         self.assertNotIn(self.owner['agent_token'], reopened.path.read_bytes().decode('latin1'))

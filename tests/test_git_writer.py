@@ -267,7 +267,12 @@ class GitWriterCommandTests(unittest.TestCase):
         outside.mkdir()
         (outside / 'evil.txt').write_text('secret\n', encoding='utf-8')
         link = self.repo / 'link'
-        link.symlink_to(outside.resolve(), target_is_directory=True)
+        try:
+            link.symlink_to(outside.resolve(), target_is_directory=True)
+        except OSError as error:
+            if getattr(error, 'winerror', None) == 1314:
+                self.skipTest('Directory symlinks are unavailable to this Windows user.')
+            raise
         self.assertEqual(link.resolve(), outside.resolve())
         self.assertTrue((link / 'evil.txt').is_file())
         writer = GitWriter(self.repo)

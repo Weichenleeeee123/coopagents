@@ -4,7 +4,7 @@ Every operation returns enriched request dictionaries (or a list/page of them).
 Original receiver payload is stored privately for retries after assignment.
 """
 from .errors import AccessDenied, Conflict, NotFound, ValidationError
-from .tasks import _text, _utc_now
+from .protocol import _text, _utc_now
 
 
 def _positive(value, field):
@@ -14,16 +14,23 @@ def _positive(value, field):
 
 
 class MessageStore:
-    def __init__(self, identity_store):
+    def __init__(self, identity_store, *, workflow=True):
+        self.workflow = workflow
         self.db = identity_store.db
         self.resolve = identity_store.resolve
 
     def _request(self, connection, principal, request_id):
         row = connection.execute("SELECT * FROM message_requests WHERE id = ? AND room_id = ?",
                                  (request_id, principal.room_id)).fetchone()
-        if row is None:
+        if row is None or (not self.workflow and row["task_id"] is not None):
             raise NotFound("Request not found")
         return row
+
+    def _linked_dependency(self, connection, request_id):
+        if self.workflow:
+            from .dependencies import linked_request
+            return linked_request(connection, request_id)
+        return None
 
     def _member(self, connection, principal, member_id):
         if not isinstance(member_id, str) or not connection.execute(
@@ -40,18 +47,19 @@ class MessageStore:
         receipt = connection.execute("SELECT read_at, processed_at FROM message_receipts WHERE request_id = ?",
                                      (row["id"],)).fetchone()
         result.update(dict(receipt) if receipt else {"read_at": None, "processed_at": None})
-        from .dependencies import linked_request
-        linked = linked_request(connection, row['id'])
-        if linked:
-            result['dependency_id'] = linked['dependency_id']
-            dep = connection.execute('SELECT status,current_request_id FROM task_dependencies WHERE id=?', (linked['dependency_id'],)).fetchone()
-            result['dependency_route_state'] = ('historical' if dep['current_request_id']!=row['id']
-                else 'closed' if dep['status']!='active' else 'current')
-        from .workflow import request_route_info
-        owner_route = request_route_info(connection, row['id'])
-        if owner_route:
-            result.update(owner_route_state=owner_route['state'], owner_target_task_id=owner_route['target_task_id'],
-                          owner_current_request_id=owner_route['current_request_id'], owner_route_version=owner_route['route_version'])
+        if self.workflow:
+            from .dependencies import linked_request
+            linked = linked_request(connection, row['id'])
+            if linked:
+                result['dependency_id'] = linked['dependency_id']
+                dep = connection.execute('SELECT status,current_request_id FROM task_dependencies WHERE id=?', (linked['dependency_id'],)).fetchone()
+                result['dependency_route_state'] = ('historical' if dep['current_request_id']!=row['id']
+                    else 'closed' if dep['status']!='active' else 'current')
+            from .workflow import request_route_info
+            owner_route = request_route_info(connection, row['id'])
+            if owner_route:
+                result.update(owner_route_state=owner_route['state'], owner_target_task_id=owner_route['target_task_id'],
+                              owner_current_request_id=owner_route['current_request_id'], owner_route_version=owner_route['route_version'])
         result["replies"] = [dict(reply) for reply in connection.execute(
             "SELECT * FROM message_replies WHERE request_id = ? ORDER BY id", (row["id"],))]
         return result
@@ -64,8 +72,9 @@ class MessageStore:
         if row["context_version"] != version:
             raise Conflict("Context version does not match request")
 
-    @staticmethod
-    def _current_owner_route(connection, row):
+    def _current_owner_route(self, connection, row):
+        if not self.workflow:
+            return None
         from .workflow import request_route_info
         route = request_route_info(connection, row['id'])
         if route and not route['current']:
@@ -128,11 +137,14 @@ class MessageStore:
             raise ValidationError("Limit must be an integer from 1 to 50")
         with self.db.connect(write=True) as connection:
             principal = self.resolve(connection, agent_token, required_kind="agent")
-            from .workflow import live_owner_route_sql
+            route_filter = "r.task_id IS NULL"
+            if self.workflow:
+                from .workflow import live_owner_route_sql
+                route_filter = live_owner_route_sql("r")
             rows = connection.execute("""SELECT r.*, d.id AS delivery_id
                 FROM message_deliveries d JOIN message_requests r ON r.id = d.request_id
                 WHERE d.room_id = ? AND d.receiver_member_id = ? AND d.id > ? AND """
-                + live_owner_route_sql('r') + ' ORDER BY d.id LIMIT ?',
+                + route_filter + ' ORDER BY d.id LIMIT ?',
                 (principal.room_id, principal.member_id, after_id, limit)).fetchall()
             now = _utc_now()
             for row in rows:
@@ -169,8 +181,7 @@ class MessageStore:
             row = self._request(connection, principal, request_id)
             self._recipient(principal, row)
             self._current_owner_route(connection, row)
-            from .dependencies import linked_request
-            if linked_request(connection, request_id):
+            if self._linked_dependency(connection, request_id):
                 raise Conflict('Use the dedicated dependency operation for linked requests')
             self._version(row, context_version)
             existing = connection.execute("""SELECT * FROM message_replies
@@ -193,8 +204,7 @@ class MessageStore:
         with self.db.connect(write=True) as connection:
             principal = self.resolve(connection, token)
             row = self._request(connection, principal, request_id)
-            from .dependencies import linked_request
-            if linked_request(connection, request_id):
+            if self._linked_dependency(connection, request_id):
                 raise Conflict('Use the dedicated dependency operation for linked requests')
             if row["sender_member_id"] != principal.member_id:
                 raise AccessDenied("Request sender required")
@@ -226,8 +236,7 @@ class MessageStore:
             from .workflow import request_route_info
             if request_route_info(connection, request_id):
                 raise Conflict('Task responsibility controls this recipient; change the task owner instead')
-            from .dependencies import linked_request
-            if linked_request(connection, request_id):
+            if self._linked_dependency(connection, request_id):
                 raise Conflict('Use the dedicated dependency operation for linked requests')
             self._member(connection, principal, receiver_member_id)
             if row["receiver_member_id"] is not None and row["receiver_member_id"] != receiver_member_id:

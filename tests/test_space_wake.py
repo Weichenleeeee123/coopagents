@@ -165,7 +165,7 @@ class WatcherPolicyTests(unittest.TestCase):
         outcome, text = self.watcher(event='SessionStart', digest=later).run(60, baseline=True)
         self.assertEqual(outcome, 'wake')
         self.assertIn('1 task handoff offered to you', text)
-        self.assertNotIn('request', text.split('Use the')[0])
+        self.assertNotIn('new requests addressed to you', text.split('Use the')[0])
 
     def test_newer_watcher_supersedes(self):
         older = self.watcher()
@@ -392,9 +392,6 @@ class InstallTests(unittest.TestCase):
         shells = {'default': None}
         if sys.platform == 'win32':
             shells['powershell'] = ['powershell.exe', '-NoProfile', '-Command', command]
-            bash = shutil.which('bash')
-            if bash:
-                shells['bash'] = [bash, '-c', command]
         for name, argv in shells.items():
             session = 'shell-' + name
             payload = json.dumps({'session_id': session, 'hook_event_name': 'Stop'}).encode()

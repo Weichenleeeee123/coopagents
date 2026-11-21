@@ -3,6 +3,7 @@
 services:
   app:
     environment:
+      COOPAGENTS_MODE: workflow
       COOPAGENTS_GITHUB_APP_ID: ${COOPAGENTS_GITHUB_APP_ID:?Set the GitHub App ID}
       COOPAGENTS_GITHUB_APP_CLIENT_ID: ${COOPAGENTS_GITHUB_APP_CLIENT_ID:?Set the GitHub App client ID}
       COOPAGENTS_GITHUB_APP_CLIENT_SECRET_FILE: /run/secrets/github_client_secret

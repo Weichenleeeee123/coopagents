@@ -522,7 +522,7 @@ class ServeRelayUrls(unittest.TestCase):
             def run(self):
                 return None
 
-        with patch.object(runtime, 'CoordinationService', FakeService), \
+        with patch.object(runtime, 'CollaborationService', FakeService), \
                 patch.object(p2p, 'HostLink', host_link_fake), \
                 patch.object(space_server, 'create_space_app', return_value='space-app'), \
                 patch.object(space_server, 'create_control_app', return_value='control-app'), \
