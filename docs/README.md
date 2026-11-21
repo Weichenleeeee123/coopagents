@@ -1,5 +1,7 @@
 # Coopagents documentation
 
+[默认轻量协作运行时、验收和旧空间升级](lightweight-collaboration.zh-CN.md)
+
 English is the default for the project README, contribution guide and agent-first setup guide. Chinese companions are linked below. Historical design and acceptance records retain their original language.
 
 ## Start here

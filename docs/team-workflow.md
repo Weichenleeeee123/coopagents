@@ -13,7 +13,7 @@ Once both agents are connected, either can share an update or ask a question dir
 3. The teammate reads `read_inbox()` and can `reply` with the request ID, its context version, a fresh retry key and the answer.
 4. The sender reads the answer with `read_replies()`. Both agents can continue independent work between reads. Idle delivery to a model depends on the native harness and optional wake configuration.
 
-New native space connections expose identity, member lookup, send/inbox/reply tools, bridge changes and optional wake setup. To expose task tools, use `space_runtime connect --workflow-tools` with the profile and tool options. Use a separate `--name` when a messaging connection already exists. Earlier full registrations keep their existing tools.
+New native space connections also expose `share_work`, `find_related` and `remember_choice` alongside identity, messages, bridge changes and optional wake setup. [Default runtime](lightweight-collaboration.zh-CN.md). On a workflow host, to expose task tools, use `space_runtime connect --workflow-tools` with the profile and tool options. Use a separate `--name` when a messaging connection already exists. Earlier full registrations keep their existing tools.
 
 Tasks, ownership bindings and checkpoints are optional for this exchange. Use the workflow below when a team wants tracked responsibilities.
 

@@ -1,31 +1,19 @@
 <div align="center">
   <img src="src/static/icon.png" width="96" alt="Coopagents icon">
   <h1>Coopagents</h1>
-  <p><strong>Let coding agents talk directly across tools and computers.</strong></p>
-  <p>Your agent can ask a teammate where the homepage lives and use the answer in your own session.</p>
+  <p><strong>Discover when teammates are building the same feature.</strong></p>
+  <p>Agents compare implementations directly and leave the chosen route for the next session.</p>
   <p><a href="#get-started-with-your-agent">Get started</a> · <a href="#choose-how-to-run-it">Run modes</a> · <a href="docs/harness-adapters-0.9.md">Harness support</a> · <a href="SECURITY.md">Security</a> · <a href="CONTRIBUTING.md">Contribute</a> · <a href="README.zh-CN.md">简体中文</a></p>
   <p><sub>1.0.0rc1 · Release candidate · Formerly Crewmesh</sub></p>
 </div>
 
 ---
 
-Once connected, agents can find a teammate, send an update or question, and read the answer. No task card or board setup is required. [Direct messaging guide](docs/team-workflow.md#message-a-teammate)
+## How collaboration works
 
-![Coopagents project task board](docs/assets/workspace-board-v2-2026-10-31.png)
+Before building a shared feature, an agent publishes a short intention and checks what teammates are already working on. A second agent building the same homepage can discover the first even when they chose different files. They can compare routes in a direct exchange and record the implementation they agree to extend. A later session looking up the homepage receives that choice and its code reference.
 
-<sub>The self-hosted workbench, captured from the real application with synthetic demo data. The current UI is Chinese. This is separate from the optional host-local, read-only P2P board. [Screenshot provenance](docs/brand-assets.md).</sub>
-
-## What you can do
-
-| Capability | What it gives your team |
-| --- | --- |
-| Shared context | Project agreements, scoped context queries, shared files and source/freshness information. Pending proposals stay separate from effective decisions. |
-| Members and agents | Find teammates’ registered tools, sessions and capability evidence. A connection indicator does not claim that a model is active or has read a message. |
-| Direct collaboration | Send requests, reply and track reading, processing and resolution separately. |
-| Tasks | Claim work, report progress and see dependencies in a shared board. |
-| Delivery evidence | Follow task associations to Git objects and inspect their sources. The graph shows evidenced relationships, not an invented complete commit history. |
-
-People retain the decisions that require their authority: creating tasks, approving agreements, accepting handoffs and changing membership. Ordinary agent MCP tools do not expose those operations. An agent can perform a human operation only when its user explicitly asks, using that user’s separate credential.
+The default service starts identity, discovery, messaging and recovery. Active intentions expire after six hours. Implementation choices survive restarts. Agents share short descriptions and references, with no task setup or repository scanning. The matcher uses labels and optional aliases, so different wording can miss a match. [Workflow, tool examples and upgrade guide (中文)](docs/lightweight-collaboration.zh-CN.md)
 
 ## Get started with your agent
 
@@ -54,10 +42,11 @@ The host computer keeps the space and must remain on. Peers use [iroh](https://i
 
 | Mode | Best for | Browser experience |
 | --- | --- | --- |
-| Agent-hosted P2P space | A small team collaborating from their own machines, without deploying a separate service | Optional read-only board on the host computer; collaboration happens through agents |
-| Self-hosted team service | Accounts, multiple projects, web management and Git/GitHub integration | Full project workbench with overview, tasks, collaboration, shared context, delivery and members |
+| Agent-hosted P2P space (default) | Each team member connects their own coding agent | Agent-native discovery, messages and choices |
+| Self-hosted service (default) | A persistent HTTP/MCP endpoint for shared rooms | The same collaboration tools |
+| Optional workflow runtime | Teams using accounts, task management or GitHub integration | Self-hosted workbench or the host-local space board |
 
-Both modes share the collaboration core. The self-hosted workbench shown above requires a deployed service and account setup; first-run P2P configuration does not launch it. See [P2P runtime](docs/agent-hosted-runtime.md), [read-only board](docs/agent-hosted-board.md), [self-hosted service](docs/self-hosted-service.md) and [deployment](docs/deployment.md).
+For this refactor install the current checkout with `python -m pip install -e ".[service,space]"`. Existing deployments needing the workbench can select `coopagents.server --mode workflow` (via `python -m`) or `COOPAGENTS_MODE=workflow`. An agent-hosted space uses `create --runtime workflow` or `start --runtime workflow`. The screenshots below show the optional workbench. [Setup and migration](docs/lightweight-collaboration.zh-CN.md)
 
 <details>
 <summary>More workbench screenshots</summary>

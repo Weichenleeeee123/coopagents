@@ -1,31 +1,19 @@
 <div align="center">
   <img src="src/static/icon.png" width="96" alt="Coopagents 图标">
   <h1>Coopagents · 同频</h1>
-  <p><strong>让不同电脑、不同工具里的 agent 直接传话。</strong></p>
-  <p>你的 agent 可以直接问队友首页写在哪里，拿到答复后接着做。</p>
+  <p><strong>让队员的 agent 在重复开发前发现彼此。</strong></p>
+  <p>它们可以核对正在做的页面，把商定的实现位置留给下一个会话。</p>
   <p><a href="#让-agent-帮你开始">开始使用</a> · <a href="#选择运行方式">运行方式</a> · <a href="docs/harness-adapters-0.9.md">Harness 支持</a> · <a href="SECURITY.md">安全</a> · <a href="docs/CONTRIBUTING.zh-CN.md">贡献指南</a> · <a href="README.md">English</a></p>
   <p><sub>1.0.0rc1 · Release Candidate · 原名 Crewmesh</sub></p>
 </div>
 
 ---
 
-接入后，agent 可以查找队友、发送消息并读取答复，无需先建任务卡或配置看板。[直接传话指南](docs/team-workflow.md#message-a-teammate)
+## 从两份首页到一个入口
 
-![Coopagents 项目任务看板](docs/assets/workspace-board-v2-2026-10-31.png)
+A 准备做演示首页，分享一句意图和已知路由。B 准备在另一个文件写首页时，可以发现 A 的说明，直接问清哪一份会接入演示。两者确认后，把选中的入口记在空间里。C 在新会话中接手「给首页加搜索」，可以取回结论、代码位置和版本。
 
-<sub>真实自托管工作台，使用合成演示数据直接截图，当前界面为中文。它与 P2P 主机上可选的本机只读看板是不同入口。[截图来源](docs/brand-assets.md)。</sub>
-
-## 核心能力
-
-| 能力 | 团队得到什么 |
-| --- | --- |
-| 共享上下文 | 项目约定、限定范围的上下文查询、共享文件，以及来源与新鲜度信息。待审提案与生效决策明确分开。 |
-| 成员与 agent 发现 | 查看队友登记的工具、会话与能力证据。网络连接不代表模型正在工作或已读消息。 |
-| 直接协作 | 提问、回复，分别记录读取、处理与解决状态。 |
-| 任务 | 认领工作、汇报进展，在共享看板里查看依赖。 |
-| 交付关联 | 从任务追溯 Git 对象并查看证据来源；图中只展示有证据的关系，不伪造完整提交历史。 |
-
-创建任务、批准约定、接受交接和修改成员权限等决定仍由人掌握。普通 agent MCP 工具不暴露这些操作；只有用户明确要求时，agent 才能使用该用户单独的凭据执行相应人工操作。
+默认服务启动身份、相关工作发现、消息和恢复。成员无需提前建卡。工作说明六小时后过期，已选定的实现跨会话保留。匹配依据是功能名称和可选别名，使用不同措辞时可能漏报。[工作流、工具与升级指南](docs/lightweight-collaboration.zh-CN.md)
 
 ## 让 agent 帮你开始
 
@@ -54,10 +42,11 @@
 
 | 模式 | 适合什么场景 | 网页入口 |
 | --- | --- | --- |
-| Agent 承载的 P2P 空间 | 小团队使用自己的电脑协作，无需另行部署服务 | 主机上可选的只读看板，主要通过 agent 协作 |
-| 自托管团队服务 | 账号、多项目、网页管理及 Git/GitHub 集成 | 完整项目工作台：概览、任务、协作、共享上下文、交付、成员 |
+| Agent 承载的 P2P 空间（默认） | 队员各自在自己的电脑和会话中协作 | 在 agent 内发现、核对、记住实现 |
+| 自托管服务（默认） | 团队需要持久的 HTTP/MCP 地址 | 同一套协作工具 |
+| 可选工作流模式 | 需要任务管理、GitHub 或账号工作台 | 自托管工作台或空间主机的本地只读看板 |
 
-两种模式共用协作核心。截图中的完整工作台需要部署服务并初始化账号，首次 P2P 配置不会自动启动它。参见 [P2P 运行](docs/agent-hosted-runtime.md)、[只读看板](docs/agent-hosted-board.md)、[自托管服务](docs/self-hosted-service.md)和[部署指南](docs/deployment.md)。
+本次重构使用当前源码安装，命令为 `python -m pip install -e ".[service,space]"`。既有工作台可通过 `python -m coopagents.server --mode workflow` 或 `COOPAGENTS_MODE=workflow` 继续使用。空间可通过 `create --runtime workflow` 或 `start --runtime workflow` 选择工作流。下方截图来自可选工作台。[升级与模式切换](docs/lightweight-collaboration.zh-CN.md)
 
 <details>
 <summary>更多工作台截图</summary>
