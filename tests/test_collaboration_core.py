@@ -24,6 +24,14 @@ class CollaborationTests(unittest.TestCase):
     def share(self, member, subject, **kwargs):
         return self.service.call('share_work', member['agent_token'], dict(subject=subject, summary='Shared intent', **kwargs))
 
+    def test_reply_tool_explains_how_to_save_the_shared_implementation(self):
+        from coopagents.mcp_service import TOOL_DESCRIPTIONS
+
+        description = TOOL_DESCRIPTIONS['read_replies']
+        self.assertIn('remember_choice', description)
+        self.assertIn('reply_id/request_id', description)
+        self.assertIn('expected_revision', description)
+
     def test_simultaneous_starts_negative_controls_expiry_and_isolation(self):
         now = datetime.now(timezone.utc)
         self.service.awareness.clock = lambda: now
@@ -49,8 +57,12 @@ class CollaborationTests(unittest.TestCase):
         def answer(key):
             request = self.service.send_request(a, key, self.bob['member_id'], 'Which implementation?')
             reply = self.service.messages.reply(b, request['id'], key, 1, 'Agreed', 'src/'+key)
+            read = self.service.read_replies(a)
+            self.assertEqual(read['choice_candidates'][-1], {'request_id': request['id'],
+                                                              'reply_id': reply['replies'][0]['id']})
+            self.assertIn('remember_choice', read['choice_guidance'])
             return dict(subject='Checkout', summary='Use the agreed path', request_id=request['id'],
-                        reply_id=reply['replies'][0]['id'], expected_revision=0)
+                        reply_id=read['replies'][-1]['id'], expected_revision=0)
         first = answer('checkout')
         with self.assertRaises(NotFound):
             self.service.call('remember_choice', b, first)
@@ -86,6 +98,23 @@ class CollaborationTests(unittest.TestCase):
         with self.assertRaises(NotFound):
             core.messages.reply(b, tracked['id'], 'bad', 1, 'wrong runtime')
         self.assertEqual(len(CoordinationService(path).tasks.list_tasks(a)), 1)
+
+    def test_lightweight_room_can_switch_back_to_workflow_with_message_history(self):
+        from coopagents.coordination import CoordinationService
+
+        alice = self.service
+        peer = alice.identity.add_member(self.alice['web_token'], 'Peer')
+        request = alice.send_request(self.alice['agent_token'], 'route', peer['member_id'], 'Which route?')
+        reply = alice.messages.reply(peer['agent_token'], request['id'], 'route-answer', 1,
+                                     'The shared route is active.', 'web/Home.tsx')
+        self.assertEqual(alice.read_replies(self.alice['agent_token'])['replies'][0]['id'],
+                         reply['replies'][0]['id'])
+
+        workflow = CoordinationService(self.path)
+        self.assertEqual(workflow.tasks.list_tasks(self.alice['agent_token']), [])
+        history, = workflow.workflow.read_replies(self.alice['agent_token'])['replies']
+        self.assertEqual(history['body'], 'The shared route is active.')
+        self.assertEqual(history['evidence'], 'web/Home.tsx')
 
     def test_self_hosted_factory_and_historical_outbox_use_the_core(self):
         import secrets
