@@ -7,7 +7,7 @@ from uuid import uuid4
 
 from starlette.testclient import TestClient
 
-from coopagents.api import create_app
+from coopagents.workflow_api import create_app
 from test_billing_api import CONFIG, ORIGIN
 from test_billing_service import FixtureTransport
 from test_github_sync import FakeProvider

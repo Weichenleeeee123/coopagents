@@ -1,0 +1,329 @@
+"""Optional account workbench and task workflow HTTP composition."""
+from contextlib import asynccontextmanager
+import json
+import asyncio
+import time
+import hmac
+import hashlib
+from importlib.resources import files
+from urllib.parse import urlsplit
+
+from starlette.applications import Starlette
+from starlette.concurrency import run_in_threadpool
+from starlette.responses import JSONResponse, Response
+from starlette.routing import Route, Mount
+
+from .errors import AccessDenied, Conflict, NotFound, ValidationError
+from .http_boundary import LocalBoundary, bearer, error_payload
+from .coordination import CoordinationService
+from .protocol import fields, validate
+from .config import public_origin, validate_bootstrap_secret
+
+WEB_CSP = "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'"
+
+
+class Service(CoordinationService):
+    """HTTP host composition of the shared collaboration core."""
+    def __init__(self, database_path, github_app=None):
+        super().__init__(database_path, github_app)
+        from .accounts import AccountStore
+        from .workspaces import WorkspaceStore
+        self.accounts = AccountStore(self.identity)
+        self.workspaces = WorkspaceStore(self.accounts)
+        self.change_events.install_triggers()
+
+
+def create_app(database_path='.local/coopagents.sqlite3', *, base_url=None, public_url=None, bootstrap_secret=None, mode='self-hosted', github_client_id=None, github_client_secret=None, github_app=None, billing_config=None):
+    if base_url and public_url:
+        raise ValueError('Set only one service origin')
+    origin = public_origin(public_url) if public_url is not None else None
+    if mode not in ('self-hosted', 'cloud'):
+        raise ValueError('Mode must be self-hosted or cloud')
+    if bootstrap_secret is not None:
+        validate_bootstrap_secret(bootstrap_secret)
+    bootstrap_hash = hashlib.sha256(validate_bootstrap_secret(bootstrap_secret).encode('ascii')).digest() if origin and mode == 'self-hosted' else None
+    from .billing_api import billing_catalog, billing_routes, BillingRuntime
+    from .billing import BillingStore
+    from .billing_service import BillingService
+    from .stripe_billing import StripeClient
+    from .billing_worker import BillingWorker
+    catalog = billing_catalog(mode, billing_config, origin)
+    service = Service(database_path, github_app)
+    store = BillingStore(service.workspaces, mode, catalog)
+    client = StripeClient(billing_config.secret_key, catalog.provider_mode) if catalog else None
+    service.billing = BillingService(store, client, billing_config.webhook_secret if catalog else None, origin)
+    service.billing_store = store
+    billing_runtime = BillingRuntime()
+    billing_worker = BillingWorker(service.billing, billing_runtime)
+    from .account_api import account_routes
+    from .oauth import GitHubOAuth
+    oauth = GitHubOAuth.configured(service.accounts, mode, origin, github_client_id, github_client_secret)
+    from .mcp_service import create_mcp_app
+    mcp_app, authenticated_mcp = create_mcp_app(service, origin=origin or base_url)
+
+    @asynccontextmanager
+    async def lifespan(app):
+        try:
+            async with mcp_app.router.lifespan_context(mcp_app):
+                billing_worker.start()
+                try:
+                    async with github_lifespan():
+                        yield
+                finally:
+                    await billing_worker.close()
+        finally:
+            await billing_runtime.close()
+
+    @asynccontextmanager
+    async def github_lifespan():
+        stop = asyncio.Event()
+        async def github_worker():
+            next_poll = time.monotonic() + 300
+            while not stop.is_set():
+                # Network calls run outside the event loop. Durable inbox records
+                # are committed before acknowledgement and survive restarts.
+                try:
+                    await run_in_threadpool(service.github.process_pending, limit=1, should_stop=stop.is_set)
+                    if not stop.is_set() and time.monotonic() >= next_poll:
+                        await run_in_threadpool(service.github.reconcile_all, should_stop=stop.is_set)
+                        next_poll = time.monotonic() + 300
+                except Exception:
+                    # Do not log request bodies or provider credentials. Failed
+                    # records remain pending; the next pass retries them.
+                    import logging
+                    logging.getLogger(__name__).warning('GitHub reconciliation pass failed')
+                try:
+                    await asyncio.wait_for(stop.wait(), timeout=5)
+                except TimeoutError:
+                    pass
+        worker = asyncio.create_task(github_worker()) if service.github.app.enabled else None
+        try:
+            yield
+        finally:
+            stop.set()
+            if worker:
+                await worker
+
+    async def endpoint(request):
+        try:
+            path = request.url.path
+            if path == '/health' and request.method == 'GET':
+                return JSONResponse({'status': 'ok'})
+            if path == '/ready' and request.method == 'GET':
+                try:
+                    with service.identity.db.connect() as connection:
+                        connection.execute('SELECT id FROM rooms LIMIT 1').fetchone()
+                    return JSONResponse({'status': 'ready'})
+                except Exception:
+                    return JSONResponse({'status': 'unavailable'}, status_code=503)
+            operation = request.scope.get('operation')
+            if mode == 'cloud' and operation in ('create_room', 'join'):
+                raise AccessDenied('GitHub account workspace required')
+            if operation == 'create_room' and bootstrap_hash is not None:
+                credentials = request.headers.getlist('x-coopagents-bootstrap')
+                candidate = credentials[0] if len(credentials) == 1 else ''
+                if not hmac.compare_digest(hashlib.sha256(candidate.encode('utf-8')).digest(), bootstrap_hash):
+                    raise AccessDenied('Bootstrap credential not accepted')
+            public = operation in ('create_room', 'join')
+            token = None if public else bearer(request)
+            if token:
+                service.identity.authenticate(token)
+            if operation == 'connect_agent':
+                # Account project bearers are tied to a validated cookie session.
+                origins = request.headers.getlist('origin')
+                expected = origin or base_url or str(request.base_url).rstrip('/')
+                if len(origins) != 1 or origins[0] != expected:
+                    return JSONResponse({'error': 'AccessDenied', 'message': 'Origin not accepted'}, status_code=403)
+            if request.method == 'GET':
+                name = request.scope['read_name']
+                if name == 'me':
+                    result = service.me(token)
+                elif name == 'snapshot':
+                    result = service.snapshot(token)
+                elif name == 'lifecycle_event':
+                    result = service.lifecycle.history_event(token, request.path_params['task_id'], request.path_params['event_id'])
+                elif name == 'git_binding':
+                    result = service.repositories.get_binding(token)
+                elif name == 'git_observation':
+                    result = service.repositories.read_observation(token,request.path_params['observation_id'])
+                elif name == 'context':
+                    from .context import query_arguments
+                    result = service.read_context(token, **query_arguments(request.query_params))
+                elif name == 'inbox':
+                    if any(k not in ('after_id', 'limit') or len(request.query_params.getlist(k)) != 1 for k in request.query_params):
+                        raise ValidationError('Unsupported query parameter')
+                    try:
+                        data = {k: int(v) for k, v in request.query_params.items()}
+                    except ValueError:
+                        raise ValidationError('Invalid query parameter') from None
+                    result = service.call('read_inbox', token, data)
+                else:
+                    result = service.reads[name](token)
+            else:
+                if request.headers.get('content-type', '').split(';')[0].strip().lower() != 'application/json':
+                    raise ValidationError('Content type must be application/json')
+                try:
+                    data = json.loads((await request.body()).decode('utf-8'), parse_constant=lambda value: (_ for _ in ()).throw(ValueError()))
+                except (ValueError, UnicodeDecodeError):
+                    raise ValidationError('Malformed JSON') from None
+                if not isinstance(data, dict):
+                    raise ValidationError('Expected a JSON object')
+                schema = service.operations[operation][2]
+                body_schema = {k: v for k, v in schema.items() if k not in request.path_params}
+                validate(data, body_schema)
+                for key, value in request.path_params.items():
+                    data[key] = value
+                result = service.call(operation, token, data)
+            return JSONResponse(result)
+        except Exception as error:
+            payload, status = error_payload(error)
+            return JSONResponse(payload, status_code=status)
+
+    async def asset_upload(request):
+        try:
+            token = bearer(request)
+            content_type = request.headers.get('content-type', '').split(';')[0].strip().lower()
+            if content_type != 'multipart/form-data':
+                raise ValidationError('Content type must be multipart/form-data')
+            try:
+                form = await request.form(max_files=1, max_fields=2, max_part_size=65536)
+            except Exception:
+                raise ValidationError('Malformed asset upload') from None
+            entries = list(form.multi_items())
+            file_entries = [value for key, value in entries if key == 'file']
+            fields = {key: value for key, value in entries if key != 'file'}
+            if (len(file_entries) != 1 or any(key not in ('source_type', 'source_ref') for key in fields)
+                    or not hasattr(file_entries[0], 'read')):
+                raise ValidationError('Exactly one file field is required')
+            if len(fields) != len(entries) - 1:
+                raise ValidationError('Duplicate asset upload field')
+            uploaded = file_entries[0]
+            try:
+                content = await uploaded.read(10 * 1024 * 1024 + 1)
+                if len(content) > 10 * 1024 * 1024:
+                    return JSONResponse({'error': 'ValidationError', 'message': 'Asset exceeds the per-file limit'}, status_code=413)
+                result = await run_in_threadpool(service.assets.upload, token, uploaded.filename,
+                    uploaded.content_type or 'application/octet-stream', content,
+                    source_type=fields.get('source_type', 'upload'), source_ref=fields.get('source_ref', ''))
+            finally:
+                await form.close()
+            return JSONResponse(result, status_code=201, headers={'Cache-Control': 'no-store'})
+        except Exception as error:
+            payload, status = error_payload(error)
+            return JSONResponse(payload, status_code=status, headers={'Cache-Control': 'no-store'})
+
+    async def asset_list(request):
+        try:
+            result = await run_in_threadpool(service.assets.list_assets, bearer(request))
+            return JSONResponse({'assets': result}, headers={'Cache-Control': 'no-store'})
+        except Exception as error:
+            payload, status = error_payload(error)
+            return JSONResponse(payload, status_code=status, headers={'Cache-Control': 'no-store'})
+
+    async def asset_read(request):
+        try:
+            metadata, content = await run_in_threadpool(service.assets.read_asset, bearer(request),
+                                                        request.path_params['asset_id'])
+            from urllib.parse import quote
+            filename = quote(metadata['filename'], safe='')
+            return Response(content, media_type=metadata['media_type'], headers={
+                'Cache-Control': 'no-store', 'Content-Disposition': "attachment; filename*=UTF-8''" + filename,
+                'X-Content-Length': str(metadata['size_bytes']), 'X-Content-SHA256': metadata['sha256'],
+                'X-Content-Type-Options': 'nosniff'})
+        except Exception as error:
+            payload, status = error_payload(error)
+            return JSONResponse(payload, status_code=status, headers={'Cache-Control': 'no-store'})
+
+    def route(path, methods, *, operation=None, read_name=None):
+        async def handle(request):
+            request.scope['operation'] = operation
+            request.scope['read_name'] = read_name
+            return await endpoint(request)
+        return Route(path, handle, methods=methods)
+
+    async def skill_asset(request):
+        resource = request.path_params['resource']
+        if resource not in ('SKILL.md', 'protocol.md'):
+            return Response(status_code=404)
+        return Response(files('coopagents').joinpath('skills', 'coopagents-connect', resource).read_bytes(),
+                        media_type='text/plain', headers={'X-Content-Type-Options':'nosniff',
+                        'Content-Security-Policy': WEB_CSP})
+
+    async def web_asset(request):
+        assets = {'/static/shared_context.js': ('shared_context.js', 'text/javascript'), '/static/delivery.js': ('delivery.js', 'text/javascript'), '/static/delivery_graph.js': ('delivery_graph.js', 'text/javascript'), '/static/capability_discovery.js': ('capability_discovery.js', 'text/javascript'), '/': ('index.html', 'text/html'),
+                  '/static/styles.css': ('styles.css', 'text/css'),
+                  '/static/app.js': ('app.js', 'text/javascript'),
+                  '/static/board.js': ('board.js', 'text/javascript'),
+                  '/static/git.js': ('git.js', 'text/javascript'),
+                  '/static/realtime_client.js': ('realtime_client.js', 'text/javascript'),
+                  '/static/project_activity.js': ('project_activity.js', 'text/javascript'),
+                  '/static/project_assets.js': ('project_assets.js', 'text/javascript'),
+                  '/static/collaboration.js': ('collaboration.js', 'text/javascript'),
+                  '/static/dependencies.js': ('dependencies.js', 'text/javascript'),
+                  '/static/task_lifecycle.js': ('task_lifecycle.js', 'text/javascript'),
+                  '/static/accounts.js': ('accounts.js', 'text/javascript'),
+                  '/static/invitations.js': ('invitations.js', 'text/javascript'),
+                  '/static/billing.js': ('billing.js', 'text/javascript'),
+                  '/static/icon.png': ('icon.png', 'image/png')}
+        headers = {'Content-Security-Policy': WEB_CSP, 'X-Content-Type-Options': 'nosniff'}
+        if request.url.path == '/favicon.ico':
+            return Response(status_code=204, headers=headers)
+        resource, mime = assets[request.url.path]
+        return Response(files('coopagents').joinpath('static', resource).read_bytes(), media_type=mime, headers=headers)
+
+    routes = [Route(path, web_asset, methods=['GET']) for path in ('/static/shared_context.js', '/static/delivery.js', '/static/delivery_graph.js', '/static/capability_discovery.js', '/', '/static/styles.css', '/static/app.js', '/static/board.js', '/static/realtime_client.js', '/static/git.js', '/static/project_activity.js', '/static/project_assets.js', '/static/collaboration.js', '/static/task_lifecycle.js', '/static/dependencies.js', '/static/accounts.js', '/static/invitations.js', '/static/billing.js', '/static/icon.png', '/favicon.ico')]
+    routes += [Route('/api/assets', asset_list, methods=['GET']), Route('/api/assets', asset_upload, methods=['POST']),
+               Route('/api/assets/{asset_id:str}', asset_read, methods=['GET'])]
+    routes += [route('/health', ['GET']), route('/ready', ['GET']), route('/api/rooms', ['POST'], operation='create_room'), route('/api/join', ['POST'], operation='join'),
+              route('/api/me', ['GET'], read_name='me'), route('/api/snapshot', ['GET'], read_name='snapshot'),
+              route('/api/context', ['GET'], read_name='context'),
+              route('/api/invites', ['POST'], operation='invite'), route('/api/agent-token', ['POST'], operation='rotate_agent'),
+              route('/api/inbox', ['GET'], read_name='inbox'),
+              route('/api/agent-connect', ['POST'], operation='connect_agent'),
+              Route('/skills/coopagents-connect/{resource}', skill_asset, methods=['GET'])]
+    for name in ('tasks', 'sessions', 'progress', 'overlaps', 'requests', 'contracts', 'events', 'git'):
+        routes.append(route('/api/' + name, ['GET'], read_name=name))
+    routes.append(route('/api/git/binding',['GET'],read_name='git_binding'))
+    routes.append(route('/api/git/observations/{observation_id:int}',['GET'],read_name='git_observation'))
+    for path, operation in [('/api/git/binding', 'bind_repository'), ('/api/git/observations', 'observe_repository'),
+                            ('/api/git/write-enabled', 'set_git_write_enabled'),
+                            ('/api/git/branches', 'create_task_branch'),
+                            ('/api/git/deliveries', 'deliver_task'),
+                            ('/api/git/overlap-check', 'check_overlap'),
+                            ('/api/checkpoints', 'checkpoint'),
+                            ('/api/diagnostics/start', 'diagnostic_start'),
+                            ('/api/diagnostics/read', 'diagnostic_read'),
+                            ('/api/diagnostics/complete', 'diagnostic_complete'),
+                            ('/api/git/checkpoint', 'repo_checkpoint'),
+                            ('/api/git/team', 'read_git_team'),
+                            ('/api/tasks', 'create_task'), ('/api/tasks/{task_id:int}/claim', 'claim_task'),
+                            ('/api/sessions', 'register_session'), ('/api/tasks/{task_id:int}/progress', 'report_progress'),
+                            ('/api/requests', 'send_request'), ('/api/requests/{request_id:int}/ack', 'acknowledge'),
+                            ('/api/requests/{request_id:int}/reply', 'reply'), ('/api/requests/{request_id:int}/resolve', 'resolve_request'),
+                            ('/api/requests/{request_id:int}/assign', 'assign'), ('/api/contracts', 'propose_contract'),
+                            ('/api/contracts/{contract_id:int}/decision', 'decision')]:
+        routes.append(route(path, ['POST'], operation=operation))
+    routes.append(route('/api/dependencies', ['GET'], read_name='dependencies'))
+    routes.append(route('/api/dependencies', ['POST'], operation='create_dependency'))
+    routes.append(route('/api/owners/lookup', ['POST'], operation='lookup_owner'))
+    for action in ('read','reply','resolve','cancel'):
+        routes.append(route('/api/dependencies/{dependency_id:int}/'+action, ['POST'], operation=action+'_dependency'))
+    routes.append(route('/api/tasks/{task_id:int}/history', ['POST'], operation='read_task_history'))
+    routes.append(route('/api/tasks/{task_id:int}/history/{event_id:int}', ['GET'], read_name='lifecycle_event'))
+    from .task_lifecycle import ACTIONS
+    for action in ACTIONS:
+        routes.append(route('/api/tasks/{task_id:int}/' + action.replace('_', '-'), ['POST'], operation=action))
+    routes.extend(account_routes(service, mode=mode, origin=origin or base_url, bootstrap_secret=bootstrap_secret, oauth=oauth))
+    from .git_routes import git_routes
+    routes.extend(git_routes(service, service.github))
+    routes.extend(billing_routes(service, billing_runtime, origin=origin or base_url))
+    from .realtime import events_route
+    routes.append(events_route(service, base_url=base_url, public_url=origin))
+    from .coordination_http import coordination_routes
+    routes.extend(coordination_routes(service, base_url=base_url, public_url=origin))
+    routes.append(Mount('/', app=authenticated_mcp))
+    from .space_board import BoardAccess
+    app = Starlette(routes=routes, lifespan=lifespan)
+    app.state.service = service
+    app.state.billing_worker = billing_worker
+    return LocalBoundary(app, base_url, origin, billing_webhook=store.enabled)

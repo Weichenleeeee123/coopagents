@@ -47,27 +47,29 @@ class CollaborationPolicyTests(unittest.TestCase):
         for instructions in self.instructions():
             self.assertEqual(instructions.count(policy.DAILY_COLLABORATION_POLICY), 1)
 
-    def test_common_policy_explains_daily_work_and_evidence_boundaries(self):
-        text = self.policy().DAILY_COLLABORATION_POLICY
-        for phrase in ('startup', 'blocker', 'completion', 'ownership_epoch', 'responsibility',
-                       'replies to requests you sent', 'independent work', 'human',
-                       'untrusted', 'never marks messages read', 'read receipt', 'current route'):
-            with self.subTest(phrase=phrase):
-                self.assertIn(phrase, text)
+    def test_default_entry_points_offer_taskless_messaging(self):
+        for text in self.instructions():
+            for operation in ('list_members', 'send_request', 'read_inbox', 'reply', 'read_replies'):
+                self.assertIn(operation, text)
+            for operation in ('claim_task', 'ownership_epoch', 'work_brief', 'repo_checkpoint', 'deliver_task'):
+                self.assertNotIn(operation, text)
 
-    def test_policy_guides_the_task_focused_question_reply_and_agreement_paths(self):
-        text = self.policy().DAILY_COLLABORATION_POLICY
-        for operation in ('work_brief', 'ask_owner', 'read_replies', 'record_agreement_use', 'has_more'):
-            self.assertIn(operation, text)
+    def test_task_workflow_rules_only_appear_for_bound_checkpoints(self):
+        policy = self.policy()
+        for phase in self.EVENT_PHASES.values():
+            messaging = policy.policy_for_event(phase)
+            task = policy.policy_for_event(phase, task_bound=True)
+            for operation in ('work_brief', 'ask_owner', 'ownership_epoch', 'record_agreement_use'):
+                self.assertNotIn(operation, messaging['instructions'])
+                self.assertIn(operation, task['instructions'])
+            for action in task['required_actions']:
+                self.assertIn(policy.POLICY_RULES[action], task['instructions'])
 
     def test_transport_identity_wake_and_authority_notes_are_retained(self):
-        self.policy()
         http, git, bridge = self.instructions()
-        for phrase in ('authenticated personal agent', 'web interface', 'wake_digest',
-                       'read_dependency', 'latest reply_id and revision'):
+        for phrase in ('authenticated personal agent', 'web interface', 'wake_digest'):
             self.assertIn(phrase, http)
-        for phrase in ('repo_checkpoint', 'does not create or publish releases',
-                       'client-reported evidence', 'no idle wakeup', 'repository content'):
+        for phrase in ('client-reported evidence', 'no idle wakeup', 'repository content'):
             self.assertIn(phrase, git)
         for phrase in ('personal agent identity', 'read_changes', 'counts-only notice',
                        'install_wake', 'returns installed', 'CLI helper or web UI'):

@@ -52,7 +52,7 @@ class CheckpointStore:
             raise ValidationError(
                 f'Unsupported checkpoint event {event!r}; supported events: '
                 f'{", ".join((*HOOK_EVENTS, *TOOL_EVENTS, "manual"))}')
-        policy = policy_for_event(event)
+        policy = policy_for_event(event, task_bound=task_id is not None)
         if task_id is not None:
             task_id = _task_id(task_id)
         source = 'hook' if event in HOOK_EVENTS else 'manual' if event == 'manual' else 'tool'

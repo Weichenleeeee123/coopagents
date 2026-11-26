@@ -48,9 +48,10 @@ class NativeHost(unittest.TestCase):
     def test_native_owner_recovers_original_runtime_after_command_process_loss(self):
         result = self.configure()
         original = self.path.read_bytes()
-        task = runtime.request(self.profile['origin'], '/api/operations/create_task',
-                               token=self.profile['web_token'],
-                               data={'intent_key': 'retained-task', 'title': 'Keep this task', 'scope': 'Synthetic lifecycle regression'})
+        invite = runtime.invite(self.path)
+        peer = read_profile(runtime.join(invite['invitation_file'], 'Peer', self.directory / 'peer')['profile'])
+        runtime.request(self.profile['origin'], '/api/operations/share_work', token=self.profile['agent_token'],
+                        data={'subject': 'Homepage', 'summary': 'Prepare demo', 'reference': 'web/Home.tsx'})
         host = self.path.with_name('host.json').read_bytes()
         self.lose_supervisor()
         recovered = self.verify()
@@ -60,8 +61,9 @@ class NativeHost(unittest.TestCase):
         self.assertEqual(self.path.read_bytes(), original)
         self.assertEqual(self.path.with_name('host.json').read_bytes(), host)
         self.assertEqual(runtime.status(self.path)['status'], 'running')
-        snapshot = runtime.request(self.profile['origin'], '/api/snapshot', token=self.profile['web_token'])
-        self.assertIn(task, snapshot['tasks'])
+        related = runtime.request(self.profile['origin'], '/api/operations/find_related',
+                                  token=peer['agent_token'], data={'subject': 'Homepage'})
+        self.assertEqual(related['related_work'][0]['reference'], 'web/Home.tsx')
 
     def test_explicit_stop_survives_reconnect_until_explicit_start(self):
         self.configure()

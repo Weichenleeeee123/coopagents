@@ -1,5 +1,4 @@
 """Shared collaboration service independent of transport and account hosting."""
-from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -10,10 +9,10 @@ from .messages import MessageStore
 from .contracts import ContractStore
 from .context import ContextStore, QUERY_SCHEMA
 from .capabilities import CapabilityStore
-from .protocol import fields, validate
+from .protocol import SEND_REQUEST_SCHEMA, fields, ServiceOperations
 
 
-class CoordinationService:
+class CoordinationService(ServiceOperations):
     def __init__(self, database_path, github_app=None):
         path = Path(database_path)
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -57,6 +56,7 @@ class CoordinationService:
             'read_deliveries': ('any', self.read_deliveries, fields('', {'task_id':None, 'kind':'', 'value':''})),
             'suggest_delivery': ('agent', self.delivery.suggest, {'task_id':(int,True,None),'request_key':(str,True,None),'branch':(str,False,''),'pr_number':(int,False,None),'commit_sha':(str,False,''),'release_id':(int,False,None),'evidence':(str,False,''),'session_key':(str,False,None),'ownership_epoch':(int,False,None)}),
             'decide_delivery': ('web', self.delivery.decide, {'suggestion_id':(int,True,None),'decision':(str,True,None)}),
+            'list_members': ('agent', self.list_members, fields()),
             'read_capabilities': ('any', self.read_capabilities, fields()),
             'wake_digest': ('agent', self.wake.digest, fields('', {'session_key': None})),
             'session_presence': ('agent', self.session_presence, {
@@ -77,7 +77,7 @@ class CoordinationService:
             'claim_task': ('agent', self.tasks.claim_task, fields('task_id', {'session_key': None})),
             'register_session': ('agent', self.activity.register_session, {**fields('session_key tool repository branch', {'task_id': None, 'ownership_epoch': None, 'harness': None, 'harness_version': None, 'platform': None, 'native_session_id': None}), 'capabilities': (dict, False, None)}),
             'report_progress': ('agent', self.activity.report_progress, fields('task_id state summary', {'evidence': '', 'session_key': None, 'ownership_epoch': None})),
-            'send_request': ('agent', self.messages.send_request, fields('request_key context_version body', {'receiver_member_id': None, 'task_id': None})),
+            'send_request': ('agent', self.messages.send_request, SEND_REQUEST_SCHEMA),
             'read_inbox': ('agent', self.messages.read_inbox, fields('', {'after_id': 0, 'limit': 50})),
             'acknowledge': ('agent', self.messages.acknowledge, fields('request_id')),
             'reply': ('agent', self.messages.reply, fields('request_id request_key context_version body', {'evidence': ''})),
@@ -116,6 +116,10 @@ class CoordinationService:
                 'release_id': (int, False, None)}),
             'read_context': ('any', self.read_context, QUERY_SCHEMA),
         }
+        from .awareness import AwarenessStore, OPERATIONS
+        self.awareness = AwarenessStore(self.identity)
+        for name, schema in OPERATIONS.items():
+            self.operations[name] = ('agent', getattr(self.awareness, name), schema)
         for name, schema in dependency_schemas(fields).items():
             self.operations[name] = ('any', getattr(self.dependencies, name), schema)
         for name, schema in workflow_schemas().items():
@@ -157,6 +161,9 @@ class CoordinationService:
     def read_deliveries(self, token, task_id=None, kind='', value=''):
         return self.delivery.read(token, task_id=task_id, kind=kind, value=value)
 
+    def list_members(self, token):
+        return {'members': self.identity.list_members(token)}
+
     def read_capabilities(self, token):
         principal = self.identity.authenticate(token)
         snapshot = self._base_snapshot(token, web=principal.kind == 'web')
@@ -178,9 +185,6 @@ class CoordinationService:
 
     def create_task_branch(self, token, task_id, branch, base_sha, request_key, session_key=None, ownership_epoch=None, preview=False):
         return self.repositories.record_branch(token, task_id, branch, base_sha, request_key, session_key, ownership_epoch, preview)
-
-    def me(self, token):
-        return {'me': asdict(self.identity.authenticate(token)), 'room': self.identity.room_info(token)}
 
     def _base_snapshot(self, token, *, web=True):
         self.identity.authenticate(token, required_kind='web' if web else 'agent')
@@ -205,10 +209,3 @@ class CoordinationService:
         result['workflow'] = self.team_workflow.read_workflow(token)
         result['server_time'] = datetime.now(timezone.utc).isoformat()
         return result
-
-    def call(self, operation, token, data):
-        kind, method, schema = self.operations[operation]
-        if kind:
-            self.identity.authenticate(token, required_kind=None if kind == 'any' else kind)
-        data = validate(dict(data) if isinstance(data, dict) else data, schema)
-        return method(token, **data) if kind else method(**data)

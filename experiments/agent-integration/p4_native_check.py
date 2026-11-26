@@ -137,7 +137,7 @@ def main():
     service_env = os.environ.copy()
     for name in ('COOPAGENTS_PUBLIC_URL', 'COOPAGENTS_BOOTSTRAP_SECRET', 'COOPAGENTS_BOOTSTRAP_SECRET_FILE', 'COOPAGENTS_TRUSTED_PROXIES'):
         service_env.pop(name, None)
-    service = subprocess.Popen([sys.executable, '-m', 'coopagents.server', '--host', '127.0.0.1',
+    service = subprocess.Popen([sys.executable, '-m', 'coopagents.server', '--mode', 'workflow', '--host', '127.0.0.1',
         '--port', str(port), '--database', str(database)], cwd=ROOT, env=service_env,
         stdout=service_log, stderr=service_err,
         creationflags=0x08000000 if os.name == 'nt' else 0)

@@ -35,7 +35,7 @@ First-run setup uses the agent and CLI, without a web account. Route a setup req
 
 Doctor preserves local configuration and credentials. With a profile it opens or reuses a temporary transport and writes a diagnostic challenge record on the server; it does not change tasks, messages or membership. Without a profile it only inspects local settings, lists known bridges under `connections`, and never contacts their destinations. Select a trusted profile explicitly for network checks. Diagnostic records are HTTP evidence, not proof of a native model turn.
 
-JSON has `overall`, `checks`, `next` and `connections`. Each check has `id`, `status`, `summary`, `next`, `evidence`. Status is `pass`, `fail`, `needs_user`, `unknown` or `skipped`. Any failed check makes the overall result `blocked`; any pending user step makes it `needs_user`; missing or unchecked required checks make it `unknown`. Only a complete passing set is `ready`. Doctor exits 0 for ready, 1 otherwise. The shell cannot verify that the current native session loaded MCP or trusted hooks, so a healthy installation still reports `session_reload: needs_user`. Verify `whoami` and `read_team` in the actual agent session separately; do not repeatedly reinstall to clear this message.
+JSON has `overall`, `checks`, `next` and `connections`. Each check has `id`, `status`, `summary`, `next`, `evidence`. Status is `pass`, `fail`, `needs_user`, `unknown` or `skipped`. Any failed check makes the overall result `blocked`; any pending user step makes it `needs_user`; missing or unchecked required checks make it `unknown`. Only a complete passing set is `ready`. Doctor exits 0 for ready, 1 otherwise. The shell cannot verify that the current native session loaded MCP or trusted hooks, so a healthy installation still reports `session_reload: needs_user`. Verify `whoami` and `list_members` in the actual agent session separately; do not repeatedly reinstall to clear this message.
 
 `connect`, including create/join with `--connect`, retains its configuration-write exit status for compatibility, and adds `configuration`, `verification` and `next`. A zero connect exit code means configuration was saved, not that every diagnostic passed. Inspect `verification.overall`; network failures retain the configured profile and tell the agent what to check. `--name` must be carried into doctor for a custom MCP name.
 
@@ -54,8 +54,8 @@ The private JSON object contains `schema_version: 1`, `origin`, `room_id`, `memb
 `space_runtime connect` performs this configuration and verification; agents use it instead of the steps below. It names the server `coopagents_<first 8 hex of the room id>` unless `--name` is given, runs the commands shown here, then reads the entry back (`claude mcp get <name>`, `codex mcp get <name> --json`) and compares the Python path and arguments. Claude Code reads user MCP servers from `~/.claude.json`, not from any other JSON file. For reference, the commands it runs:
 
 ```text
-claude mcp add --transport stdio --scope user <unique-space-name> -- <absolute-python> -m coopagents.space_bridge --profile <absolute-private-profile>
-codex mcp add <unique-space-name> -- <absolute-python> -m coopagents.space_bridge --profile <absolute-private-profile>
+claude mcp add --transport stdio --scope user <unique-space-name> -- <absolute-python> -m coopagents.space_bridge --collaboration --profile <absolute-private-profile>
+codex mcp add <unique-space-name> -- <absolute-python> -m coopagents.space_bridge --collaboration --profile <absolute-private-profile>
 ```
 
 Claude's user JSON entry is under `mcpServers`, with `type: "stdio"`, `command` and `args`. Codex's private TOML entry is under `mcp_servers.<name>` with `command` and `args`. Prefer native add commands after conflict checks; if manual merge is necessary, parse and preserve the complete existing configuration and retain a private backup. Never append duplicate TOML sections or replace the whole file with a single server. Personal skills belong in `~/.claude/skills/coopagents-space/` or `~/.codex/skills/coopagents-space/` (respect configured skill roots). Copy SKILL.md, protocol.md and the scripts together only if absent; do not overwrite a different installed skill.
@@ -68,7 +68,7 @@ The background WebSocket connects to `/api/events`, supplies `{"token":<agent_to
 
 `read_changes` reauthenticates before returning cached data. Its result includes `events`, `cursor`, `high_water`, `has_more`, `reset`, `room_id`, `transport_status` and `model_read_acknowledged: false`. Status describes the transport only. Cache expiry, server retention expiry or a future cursor sets reset and returns a recovery cursor. Read current business state before advancing to that cursor. A disconnected bridge cannot prove completeness; query the business tools when working while offline. HTTP/MCP authentication failure returns a tool error or an empty discovery list, never stale authorized tools or a completion claim. Bridge CLI errors suppress credential-bearing response bodies and tracebacks.
 
-## Checkpoint calls
+## Optional workflow runtime checkpoint calls
 
 The `checkpoint` operation records receipt of an authenticated session checkpoint; it does not prove that a model is available or consumed context. It takes `session_key` (a fresh, stable key for the session), `tool`, `event`, and optionally `task_id` and `ownership_epoch`. Its response preserves `checkpoint` and `brief` and adds `policy`, generated by the internal `policy_for_event` helper, not a new MCP operation. `policy.version` identifies the common rule version, `policy.phase` is the normalized phase, `policy.required_actions` lists static action identifiers, and `policy.instructions` renders the rules as workflow guidance rather than execution authority.
 
@@ -94,7 +94,11 @@ Claim gate: the working tree must be clean and no other task's fresh (under five
 
 ## Wake-up hooks
 
-Daily collaboration policy `2026-11-18.1` is shared by the HTTP, bridge and Git entry points. At `startup`, `blocker`, `reply` and `completion`, obtain the collaboration checkpoint and inspect the common phase policy; it never marks requests or replies read. Claim with a fresh session and retain `ownership_epoch`. Look up current responsibility before asking and follow the current route after ownership changes. Explicitly read replies to sent questions as well as incoming questions, and use the latest answer/revision before resolving a dependency. Continue authorized independent work while waiting and report what would unblock the task. Human decisions need a real current user instruction through the permitted helper or web UI. Transport arrival, snapshots and wake notices never create read receipts, acceptance or approval. Explicit read receipts do not prove model comprehension. This policy update does not install or enable wake-up.
+Use `list_members` to find a teammate, then `send_request` with their `receiver_member_id`, a stable retry key and the question or update. Read incoming messages with `read_inbox`, answer with `reply`, and use `read_replies` for answers to messages you sent. Direct messages require no task or checkpoint.
+
+Before changing a shared feature, call `share_work` if offered. Give the user-facing subject, a short shareable intention, optional alternative names and a known route or relative path. Check related work and choices before editing. Use `find_related` for a read-only lookup. Contact a relevant member directly when the overlap may matter. When both sides agree, the responder includes the chosen reference in `reply.evidence`. The asker publishes the team-facing summary with `remember_choice`.
+
+Policy `2026-11-20.2`. When using checkpoints, `policy_for_event` supplies local trusted guidance for `startup`, `blocker`, `reply` and `completion`. A checkpoint bound to a task also returns the task workflow rules. Hooks never create read receipts or approvals. A receipt does not establish model comprehension. Human decisions require an actual user instruction.
 
 ```text
 <python> -m coopagents.space_wake preview --tool claude|codex --profile <personal-profile> --project-dir <repo>

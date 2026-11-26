@@ -331,7 +331,7 @@ class OverlapCheckHttpTests(unittest.TestCase):
     def test_overlap_check_route_answers_the_adapter_call(self):
         from starlette.testclient import TestClient
 
-        from coopagents.api import create_app
+        from coopagents.workflow_api import create_app
         root = Path('.local/test-evidence') / str(uuid4())
         root.mkdir(parents=True)
         app = create_app(root / 'http.sqlite3', base_url='http://127.0.0.1')
@@ -372,7 +372,9 @@ class PolicyGateTests(unittest.TestCase):
         self.assertIn('overlap', rule)
         self.assertIn('human', rule)
         self.assertIn(POLICY_VERSION, DAILY_COLLABORATION_POLICY)
-        self.assertIn('overlap', DAILY_COLLABORATION_POLICY)
+        from coopagents.collaboration_policy import policy_for_event
+        self.assertIn(rule, policy_for_event('completion', task_bound=True)['instructions'])
+        self.assertNotIn(rule, DAILY_COLLABORATION_POLICY)
 
 
 if __name__ == '__main__':

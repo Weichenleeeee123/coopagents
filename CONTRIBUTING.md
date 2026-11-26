@@ -18,7 +18,7 @@ Coopagents connects people’s coding agents around a shared project. Contributi
 | `deploy/` | Deployment configuration and dependency constraints |
 | `.local/` | Ignored local databases, private evidence and runtime state |
 
-The P2P space and self-hosted service share `CoordinationService`, domain storage, HTTP/MCP operations and real-time events. Change shared business rules in their common implementation; keep entry-point differences in `space_runtime.py`, `space_server.py` and the account composition layer.
+The default P2P space and self-hosted server share `CollaborationService`. Optional workflow hosts compose `CoordinationService`. Both reuse the identity, message, awareness and transport implementations.
 
 ## Development setup
 

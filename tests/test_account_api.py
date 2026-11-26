@@ -1,7 +1,7 @@
 import unittest
 from functools import partial
 from unittest.mock import patch
-from coopagents.api import create_app
+from coopagents.workflow_api import create_app
 from transport_support import LiveService
 
 SECRET = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'

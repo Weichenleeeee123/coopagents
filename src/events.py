@@ -8,7 +8,8 @@ from .errors import ValidationError
 class EventStore:
     MAX_PAGE = 200
 
-    def __init__(self, identity):
+    def __init__(self, identity, *, workflow=True):
+        self.workflow = workflow
         self.identity, self.db = identity, identity.db
         with self.db.connect(write=True) as c:
             c.execute('''CREATE TABLE IF NOT EXISTS room_event_streams (
@@ -52,6 +53,8 @@ class EventStore:
         }
         with self.db.connect(write=True) as c:
             tables = {r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+            if not self.workflow:
+                direct = {k: v for k, v in direct.items() if v[0] in ('messages', 'identity', 'room')}
             for table, (topic, entity) in direct.items():
                 if table not in tables:
                     continue
@@ -60,9 +63,14 @@ class EventStore:
                     raise RuntimeError(f'Event trigger schema mismatch: {table}')
                 self._triggers(c, table, topic, f'SELECT {{row}}.{"id" if table == "rooms" else "room_id"} AS room_id', entity)
             self._triggers(c, 'credentials', 'identity', 'SELECT room_id FROM members WHERE id={row}.member_id', 'member_id')
+            if not self.workflow:
+                return
             for table in ('dependency_routes', 'dependency_reads'):
+                if table not in tables:
+                    continue
                 self._triggers(c, table, 'dependencies', 'SELECT room_id FROM task_dependencies WHERE id={row}.dependency_id', 'dependency_id')
-            self._triggers(c, 'dependency_reply_actors', 'dependencies', 'SELECT room_id FROM message_replies WHERE id={row}.reply_id', 'reply_id')
+            if 'dependency_reply_actors' in tables:
+                self._triggers(c, 'dependency_reply_actors', 'dependencies', 'SELECT room_id FROM message_replies WHERE id={row}.reply_id', 'reply_id')
             if 'account_sessions' in tables and 'session_project_credentials' in tables:
                 self._triggers(c, 'account_sessions', 'identity', '''SELECT DISTINCT m.room_id FROM members m
                     JOIN credentials cr ON cr.member_id=m.id JOIN session_project_credentials sp ON sp.credential_hash=cr.token_hash

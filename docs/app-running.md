@@ -1,5 +1,7 @@
 # 本机运行
 
+默认服务提供轻量 HTTP/MCP 协作。以下账号与网页步骤使用可选的 `--mode workflow`。[默认运行时与升级](lightweight-collaboration.zh-CN.md)
+
 在项目仓库根目录使用 Python 3.11 或以上版本：
 
 ```powershell
@@ -15,7 +17,7 @@
 ```powershell
 & .\.venv\Scripts\python.exe -c "import pathlib,secrets; p=pathlib.Path('.local'); p.mkdir(exist_ok=True); f=(p/'bootstrap-secret.txt').open('x'); f.write(secrets.token_urlsafe(32)); f.close()"
 $env:COOPAGENTS_BOOTSTRAP_SECRET_FILE = (Resolve-Path .local/bootstrap-secret.txt).Path
-& .\.venv\Scripts\python.exe -m coopagents.server
+& .\.venv\Scripts\python.exe -m coopagents.server --mode workflow
 ```
 
 已有密钥文件时直接配置路径，不重新生成。打开 <http://127.0.0.1:8787/>，首次初始化账号，输入密钥、用户名和 12–256 字符密码；初始化后关闭该入口。登录后建立团队与项目。团队邀请明确选择角色和项目，24 小时有效且单次使用；新成员通过邀请注册，已有账号登录后接受。新项目初始仅创建者可访问，团队成员身份不会自动授权所有项目。

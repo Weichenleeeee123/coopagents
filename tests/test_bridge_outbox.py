@@ -112,6 +112,28 @@ class BridgeOutboxTests(unittest.TestCase):
             return asyncio.run(self.server(bridge).on_call_tool(SimpleNamespace(),
                 SimpleNamespace(name=operation, arguments=arguments)))
 
+    def test_messaging_connection_filters_online_and_cached_discovery(self):
+        bridge, remote = self.bridge()
+        bridge.messages_only = True
+        offered = ['whoami', 'list_members', 'read_team', 'send_request', 'reply', 'read_replies',
+                   'read_inbox', 'claim_task', 'work_brief', 'find_related', 'share_work', 'remember_choice']
+        schemas = [Tool(name=name, input_schema={}) for name in offered]
+        remote.list_tools = AsyncMock(return_value=SimpleNamespace(tools=schemas, next_cursor=None))
+        server = self.server(bridge)
+        names = lambda: {tool.name for tool in asyncio.run(server.on_list_tools(SimpleNamespace(), None)).tools}
+        self.assertEqual(names(), space_bridge.MESSAGE_TOOLS)
+        for name in ('claim_task', 'work_brief', 'read_team'):
+            self.assertTrue(self.call(bridge, name, {}).is_error)
+        self.assertEqual(remote.calls, [])
+        bridge._load_tool_schemas = lambda: schemas
+        remote.list_tools.side_effect = ConnectionError()
+        self.assertEqual(names(), space_bridge.MESSAGE_TOOLS - {'install_wake'})
+        self.assertEqual(bridge.outbox.queued, [])
+        remote.list_tools.side_effect = None
+        remote.list_tools.return_value = SimpleNamespace(tools=[t for t in schemas if t.name != 'list_members'],
+                                                        next_cursor=None)
+        self.assertIn('read_team', names())
+
     def test_transport_failure_persists_only_allowed_idempotent_intent_as_not_delivered(self):
         bridge, _ = self.bridge(error=ConnectionError('RAW-PRIVATE-REMOTE-BODY'))
         arguments = {'request_key': 'stable-key', 'body': 'Private technical question',
